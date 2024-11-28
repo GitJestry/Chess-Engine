@@ -1,4 +1,3 @@
-```
 # Chess Engine
 
 This is a chess engine written from scratch in C++ with a graphical user interface (GUI) built using the SFML library.
@@ -48,4 +47,3 @@ This is a chess engine written from scratch in C++ with a graphical user interfa
 
 - This setup is currently optimized for **Windows 64-bit** architecture.
 - Make sure you have all dependencies (like SFML) correctly installed before building.
-```
