@@ -30,3 +30,12 @@
 *.exe
 *.out
 *.app
+
+# Ignore build directory
+build/
+
+# Ignore CMake files directory
+CMakeFiles/
+
+# Ignore VS Code settings directory
+.vscode/
