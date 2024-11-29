@@ -26,4 +26,3 @@ add_executable(${EXECUTABLE_NAME} examples/main.cpp ${SRC_FILES})
 # Link SFML libraries (dependencies are automatically resolved)
 target_link_libraries(${EXECUTABLE_NAME} sfml-graphics sfml-window sfml-system)
 
-
