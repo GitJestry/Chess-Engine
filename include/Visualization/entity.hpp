@@ -7,8 +7,12 @@
 class Entity {
   public:
 
+    Entity(const sf::Texture& texture);
+    Entity(const sf::Texture& texture, sf::Vector2f pos);
+    Entity() = default;
+
     // sets the position of the Sprite internally
-    void SetPosition(const sf::Vector2f& position);
+    void SetPosition(const sf::Vector2f& pos);
 
     // returns a float Vector of the position, internally the sprites position
     sf::Vector2f GetPosition();
@@ -31,5 +35,5 @@ class Entity {
     const sf::Sprite& GetSprite();
 
   protected:
-    sf::Sprite sprite_;
+    sf::Sprite sprite_{};
 };
