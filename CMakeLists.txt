@@ -16,7 +16,7 @@ find_package(SFML 2.6 COMPONENTS graphics window system REQUIRED)
 
 include_directories(include)
 
-file(GLOB SRC_FILES ${PROJECT_SOURCE_DIR}/src/*.cpp)
+file(GLOB SRC_FILES ${PROJECT_SOURCE_DIR}/src/*.cpp )
 
 # Executable naming
 set(EXECUTABLE_NAME "${PROJECT_NAME}-${PROJECT_VERSION}")
