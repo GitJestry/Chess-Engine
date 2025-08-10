@@ -13,6 +13,8 @@ int main() {
   InputManager inputManager;
   GameView game(window);
   game.init();
+  game.hlightSelectSquare(SQ_A2);
+  game.hlightAttackSquare(SQ_A3);
 
   // Bind some keys and mouse buttons
   inputManager.bindKey(sf::Keyboard::A, []() { std::cout << "Key A pressed!" << std::endl; });

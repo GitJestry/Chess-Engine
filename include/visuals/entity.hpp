@@ -37,13 +37,12 @@ class Entity {
   // sf::Texture, which is located on the heap by the TextureTable
   void setTexture(const sf::Texture &texture);
 
+  sf::Texture getTexture();
+
   // setSpriteSize modifies the absolute scale, meaning it overrides any previous scaling applied to
   // the sprite the width and height fraction are expressing how the sprite should be scaled for
   // example, width_fraction = 0.5 means 50% of the original width
   void setScale(float width_fraction, float height_fraction);
-
-  // To Specify the Rect used from the spritesheet
-  void setTextureRect(sf::IntRect rect);
 
  private:
   // not protected because every entity class should only operate and make changes to the sprite via

@@ -32,10 +32,11 @@ class GameView {
   void movePiece(Square from, Square to);
 
   // Hebt ein Feld visuell hervor (z. B. möglichen Zug)
-  void highlightSquare(Square pos);
+  void hlightSelectSquare(Square pos);
+  void clearHlightSelectSquare(Square pos);
 
-  // Entfernt alle Markierungen
-  void clearHighlights();
+  void hlightAttackSquare(Square pos);
+  void clearHlightAttack(Square pos);
 
   // Zeigt wessen Zug ist
   void updateTurnIndicator(PieceColor activeColor);
@@ -44,7 +45,12 @@ class GameView {
   void showMessage(const std::string& message);
 
  private:
+  template <typename T>
+  void renderEntitiesToBoard(std::unordered_map<Square, T>& map);
+
   Board m_board;
   std::unordered_map<Square, Piece> m_pieces;
+  std::unordered_map<Square, Entity> m_hl_attack_squares;
+  std::unordered_map<Square, bool> m_hl_select_squares;
   sf::RenderWindow& m_window_ref;
 };

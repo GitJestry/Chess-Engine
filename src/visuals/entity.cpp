@@ -14,6 +14,10 @@ void Entity::setTexture(const sf::Texture &texture) {
   m_sprite.setTexture(texture);
 }
 
+sf::Texture Entity::getTexture() {
+  return *m_sprite.getTexture();
+}
+
 void Entity::setScale(float width_fraction, float height_fraction) {
   m_sprite.setScale(width_fraction, height_fraction);
 }
@@ -47,8 +51,4 @@ sf::Vector2f Entity::getCurrentSize() const {
 
 void Entity::draw(sf::RenderWindow &window) {
   window.draw(m_sprite);
-}
-
-void Entity::setTextureRect(sf::IntRect rect) {
-  m_sprite.setTextureRect(rect);
 }
