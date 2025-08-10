@@ -22,6 +22,6 @@ public:
   void processEvent(const sf::Event &event);
 
 private:
-  std::unordered_map<sf::Keyboard::Key, Callback> keyBindings;
-  std::unordered_map<sf::Mouse::Button, Callback> mouseBindings;
+  std::unordered_map<sf::Keyboard::Key, Callback> m_keyBindings;
+  std::unordered_map<sf::Mouse::Button, Callback> m_mouseBindings;
 };

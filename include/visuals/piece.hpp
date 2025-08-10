@@ -1,21 +1,20 @@
 #pragma once
-#include <entity.hpp>
-#include <piece_color_enum.hpp>
-#include <piece_type_enum.hpp>
+#include <types.hpp>
 
-class Piece : public Entity
-{
+#include "./entity.hpp"
 
-public:
+class Piece : public Entity {
+ public:
   Piece(PieceColor color, PieceType type, const sf::Texture &texture);
   Piece(PieceColor color, PieceType type, const sf::Texture &texture, sf::Vector2f pos);
+  Piece() = default;
 
   void setColor(PieceColor color);
   PieceColor getColor() const;
   void setType(PieceType type);
   PieceType getType() const;
 
-private:
-  PieceColor color_;
-  PieceType type_;
+ private:
+  PieceColor m_color;
+  PieceType m_type;
 };
