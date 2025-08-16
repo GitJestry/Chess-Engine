@@ -1,28 +1,37 @@
 #pragma once
-#include <SFML/Graphics/RenderWindow.hpp>
-#include <SFML/Graphics/Sprite.hpp>
-#include <SFML/Graphics/Texture.hpp>
-#include <SFML/System/Vector2.hpp>
-#include <memory>
 
-// Wrapper Class
+#include <SFML/Graphics/Sprite.hpp>
+#include <SFML/System/Vector2.hpp>
+#include <atomic>
+
+// forward decleration
+namespace sf {
+class RenderWindow;
+}
+
+namespace lilia {
+
+/**
+ * @brief Wrapper Class of sf::Sprite
+ */
 
 class Entity {
  public:
-  explicit Entity(const sf::Texture &texture);
-  explicit Entity(sf::Vector2f pos);
-  Entity(const sf::Texture &texture, sf::Vector2f pos);
+  using Position = sf::Vector2f;
+  using ID_type = size_t;
+
+  Entity(const sf::Texture &texture);
+  Entity(Position pos);
+  Entity(const sf::Texture &texture, Position pos);
   Entity();
   virtual ~Entity() = default;
 
-  // sets the position of the Sprite internally
-  virtual void setPosition(const sf::Vector2f &pos);
+  virtual void setPosition(const Position &pos);
 
-  // returns a float Vector of the position, internally returns the sprites position
-  sf::Vector2f getPosition() const;
+  Position getPosition() const;
 
-  sf::Vector2f getOriginalSize() const;
-  sf::Vector2f getCurrentSize() const;
+  Position getOriginalSize() const;
+  Position getCurrentSize() const;
 
   // This means whenever the position of this entity or scale will be changed, it always
   // will be based on the center of the sprite
@@ -37,15 +46,28 @@ class Entity {
   // sf::Texture, which is located on the heap by the TextureTable
   void setTexture(const sf::Texture &texture);
 
-  sf::Texture getTexture();
+  const sf::Texture &getTexture() const;
 
   // setSpriteSize modifies the absolute scale, meaning it overrides any previous scaling applied to
   // the sprite the width and height fraction are expressing how the sprite should be scaled for
   // example, width_fraction = 0.5 means 50% of the original width
-  void setScale(float width_fraction, float height_fraction);
+  void setScale(float widthFraction, float heightFraction);
+
+  ID_type getId() const;
 
  private:
+  ID_type m_id;
+
+  // static ID Counter. Counts upwards for every new entity, beginning with 0
+  // guarantees no identical EntityIDs
+  static ID_type generateId() {
+    static std::atomic_size_t counter{0};
+    return counter.fetch_add(1, std::memory_order_relaxed);
+  }
+
   // not protected because every entity class should only operate and make changes to the sprite via
   // member-functions
   sf::Sprite m_sprite;
 };
+
+}  // namespace lilia

@@ -1,40 +1,32 @@
 #include <SFML/Graphics.hpp>
-#include <constants.hpp>
-#include <input_manager.hpp>
 #include <iostream>
 
-#include "visuals/game_view.hpp"
+#include "lilia/controller/game_controller.hpp"
+#include "lilia/model/chess_game.hpp"
+#include "lilia/view/game_view.hpp"
+#include "lilia/view/texture_table.hpp"
 
 int main() {
-  // Create a window with the specified size and title
-  sf::RenderWindow window(sf::VideoMode(WINDOW_SIZE, WINDOW_SIZE), "Lilia",
-                          sf::Style::Titlebar | sf::Style::Close);
+  sf::RenderWindow window(sf::VideoMode(lilia::core::WINDOW_PX_SIZE, lilia::core::WINDOW_PX_SIZE),
+                          "Lilia", sf::Style::Titlebar | sf::Style::Close);
+  lilia::TextureTable::getInstance().preLoad();
 
-  InputManager inputManager;
-  GameView game(window);
-  game.init();
-  game.hlightSelectSquare(SQ_A2);
-  game.hlightAttackSquare(SQ_A3);
+  lilia::ChessGame chessgame;
+  lilia::GameView view(window, chessgame);
+  lilia::GameController gController(view, chessgame);
 
-  // Bind some keys and mouse buttons
-  inputManager.bindKey(sf::Keyboard::A, []() { std::cout << "Key A pressed!" << std::endl; });
+  sf::Clock clock;
 
-  inputManager.bindMouse(sf::Mouse::Left,
-                         []() { std::cout << "Left mouse button clicked!" << std::endl; });
-  //  Main loop
   while (window.isOpen()) {
+    float dt = clock.restart().asSeconds();  // Sekunden seit letztem Frame
     sf::Event event;
-    // Handle events
     while (window.pollEvent(event)) {
       if (event.type == sf::Event::Closed) window.close();
-
-      inputManager.processEvent(event);
+      gController.handleEvent(event);
     }
-
-    // Clear the screen with a color
+    gController.update(dt);
     window.clear(sf::Color::Blue);
-    game.renderBoard();
-    // Display the current frame
+    gController.render();
     window.display();
   }
 
