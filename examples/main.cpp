@@ -1,32 +1,34 @@
 #include <SFML/Graphics.hpp>
-#include <test.hpp>
+#include <iostream>
+
+#include "lilia/controller/game_controller.hpp"
+#include "lilia/model/chess_game.hpp"
+#include "lilia/view/game_view.hpp"
+#include "lilia/view/texture_table.hpp"
 
 int main() {
+  sf::RenderWindow window(sf::VideoMode(lilia::core::WINDOW_PX_SIZE, lilia::core::WINDOW_PX_SIZE),
+                          "Lilia", sf::Style::Titlebar | sf::Style::Close);
+  lilia::TextureTable::getInstance().preLoad();
 
-    TestClass test;
-    test.printHelloWorld();
+  lilia::ChessGame chessgame;
+  lilia::GameView view(window, chessgame);
+  lilia::GameController gController(view, chessgame);
 
-    // Create a window with the specified size and title
-    sf::RenderWindow window(sf::VideoMode(1000, 600), "SFML Test");
+  sf::Clock clock;
 
-    // Main loop
-    while (window.isOpen()) {
-        sf::Event event;
-        // Handle events
-        while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed)
-                window.close();
-        }
-
-        // Clear the screen with a color
-        window.clear(sf::Color::Blue);
-
-        // Display the current frame
-        window.display();
+  while (window.isOpen()) {
+    float dt = clock.restart().asSeconds();  // Sekunden seit letztem Frame
+    sf::Event event;
+    while (window.pollEvent(event)) {
+      if (event.type == sf::Event::Closed) window.close();
+      gController.handleEvent(event);
     }
+    gController.update(dt);
+    window.clear(sf::Color::Blue);
+    gController.render();
+    window.display();
+  }
 
-    return 0;
+  return 0;
 }
-
-
- 

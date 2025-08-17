@@ -1,0 +1,32 @@
+#include "lilia/view/animation/move_animation.hpp"
+
+namespace lilia {
+
+MoveAnim::MoveAnim(PieceManager& pieceMgrRef, Entity::Position s, Entity::Position e,
+                   core::Square from, core::Square to)
+    : m_piece_manager_ref(pieceMgrRef), m_startPos(s), m_endPos(e), m_from(from), m_to(to) {}
+
+void MoveAnim::update(float dt) {
+  m_elapsed += dt;
+  float t = std::min(m_elapsed / m_duration, 1.f);
+  Entity::Position pos = m_startPos + t * (m_endPos - m_startPos);
+  m_piece_manager_ref.setPieceToScreenPos(m_from, pos);
+
+  if (t >= 1.f) {
+    m_finish = true;
+    m_piece_manager_ref.movePiece(m_from, m_to);
+  }
+}
+
+void MoveAnim::draw(sf::RenderWindow& window) {
+  if (!m_finish)
+    m_piece_manager_ref.renderPiece(m_from, window);
+  else
+    m_piece_manager_ref.renderPiece(m_to, window);
+}
+
+[[nodiscard]] inline bool MoveAnim::isFinished() const {
+  return m_finish;
+}
+
+};  // namespace lilia
