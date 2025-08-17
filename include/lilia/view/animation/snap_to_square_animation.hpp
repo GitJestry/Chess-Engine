@@ -2,24 +2,26 @@
 
 #include "../../chess_types.hpp"
 #include "../../core_types.hpp"
-#include "../piece.hpp"
+#include "../piece_manager.hpp"
 #include "i_animation.hpp"
 
 namespace lilia {
 
 class SnapToSquareAnim : public IAnimation {
  public:
-  explicit SnapToSquareAnim(Piece& piece, Entity::Position s, Entity::Position e, float dur);
+  explicit SnapToSquareAnim(PieceManager& pieceMgrRef, core::Square pieceSq, Entity::Position s,
+                            Entity::Position e);
   void update(float dt) override;
   void draw(sf::RenderWindow& window) override;
-  bool isFinished() const override;
+  [[nodiscard]] inline bool isFinished() const override;
 
  private:
-  Piece& m_piece_ref;
+  PieceManager& m_piece_manager_ref;
+  core::Square m_piece_square;
   Entity::Position m_startPos;
   Entity::Position m_endPos;
   float m_elapsed = 0.f;
-  float m_duration = .1f;  // 100ms
+  float m_duration = core::ANIM_SNAP_SPEED;
   bool m_finish = false;
 };
 

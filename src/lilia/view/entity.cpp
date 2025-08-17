@@ -9,7 +9,7 @@ void Entity::setPosition(const Position &pos) {
   m_sprite.setPosition(pos);
 }
 
-Entity::Position Entity::getPosition() const {
+[[nodiscard]] Entity::Position Entity::getPosition() const {
   return m_sprite.getPosition();
 }
 
@@ -17,7 +17,7 @@ void Entity::setTexture(const sf::Texture &texture) {
   m_sprite.setTexture(texture);
 }
 
-const sf::Texture &Entity::getTexture() const {
+[[nodiscard]] const sf::Texture &Entity::getTexture() const {
   return *m_sprite.getTexture();
 }
 
@@ -41,7 +41,7 @@ Entity::Entity(Position pos) : Entity() {
   m_sprite.setPosition(pos);
 }
 
-Entity::ID_type Entity::getId() const {
+[[nodiscard]] Entity::ID_type Entity::getId() const {
   return m_id;
 }
 
@@ -49,10 +49,10 @@ Entity::Entity(const sf::Texture &texture, Position pos) : m_id(generateId()), m
   setOriginToCenter();
   m_sprite.setPosition(pos);
 }
-Entity::Position Entity::getOriginalSize() const {
+[[nodiscard]] Entity::Position Entity::getOriginalSize() const {
   return Position(m_sprite.getLocalBounds().width, m_sprite.getLocalBounds().height);
 }
-Entity::Position Entity::getCurrentSize() const {
+[[nodiscard]] Entity::Position Entity::getCurrentSize() const {
   return Position(m_sprite.getGlobalBounds().width, m_sprite.getGlobalBounds().height);
 }
 

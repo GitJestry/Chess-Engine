@@ -27,32 +27,32 @@ void GameController::render() {
 }
 
 void GameController::update(float dt) {
-  m_gameView.updateAnimations(dt);
+  m_gameView.update(dt);
 }
 
 void GameController::highlightLastMove() {
   if (m_lastMoveSquares.first != core::Square::NONE)
-    m_gameView.hlightSquare(m_lastMoveSquares.first);
+    m_gameView.highlightSquare(m_lastMoveSquares.first);
   if (m_lastMoveSquares.second != core::Square::NONE)
-    m_gameView.hlightSquare(m_lastMoveSquares.second);
+    m_gameView.highlightSquare(m_lastMoveSquares.second);
 }
 
 void GameController::selectSquare(core::Square sq) {
-  m_gameView.hlightSquare(sq);
+  m_gameView.highlightSquare(sq);
   m_selected_sq = sq;
 }
 
 void GameController::deselectSquare() {
-  m_gameView.clearAllHlights();
+  m_gameView.clearAllHighlights();
   m_selected_sq = core::Square::NONE;
 }
 
 void GameController::hoverSquare(core::Square sq) {
   m_hover_sq = sq;
-  m_gameView.hlightHoverSquare(m_hover_sq);
+  m_gameView.highlightHoverSquare(m_hover_sq);
 }
 void GameController::dehoverSquare() {
-  if (m_hover_sq != core::Square::NONE) m_gameView.clearHlightHoverSquare(m_hover_sq);
+  if (m_hover_sq != core::Square::NONE) m_gameView.clearHighlightHoverSquare(m_hover_sq);
   m_hover_sq = core::Square::NONE;
 }
 
@@ -73,7 +73,7 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 }
 
 // TODO: placeholder
-bool GameController::tryMove(core::Square a, core::Square b) {
+[[nodiscard]] bool GameController::tryMove(core::Square a, core::Square b) {
   for (auto att : getAttackSquares(a)) {
     if (att == b) return true;
   }
@@ -81,17 +81,18 @@ bool GameController::tryMove(core::Square a, core::Square b) {
   return false;
 }
 // TODO: placeholder
-bool isSameColor(core::Square a, core::Square b) {
+[[nodiscard]] bool isSameColor(core::Square a, core::Square b) {
   return true;
 }
 
-std::vector<core::Square> GameController::getAttackSquares(core::Square pieceSQ) const {
+[[nodiscard]] std::vector<core::Square> GameController::getAttackSquares(
+    core::Square pieceSQ) const {
   // TODO:
   return {core::Square::A4, core::Square::B4};
 }
 
 void GameController::showAttacks(std::vector<core::Square> att) {
-  for (auto sq : att) m_gameView.hlightAttackSquare(sq);
+  for (auto sq : att) m_gameView.highlightAttackSquare(sq);
 }
 
 void GameController::onClick(core::MousePos mousePos) {
@@ -142,7 +143,7 @@ void GameController::onDrag(core::MousePos start, core::MousePos current) {
   hoverSquare(sqMous);
 
   m_gameView.setPieceToMouseScreenPos(sqStart, current);
-  m_gameView.playPlaceHolderAnimation(sqStart);
+  m_gameView.playPiecePlaceHolderAnimation(sqStart);
 }
 
 void GameController::onDrop(core::MousePos start, core::MousePos end) {

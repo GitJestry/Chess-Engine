@@ -28,10 +28,13 @@ class Entity {
 
   virtual void setPosition(const Position &pos);
 
-  Position getPosition() const;
+  [[nodiscard]] Position getPosition() const;
 
-  Position getOriginalSize() const;
-  Position getCurrentSize() const;
+  // The Textures Original Size
+  [[nodiscard]] Position getOriginalSize() const;
+
+  // The current Textures size
+  [[nodiscard]] Position getCurrentSize() const;
 
   // This means whenever the position of this entity or scale will be changed, it always
   // will be based on the center of the sprite
@@ -46,21 +49,21 @@ class Entity {
   // sf::Texture, which is located on the heap by the TextureTable
   void setTexture(const sf::Texture &texture);
 
-  const sf::Texture &getTexture() const;
+  [[nodiscard]] const sf::Texture &getTexture() const;
 
   // setSpriteSize modifies the absolute scale, meaning it overrides any previous scaling applied to
   // the sprite the width and height fraction are expressing how the sprite should be scaled for
   // example, width_fraction = 0.5 means 50% of the original width
   void setScale(float widthFraction, float heightFraction);
 
-  ID_type getId() const;
+  [[nodiscard]] ID_type getId() const;
 
  private:
   ID_type m_id;
 
   // static ID Counter. Counts upwards for every new entity, beginning with 0
   // guarantees no identical EntityIDs
-  static ID_type generateId() {
+  [[nodiscard]] static ID_type generateId() {
     static std::atomic_size_t counter{0};
     return counter.fetch_add(1, std::memory_order_relaxed);
   }

@@ -73,7 +73,8 @@ class InputManager {
    * @param threshold Max distance (pixels) for release to count as a click.
    * @return True if the release qualifies as a click.
    */
-  bool isClick(const core::MousePos& start, const core::MousePos& end, int threshold = 2) const;
+  [[nodiscard]] bool isClick(const core::MousePos& start, const core::MousePos& end,
+                             int threshold = 2) const;
 };
 
 }  // namespace lilia

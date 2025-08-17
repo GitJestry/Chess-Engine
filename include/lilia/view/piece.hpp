@@ -12,9 +12,9 @@ class Piece : public Entity {
   Piece() = default;
 
   void setColor(core::PieceColor color);
-  core::PieceColor getColor() const;
+  [[nodiscard]] inline core::PieceColor getColor() const;
   void setType(core::PieceType type);
-  core::PieceType getType() const;
+  [[nodiscard]] inline core::PieceType getType() const;
 
  private:
   core::PieceColor m_color;

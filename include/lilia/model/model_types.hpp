@@ -16,7 +16,7 @@ namespace lilia {
 namespace core {
 using Bitboard = uint64_t;
 // Returns a bitboard with only the given square set
-constexpr Bitboard square_bb(Square sq) {
+[[nodiscard]] constexpr inline Bitboard square_bb(Square sq) noexcept {
   return 1ULL << static_cast<int>(sq);
 }
 
@@ -40,11 +40,11 @@ constexpr Bitboard RANK_6 = RANK_1 << 40;
 constexpr Bitboard RANK_7 = RANK_1 << 48;
 constexpr Bitboard RANK_8 = RANK_1 << 56;
 
-inline int file_of(Square sq) {
+[[nodiscard]] constexpr inline int file_of(Square sq) noexcept {
   return static_cast<int>(sq) % 8;
 }
 
-inline int rank_of(Square sq) {
+[[nodiscard]] constexpr inline int rank_of(Square sq) noexcept {
   return static_cast<int>(sq) / 8;
 }
 }  // namespace core

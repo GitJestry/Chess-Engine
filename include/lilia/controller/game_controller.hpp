@@ -106,9 +106,9 @@ class GameController {
   void highlightLastMove();
 
   // ---------------- Helpers ----------------
-  std::vector<core::Square> getAttackSquares(core::Square pieceSQ) const;
+  [[nodiscard]] std::vector<core::Square> getAttackSquares(core::Square pieceSQ) const;
   void showAttacks(std::vector<core::Square> att);
-  bool tryMove(core::Square a, core::Square b);
+  [[nodiscard]] bool tryMove(core::Square a, core::Square b);
 
   // ---------------- Members ----------------
   GameView& m_gameView;         ///< Responsible for rendering.

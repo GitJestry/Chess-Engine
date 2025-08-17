@@ -36,7 +36,7 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
   }
 }
 
-Entity::Position Board::getPosOfSquare(core::Square sq) const {
+[[nodiscard]] Entity::Position Board::getPosOfSquare(core::Square sq) const {
   return m_squares[static_cast<size_t>(sq)].getPosition();
 }
 

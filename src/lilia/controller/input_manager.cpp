@@ -54,8 +54,8 @@ void InputManager::processEvent(const sf::Event& event) {
   }
 }
 
-bool InputManager::isClick(const core::MousePos& start, const core::MousePos& end,
-                           int threshold) const {
+[[nodiscard]] bool InputManager::isClick(const core::MousePos& start, const core::MousePos& end,
+                                         int threshold) const {
   int dx = end.x - start.x;
   int dy = end.y - start.y;
   return (dx * dx + dy * dy) <= (threshold * threshold);

@@ -2,22 +2,23 @@
 
 namespace lilia {
 
-SnapToSquareAnim::SnapToSquareAnim(Piece& piece, Entity::Position s, Entity::Position e, float dur)
-    : m_piece_ref(piece), m_startPos(s), m_endPos(e), m_duration(dur) {}
+SnapToSquareAnim::SnapToSquareAnim(PieceManager& pieceMgrRef, core::Square pieceSq,
+                                   Entity::Position s, Entity::Position e)
+    : m_piece_manager_ref(pieceMgrRef), m_piece_square(pieceSq), m_startPos(s), m_endPos(e) {}
 void SnapToSquareAnim::update(float dt) {
   m_elapsed += dt;
   float t = std::min(m_elapsed / m_duration, 1.f);
   Entity::Position pos = m_startPos + t * (m_endPos - m_startPos);
-  m_piece_ref.setPosition(pos);
+  m_piece_manager_ref.setPieceToScreenPos(m_piece_square, pos);
 
   if (t >= 1.f) {
     m_finish = true;
   }
 }
 void SnapToSquareAnim::draw(sf::RenderWindow& window) {
-  m_piece_ref.draw(window);
+  m_piece_manager_ref.renderPiece(m_piece_square, window);
 }
-bool SnapToSquareAnim::isFinished() const {
+[[nodiscard]] inline bool SnapToSquareAnim::isFinished() const {
   return m_finish;
 }
 

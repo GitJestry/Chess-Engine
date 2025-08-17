@@ -10,9 +10,11 @@ namespace lilia {
 
 class AnimationManager {
  public:
+  AnimationManager() = default;
+
   void add(Entity::ID_type entityID, std::unique_ptr<IAnimation> anim);
   void endAnim(Entity::ID_type entityID);
-  bool isAnimating(Entity::ID_type entityID) const;
+  [[nodiscard]] bool isAnimating(Entity::ID_type entityID) const;
   void update(float dt);
   void draw(sf::RenderWindow& window);
 

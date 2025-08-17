@@ -25,7 +25,7 @@ class Board : public Entity {
   void init(const sf::Texture &texture_white, const sf::Texture &texture_black,
             const sf::Texture &texture_board);
 
-  Entity::Position getPosOfSquare(core::Square sq) const;
+  [[nodiscard]] Entity::Position getPosOfSquare(core::Square sq) const;
 
   // These methods from Entity:: are redefined, because we now have to adjust every square also,
   // when drawing or reposition the board entity.

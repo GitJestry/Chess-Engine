@@ -8,7 +8,7 @@ void AnimationManager::add(Entity::ID_type entityID, std::unique_ptr<IAnimation>
   if (m_animations.find(entityID) == m_animations.end()) m_animations[entityID] = std::move(anim);
 }
 
-bool AnimationManager::isAnimating(Entity::ID_type entityID) const {
+[[nodiscard]] bool AnimationManager::isAnimating(Entity::ID_type entityID) const {
   return m_animations.find(entityID) != m_animations.end();
 }
 

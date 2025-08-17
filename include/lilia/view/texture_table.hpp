@@ -20,7 +20,7 @@ class TextureTable {
   static TextureTable& getInstance();
 
   // Retrieve a texture by name
-  const sf::Texture& get(const std::string& name);
+  [[nodiscard]] const sf::Texture& get(const std::string& name);
 
   // Function to preload common textures (e.g., white, black)
   void preLoad();

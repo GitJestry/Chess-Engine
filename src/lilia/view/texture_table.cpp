@@ -30,7 +30,7 @@ void TextureTable::load(const std::string& name, const sf::Color& color, sf::Vec
   m_textures[name] = std::move(texture);
 }
 
-const sf::Texture& TextureTable::get(const std::string& filename) {
+[[nodiscard]] const sf::Texture& TextureTable::get(const std::string& filename) {
   auto it = m_textures.find(filename);
   if (it != m_textures.end()) return it->second;
 
@@ -43,7 +43,7 @@ const sf::Texture& TextureTable::get(const std::string& filename) {
   return m_textures[filename];
 }
 
-sf::Texture makeAttackDotTexture(unsigned int size) {
+[[nodiscard]] sf::Texture makeAttackDotTexture(unsigned int size) {
   sf::RenderTexture rt;
   rt.create(size, size);
   rt.clear(sf::Color::Transparent);
@@ -71,7 +71,7 @@ sf::Texture makeAttackDotTexture(unsigned int size) {
   return rt.getTexture();
 }
 
-sf::Texture makeSquareHoverTexture(unsigned int size) {
+[[nodiscard]] sf::Texture makeSquareHoverTexture(unsigned int size) {
   sf::RenderTexture rt;
   rt.create(size, size);
   rt.clear(sf::Color::Transparent);

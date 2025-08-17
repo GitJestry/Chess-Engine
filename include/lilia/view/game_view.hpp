@@ -1,84 +1,75 @@
 #pragma once
 
-#include <unordered_map>
+#include <SFML/Graphics.hpp>
+#include <string>
 
 #include "../core_types.hpp"
 #include "../model/chess_game.hpp"
-#include "animation/animation_manager.hpp"
-#include "board.hpp"
-#include "piece.hpp"
+#include "animation/chess_animator.hpp"
+#include "board_view.hpp"
+#include "highlight_manager.hpp"
+#include "piece_manager.hpp"
 
 namespace lilia {
 
+/**
+ * @brief Facade for rendering and updating the chess game.
+ *
+ * GameView delegates responsibilities to specialized managers:
+ * - BoardView (background, squares)
+ * - PieceManager (pieces on the board)
+ * - HighlightManager (move hints, hover, selections)
+ * - AnimationManager (piece movements, snapping)
+ * - UIOverlay (turn indicator, messages)
+ */
 class GameView {
  public:
-  ~GameView() = default;
   GameView(sf::RenderWindow& window, ChessGame& game);
+  ~GameView() = default;
 
-  // initialise the board and places the pieces according to the fen
+  /// Initialise the board + pieces according to given FEN
   void init(const std::string& fen = core::START_FEN);
 
-  void updateAnimations(float dt);
-
-  // renders the board, pieces and highlights
-  void render();
-
-  // resets the board to the START_FEN position
+  /// Reset to START_FEN
   void resetBoard();
 
-  // adds piece on the given square to the scene
-  void addPiece(core::PieceType type, core::PieceColor color, core::Square pos);
+  /// Update animations
+  void update(float dt);
 
-  // removes piece on the given square from the scene
-  void removePiece(core::Square pos);
+  /// Render board, pieces, highlights, UI
+  void render();
+
+  /// --- Delegated Facade Methods ---
+  [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
+  void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
+  void setPieceToSquareScreenPos(core::Square from, core::Square to);
+
+  [[nodiscard]] bool hasPieceOnSquare(core::Square pos) const;
+
+  void highlightSquare(core::Square pos);
+  void highlightAttackSquare(core::Square pos);
+  void highlightHoverSquare(core::Square pos);
+  void clearHighlightSquare(core::Square pos);
+  void clearHighlightHoverSquare(core::Square pos);
+  void clearAllHighlights();
 
   void animationSnapAndReturn(core::Square sq, core::MousePos mousePos);
   void animationMovePiece(core::Square from, core::Square to);
   void animationDropPiece(core::Square from, core::Square to);
-  void playPlaceHolderAnimation(core::Square sq);
+  void playPiecePlaceHolderAnimation(core::Square sq);
   void endAnimation(core::Square sq);
 
-  core::MousePos squareToMousePos(core::Square sq);
-  core::Square mousePosToSquare(core::MousePos mousePos);
-
-  // highlights a square in the highlight color
-  void hlightSquare(core::Square pos);
-  // highlights a square with the attacking dot
-  void hlightAttackSquare(core::Square pos);
-  void hlightHoverSquare(core::Square pos);
-
-  // Clears all attack and normal highlights
-  void clearAllHlights();
-  void clearHlightSquare(core::Square pos);
-  void clearHlightHoverSquare(core::Square pos);
-
-  // Displays whose turn it is
   void updateTurnIndicator(core::PieceColor activeColor);
-
-  // Display messages like, in check, checkmate, winner, pawn promotion
   void showMessage(const std::string& message);
 
-  bool hasPieceOnSquare(core::Square pos) const;
-
-  void setPieceToSquareScreenPos(core::Square from, core::Square to);
-  void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
-
  private:
-  // removes the piece from the starting position, and places it on the destination
-  // The previous Piece on the Square destination will be removed/replaced
-  void movePiece(core::Square from, core::Square to);
-  Entity::Position getSquareScreenPos(core::Square pos);
-  template <typename T>
-  void renderEntitiesToBoard(std::unordered_map<core::Square, T>& map);
+  sf::RenderWindow& m_window;
+  ChessGame& m_game;
 
-  Board m_board;
-  ChessGame& m_chess_game;
-  AnimationManager m_anim_manager;
-  std::unordered_map<core::Square, Piece> m_pieces;
-  sf::RenderWindow& m_window_ref;
-  std::unordered_map<core::Square, Entity> m_hl_attack_squares;
-  std::unordered_map<core::Square, Entity> m_hl_select_squares;
-  std::unordered_map<core::Square, Entity> m_hl_hover_squares;
+  BoardView m_board_view;
+  PieceManager m_piece_manager;
+  HighlightManager m_highlight_manager;
+  ChessAnimator m_chess_animator;
 };
 
 }  // namespace lilia

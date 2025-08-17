@@ -16,9 +16,10 @@ const std::string START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQk
 const std::string STR_TEXTURE_WHITE = "white";
 const std::string STR_TEXTURE_BLACK = "black";
 const std::string STR_TEXTURE_TRANSPARENT = "transparent";
-const std::string STR_TEXTURE_SELECTHLIGHT = "selHlight";
-const std::string STR_TEXTURE_ATTACKHLIGHT = "attHlight";
-const std::string STR_TEXTURE_HOVERHLIGHT = "hovHlight";
+const std::string STR_TEXTURE_SELECTHLIGHT = "selectHighlight";
+const std::string STR_TEXTURE_ATTACKHLIGHT = "attackHighlight";
+const std::string STR_TEXTURE_HOVERHLIGHT = "hoverHighlight";
+const std::string ASSETS_FILE_PATH = "assets";
 
 }  // namespace core
 
