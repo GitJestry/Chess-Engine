@@ -13,7 +13,6 @@ file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/*.cpp)
 set(EXECUTABLE_NAME "${PROJECT_NAME}-${PROJECT_VERSION}")
 add_executable(${EXECUTABLE_NAME} examples/main.cpp ${SRC_FILES})
 
-# Add this line:
 target_include_directories(${EXECUTABLE_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/include)
 
 target_link_libraries(${EXECUTABLE_NAME} sfml-graphics sfml-window sfml-system)
