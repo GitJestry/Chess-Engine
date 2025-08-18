@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../../chess_types.hpp"
 #include "../../core_types.hpp"
 #include "../piece_manager.hpp"
+#include "../render_types.hpp"
 #include "i_animation.hpp"
 
 namespace lilia {

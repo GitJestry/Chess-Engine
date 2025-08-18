@@ -1,6 +1,6 @@
 #pragma once
-#include "../chess_types.hpp"
 #include "entity.hpp"
+#include "render_types.hpp"
 
 namespace lilia {
 
@@ -12,9 +12,9 @@ class Piece : public Entity {
   Piece() = default;
 
   void setColor(core::PieceColor color);
-  [[nodiscard]] inline core::PieceColor getColor() const;
+  core::PieceColor getColor() const;
   void setType(core::PieceType type);
-  [[nodiscard]] inline core::PieceType getType() const;
+  core::PieceType getType() const;
 
  private:
   core::PieceColor m_color;

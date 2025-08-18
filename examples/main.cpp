@@ -1,5 +1,4 @@
 #include <SFML/Graphics.hpp>
-#include <iostream>
 
 #include "lilia/controller/game_controller.hpp"
 #include "lilia/model/chess_game.hpp"

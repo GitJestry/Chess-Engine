@@ -58,6 +58,10 @@ void GameView::endAnimation(core::Square sq) {
   return m_piece_manager.hasPieceOnSquare(pos);
 }
 
+[[nodiscard]] bool GameView::isSameColorPiece(core::Square sq1, core::Square sq2) const {
+  return m_piece_manager.isSameColor(sq1, sq2);
+}
+
 void GameView::highlightSquare(core::Square pos) {
   m_highlight_manager.highlightSquare(pos);
 }

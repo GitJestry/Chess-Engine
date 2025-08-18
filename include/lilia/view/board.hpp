@@ -7,9 +7,9 @@ class RenderWindow;
 
 #include <array>
 
-#include "../chess_types.hpp"
 #include "entity.hpp"
 #include "render_constants.hpp"
+#include "render_types.hpp"
 
 namespace lilia {
 

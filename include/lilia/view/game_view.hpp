@@ -45,6 +45,7 @@ class GameView {
   void setPieceToSquareScreenPos(core::Square from, core::Square to);
 
   [[nodiscard]] bool hasPieceOnSquare(core::Square pos) const;
+  [[nodiscard]] bool isSameColorPiece(core::Square sq1, core::Square sq2) const;
 
   void highlightSquare(core::Square pos);
   void highlightAttackSquare(core::Square pos);

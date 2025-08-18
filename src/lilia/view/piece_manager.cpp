@@ -57,10 +57,14 @@ void PieceManager::initFromFen(std::string& fen) {
   return m_pieces.find(pos)->second.getId();
 }
 
+[[nodiscard]] bool PieceManager::isSameColor(core::Square sq1, core::Square sq2) const {
+  return (m_pieces.find(sq1)->second.getColor() == m_pieces.find(sq2)->second.getColor());
+}
+
 void PieceManager::addPiece(core::PieceType type, core::PieceColor color, core::Square pos) {
   int numTypes = 6;
   std::string filename =
-      core::ASSETS_FILE_PATH + "/piece_" + std::to_string(type + numTypes * color) + ".png";
+      core::ASSET_PIECES_FILE_PATH + "/piece_" + std::to_string(type + numTypes * color) + ".png";
 
   const sf::Texture& texture = TextureTable::getInstance().get(filename);
 

@@ -9,6 +9,7 @@
 
 // Project headers
 #include "../model/chess_game.hpp"
+#include "../view/audio/sound_manager.hpp"
 #include "../view/game_view.hpp"
 #include "input_manager.hpp"
 
@@ -109,11 +110,13 @@ class GameController {
   [[nodiscard]] std::vector<core::Square> getAttackSquares(core::Square pieceSQ) const;
   void showAttacks(std::vector<core::Square> att);
   [[nodiscard]] bool tryMove(core::Square a, core::Square b);
+  [[nodiscard]] bool isSameColor(core::Square a, core::Square b);
 
   // ---------------- Members ----------------
-  GameView& m_gameView;         ///< Responsible for rendering.
-  ChessGame& m_chess_game;      ///< Game model containing rules and state.
-  InputManager m_inputManager;  ///< Handles raw input processing.
+  GameView& m_gameView;          ///< Responsible for rendering.
+  ChessGame& m_chess_game;       ///< Game model containing rules and state.
+  InputManager m_inputManager;   ///< Handles raw input processing.
+  SoundManager m_sound_manager;  ///< Handles sfx and music
 
   core::Square m_selected_sq = core::Square::NONE;  ///< Currently selected square.
   core::Square m_hover_sq = core::Square::NONE;     ///< Currently hovered square.

@@ -1,9 +1,9 @@
 #pragma once
 #include <unordered_map>
 
-#include "../chess_types.hpp"
 #include "board_view.hpp"
 #include "entity.hpp"
+#include "render_types.hpp"
 
 namespace lilia {
 

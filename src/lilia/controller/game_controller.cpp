@@ -16,6 +16,7 @@ GameController::GameController(GameView& gView, ChessGame& game)
   m_inputManager.setOnDrop(
       [this](core::MousePos start, core::MousePos end) { this->onDrop(start, end); });
   gView.init();
+  m_sound_manager.loadSounds();
 }
 
 void GameController::handleEvent(const sf::Event& event) {
@@ -80,9 +81,8 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 
   return false;
 }
-// TODO: placeholder
-[[nodiscard]] bool isSameColor(core::Square a, core::Square b) {
-  return true;
+[[nodiscard]] bool GameController::isSameColor(core::Square a, core::Square b) {
+  return m_gameView.isSameColorPiece(a, b);
 }
 
 [[nodiscard]] std::vector<core::Square> GameController::getAttackSquares(
@@ -116,7 +116,12 @@ void GameController::onClick(core::MousePos mousePos) {
 
   // Versuch eines Zugs
   if (tryMove(m_selected_sq, sq)) {
+    if (m_gameView.hasPieceOnSquare(sq))
+      m_sound_manager.playCapture();
+    else
+      m_sound_manager.playPlayerMove();
     movePieceAndClear(m_selected_sq, sq, true);
+
   } else {
     deselectSquare();
     if (m_gameView.hasPieceOnSquare(sq) && isSameColor(m_selected_sq, sq)) {
@@ -159,7 +164,11 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
 
   m_gameView.endAnimation(from);
 
-  if (tryMove(from, to)) {
+  if (from != to && tryMove(from, to)) {
+    if (m_gameView.hasPieceOnSquare(to))
+      m_sound_manager.playCapture();
+    else
+      m_sound_manager.playPlayerMove();
     movePieceAndClear(from, to, false);
   } else {
     m_gameView.setPieceToSquareScreenPos(from, from);

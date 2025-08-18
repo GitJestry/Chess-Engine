@@ -3,10 +3,10 @@
 #include <string>
 #include <unordered_map>
 
-#include "../chess_types.hpp"
 #include "../core_types.hpp"
 #include "board_view.hpp"
 #include "piece.hpp"
+#include "render_types.hpp"
 
 namespace lilia {
 
@@ -20,6 +20,7 @@ class PieceManager {
   void initFromFen(std::string& fen);
 
   [[nodiscard]] Entity::ID_type getPieceID(core::Square pos) const;
+  [[nodiscard]] bool isSameColor(core::Square sq1, core::Square sq2) const;
 
   void movePiece(core::Square from, core::Square to);
   void removeAll();

@@ -11,13 +11,13 @@ Piece::Piece(core::PieceColor color, core::PieceType type, const sf::Texture &te
 void Piece::setColor(core::PieceColor color) {
   m_color = color;
 }
-[[nodiscard]] inline core::PieceColor Piece::getColor() const {
+core::PieceColor Piece::getColor() const {
   return m_color;
 }
 void Piece::setType(core::PieceType type) {
   m_type = type;
 }
-[[nodiscard]] inline core::PieceType Piece::getType() const {
+core::PieceType Piece::getType() const {
   return m_type;
 }
 

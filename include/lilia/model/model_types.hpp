@@ -1,8 +1,6 @@
 #pragma once
 #include <cstdint>
 
-#include "../chess_types.hpp"
-
 // =======================================================
 // Bitboard Layout in Stockfish-Convention:
 // - Bit 0 (LSB)   = a1 (bottom left white view)
@@ -15,9 +13,25 @@
 namespace lilia {
 namespace core {
 using Bitboard = uint64_t;
+
+enum class Color : uint8_t { White = 0, Black = 1 };
+
+enum class PieceType : uint8_t { Pawn, Knight, Bishop, Rook, Queen, King, None };
+
+struct Piece {
+  PieceType type;
+  Color color;
+};
+
+using Square = uint8_t;  // 0..63
+
 // Returns a bitboard with only the given square set
 [[nodiscard]] constexpr inline Bitboard square_bb(Square sq) noexcept {
   return 1ULL << static_cast<int>(sq);
+}
+
+inline Color opposite(Color c) {
+  return c == Color::White ? Color::Black : Color::White;
 }
 
 // Masks for single Files
