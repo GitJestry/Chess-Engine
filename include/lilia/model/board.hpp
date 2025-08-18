@@ -6,8 +6,6 @@
 
 namespace lilia {
 
-namespace chess {
-
 class Board {
  public:
   Board();
@@ -22,7 +20,5 @@ class Board {
  private:
   std::array<core::Bitboard, 6> pieceBitboards[2];  // [color][PieceType]
 };
-
-}  // namespace chess
 
 }  // namespace lilia
