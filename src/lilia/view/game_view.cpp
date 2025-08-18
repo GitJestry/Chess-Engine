@@ -1,8 +1,8 @@
 #include "lilia/view/game_view.hpp"
 
-namespace lilia {
+namespace lilia::view {
 
-GameView::GameView(sf::RenderWindow& window, ChessGame& game)
+GameView::GameView(sf::RenderWindow& window, model::ChessGame& game)
     : m_window(window),
       m_game(game),
       m_board_view(),
@@ -84,13 +84,13 @@ void GameView::clearAllHighlights() {
   m_highlight_manager.clearAllHighlights();
 }
 
-void GameView::updateTurnIndicator(core::PieceColor activeColor) {}
+void GameView::updateTurnIndicator(core::Color activeColor) {}
 
 void GameView::showMessage(const std::string& message) {}
 
 [[nodiscard]] core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
-  int file = mousePos.x / core::SQUARE_PX_SIZE;      // 0 = A, 7 = H
-  int rankSFML = mousePos.y / core::SQUARE_PX_SIZE;  // 0 = top row, 7 = bottom row
+  int file = mousePos.x / constant::SQUARE_PX_SIZE;      // 0 = A, 7 = H
+  int rankSFML = mousePos.y / constant::SQUARE_PX_SIZE;  // 0 = top row, 7 = bottom row
 
   int rankFromWhite = 7 - rankSFML;
 
@@ -111,4 +111,4 @@ void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
   m_piece_manager.setPieceToSquareScreenPos(from, to);
 }
 
-}  // namespace lilia
+}  // namespace lilia::view

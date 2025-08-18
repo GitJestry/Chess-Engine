@@ -3,7 +3,7 @@
 #include "../piece_manager.hpp"
 #include "i_animation.hpp"
 
-namespace lilia {
+namespace lilia::view::animation {
 
 class PiecePlaceholderAnim : public IAnimation {
  public:

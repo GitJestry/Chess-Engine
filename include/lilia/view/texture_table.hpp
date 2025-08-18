@@ -9,7 +9,7 @@ class Color;
 #include <string>
 #include <unordered_map>
 
-namespace lilia {
+namespace lilia::view {
 
 /**
  * @brief Singleton design
@@ -38,4 +38,4 @@ class TextureTable {
   std::unordered_map<std::string, sf::Texture> m_textures;
 };
 
-}  // namespace lilia
+}  // namespace lilia::view

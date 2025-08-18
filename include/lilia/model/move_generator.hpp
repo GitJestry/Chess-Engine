@@ -2,22 +2,24 @@
 #include <vector>
 
 #include "board.hpp"
-#include "model_types.hpp"
+#include "core/bitboard.hpp"
+#include "game_state.hpp"
 #include "move.hpp"
 
-namespace lilia {
+namespace lilia::model {
 
 class MoveGenerator {
  public:
-  std::vector<Move> generateMoves(const Board& board, core::Color color);
+  /// Pseudo-legal (includes ep/castling when possible). Filter with Position::doMove for legality.
+  std::vector<Move> generatePseudoMoves(const Board& board, const GameState& st) const;
 
  private:
-  core::Bitboard pawnAttacks(core::Color color, core::Bitboard pawns) const;
-  core::Bitboard knightAttacks(core::Bitboard knights) const;
-  core::Bitboard bishopAttacks(core::Bitboard bishops, core::Bitboard allPieces) const;
-  core::Bitboard rookAttacks(core::Bitboard rooks, core::Bitboard allPieces) const;
-  core::Bitboard queenAttacks(core::Bitboard queens, core::Bitboard allPieces) const;
-  core::Bitboard kingAttacks(core::Bitboard kings) const;
+  void genPawnMoves(const Board&, const GameState&, core::Color, std::vector<Move>&) const;
+  void genKnightMoves(const Board&, core::Color, std::vector<Move>&) const;
+  void genBishopMoves(const Board&, core::Color, std::vector<Move>&) const;
+  void genRookMoves(const Board&, core::Color, std::vector<Move>&) const;
+  void genQueenMoves(const Board&, core::Color, std::vector<Move>&) const;
+  void genKingMoves(const Board&, const GameState&, core::Color, std::vector<Move>&) const;
 };
 
-}  // namespace lilia
+}  // namespace lilia::model

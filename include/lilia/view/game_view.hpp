@@ -3,14 +3,14 @@
 #include <SFML/Graphics.hpp>
 #include <string>
 
-#include "../core_types.hpp"
+#include "../controller_view_type_bridge.hpp"
 #include "../model/chess_game.hpp"
 #include "animation/chess_animator.hpp"
 #include "board_view.hpp"
 #include "highlight_manager.hpp"
 #include "piece_manager.hpp"
 
-namespace lilia {
+namespace lilia::view {
 
 /**
  * @brief Facade for rendering and updating the chess game.
@@ -24,11 +24,11 @@ namespace lilia {
  */
 class GameView {
  public:
-  GameView(sf::RenderWindow& window, ChessGame& game);
+  GameView(sf::RenderWindow& window, model::ChessGame& game);
   ~GameView() = default;
 
   /// Initialise the board + pieces according to given FEN
-  void init(const std::string& fen = core::START_FEN);
+  void init(const std::string& fen = constant::START_FEN);
 
   /// Reset to START_FEN
   void resetBoard();
@@ -60,17 +60,17 @@ class GameView {
   void playPiecePlaceHolderAnimation(core::Square sq);
   void endAnimation(core::Square sq);
 
-  void updateTurnIndicator(core::PieceColor activeColor);
+  void updateTurnIndicator(core::Color activeColor);
   void showMessage(const std::string& message);
 
  private:
   sf::RenderWindow& m_window;
-  ChessGame& m_game;
+  model::ChessGame& m_game;
 
   BoardView m_board_view;
   PieceManager m_piece_manager;
   HighlightManager m_highlight_manager;
-  ChessAnimator m_chess_animator;
+  animation::ChessAnimator m_chess_animator;
 };
 
-}  // namespace lilia
+}  // namespace lilia::view

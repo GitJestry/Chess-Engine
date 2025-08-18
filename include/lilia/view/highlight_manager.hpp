@@ -1,11 +1,11 @@
 #pragma once
 #include <unordered_map>
 
+#include "../chess_types.hpp"
 #include "board_view.hpp"
 #include "entity.hpp"
-#include "render_types.hpp"
 
-namespace lilia {
+namespace lilia::view {
 
 class HighlightManager {
  public:
@@ -33,4 +33,4 @@ class HighlightManager {
   std::unordered_map<core::Square, Entity> m_hl_hover_squares;
 };
 
-}  // namespace lilia
+}  // namespace lilia::view

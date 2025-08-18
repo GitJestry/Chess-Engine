@@ -1,19 +1,27 @@
 #pragma once
 #include <vector>
 
-#include "model_types.hpp"
+#include "core/model_types.hpp"
 #include "move.hpp"
 
-namespace lilia {
+namespace lilia::model {
 
 struct GameState {
   core::Color sideToMove = core::Color::White;
-  uint8_t castlingRights = 0b1111;    // WK, WQ, BK, BQ
-  core::Square enPassantSquare = 64;  // 0-63 oder 64 = invalid
+  std::uint8_t castlingRights = bb::Castling::WK | bb::Castling::WQ | bb::Castling::BK |
+                                bb::Castling::BQ;  // see chess_types Castling
+  core::Square enPassantSquare = core::NO_SQUARE;  // 0..63 or core::NO_SQUARE = invalid
   int halfmoveClock = 0;
   int fullmoveNumber = 1;
-
-  std::vector<Move> moveHistory;
 };
 
-}  // namespace lilia
+struct StateInfo {
+  Move move{};
+  bb::Piece captured{};  // captured piece (for undo)
+  std::uint8_t prevCastlingRights{};
+  core::Square prevEnPassantSquare{core::NO_SQUARE};
+  int prevHalfmoveClock{};
+  // You can add Zobrist later.
+};
+
+}  // namespace lilia::model

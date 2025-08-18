@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace lilia {
+namespace lilia::view::animation {
 
 void AnimationManager::add(Entity::ID_type entityID, std::unique_ptr<IAnimation> anim) {
   if (m_animations.find(entityID) == m_animations.end()) m_animations[entityID] = std::move(anim);
@@ -32,4 +32,4 @@ void AnimationManager::draw(sf::RenderWindow& window) {
     anim->draw(window);
   }
 }
-}  // namespace lilia
+}  // namespace lilia::view::animation

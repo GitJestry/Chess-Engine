@@ -13,7 +13,7 @@
 #include "../view/game_view.hpp"
 #include "input_manager.hpp"
 
-namespace lilia {
+namespace lilia::controller {
 
 /**
  * @class GameController
@@ -31,7 +31,7 @@ class GameController {
    * @param gView Reference to the GameView for rendering.
    * @param game Reference to the ChessGame model.
    */
-  explicit GameController(GameView& gView, ChessGame& game);
+  explicit GameController(view::GameView& gView, model::ChessGame& game);
 
   /**
    * @brief Update loop independent from user inputs.
@@ -113,15 +113,15 @@ class GameController {
   [[nodiscard]] bool isSameColor(core::Square a, core::Square b);
 
   // ---------------- Members ----------------
-  GameView& m_gameView;          ///< Responsible for rendering.
-  ChessGame& m_chess_game;       ///< Game model containing rules and state.
-  InputManager m_inputManager;   ///< Handles raw input processing.
-  SoundManager m_sound_manager;  ///< Handles sfx and music
+  view::GameView& m_gameView;                 ///< Responsible for rendering.
+  model::ChessGame& m_chess_game;             ///< Game model containing rules and state.
+  InputManager m_inputManager;                ///< Handles raw input processing.
+  view::sound::SoundManager m_sound_manager;  ///< Handles sfx and music
 
-  core::Square m_selected_sq = core::Square::NONE;  ///< Currently selected square.
-  core::Square m_hover_sq = core::Square::NONE;     ///< Currently hovered square.
+  core::Square m_selected_sq = core::NO_SQUARE;  ///< Currently selected square.
+  core::Square m_hover_sq = core::NO_SQUARE;     ///< Currently hovered square.
   std::pair<core::Square, core::Square> m_lastMoveSquares = {
-      core::Square::NONE, core::Square::NONE};  ///< Last executed move (from -> to).
+      core::NO_SQUARE, core::NO_SQUARE};  ///< Last executed move (from -> to).
 };
 
-}  // namespace lilia
+}  // namespace lilia::controller

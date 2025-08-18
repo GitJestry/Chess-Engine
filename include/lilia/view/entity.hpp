@@ -9,7 +9,7 @@ namespace sf {
 class RenderWindow;
 }
 
-namespace lilia {
+namespace lilia::view {
 
 /**
  * @brief Wrapper Class of sf::Sprite
@@ -73,4 +73,4 @@ class Entity {
   sf::Sprite m_sprite;
 };
 
-}  // namespace lilia
+}  // namespace lilia::view

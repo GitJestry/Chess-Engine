@@ -6,7 +6,7 @@
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
 
-namespace lilia {
+namespace lilia::view {
 
 PieceManager::PieceManager(const BoardView& boardRef) : m_board_view_ref(boardRef), m_pieces() {}
 
@@ -22,30 +22,30 @@ void PieceManager::initFromFen(std::string& fen) {
       // So viele leere Felder überspringen
       file += ch - '0';
     } else {
-      int pos = file + rank * core::BOARD_SIZE;
+      int pos = file + rank * constant::BOARD_SIZE;
       core::PieceType type;
       switch (std::tolower(ch)) {
         case 'k':
-          type = core::PieceType::KING;
+          type = core::PieceType::King;
           break;
         case 'p':
-          type = core::PieceType::PAWN;
+          type = core::PieceType::Pawn;
           break;
         case 'n':
-          type = core::PieceType::KNIGHT;
+          type = core::PieceType::Knight;
           break;
         case 'b':
-          type = core::PieceType::BISHOP;
+          type = core::PieceType::Bishop;
           break;
         case 'r':
-          type = core::PieceType::ROOK;
+          type = core::PieceType::Rook;
           break;
         default:
-          type = core::PieceType::QUEEN;
+          type = core::PieceType::Queen;
           break;
       }
 
-      addPiece(type, (std::isupper(ch) == 1 ? core::PieceColor::WHITE : core::PieceColor::BLACK),
+      addPiece(type, (std::isupper(ch) == 1 ? core::Color::White : core::Color::Black),
                static_cast<core::Square>(pos));
 
       file++;
@@ -61,10 +61,12 @@ void PieceManager::initFromFen(std::string& fen) {
   return (m_pieces.find(sq1)->second.getColor() == m_pieces.find(sq2)->second.getColor());
 }
 
-void PieceManager::addPiece(core::PieceType type, core::PieceColor color, core::Square pos) {
-  int numTypes = 6;
-  std::string filename =
-      core::ASSET_PIECES_FILE_PATH + "/piece_" + std::to_string(type + numTypes * color) + ".png";
+void PieceManager::addPiece(core::PieceType type, core::Color color, core::Square pos) {
+  std::uint8_t numTypes = 6;
+  std::string filename = constant::ASSET_PIECES_FILE_PATH + "/piece_" +
+                         std::to_string(static_cast<std::uint8_t>(type) +
+                                        numTypes * static_cast<std::uint8_t>(color)) +
+                         ".png";
 
   const sf::Texture& texture = TextureTable::getInstance().get(filename);
 
@@ -107,7 +109,8 @@ void PieceManager::setPieceToScreenPos(core::Square pos, Entity::Position entity
   m_pieces[pos].setPosition(entityPos);
 }
 
-void PieceManager::renderPieces(sf::RenderWindow& window, const ChessAnimator& chessAnimRef) {
+void PieceManager::renderPieces(sf::RenderWindow& window,
+                                const animation::ChessAnimator& chessAnimRef) {
   for (auto& pair : m_pieces) {
     const auto& pos = pair.first;
     auto& piece = pair.second;
@@ -122,4 +125,4 @@ void PieceManager::renderPiece(core::Square pos, sf::RenderWindow& window) {
   m_pieces.find(pos)->second.draw(window);
 }
 
-}  // namespace lilia
+}  // namespace lilia::view

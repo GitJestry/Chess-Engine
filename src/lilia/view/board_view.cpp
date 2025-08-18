@@ -2,14 +2,14 @@
 
 #include "lilia/view/texture_table.hpp"
 
-namespace lilia {
+namespace lilia::view {
 
-BoardView::BoardView() : m_board({core::WINDOW_PX_SIZE / 2, core::WINDOW_PX_SIZE / 2}) {}
+BoardView::BoardView() : m_board({constant::WINDOW_PX_SIZE / 2, constant::WINDOW_PX_SIZE / 2}) {}
 
 void BoardView::init() {
-  m_board.init(TextureTable::getInstance().get(core::STR_TEXTURE_WHITE),
-               TextureTable::getInstance().get(core::STR_TEXTURE_BLACK),
-               TextureTable::getInstance().get(core::STR_TEXTURE_TRANSPARENT));
+  m_board.init(TextureTable::getInstance().get(constant::STR_TEXTURE_WHITE),
+               TextureTable::getInstance().get(constant::STR_TEXTURE_BLACK),
+               TextureTable::getInstance().get(constant::STR_TEXTURE_TRANSPARENT));
 }
 
 void BoardView::renderBoard(sf::RenderWindow& window) {
@@ -19,4 +19,4 @@ void BoardView::renderBoard(sf::RenderWindow& window) {
   return m_board.getPosOfSquare(sq);
 }
 
-}  // namespace lilia
+}  // namespace lilia::view

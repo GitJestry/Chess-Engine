@@ -3,7 +3,7 @@
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
 
-namespace lilia {
+namespace lilia::view {
 
 HighlightManager::HighlightManager(const BoardView& boardRef)
     : m_board_view_ref(boardRef),
@@ -32,16 +32,16 @@ void HighlightManager::renderSelect(sf::RenderWindow& window) {
 }
 
 void HighlightManager::highlightSquare(core::Square pos) {
-  Entity newSelectHlight(TextureTable::getInstance().get(core::STR_TEXTURE_SELECTHLIGHT));
-  newSelectHlight.setScale(core::SQUARE_PX_SIZE, core::SQUARE_PX_SIZE);
+  Entity newSelectHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_SELECTHLIGHT));
+  newSelectHlight.setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
   m_hl_select_squares[pos] = std::move(newSelectHlight);
 }
 void HighlightManager::highlightAttackSquare(core::Square pos) {
-  Entity newAttackHlight(TextureTable::getInstance().get(core::STR_TEXTURE_ATTACKHLIGHT));
+  Entity newAttackHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_ATTACKHLIGHT));
   m_hl_attack_squares[pos] = std::move(newAttackHlight);
 }
 void HighlightManager::highlightHoverSquare(core::Square pos) {
-  Entity newHoverHlight(TextureTable::getInstance().get(core::STR_TEXTURE_HOVERHLIGHT));
+  Entity newHoverHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_HOVERHLIGHT));
   m_hl_hover_squares[pos] = std::move(newHoverHlight);
 }
 void HighlightManager::clearAllHighlights() {
@@ -56,4 +56,4 @@ void HighlightManager::clearHighlightHoverSquare(core::Square pos) {
   m_hl_hover_squares.erase(pos);
 }
 
-}  // namespace lilia
+}  // namespace lilia::view

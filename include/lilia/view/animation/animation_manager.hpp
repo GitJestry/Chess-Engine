@@ -6,7 +6,7 @@
 #include "../entity.hpp"
 #include "i_animation.hpp"
 
-namespace lilia {
+namespace lilia::view::animation {
 
 class AnimationManager {
  public:

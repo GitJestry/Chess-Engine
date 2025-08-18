@@ -1,24 +1,35 @@
 #pragma once
-
 #include <array>
+#include <optional>
 
-#include "model_types.hpp"
+#include "core/model_types.hpp"
 
-namespace lilia {
+namespace lilia::model {
 
+/// 12 piece bitboards: [color][PieceType] for Pawn..King (None unused)
 class Board {
  public:
   Board();
 
-  void setPiece(core::Square sq, core::Piece piece);
-  void removePiece(core::Square sq);
-  core::Piece getPiece(core::Square sq) const;
+  void clear();
 
-  core::Bitboard occupancy(core::Color color) const;
-  core::Bitboard allPieces() const;
+  void setPiece(core::Square sq, bb::Piece p);
+  void removePiece(lilia::core::Square sq);
+  std::optional<bb::Piece> getPiece(core::Square sq) const;
+
+  bb::Bitboard pieces(core::Color c) const { return m_color_occ[bb::ci(c)]; }
+  bb::Bitboard allPieces() const { return m_all_occ; }
+  bb::Bitboard pieces(core::Color c, core::PieceType t) const {
+    return m_bb[bb::ci(c)][static_cast<int>(t)];
+  }
 
  private:
-  std::array<core::Bitboard, 6> pieceBitboards[2];  // [color][PieceType]
+  // [color][type] where type indices 0..5 are Pawn..King
+  std::array<std::array<bb::Bitboard, 6>, 2> m_bb{};
+  std::array<bb::Bitboard, 2> m_color_occ{};
+  bb::Bitboard m_all_occ = 0;
+
+  void recomputeOccupancy();
 };
 
-}  // namespace lilia
+}  // namespace lilia::model

@@ -4,7 +4,7 @@
 #include <SFML/Window/Event.hpp>
 #include <cmath>
 
-namespace lilia {
+namespace lilia::controller {
 
 void InputManager::setOnClick(ClickCallback cb) {
   m_onClick = std::move(cb);
@@ -61,4 +61,4 @@ void InputManager::processEvent(const sf::Event& event) {
   return (dx * dx + dy * dy) <= (threshold * threshold);
 }
 
-}  // namespace lilia
+}  // namespace lilia::controller

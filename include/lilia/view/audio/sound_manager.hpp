@@ -5,7 +5,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace lilia {
+namespace lilia::view::sound {
 
 class SoundManager {
  public:
@@ -40,4 +40,4 @@ class SoundManager {
   float m_effectsVolume = 100.f;
 };
 
-}  // namespace lilia
+}  // namespace lilia::view::sound

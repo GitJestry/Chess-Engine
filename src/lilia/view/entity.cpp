@@ -3,7 +3,7 @@
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <atomic>
 
-namespace lilia {
+namespace lilia::view {
 
 void Entity::setPosition(const Position &pos) {
   m_sprite.setPosition(pos);
@@ -60,4 +60,4 @@ void Entity::draw(sf::RenderWindow &window) {
   window.draw(m_sprite);
 }
 
-}  // namespace lilia
+}  // namespace lilia::view

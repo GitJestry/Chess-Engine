@@ -5,7 +5,7 @@ namespace sf {
 class RenderWindow;
 }
 
-namespace lilia {
+namespace lilia::view::animation {
 
 class IAnimation {
  public:

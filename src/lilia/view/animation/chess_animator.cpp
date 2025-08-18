@@ -5,7 +5,7 @@
 #include "lilia/view/animation/snap_to_square_animation.hpp"
 #include "lilia/view/render_constants.hpp"
 
-namespace lilia {
+namespace lilia::view::animation {
 
 ChessAnimator::ChessAnimator(const BoardView& boardRef, PieceManager& pieceMgrRef)
     : m_board_view_ref(boardRef), m_piece_manager_ref(pieceMgrRef) {}
@@ -49,4 +49,4 @@ void ChessAnimator::render(sf::RenderWindow& window) {
   m_anim_manager.draw(window);
 }
 
-}  // namespace lilia
+}  // namespace lilia::view::animation

@@ -1,6 +1,6 @@
 #include "lilia/view/animation/piece_placeholder_animation.hpp"
 
-namespace lilia {
+namespace lilia::view::animation {
 
 PiecePlaceholderAnim::PiecePlaceholderAnim(PieceManager& pieceMgrRef, core::Square pieceSq)
     : m_piece_manager_ref(pieceMgrRef), m_piece_square(pieceSq) {}
@@ -12,4 +12,4 @@ void PiecePlaceholderAnim::draw(sf::RenderWindow& window) {
   return false;
 }
 
-};  // namespace lilia
+};  // namespace lilia::view::animation

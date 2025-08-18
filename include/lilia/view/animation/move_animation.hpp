@@ -1,15 +1,15 @@
 #pragma once
 
+#include "../../chess_types.hpp"
 #include "../piece_manager.hpp"
-#include "../render_types.hpp"
 #include "i_animation.hpp"
 
-namespace lilia {
+namespace lilia::view::animation {
 
 class MoveAnim : public IAnimation {
  public:
   explicit MoveAnim(PieceManager& pieceMgrRef, Entity::Position s, Entity::Position e,
-                    core::Square from = core::Square::NONE, core::Square to = core::Square::NONE);
+                    core::Square from = core::NO_SQUARE, core::Square to = core::NO_SQUARE);
   void update(float dt) override;
   void draw(sf::RenderWindow& window) override;
   [[nodiscard]] inline bool isFinished() const override;
@@ -19,7 +19,7 @@ class MoveAnim : public IAnimation {
   Entity::Position m_startPos;
   Entity::Position m_endPos;
   float m_elapsed = 0.f;
-  float m_duration = core::ANIM_MOVE_SPEED;
+  float m_duration = constant::ANIM_MOVE_SPEED;
   bool m_finish = false;
   core::Square m_from;
   core::Square m_to;

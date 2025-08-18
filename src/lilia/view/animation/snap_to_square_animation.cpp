@@ -1,6 +1,6 @@
 #include "lilia/view/animation/snap_to_square_animation.hpp"
 
-namespace lilia {
+namespace lilia::view::animation {
 
 SnapToSquareAnim::SnapToSquareAnim(PieceManager& pieceMgrRef, core::Square pieceSq,
                                    Entity::Position s, Entity::Position e)
@@ -22,4 +22,4 @@ void SnapToSquareAnim::draw(sf::RenderWindow& window) {
   return m_finish;
 }
 
-};  // namespace lilia
+};  // namespace lilia::view::animation

@@ -1,0 +1,72 @@
+  // For Magic Constants Generation
+
+  // 1️⃣ Masks berechnen
+  for (int sq = 0; sq < 64; ++sq) {
+    s_rook_mask[sq] = rook_relevant_mask(static_cast<core::Square>(sq));
+    s_bishop_mask[sq] = bishop_relevant_mask(static_cast<core::Square>(sq));
+  }
+
+  // 2️⃣ Magic Numbers finden & Shift berechnen
+  for (int sq = 0; sq < 64; ++sq) {
+    // Rook
+    {
+      core::Bitboard m;
+      std::uint8_t shift;
+      bool ok = find_magic_for_square(Slider::Rook, sq, m, shift);
+      if (!ok) {
+        // Fallback-Magic (sicher, aber nicht optimal)
+        m = 0xA180022080400230ULL ^ (static_cast<core::Bitboard>(sq) << 32);
+        shift = core::NO_SQUARE - bb::popcount(s_rook_mask[sq]);
+      }
+      s_rook_magic[sq].magic = m;
+      s_rook_magic[sq].shift = shift;
+
+      // Lookup-Tabelle bauen
+      int bits = bb::popcount(s_rook_mask[sq]);
+      size_t size = 1ULL << bits;
+      s_rook_table[sq].assign(size, 0ULL);
+
+      foreach_subset(s_rook_mask[sq], [&](core::Bitboard occSubset) {
+        core::Bitboard idx = ((occSubset * s_rook_magic[sq].magic) >> s_rook_magic[sq].shift);
+        s_rook_table[sq][idx] =
+            sliding_attack_on_the_fly(Slider::Rook, static_cast<core::Square>(sq), occSubset);
+      });
+    }
+
+    // Bishop
+    {
+      core::Bitboard m;
+      std::uint8_t shift;
+      bool ok = find_magic_for_square(Slider::Bishop, sq, m, shift);
+      if (!ok) {
+        m = 0x0040201000800400ULL ^ (static_cast<core::Bitboard>(sq) << 32);
+        shift = core::NO_SQUARE - bb::popcount(s_bishop_mask[sq]);
+      }
+      s_bishop_magic[sq].magic = m;
+      s_bishop_magic[sq].shift = shift;
+
+      int bits = bb::popcount(s_bishop_mask[sq]);
+      size_t size = 1ULL << bits;
+      s_bishop_table[sq].assign(size, 0ULL);
+
+      foreach_subset(s_bishop_mask[sq], [&](core::Bitboard occSubset) {
+        core::Bitboard idx = ((occSubset * s_bishop_magic[sq].magic) >> s_bishop_magic[sq].shift);
+        s_bishop_table[sq][idx] =
+            sliding_attack_on_the_fly(Slider::Bishop, static_cast<core::Square>(sq), occSubset);
+      });
+    }
+  }
+}
+
+core::Bitboard sliding_attacks(Slider s, core::Square sq, core::Bitboard occ) {
+  if (s == Slider::Rook) {
+    core::Bitboard mask = s_rook_mask[sq];
+    core::Bitboard occMasked = occ & mask;
+    core::Bitboard idx = ((occMasked * s_rook_magic[sq].magic) >> s_rook_magic[sq].shift);
+    return s_rook_table[sq][idx];
+  } else {
+    core::Bitboard mask = s_bishop_mask[sq];
+    core::Bitboard occMasked = occ & mask;
+    core::Bitboard idx = ((occMasked * s_bishop_magic[sq].magic) >> s_bishop_magic[sq].shift);
+    return s_bishop_table[sq][idx];
+  }

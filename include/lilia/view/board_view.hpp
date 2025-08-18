@@ -4,7 +4,7 @@
 
 #include "board.hpp"
 
-namespace lilia {
+namespace lilia::view {
 
 class BoardView {
  public:

@@ -8,9 +8,9 @@ class Event;
 #include <functional>
 #include <optional>
 
-#include "../core_types.hpp"
+#include "../controller_view_type_bridge.hpp"
 
-namespace lilia {
+namespace lilia::controller {
 
 /**
  * @class InputManager
@@ -77,4 +77,4 @@ class InputManager {
                              int threshold = 2) const;
 };
 
-}  // namespace lilia
+}  // namespace lilia::controller

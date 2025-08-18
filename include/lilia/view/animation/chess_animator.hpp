@@ -1,12 +1,11 @@
 #pragma once
 
-#include "../../core_types.hpp"
+#include "../../chess_types.hpp"
 #include "../board_view.hpp"
 #include "../piece_manager.hpp"
-#include "../render_types.hpp"
 #include "animation_manager.hpp"
 
-namespace lilia {
+namespace lilia::view::animation {
 
 class ChessAnimator {
  public:
@@ -28,4 +27,4 @@ class ChessAnimator {
   AnimationManager m_anim_manager;
 };
 
-}  // namespace lilia
+}  // namespace lilia::view::animation

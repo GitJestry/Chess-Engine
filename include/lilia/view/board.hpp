@@ -7,11 +7,11 @@ class RenderWindow;
 
 #include <array>
 
+#include "../chess_types.hpp"
 #include "entity.hpp"
 #include "render_constants.hpp"
-#include "render_types.hpp"
 
-namespace lilia {
+namespace lilia::view {
 
 class Board : public Entity {
  public:
@@ -33,7 +33,7 @@ class Board : public Entity {
   void setPosition(const Entity::Position &pos) override;
 
  private:
-  std::array<Entity, core::BOARD_SIZE * core::BOARD_SIZE> m_squares;
+  std::array<Entity, constant::BOARD_SIZE * constant::BOARD_SIZE> m_squares;
 };
 
-}  // namespace lilia
+}  // namespace lilia::view

@@ -1,6 +1,6 @@
 #include "lilia/view/animation/move_animation.hpp"
 
-namespace lilia {
+namespace lilia::view::animation {
 
 MoveAnim::MoveAnim(PieceManager& pieceMgrRef, Entity::Position s, Entity::Position e,
                    core::Square from, core::Square to)
@@ -29,4 +29,4 @@ void MoveAnim::draw(sf::RenderWindow& window) {
   return m_finish;
 }
 
-};  // namespace lilia
+};  // namespace lilia::view::animation

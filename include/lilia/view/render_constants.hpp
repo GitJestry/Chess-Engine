@@ -1,8 +1,7 @@
 #pragma once
 #include <string>
 
-namespace lilia {
-namespace core {
+namespace lilia::view::constant {
 constexpr unsigned int BOARD_SIZE = 8;
 constexpr unsigned int WINDOW_PX_SIZE = 800;
 constexpr unsigned int SQUARE_PX_SIZE = WINDOW_PX_SIZE / BOARD_SIZE;
@@ -34,6 +33,4 @@ const std::string SFX_CHECK_NAME = "check";
 const std::string SFX_GAME_BEGINS_NAME = "game_begins";
 const std::string SFX_GAME_ENDS_NAME = "game_ends";
 
-}  // namespace core
-
-}  // namespace lilia
+}  // namespace lilia::view::c

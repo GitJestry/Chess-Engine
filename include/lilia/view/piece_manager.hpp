@@ -3,15 +3,16 @@
 #include <string>
 #include <unordered_map>
 
-#include "../core_types.hpp"
+#include "../controller_view_type_bridge.hpp"
 #include "board_view.hpp"
 #include "piece.hpp"
-#include "render_types.hpp"
 
-namespace lilia {
+namespace lilia::view {
 
 // forward decleration
+namespace animation {
 class ChessAnimator;
+}
 
 class PieceManager {
  public:
@@ -30,15 +31,15 @@ class PieceManager {
   void setPieceToScreenPos(core::Square pos, core::MousePos mousePos);
   void setPieceToScreenPos(core::Square pos, Entity::Position entityPos);
 
-  void renderPieces(sf::RenderWindow& window, const ChessAnimator& chessAnimRef);
+  void renderPieces(sf::RenderWindow& window, const animation::ChessAnimator& chessAnimRef);
   void renderPiece(core::Square pos, sf::RenderWindow& window);
 
  private:
-  void addPiece(core::PieceType type, core::PieceColor color, core::Square pos);
+  void addPiece(core::PieceType type, core::Color color, core::Square pos);
   void removePiece(core::Square pos);
 
   const BoardView& m_board_view_ref;
   std::unordered_map<core::Square, Piece> m_pieces;
 };
 
-}  // namespace lilia
+}  // namespace lilia::view

@@ -2,36 +2,36 @@
 
 #include "lilia/view/render_constants.hpp"
 
-namespace lilia {
+namespace lilia::view::sound {
 
 void SoundManager::loadSounds() {
-  loadEffect(core::SFX_CAPTURE_NAME, core::ASSET_SFX_FILE_PATH);
-  loadEffect(core::SFX_CASTLE_NAME, core::ASSET_SFX_FILE_PATH);
-  loadEffect(core::SFX_CHECK_NAME, core::ASSET_SFX_FILE_PATH);
-  loadEffect(core::SFX_ENEMY_MOVE_NAME, core::ASSET_SFX_FILE_PATH);
-  loadEffect(core::SFX_GAME_BEGINS_NAME, core::ASSET_SFX_FILE_PATH);
-  loadEffect(core::SFX_GAME_ENDS_NAME, core::ASSET_SFX_FILE_PATH);
-  loadEffect(core::SFX_PLAYER_MOVE_NAME, core::ASSET_SFX_FILE_PATH);
+  loadEffect(constant::SFX_CAPTURE_NAME, constant::ASSET_SFX_FILE_PATH);
+  loadEffect(constant::SFX_CASTLE_NAME, constant::ASSET_SFX_FILE_PATH);
+  loadEffect(constant::SFX_CHECK_NAME, constant::ASSET_SFX_FILE_PATH);
+  loadEffect(constant::SFX_ENEMY_MOVE_NAME, constant::ASSET_SFX_FILE_PATH);
+  loadEffect(constant::SFX_GAME_BEGINS_NAME, constant::ASSET_SFX_FILE_PATH);
+  loadEffect(constant::SFX_GAME_ENDS_NAME, constant::ASSET_SFX_FILE_PATH);
+  loadEffect(constant::SFX_PLAYER_MOVE_NAME, constant::ASSET_SFX_FILE_PATH);
 }
 
 /// Play specific effects
 void SoundManager::playPlayerMove() {
-  m_sounds[core::SFX_PLAYER_MOVE_NAME].play();
+  m_sounds[constant::SFX_PLAYER_MOVE_NAME].play();
 }
 void SoundManager::playEnemyMove() {
-  m_sounds[core::SFX_ENEMY_MOVE_NAME].play();
+  m_sounds[constant::SFX_ENEMY_MOVE_NAME].play();
 }
 void SoundManager::playCapture() {
-  m_sounds[core::SFX_CAPTURE_NAME].play();
+  m_sounds[constant::SFX_CAPTURE_NAME].play();
 }
 void SoundManager::playCheck() {
-  m_sounds[core::SFX_CHECK_NAME].play();
+  m_sounds[constant::SFX_CHECK_NAME].play();
 }
 void SoundManager::playGameBegins() {
-  m_sounds[core::SFX_GAME_BEGINS_NAME].play();
+  m_sounds[constant::SFX_GAME_BEGINS_NAME].play();
 }
 void SoundManager::playGameEnds() {
-  m_sounds[core::SFX_GAME_ENDS_NAME].play();
+  m_sounds[constant::SFX_GAME_ENDS_NAME].play();
 }
 
 /// Music control
@@ -68,4 +68,4 @@ void SoundManager::loadEffect(const std::string& name, const std::string& filepa
   m_sounds[name] = std::move(sound);
 }
 
-}  // namespace lilia
+}  // namespace lilia::view::sound

@@ -7,7 +7,7 @@
 
 #include "lilia/view/render_constants.hpp"
 
-namespace lilia {
+namespace lilia::view {
 
 TextureTable& TextureTable::getInstance() {
   static TextureTable instance;
@@ -90,14 +90,15 @@ void TextureTable::load(const std::string& name, const sf::Color& color, sf::Vec
 }
 
 void TextureTable::preLoad() {
-  load(core::STR_TEXTURE_WHITE, sf::Color(240, 217, 181));              // light beige
-  load(core::STR_TEXTURE_BLACK, sf::Color(181, 136, 99));               // dark brown
-  load(core::STR_TEXTURE_SELECTHLIGHT, sf::Color(255, 255, 102, 100));  // light transparent yellow
-  m_textures[core::STR_TEXTURE_ATTACKHLIGHT] =
-      std::move(makeAttackDotTexture(core::ATTACK_DOT_PX_SIZE));
-  m_textures[core::STR_TEXTURE_HOVERHLIGHT] =
-      std::move(makeSquareHoverTexture(core::HOVER_PX_SIZE));
-  load(core::STR_TEXTURE_TRANSPARENT, sf::Color::Transparent);
+  load(constant::STR_TEXTURE_WHITE, sf::Color(240, 217, 181));  // light beige
+  load(constant::STR_TEXTURE_BLACK, sf::Color(181, 136, 99));   // dark brown
+  load(constant::STR_TEXTURE_SELECTHLIGHT,
+       sf::Color(255, 255, 102, 100));  // light transparent yellow
+  m_textures[constant::STR_TEXTURE_ATTACKHLIGHT] =
+      std::move(makeAttackDotTexture(constant::ATTACK_DOT_PX_SIZE));
+  m_textures[constant::STR_TEXTURE_HOVERHLIGHT] =
+      std::move(makeSquareHoverTexture(constant::HOVER_PX_SIZE));
+  load(constant::STR_TEXTURE_TRANSPARENT, sf::Color::Transparent);
 }
 
-}  // namespace lilia
+}  // namespace lilia::view

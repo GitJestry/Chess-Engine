@@ -1,11 +1,10 @@
 #pragma once
 
-#include "../../core_types.hpp"
+#include "../../chess_types.hpp"
 #include "../piece_manager.hpp"
-#include "../render_types.hpp"
 #include "i_animation.hpp"
 
-namespace lilia {
+namespace lilia::view::animation {
 
 class SnapToSquareAnim : public IAnimation {
  public:
@@ -21,8 +20,8 @@ class SnapToSquareAnim : public IAnimation {
   Entity::Position m_startPos;
   Entity::Position m_endPos;
   float m_elapsed = 0.f;
-  float m_duration = core::ANIM_SNAP_SPEED;
+  float m_duration = constant::ANIM_SNAP_SPEED;
   bool m_finish = false;
 };
 
-}  // namespace lilia
+}  // namespace lilia::view::animation

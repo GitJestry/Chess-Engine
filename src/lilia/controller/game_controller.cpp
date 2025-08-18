@@ -4,9 +4,9 @@
 #include <SFML/System/Time.hpp>
 #include <iostream>
 
-namespace lilia {
+namespace lilia::controller {
 
-GameController::GameController(GameView& gView, ChessGame& game)
+GameController::GameController(view::GameView& gView, model::ChessGame& game)
     : m_gameView(gView), m_chess_game(game) {
   m_inputManager.setOnClick([this](core::MousePos pos) { this->onClick(pos); });
 
@@ -32,9 +32,9 @@ void GameController::update(float dt) {
 }
 
 void GameController::highlightLastMove() {
-  if (m_lastMoveSquares.first != core::Square::NONE)
+  if (m_lastMoveSquares.first != core::NO_SQUARE)
     m_gameView.highlightSquare(m_lastMoveSquares.first);
-  if (m_lastMoveSquares.second != core::Square::NONE)
+  if (m_lastMoveSquares.second != core::NO_SQUARE)
     m_gameView.highlightSquare(m_lastMoveSquares.second);
 }
 
@@ -45,7 +45,7 @@ void GameController::selectSquare(core::Square sq) {
 
 void GameController::deselectSquare() {
   m_gameView.clearAllHighlights();
-  m_selected_sq = core::Square::NONE;
+  m_selected_sq = core::NO_SQUARE;
 }
 
 void GameController::hoverSquare(core::Square sq) {
@@ -53,8 +53,8 @@ void GameController::hoverSquare(core::Square sq) {
   m_gameView.highlightHoverSquare(m_hover_sq);
 }
 void GameController::dehoverSquare() {
-  if (m_hover_sq != core::Square::NONE) m_gameView.clearHighlightHoverSquare(m_hover_sq);
-  m_hover_sq = core::Square::NONE;
+  if (m_hover_sq != core::NO_SQUARE) m_gameView.clearHighlightHoverSquare(m_hover_sq);
+  m_hover_sq = core::NO_SQUARE;
 }
 
 void GameController::movePieceAndClear(core::Square from, core::Square to, bool onClick) {
@@ -88,7 +88,7 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 [[nodiscard]] std::vector<core::Square> GameController::getAttackSquares(
     core::Square pieceSQ) const {
   // TODO:
-  return {core::Square::A4, core::Square::B4};
+  return {4, 5};
 }
 
 void GameController::showAttacks(std::vector<core::Square> att) {
@@ -99,7 +99,7 @@ void GameController::onClick(core::MousePos mousePos) {
   core::Square sq = m_gameView.mousePosToSquare(mousePos);
 
   // Keine Auswahl
-  if (m_selected_sq == core::Square::NONE) {
+  if (m_selected_sq == core::NO_SQUARE) {
     if (m_gameView.hasPieceOnSquare(sq)) {
       snapAndReturn(sq, mousePos);
       showAttacks(getAttackSquares(sq));
@@ -176,4 +176,4 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
   }
 }
 
-}  // namespace lilia
+}  // namespace lilia::controller

@@ -1,0 +1,360 @@
+#include "lilia/model/move_generator.hpp"
+
+namespace lilia::model {
+
+std::vector<Move> MoveGenerator::generatePseudoMoves(const Board& board,
+                                                     const GameState& st) const {
+  std::vector<Move> moves;
+  moves.reserve(128);
+
+  core::Color side = st.sideToMove;
+
+  genPawnMoves(board, st, side, moves);
+  genKnightMoves(board, side, moves);
+  genBishopMoves(board, side, moves);
+  genRookMoves(board, side, moves);
+  genQueenMoves(board, side, moves);
+  genKingMoves(board, st, side, moves);
+
+  return moves;
+}
+
+// ---------------- Pawn (incl. en passant generation) ----------------
+void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::Color side,
+                                 std::vector<Move>& out) const {
+  bb::Bitboard us = board.pieces(side);
+  bb::Bitboard them = board.pieces(~side);
+  bb::Bitboard occ = board.allPieces();
+  bb::Bitboard pawns = board.pieces(side, core::PieceType::Pawn);
+
+  if (side == core::Color::White) {
+    bb::Bitboard single = bb::north(pawns) & ~occ;
+    bb::Bitboard promoPush = single & bb::RANK_8;
+    bb::Bitboard quietPush = single & ~bb::RANK_8;
+
+    bb::Bitboard dbl = bb::north(single) & ~occ & (bb::RANK_2 << 16);
+
+    bb::Bitboard leftCap = bb::nw(pawns) & them;
+    bb::Bitboard rightCap = bb::ne(pawns) & them;
+
+    // Quiet
+    bb::Bitboard q = quietPush;
+    while (q) {
+      core::Square to = bb::pop_lsb(q);
+      core::Square from = to - 8;
+      out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
+    }
+    // Double
+    bb::Bitboard d = dbl;
+    while (d) {
+      core::Square to = bb::pop_lsb(d);
+      core::Square from = to - 16;
+      out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
+    }
+    // Captures
+    bb::Bitboard lc = leftCap;
+    while (lc) {
+      core::Square to = bb::pop_lsb(lc);
+      core::Square from = to - 7;
+      out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
+    }
+    bb::Bitboard rc = rightCap;
+    while (rc) {
+      core::Square to = bb::pop_lsb(rc);
+      core::Square from = to - 9;
+      out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
+    }
+    // Promotions
+    bb::Bitboard pp = promoPush;
+    while (pp) {
+      core::Square to = bb::pop_lsb(pp);
+      core::Square from = to - 8;
+      for (core::PieceType pt : {core::PieceType::Queen, core::PieceType::Rook,
+                                 core::PieceType::Bishop, core::PieceType::Knight})
+        out.push_back({from, to, pt, false, false, CastleSide::None});
+    }
+    // Promotion captures
+    bb::Bitboard lp = (bb::nw(pawns) & them) & bb::RANK_8;
+    while (lp) {
+      core::Square to = bb::pop_lsb(lp);
+      core::Square from = to - 7;
+      for (core::PieceType pt : {core::PieceType::Queen, core::PieceType::Rook,
+                                 core::PieceType::Bishop, core::PieceType::Knight})
+        out.push_back({from, to, pt, true, false, CastleSide::None});
+    }
+    bb::Bitboard rp = (bb::ne(pawns) & them) & bb::RANK_8;
+    while (rp) {
+      core::Square to = bb::pop_lsb(rp);
+      core::Square from = to - 9;
+      for (core::PieceType pt : {core::PieceType::Queen, core::PieceType::Rook,
+                                 core::PieceType::Bishop, core::PieceType::Knight})
+        out.push_back({from, to, pt, true, false, CastleSide::None});
+    }
+
+    // En passant (if available)
+    if (st.enPassantSquare != core::NO_SQUARE) {
+      core::Square ep = st.enPassantSquare;
+      // white can capture ep from ep-7 (right) or ep-9 (left)
+      if (bb::file_of(ep) > 0) {
+        core::Square from = static_cast<core::Square>(ep - 9);
+        if (pawns & bb::sq_bb(from))
+          out.push_back({from, ep, core::PieceType::None, true, true, CastleSide::None});
+      }
+      if (bb::file_of(ep) < 7) {
+        core::Square from = static_cast<core::Square>(ep - 7);
+        if (pawns & bb::sq_bb(from))
+          out.push_back({from, ep, core::PieceType::None, true, true, CastleSide::None});
+      }
+    }
+  } else {
+    // Black
+    bb::Bitboard single = bb::south(pawns) & ~occ;
+    bb::Bitboard promoPush = single & bb::RANK_1;
+    bb::Bitboard quietPush = single & ~bb::RANK_1;
+
+    bb::Bitboard dbl = bb::south(single) & ~occ & (bb::RANK_7 >> 16);
+
+    bb::Bitboard leftCap = bb::se(pawns) & them;
+    bb::Bitboard rightCap = bb::sw(pawns) & them;
+
+    bb::Bitboard q = quietPush;
+    while (q) {
+      core::Square to = bb::pop_lsb(q);
+      core::Square from = to + 8;
+      out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
+    }
+    bb::Bitboard d = dbl;
+    while (d) {
+      core::Square to = bb::pop_lsb(d);
+      core::Square from = to + 16;
+      out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
+    }
+    bb::Bitboard lc = leftCap;
+    while (lc) {
+      core::Square to = bb::pop_lsb(lc);
+      core::Square from = to + 7;
+      out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
+    }
+    bb::Bitboard rc = rightCap;
+    while (rc) {
+      core::Square to = bb::pop_lsb(rc);
+      core::Square from = to + 9;
+      out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
+    }
+
+    bb::Bitboard pp = promoPush;
+    while (pp) {
+      core::Square to = bb::pop_lsb(pp);
+      core::Square from = to + 8;
+      for (core::PieceType pt : {core::PieceType::Queen, core::PieceType::Rook,
+                                 core::PieceType::Bishop, core::PieceType::Knight})
+        out.push_back({from, to, pt, false, false, CastleSide::None});
+    }
+    bb::Bitboard lp = (bb::se(pawns) & them) & bb::RANK_1;
+    while (lp) {
+      core::Square to = bb::pop_lsb(lp);
+      core::Square from = to + 7;
+      for (core::PieceType pt : {core::PieceType::Queen, core::PieceType::Rook,
+                                 core::PieceType::Bishop, core::PieceType::Knight})
+        out.push_back({from, to, pt, true, false, CastleSide::None});
+    }
+    bb::Bitboard rp = (bb::sw(pawns) & them) & bb::RANK_1;
+    while (rp) {
+      core::Square to = bb::pop_lsb(rp);
+      core::Square from = to + 9;
+      for (core::PieceType pt : {core::PieceType::Queen, core::PieceType::Rook,
+                                 core::PieceType::Bishop, core::PieceType::Knight})
+        out.push_back({from, to, pt, true, false, CastleSide::None});
+    }
+
+    if (st.enPassantSquare != core::NO_SQUARE) {
+      core::Square ep = st.enPassantSquare;
+      // black can capture ep from ep+7 (right) or ep+9 (left)
+      if (bb::file_of(ep) > 0) {
+        core::Square from = static_cast<core::Square>(ep + 7);
+        if (pawns & bb::sq_bb(from))
+          out.push_back({from, ep, core::PieceType::None, true, true, CastleSide::None});
+      }
+      if (bb::file_of(ep) < 7) {
+        core::Square from = static_cast<core::Square>(ep + 9);
+        if (pawns & bb::sq_bb(from))
+          out.push_back({from, ep, core::PieceType::None, true, true, CastleSide::None});
+      }
+    }
+  }
+}
+
+// --------------- Knights ---------------
+void MoveGenerator::genKnightMoves(const Board& board, core::Color side,
+                                   std::vector<Move>& out) const {
+  bb::Bitboard knights = board.pieces(side, core::PieceType::Knight);
+  bb::Bitboard own = board.pieces(side);
+  bb::Bitboard enemy = board.pieces(~side);
+
+  bb::Bitboard n = knights;
+  while (n) {
+    core::Square from = bb::pop_lsb(n);
+    bb::Bitboard atk = bb::knight_attacks_from(from);
+    bb::Bitboard quiet = atk & ~own & ~enemy;
+    bb::Bitboard caps = atk & enemy;
+
+    bb::Bitboard q = quiet;
+    while (q) {
+      core::Square to = bb::pop_lsb(q);
+      out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
+    }
+    bb::Bitboard c = caps;
+    while (c) {
+      core::Square to = bb::pop_lsb(c);
+      out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
+    }
+  }
+}
+
+// --------------- Bishops ---------------
+void MoveGenerator::genBishopMoves(const Board& board, core::Color side,
+                                   std::vector<Move>& out) const {
+  bb::Bitboard bishops = board.pieces(side, core::PieceType::Bishop);
+  bb::Bitboard own = board.pieces(side);
+  bb::Bitboard enemy = board.pieces(~side);
+  bb::Bitboard occ = board.allPieces();
+
+  bb::Bitboard b = bishops;
+  while (b) {
+    core::Square from = bb::pop_lsb(b);
+    bb::Bitboard atk = bb::bishop_attacks(from, occ);
+    bb::Bitboard quiet = atk & ~own & ~enemy;
+    bb::Bitboard caps = atk & enemy;
+
+    bb::Bitboard q = quiet;
+    while (q) {
+      core::Square to = bb::pop_lsb(q);
+      out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
+    }
+    bb::Bitboard c = caps;
+    while (c) {
+      core::Square to = bb::pop_lsb(c);
+      out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
+    }
+  }
+}
+
+// --------------- Rooks ---------------
+void MoveGenerator::genRookMoves(const Board& board, core::Color side,
+                                 std::vector<Move>& out) const {
+  bb::Bitboard rooks = board.pieces(side, core::PieceType::Rook);
+  bb::Bitboard own = board.pieces(side);
+  bb::Bitboard enemy = board.pieces(~side);
+  bb::Bitboard occ = board.allPieces();
+
+  bb::Bitboard r = rooks;
+  while (r) {
+    core::Square from = bb::pop_lsb(r);
+    bb::Bitboard atk = bb::rook_attacks(from, occ);
+    bb::Bitboard quiet = atk & ~own & ~enemy;
+    bb::Bitboard caps = atk & enemy;
+
+    bb::Bitboard q = quiet;
+    while (q) {
+      core::Square to = bb::pop_lsb(q);
+      out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
+    }
+    bb::Bitboard c = caps;
+    while (c) {
+      core::Square to = bb::pop_lsb(c);
+      out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
+    }
+  }
+}
+
+// --------------- Queens ---------------
+void MoveGenerator::genQueenMoves(const Board& board, core::Color side,
+                                  std::vector<Move>& out) const {
+  bb::Bitboard queens = board.pieces(side, core::PieceType::Queen);
+  bb::Bitboard own = board.pieces(side);
+  bb::Bitboard enemy = board.pieces(~side);
+  bb::Bitboard occ = board.allPieces();
+
+  bb::Bitboard qcore = queens;
+  while (qcore) {
+    core::Square from = bb::pop_lsb(qcore);
+    bb::Bitboard atk = bb::queen_attacks(from, occ);
+    bb::Bitboard quiet = atk & ~own & ~enemy;
+    bb::Bitboard caps = atk & enemy;
+
+    bb::Bitboard q = quiet;
+    while (q) {
+      core::Square to = bb::pop_lsb(q);
+      out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
+    }
+    bb::Bitboard c = caps;
+    while (c) {
+      core::Square to = bb::pop_lsb(c);
+      out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
+    }
+  }
+}
+
+// --------------- King (incl. castling gen; legality is checked in Position::doMove)
+// ---------------
+void MoveGenerator::genKingMoves(const Board& board, const GameState& st, core::Color side,
+                                 std::vector<Move>& out) const {
+  bb::Bitboard king = board.pieces(side, core::PieceType::King);
+  if (!king) return;
+  core::Square from = static_cast<core::Square>(bb::ctz64(king));
+
+  bb::Bitboard own = board.pieces(side);
+  bb::Bitboard enemy = board.pieces(~side);
+
+  bb::Bitboard atk = bb::king_attacks_from(from);
+  bb::Bitboard quiet = atk & ~own & ~enemy;
+  bb::Bitboard caps = atk & enemy;
+
+  bb::Bitboard q = quiet;
+  while (q) {
+    core::Square to = bb::pop_lsb(q);
+    out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
+  }
+  bb::Bitboard c = caps;
+  while (c) {
+    core::Square to = bb::pop_lsb(c);
+    out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
+  }
+
+  // --- Castling (pseudo-legal pre-checks; full legality checked by Position::doMove) ---
+  if (side == core::Color::White) {
+    // King side: core::squares F1, G1 empty; king not currently in check; will be checked during
+    // doMove for through/into check
+    if ((st.castlingRights & bb::WK) &&
+        !(board.allPieces() &
+          (bb::sq_bb(static_cast<core::Square>(5)) | bb::sq_bb(static_cast<core::Square>(6))))) {
+      out.push_back({bb::E1, static_cast<core::Square>(6), core::PieceType::None, false, false,
+                     CastleSide::KingSide});
+    }
+    // Queen side: core::squares D1, C1, B1 empty
+    if ((st.castlingRights & bb::WQ) &&
+        !(board.allPieces() &
+          (bb::sq_bb(static_cast<core::Square>(3)) | bb::sq_bb(static_cast<core::Square>(2)) |
+           bb::sq_bb(static_cast<core::Square>(1))))) {
+      out.push_back({bb::E1, static_cast<core::Square>(2), core::PieceType::None, false, false,
+                     CastleSide::QueenSide});
+    }
+  } else {
+    // Black
+    if ((st.castlingRights & bb::BK) &&
+        !(board.allPieces() &
+          (bb::sq_bb(static_cast<core::Square>(61)) | bb::sq_bb(static_cast<core::Square>(62))))) {
+      out.push_back({bb::E8, static_cast<core::Square>(62), core::PieceType::None, false, false,
+                     CastleSide::KingSide});
+    }
+    if ((st.castlingRights & bb::BQ) &&
+        !(board.allPieces() &
+          (bb::sq_bb(static_cast<core::Square>(59)) | bb::sq_bb(static_cast<core::Square>(58)) |
+           bb::sq_bb(static_cast<core::Square>(57))))) {
+      out.push_back({bb::E8, static_cast<core::Square>(58), core::PieceType::None, false, false,
+                     CastleSide::QueenSide});
+    }
+  }
+}
+
+}  // namespace lilia::model
