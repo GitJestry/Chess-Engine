@@ -16,6 +16,7 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
   m_inputManager.setOnDrop(
       [this](core::MousePos start, core::MousePos end) { this->onDrop(start, end); });
   gView.init();
+  game.setPosition(view::constant::START_FEN);
   m_sound_manager.loadSounds();
 }
 
@@ -66,6 +67,7 @@ void GameController::movePieceAndClear(core::Square from, core::Square to, bool 
   m_lastMoveSquares = {from, to};
   deselectSquare();
   highlightLastMove();
+  m_chess_game.doMove(from, to);
 }
 
 void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
@@ -73,7 +75,6 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
   m_gameView.animationSnapAndReturn(sq, cur);
 }
 
-// TODO: placeholder
 [[nodiscard]] bool GameController::tryMove(core::Square a, core::Square b) {
   for (auto att : getAttackSquares(a)) {
     if (att == b) return true;
@@ -87,8 +88,12 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 
 [[nodiscard]] std::vector<core::Square> GameController::getAttackSquares(
     core::Square pieceSQ) const {
-  // TODO:
-  return {4, 5};
+  std::vector<core::Square> att;
+  const std::vector<model::Move>& moves = m_chess_game.generateLegalMoves();
+  for (auto m : moves) {
+    if (m.from == pieceSQ) att.push_back(m.to);
+  }
+  return att;
 }
 
 void GameController::showAttacks(std::vector<core::Square> att) {

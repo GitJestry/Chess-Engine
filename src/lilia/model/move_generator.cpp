@@ -1,9 +1,11 @@
 #include "lilia/model/move_generator.hpp"
 
+#include "lilia/model/core/magic.hpp"
+
 namespace lilia::model {
 
-std::vector<Move> MoveGenerator::generatePseudoMoves(const Board& board,
-                                                     const GameState& st) const {
+std::vector<Move> MoveGenerator::generatePseudoLegalMoves(const Board& board,
+                                                          const GameState& st) const {
   std::vector<Move> moves;
   moves.reserve(128);
 
@@ -222,7 +224,7 @@ void MoveGenerator::genBishopMoves(const Board& board, core::Color side,
   bb::Bitboard b = bishops;
   while (b) {
     core::Square from = bb::pop_lsb(b);
-    bb::Bitboard atk = bb::bishop_attacks(from, occ);
+    bb::Bitboard atk = magic::sliding_attacks(magic::Slider::Bishop, from, occ);
     bb::Bitboard quiet = atk & ~own & ~enemy;
     bb::Bitboard caps = atk & enemy;
 
@@ -250,7 +252,7 @@ void MoveGenerator::genRookMoves(const Board& board, core::Color side,
   bb::Bitboard r = rooks;
   while (r) {
     core::Square from = bb::pop_lsb(r);
-    bb::Bitboard atk = bb::rook_attacks(from, occ);
+    bb::Bitboard atk = magic::sliding_attacks(magic::Slider::Rook, from, occ);
     bb::Bitboard quiet = atk & ~own & ~enemy;
     bb::Bitboard caps = atk & enemy;
 
@@ -278,7 +280,8 @@ void MoveGenerator::genQueenMoves(const Board& board, core::Color side,
   bb::Bitboard qcore = queens;
   while (qcore) {
     core::Square from = bb::pop_lsb(qcore);
-    bb::Bitboard atk = bb::queen_attacks(from, occ);
+    bb::Bitboard atk = magic::sliding_attacks(magic::Slider::Bishop, from, occ) |
+                       magic::sliding_attacks(magic::Slider::Rook, from, occ);
     bb::Bitboard quiet = atk & ~own & ~enemy;
     bb::Bitboard caps = atk & enemy;
 

@@ -1,27 +1,14 @@
 #include "lilia/model/zobrist.hpp"
 
 #include "lilia/model/board.hpp"
-#include "lilia/model/core/bitboard.hpp"
+#include "lilia/model/core/random.hpp"
 #include "lilia/model/game_state.hpp"
 #include "lilia/model/position.hpp"
 
 namespace lilia::model {
 
-namespace {
-struct SplitMix64 {
-  bb::Bitboard x;
-  explicit SplitMix64(bb::Bitboard seed) : x(seed) {}
-  bb::Bitboard next() {
-    bb::Bitboard z = (x += 0x9E3779B97F4A7C15ULL);
-    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
-    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
-    return z ^ (z >> 31);
-  }
-};
-}  // namespace
-
 void Zobrist::init(bb::Bitboard seed) {
-  SplitMix64 rng(seed);
+  random::SplitMix64 rng(seed);
 
   for (int c = 0; c < 2; ++c)
     for (int t = 0; t < 6; ++t)
@@ -53,7 +40,7 @@ bb::Bitboard Zobrist::compute(const PositionLike& pos) {
   const GameState& st = pos.state();
   h ^= castling[st.castlingRights & 0xF];
 
-  if (st.enPassantSquare != 64) {
+  if (st.enPassantSquare != core::NO_SQUARE) {
     int file = bb::file_of(st.enPassantSquare);
     h ^= epFile[file];
   }

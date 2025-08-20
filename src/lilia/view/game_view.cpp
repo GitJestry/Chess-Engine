@@ -12,8 +12,7 @@ GameView::GameView(sf::RenderWindow& window, model::ChessGame& game)
 
 void GameView::init(const std::string& fen) {
   m_board_view.init();
-  std::string boardPart = fen.substr(0, fen.find(' '));
-  m_piece_manager.initFromFen(boardPart);
+  m_piece_manager.initFromFen(fen);
 }
 
 void GameView::update(float dt) {

@@ -1,7 +1,8 @@
 #pragma once
 #include <bit>
+#include <cassert>
+#include <iostream>
 
-#include "../generated/magic_constants.hpp"
 #include "model_types.hpp"
 
 namespace lilia::model::bb {
@@ -16,10 +17,15 @@ constexpr inline bool none(Bitboard b) {
 constexpr inline int popcount(Bitboard b) {
   return std::popcount(b);
 }
-inline int ctz64(uint64_t x) {
-  return std::countr_zero(x);
+inline int ctz64(uint64_t x) noexcept {
+  return static_cast<int>(std::countr_zero(x));
 }
+
 inline core::Square pop_lsb(Bitboard& b) {
+  if (b == 0) {
+    std::cerr << "pop_lsb called with empty board" << "\n";
+    std::terminate();  // vermeidet in Release leere Tabelle
+  }
   int index = ctz64(b);
   b &= b - 1;
   return static_cast<core::Square>(index);
@@ -63,7 +69,7 @@ constexpr inline Bitboard king_attacks_from(core::Square s) {
   return east(b) | west(b) | north(b) | south(b) | ne(b) | nw(b) | se(b) | sw(b);
 }
 
-// Sliding rays
+// Sliding rays (on-the-fly, branchless-ish loops)
 inline Bitboard ray_attack_dir(Bitboard from, Bitboard occ, Bitboard (*step)(Bitboard)) {
   Bitboard atk = 0, r = step(from);
   while (r) {
@@ -73,18 +79,19 @@ inline Bitboard ray_attack_dir(Bitboard from, Bitboard occ, Bitboard (*step)(Bit
   }
   return atk;
 }
+
 inline Bitboard bishop_attacks(core::Square s, Bitboard occ) {
-  const auto& magic = magic::constants::s_bishop_magic[s];
-  const auto& table = magic::constants::s_bishop_table[s];
-
-  return table[(occ * magic.magic) >> magic.shift];
+  Bitboard from = sq_bb(s);
+  return ray_attack_dir(from, occ, ne) | ray_attack_dir(from, occ, nw) |
+         ray_attack_dir(from, occ, se) | ray_attack_dir(from, occ, sw);
 }
+
 inline Bitboard rook_attacks(core::Square s, Bitboard occ) {
-  const auto& magic = magic::constants::s_rook_magic[s];
-  const auto& table = magic::constants::s_rook_table[s];
-
-  return table[(occ * magic.magic) >> magic.shift];
+  Bitboard from = sq_bb(s);
+  return ray_attack_dir(from, occ, north) | ray_attack_dir(from, occ, south) |
+         ray_attack_dir(from, occ, east) | ray_attack_dir(from, occ, west);
 }
+
 inline Bitboard queen_attacks(core::Square s, Bitboard occ) {
   return bishop_attacks(s, occ) | rook_attacks(s, occ);
 }

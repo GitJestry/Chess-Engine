@@ -1,5 +1,7 @@
 #include "lilia/model/position.hpp"
 
+#include "lilia/model/core/magic.hpp"
+
 namespace lilia::model {
 
 bool Position::isSquareAttacked(core::Square sq, core::Color by) const {
@@ -26,7 +28,7 @@ bool Position::isSquareAttacked(core::Square sq, core::Color by) const {
       m_board.pieces(by, core::PieceType::Bishop) | m_board.pieces(by, core::PieceType::Queen);
   for (bb::Bitboard b = bishops; b;) {
     core::Square s = bb::pop_lsb(b);
-    if (bb::bishop_attacks(sq, occ) & bb::sq_bb(sq)) return true;
+    if (magic::sliding_attacks(magic::Slider::Bishop, s, occ) & bb::sq_bb(sq)) return true;
   }
 
   // rooks/queens
@@ -34,7 +36,8 @@ bool Position::isSquareAttacked(core::Square sq, core::Color by) const {
       m_board.pieces(by, core::PieceType::Rook) | m_board.pieces(by, core::PieceType::Queen);
   for (bb::Bitboard r = rooks; r;) {
     core::Square s = bb::pop_lsb(r);
-    if (bb::rook_attacks(sq, occ) & bb::sq_bb(sq)) return true;
+
+    if (magic::sliding_attacks(magic::Slider::Rook, s, occ) & bb::sq_bb(sq)) return true;
   }
 
   // king

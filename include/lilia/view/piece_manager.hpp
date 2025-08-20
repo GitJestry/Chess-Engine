@@ -18,7 +18,7 @@ class PieceManager {
  public:
   PieceManager(const BoardView& boardRef);
 
-  void initFromFen(std::string& fen);
+  void initFromFen(const std::string& fen);
 
   [[nodiscard]] Entity::ID_type getPieceID(core::Square pos) const;
   [[nodiscard]] bool isSameColor(core::Square sq1, core::Square sq2) const;

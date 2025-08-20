@@ -11,7 +11,7 @@ namespace lilia::model {
 class MoveGenerator {
  public:
   /// Pseudo-legal (includes ep/castling when possible). Filter with Position::doMove for legality.
-  std::vector<Move> generatePseudoMoves(const Board& board, const GameState& st) const;
+  std::vector<Move> generatePseudoLegalMoves(const Board& board, const GameState& st) const;
 
  private:
   void genPawnMoves(const Board&, const GameState&, core::Color, std::vector<Move>&) const;

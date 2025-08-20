@@ -14,4 +14,9 @@ struct Move {
   CastleSide castle = CastleSide::None;
 };
 
+constexpr inline bool operator==(const Move& a, const Move& b) {
+  return (a.from == b.from && a.to == b.to && a.promotion == b.promotion &&
+          a.isCapture == b.isCapture && a.isEnPassant == b.isEnPassant && a.castle == b.castle);
+}
+
 }  // namespace lilia::model

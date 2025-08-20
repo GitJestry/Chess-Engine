@@ -10,10 +10,11 @@ namespace lilia::view {
 
 PieceManager::PieceManager(const BoardView& boardRef) : m_board_view_ref(boardRef), m_pieces() {}
 
-void PieceManager::initFromFen(std::string& fen) {
+void PieceManager::initFromFen(const std::string& fen) {
+  std::string boardPart = fen.substr(0, fen.find(' '));
   int rank = 7;
   int file = 0;
-  for (char ch : fen) {
+  for (char ch : boardPart) {
     if (ch == '/') {
       // Nächste Reihe
       rank--;
