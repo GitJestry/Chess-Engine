@@ -59,15 +59,52 @@ void GameController::dehoverSquare() {
 }
 
 void GameController::movePieceAndClear(core::Square from, core::Square to, bool onClick) {
+  const model::Move& move = m_chess_game.getMove(from, to);
+  bool isPlayerMove = (m_chess_game.getGameState().sideToMove == m_player_color);
+
+  core::Square dEnPassantSquare = core::NO_SQUARE;
+  if (move.isEnPassant) {
+    if (m_chess_game.getGameState().sideToMove == core::Color::White)
+      dEnPassantSquare = to - 8;
+    else
+      dEnPassantSquare = to + 8;
+  }
+
   if (onClick)
-    m_gameView.animationMovePiece(from, to);
+    m_gameView.animationMovePiece(from, to, dEnPassantSquare);
   else
-    m_gameView.animationDropPiece(from, to);
+    m_gameView.animationDropPiece(from, to, dEnPassantSquare);
+
+  if (move.castle != model::CastleSide::None) {
+    core::Square rookSquare = m_chess_game.getRookSquareFromCastleside(move.castle);
+    core::Square newRookSquare;
+    if (move.castle == model::CastleSide::KingSide)
+      newRookSquare = to - 1;
+    else
+      newRookSquare = to + 1;
+    m_gameView.animationMovePiece(rookSquare, newRookSquare);
+  }
 
   m_lastMoveSquares = {from, to};
   deselectSquare();
   highlightLastMove();
+
   m_chess_game.doMove(from, to);
+
+  if (m_chess_game.isKingInCheck(m_chess_game.getGameState().sideToMove)) {
+    m_sound_manager.playCheck();
+  } else {
+    if (move.isCapture) {
+      m_sound_manager.playCapture();
+    } else if (move.castle == model::CastleSide::None) {
+      if (isPlayerMove)
+        m_sound_manager.playPlayerMove();
+      else
+        m_sound_manager.playEnemyMove();
+    } else {
+      m_sound_manager.playCastle();
+    }
+  }
 }
 
 void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
@@ -80,6 +117,14 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
     if (att == b) return true;
   }
 
+  return false;
+}
+
+[[nodiscard]] bool GameController::isPromotion(core::Square a, core::Square b) {
+  const std::vector<model::Move>& moves = m_chess_game.generateLegalMoves();
+  for (auto m : moves) {
+    if (m.from == a && m.to == b && m.promotion != core::PieceType::None) return true;
+  }
   return false;
 }
 [[nodiscard]] bool GameController::isSameColor(core::Square a, core::Square b) {
@@ -121,12 +166,10 @@ void GameController::onClick(core::MousePos mousePos) {
 
   // Versuch eines Zugs
   if (tryMove(m_selected_sq, sq)) {
-    if (m_gameView.hasPieceOnSquare(sq))
-      m_sound_manager.playCapture();
+    if (!isPromotion(m_selected_sq, sq))
+      movePieceAndClear(m_selected_sq, sq, true);
     else
-      m_sound_manager.playPlayerMove();
-    movePieceAndClear(m_selected_sq, sq, true);
-
+      m_gameView.playPromotionSelectAnim(sq, m_promo_type, m_chess_game.getGameState().sideToMove);
   } else {
     deselectSquare();
     if (m_gameView.hasPieceOnSquare(sq) && isSameColor(m_selected_sq, sq)) {
@@ -170,11 +213,10 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
   m_gameView.endAnimation(from);
 
   if (from != to && tryMove(from, to)) {
-    if (m_gameView.hasPieceOnSquare(to))
-      m_sound_manager.playCapture();
+    if (!isPromotion(from, to))
+      movePieceAndClear(from, to, false);
     else
-      m_sound_manager.playPlayerMove();
-    movePieceAndClear(from, to, false);
+      m_gameView.playPromotionSelectAnim(to, m_promo_type, m_chess_game.getGameState().sideToMove);
   } else {
     m_gameView.setPieceToSquareScreenPos(from, from);
     selectSquare(from);

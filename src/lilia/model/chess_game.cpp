@@ -16,6 +16,17 @@ core::Square stringToSquare(const std::string& strSquare) {
   return static_cast<core::Square>(file + rank * 8);
 }
 
+const Move& ChessGame::getMove(core::Square from, core::Square to) {
+  int side = bb::ci(m_position.state().sideToMove);
+  std::vector<Move> moves;
+
+  if (m_legal_moves[side].empty()) generateLegalMoves();
+  for (auto& m : m_legal_moves[side])
+    if (m.from == from && m.to == to) return m;
+
+  return Move{};
+}
+
 void ChessGame::setPosition(const std::string& fen) {
   std::istringstream iss(fen);
   std::string board, activeColor, castling, enPassant, halfmoveClock, fullmoveNumber;
@@ -97,15 +108,12 @@ const std::vector<Move>& ChessGame::generateLegalMoves() {
   int side = bb::ci(m_position.state().sideToMove);
   auto moves =
       std::move(m_move_gen.generatePseudoLegalMoves(m_position.board(), m_position.state()));
-  // existing code that created 'moves'
   m_legal_moves[side].clear();
-  m_legal_moves[side].reserve(moves.size());
 
-  // Filter to legal and push_back, but push ttBest first
   for (const auto& m : moves) {
     if (m_position.doMove(m)) {
-      m_legal_moves[side].push_back(m);
       m_position.undoMove();
+      m_legal_moves[side].push_back(m);
     }
   }
   return m_legal_moves[side];
@@ -113,6 +121,23 @@ const std::vector<Move>& ChessGame::generateLegalMoves() {
 
 const GameState& ChessGame::getGameState() {
   return m_position.state();
+}
+
+core::Square ChessGame::getRookSquareFromCastleside(CastleSide castleSide) {
+  core::Color color = m_position.state().sideToMove;
+  if (castleSide == CastleSide::KingSide) {
+    if (color == core::Color::White)
+      return static_cast<core::Square>(7);
+    else
+      return static_cast<core::Square>(63);
+
+  } else if (castleSide == CastleSide::QueenSide) {
+    if (color == core::Color::White)
+      return static_cast<core::Square>(0);
+    else
+      return static_cast<core::Square>(56);
+  }
+  return core::NO_SQUARE;
 }
 
 bb::Piece ChessGame::getPiece(core::Square sq) {
@@ -126,4 +151,9 @@ void ChessGame::doMove(core::Square from, core::Square to) {
     if (m.from == from && m.to == to) m_position.doMove(m);
 }
 
+bool ChessGame::isKingInCheck(core::Color from) const {
+  bb::Bitboard kbb = m_position.board().pieces(from, core::PieceType::King);
+  core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
+  return m_position.isSquareAttacked(ksq, ~from);
+}
 }  // namespace lilia::model

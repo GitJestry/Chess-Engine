@@ -15,6 +15,7 @@ class ChessAnimator {
   void movePiece(core::Square from, core::Square to);
   void dropPiece(core::Square from, core::Square to);
   void piecePlaceHolder(core::Square sq);
+  void promotionSelect(core::Square prPos, core::PieceType& prTypeRef, core::Color c);
   void end(core::Square sq);
 
   [[nodiscard]] bool isAnimating(Entity::ID_type entityID) const;

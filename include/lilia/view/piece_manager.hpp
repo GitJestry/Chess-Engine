@@ -24,6 +24,7 @@ class PieceManager {
   [[nodiscard]] bool isSameColor(core::Square sq1, core::Square sq2) const;
 
   void movePiece(core::Square from, core::Square to);
+  void removePiece(core::Square pos);
   void removeAll();
 
   [[nodiscard]] bool hasPieceOnSquare(core::Square pos) const;
@@ -36,7 +37,6 @@ class PieceManager {
 
  private:
   void addPiece(core::PieceType type, core::Color color, core::Square pos);
-  void removePiece(core::Square pos);
 
   const BoardView& m_board_view_ref;
   std::unordered_map<core::Square, Piece> m_pieces;

@@ -55,6 +55,7 @@ void PieceManager::initFromFen(const std::string& fen) {
 }
 
 [[nodiscard]] Entity::ID_type PieceManager::getPieceID(core::Square pos) const {
+  if (pos == core::NO_SQUARE) return 0;
   return m_pieces.find(pos)->second.getId();
 }
 
@@ -72,7 +73,7 @@ void PieceManager::addPiece(core::PieceType type, core::Color color, core::Squar
   const sf::Texture& texture = TextureTable::getInstance().get(filename);
 
   Piece newpiece(color, type, texture);
-  newpiece.setScale(1.5f, 1.5f);
+  newpiece.setScale(constant::ASSET_PIECE_SCALE, constant::ASSET_PIECE_SCALE);
   m_pieces[pos] = std::move(newpiece);
   m_pieces[pos].setPosition(m_board_view_ref.getSquareScreenPos(pos));
 }
@@ -80,7 +81,7 @@ void PieceManager::addPiece(core::PieceType type, core::Color color, core::Squar
 void PieceManager::movePiece(core::Square from, core::Square to) {
   Piece movingPiece = std::move(m_pieces[from]);
   m_pieces.erase(from);
-  m_pieces.erase(to);
+  removePiece(to);
   m_pieces[to] = std::move(movingPiece);
 }
 void PieceManager::removePiece(core::Square pos) {

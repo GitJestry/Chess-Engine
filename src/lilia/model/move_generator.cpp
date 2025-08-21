@@ -170,17 +170,21 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
     }
 
     if (st.enPassantSquare != core::NO_SQUARE) {
-      core::Square ep = st.enPassantSquare;
-      // black can capture ep from ep+7 (right) or ep+9 (left)
-      if (bb::file_of(ep) > 0) {
-        core::Square from = static_cast<core::Square>(ep + 7);
-        if (pawns & bb::sq_bb(from))
-          out.push_back({from, ep, core::PieceType::None, true, true, CastleSide::None});
-      }
-      if (bb::file_of(ep) < 7) {
-        core::Square from = static_cast<core::Square>(ep + 9);
-        if (pawns & bb::sq_bb(from))
-          out.push_back({from, ep, core::PieceType::None, true, true, CastleSide::None});
+      bb::Bitboard ep_bb = bb::sq_bb(st.enPassantSquare);
+      if (side == core::Color::White) {
+        bb::Bitboard from_candidates = (bb::sw(ep_bb) | bb::se(ep_bb)) & pawns;
+        while (from_candidates) {
+          core::Square from = bb::pop_lsb(from_candidates);
+          out.push_back(
+              {from, st.enPassantSquare, core::PieceType::None, true, true, CastleSide::None});
+        }
+      } else {
+        bb::Bitboard from_candidates = (bb::nw(ep_bb) | bb::ne(ep_bb)) & pawns;
+        while (from_candidates) {
+          core::Square from = bb::pop_lsb(from_candidates);
+          out.push_back(
+              {from, st.enPassantSquare, core::PieceType::None, true, true, CastleSide::None});
+        }
       }
     }
   }

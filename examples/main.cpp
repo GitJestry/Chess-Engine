@@ -97,8 +97,6 @@ std::string gameStateToString(const lilia::model::GameState& state) {
   return str;
 }
 
-#include "lilia/model/magic_serializer.hpp"
-
 int main() {
   lilia::model::Zobrist::init();
   lilia::model::magic::init_magics();  // baut alle Masks + Magics durch Suche auf

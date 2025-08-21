@@ -33,6 +33,9 @@ void SoundManager::playGameBegins() {
 void SoundManager::playGameEnds() {
   m_sounds[constant::SFX_GAME_ENDS_NAME].play();
 }
+void SoundManager::playCastle() {
+  m_sounds[constant::SFX_CASTLE_NAME].play();
+}
 
 /// Music control
 void SoundManager::playBackgroundMusic(const std::string& filename, bool loop) {

@@ -33,6 +33,7 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
       else
         m_squares[index].setTexture(textureBlack);
       m_squares[index].setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
+      m_squares[index].setOriginToCenter();
     }
   }
 }
@@ -42,11 +43,9 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
 }
 
 void Board::draw(sf::RenderWindow &window) {
-  setOriginToCenter();
   Entity::draw(window);
   // Draw the board
   for (auto &s : m_squares) {
-    s.setOriginToCenter();
     s.draw(window);
   }
 }

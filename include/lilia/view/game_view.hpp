@@ -55,8 +55,11 @@ class GameView {
   void clearAllHighlights();
 
   void animationSnapAndReturn(core::Square sq, core::MousePos mousePos);
-  void animationMovePiece(core::Square from, core::Square to);
-  void animationDropPiece(core::Square from, core::Square to);
+  void animationMovePiece(core::Square from, core::Square to,
+                          core::Square enPSquare = core::NO_SQUARE);
+  void animationDropPiece(core::Square from, core::Square to,
+                          core::Square enPSquare = core::NO_SQUARE);
+  void playPromotionSelectAnim(core::Square promSq, core::PieceType& prTypeRef, core::Color c);
   void playPiecePlaceHolderAnimation(core::Square sq);
   void endAnimation(core::Square sq);
 

@@ -37,16 +37,23 @@ void GameView::animationSnapAndReturn(core::Square sq, core::MousePos mousePos) 
   m_chess_animator.snapAndReturn(sq, mousePos);
 }
 
-void GameView::animationMovePiece(core::Square from, core::Square to) {
+void GameView::animationMovePiece(core::Square from, core::Square to, core::Square enPSquare) {
   m_chess_animator.movePiece(from, to);
+  if (enPSquare != core::NO_SQUARE) m_piece_manager.removePiece(enPSquare);
 }
 
-void GameView::animationDropPiece(core::Square from, core::Square to) {
+void GameView::animationDropPiece(core::Square from, core::Square to, core::Square enPSquare) {
   m_chess_animator.dropPiece(from, to);
+  if (enPSquare != core::NO_SQUARE) m_piece_manager.removePiece(enPSquare);
 }
 
 void GameView::playPiecePlaceHolderAnimation(core::Square sq) {
   m_chess_animator.piecePlaceHolder(sq);
+}
+
+void GameView::playPromotionSelectAnim(core::Square promSq, core::PieceType& prTypeRef,
+                                       core::Color c) {
+  m_chess_animator.promotionSelect(promSq, prTypeRef, c);
 }
 
 void GameView::endAnimation(core::Square sq) {

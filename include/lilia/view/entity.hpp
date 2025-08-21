@@ -64,7 +64,7 @@ class Entity {
   // static ID Counter. Counts upwards for every new entity, beginning with 0
   // guarantees no identical EntityIDs
   [[nodiscard]] static ID_type generateId() {
-    static std::atomic_size_t counter{0};
+    static std::atomic_size_t counter{1};
     return counter.fetch_add(1, std::memory_order_relaxed);
   }
 

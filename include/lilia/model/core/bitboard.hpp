@@ -22,10 +22,7 @@ inline int ctz64(uint64_t x) noexcept {
 }
 
 inline core::Square pop_lsb(Bitboard& b) {
-  if (b == 0) {
-    std::cerr << "pop_lsb called with empty board" << "\n";
-    std::terminate();  // vermeidet in Release leere Tabelle
-  }
+  if (b == 0) return core::NO_SQUARE;
   int index = ctz64(b);
   b &= b - 1;
   return static_cast<core::Square>(index);
@@ -50,10 +47,10 @@ constexpr inline Bitboard nw(Bitboard b) {
   return (b & ~FILE_A) << 7;
 }
 constexpr inline Bitboard se(Bitboard b) {
-  return (b & ~FILE_A) >> 7;
+  return (b & ~FILE_H) >> 7;  // south-east: mask H-file
 }
 constexpr inline Bitboard sw(Bitboard b) {
-  return (b & ~FILE_H) >> 9;
+  return (b & ~FILE_A) >> 9;  // south-west: mask A-file
 }
 
 constexpr inline Bitboard knight_attacks_from(core::Square s) {

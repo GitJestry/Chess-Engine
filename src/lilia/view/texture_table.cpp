@@ -90,8 +90,9 @@ void TextureTable::load(const std::string& name, const sf::Color& color, sf::Vec
 }
 
 void TextureTable::preLoad() {
-  load(constant::STR_TEXTURE_WHITE, sf::Color(240, 217, 181));  // light beige
-  load(constant::STR_TEXTURE_BLACK, sf::Color(181, 136, 99));   // dark brown
+  load(constant::STR_TEXTURE_PROMOTION, sf::Color(255, 255, 255));  // pure white
+  load(constant::STR_TEXTURE_WHITE, sf::Color(240, 217, 181));      // light beige
+  load(constant::STR_TEXTURE_BLACK, sf::Color(181, 136, 99));       // dark brown
   load(constant::STR_TEXTURE_SELECTHLIGHT,
        sf::Color(255, 255, 102, 100));  // light transparent yellow
   m_textures[constant::STR_TEXTURE_ATTACKHLIGHT] =

@@ -2,6 +2,7 @@
 
 #include "lilia/view/animation/move_animation.hpp"
 #include "lilia/view/animation/piece_placeholder_animation.hpp"
+#include "lilia/view/animation/promotion_select_animation.hpp"
 #include "lilia/view/animation/snap_to_square_animation.hpp"
 #include "lilia/view/render_constants.hpp"
 
@@ -28,6 +29,12 @@ void ChessAnimator::movePiece(core::Square from, core::Square to) {
 }
 void ChessAnimator::dropPiece(core::Square from, core::Square to) {
   m_piece_manager_ref.movePiece(from, to);
+}
+
+void ChessAnimator::promotionSelect(core::Square prPos, core::PieceType& prTypeRef, core::Color c) {
+  m_anim_manager.add(m_piece_manager_ref.getPieceID(core::NO_SQUARE),
+                     std::make_unique<PromotionSelectAnim>(
+                         m_board_view_ref.getSquareScreenPos(prPos), prTypeRef, c));
 }
 
 void ChessAnimator::piecePlaceHolder(core::Square sq) {

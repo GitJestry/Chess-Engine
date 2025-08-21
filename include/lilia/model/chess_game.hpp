@@ -18,13 +18,14 @@ class ChessGame {
   bb::Piece getPiece(core::Square sq);
   const GameState& getGameState();
   const std::vector<Move>& generateLegalMoves();
+  const Move& getMove(core::Square from, core::Square to);
+  bool isKingInCheck(core::Color from) const;
+  core::Square getRookSquareFromCastleside(CastleSide castleSide);
 
  private:
   MoveGenerator m_move_gen;
   std::array<std::vector<Move>, 2> m_legal_moves;
   Position m_position;
-  TT4 m_tt4{32};
-  Zobrist m_zobrist;
 };
 
 }  // namespace lilia::model

@@ -110,6 +110,7 @@ class GameController {
   [[nodiscard]] std::vector<core::Square> getAttackSquares(core::Square pieceSQ) const;
   void showAttacks(std::vector<core::Square> att);
   [[nodiscard]] bool tryMove(core::Square a, core::Square b);
+  [[nodiscard]] bool isPromotion(core::Square a, core::Square b);
   [[nodiscard]] bool isSameColor(core::Square a, core::Square b);
 
   // ---------------- Members ----------------
@@ -117,6 +118,9 @@ class GameController {
   model::ChessGame& m_chess_game;             ///< Game model containing rules and state.
   InputManager m_inputManager;                ///< Handles raw input processing.
   view::sound::SoundManager m_sound_manager;  ///< Handles sfx and music
+
+  core::Color m_player_color = core::Color::White;
+  core::PieceType m_promo_type = core::PieceType::None;
 
   core::Square m_selected_sq = core::NO_SQUARE;  ///< Currently selected square.
   core::Square m_hover_sq = core::NO_SQUARE;     ///< Currently hovered square.

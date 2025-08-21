@@ -16,6 +16,7 @@ const std::string START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQk
 
 const std::string STR_TEXTURE_WHITE = "white";
 const std::string STR_TEXTURE_BLACK = "black";
+const std::string STR_TEXTURE_PROMOTION = "promotion";
 
 const std::string STR_TEXTURE_TRANSPARENT = "transparent";
 const std::string STR_TEXTURE_SELECTHLIGHT = "selectHighlight";
@@ -23,6 +24,7 @@ const std::string STR_TEXTURE_ATTACKHLIGHT = "attackHighlight";
 const std::string STR_TEXTURE_HOVERHLIGHT = "hoverHighlight";
 
 const std::string ASSET_PIECES_FILE_PATH = "assets/textures";
+constexpr float ASSET_PIECE_SCALE = 1.5f;
 
 const std::string ASSET_SFX_FILE_PATH = "assets/audio/sfx";
 const std::string SFX_PLAYER_MOVE_NAME = "player_move";
@@ -33,4 +35,4 @@ const std::string SFX_CHECK_NAME = "check";
 const std::string SFX_GAME_BEGINS_NAME = "game_begins";
 const std::string SFX_GAME_ENDS_NAME = "game_ends";
 
-}  // namespace lilia::view::c
+}  // namespace lilia::view::constant
