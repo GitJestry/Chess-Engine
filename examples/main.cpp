@@ -107,7 +107,7 @@ int main() {
       "Lilia", sf::Style::Titlebar | sf::Style::Close);
 
   lilia::model::ChessGame chessgame;
-  lilia::view::GameView view(window, chessgame);
+  lilia::view::GameView view(window);
   lilia::controller::GameController gController(view, chessgame);
 
   sf::Clock clock;

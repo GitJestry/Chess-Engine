@@ -23,7 +23,7 @@ class PieceManager {
   [[nodiscard]] Entity::ID_type getPieceID(core::Square pos) const;
   [[nodiscard]] bool isSameColor(core::Square sq1, core::Square sq2) const;
 
-  void movePiece(core::Square from, core::Square to);
+  void movePiece(core::Square from, core::Square to, core::PieceType promotion);
   void removePiece(core::Square pos);
   void removeAll();
 
@@ -36,6 +36,7 @@ class PieceManager {
   void renderPiece(core::Square pos, sf::RenderWindow& window);
 
  private:
+  Entity::Position createPiecePositon(core::Square pos);
   void addPiece(core::PieceType type, core::Color color, core::Square pos);
 
   const BoardView& m_board_view_ref;

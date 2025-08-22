@@ -13,6 +13,7 @@ class HighlightManager {
 
   void highlightSquare(core::Square pos);
   void highlightAttackSquare(core::Square pos);
+  void highlightCaptureSquare(core::Square pos);
   void highlightHoverSquare(core::Square pos);
   void clearAllHighlights();
   void clearHighlightSquare(core::Square pos);

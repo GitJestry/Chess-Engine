@@ -4,11 +4,11 @@
 #include <string>
 
 #include "../controller_view_type_bridge.hpp"
-#include "../model/chess_game.hpp"
 #include "animation/chess_animator.hpp"
 #include "board_view.hpp"
 #include "highlight_manager.hpp"
 #include "piece_manager.hpp"
+#include "promotion_manager.hpp"
 
 namespace lilia::view {
 
@@ -24,7 +24,7 @@ namespace lilia::view {
  */
 class GameView {
  public:
-  GameView(sf::RenderWindow& window, model::ChessGame& game);
+  GameView(sf::RenderWindow& window);
   ~GameView() = default;
 
   /// Initialise the board + pieces according to given FEN
@@ -49,6 +49,7 @@ class GameView {
 
   void highlightSquare(core::Square pos);
   void highlightAttackSquare(core::Square pos);
+  void highlightCaptureSquare(core::Square pos);
   void highlightHoverSquare(core::Square pos);
   void clearHighlightSquare(core::Square pos);
   void clearHighlightHoverSquare(core::Square pos);
@@ -56,24 +57,27 @@ class GameView {
 
   void animationSnapAndReturn(core::Square sq, core::MousePos mousePos);
   void animationMovePiece(core::Square from, core::Square to,
-                          core::Square enPSquare = core::NO_SQUARE);
+                          core::Square enPSquare = core::NO_SQUARE,
+                          core::PieceType promotion = core::PieceType::None);
   void animationDropPiece(core::Square from, core::Square to,
-                          core::Square enPSquare = core::NO_SQUARE);
-  void playPromotionSelectAnim(core::Square promSq, core::PieceType& prTypeRef, core::Color c);
+                          core::Square enPSquare = core::NO_SQUARE,
+                          core::PieceType promotion = core::PieceType::None);
+  void playPromotionSelectAnim(core::Square promSq, core::Color c);
   void playPiecePlaceHolderAnimation(core::Square sq);
   void endAnimation(core::Square sq);
 
-  void updateTurnIndicator(core::Color activeColor);
-  void showMessage(const std::string& message);
+  bool isInPromotionSelection();
+  core::PieceType getSelectedPromotion(core::MousePos mousePos);
+  void removePromotionSelection();
 
  private:
   sf::RenderWindow& m_window;
-  model::ChessGame& m_game;
 
   BoardView m_board_view;
   PieceManager m_piece_manager;
   HighlightManager m_highlight_manager;
   animation::ChessAnimator m_chess_animator;
+  PromotionManager m_promotion_manager;
 };
 
 }  // namespace lilia::view

@@ -2,7 +2,6 @@
 
 // Standard library
 #include <utility>
-#include <vector>
 
 // External libraries
 #include <SFML/Window/Event.hpp>
@@ -92,7 +91,8 @@ class GameController {
    * @param to Destination square.
    * @param onClick If true, triggered directly by user input.
    */
-  void movePieceAndClear(core::Square from, core::Square to, bool onClick);
+  void movePieceAndClear(core::Square from, core::Square to, bool onClick,
+                         core::PieceType promotion = core::PieceType::None);
 
   /**
    * @brief Visually snap a piece to the mouse and return it.
@@ -120,7 +120,7 @@ class GameController {
   view::sound::SoundManager m_sound_manager;  ///< Handles sfx and music
 
   core::Color m_player_color = core::Color::White;
-  core::PieceType m_promo_type = core::PieceType::None;
+  core::Square m_promotion_square = core::NO_SQUARE;
 
   core::Square m_selected_sq = core::NO_SQUARE;  ///< Currently selected square.
   core::Square m_hover_sq = core::NO_SQUARE;     ///< Currently hovered square.

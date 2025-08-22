@@ -40,6 +40,11 @@ void HighlightManager::highlightAttackSquare(core::Square pos) {
   Entity newAttackHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_ATTACKHLIGHT));
   m_hl_attack_squares[pos] = std::move(newAttackHlight);
 }
+void HighlightManager::highlightCaptureSquare(core::Square pos) {
+  Entity newCaptureHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_CAPTUREHLIGHT));
+  m_hl_attack_squares[pos] = std::move(newCaptureHlight);
+}
+
 void HighlightManager::highlightHoverSquare(core::Square pos) {
   Entity newHoverHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_HOVERHLIGHT));
   m_hl_hover_squares[pos] = std::move(newHoverHlight);

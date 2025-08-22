@@ -146,9 +146,9 @@ bb::Piece ChessGame::getPiece(core::Square sq) {
   return none;
 }
 
-void ChessGame::doMove(core::Square from, core::Square to) {
+void ChessGame::doMove(core::Square from, core::Square to, core::PieceType promotion) {
   for (auto m : m_legal_moves[bb::ci(m_position.state().sideToMove)])
-    if (m.from == from && m.to == to) m_position.doMove(m);
+    if (m.from == from && m.to == to && m.promotion == promotion) m_position.doMove(m);
 }
 
 bool ChessGame::isKingInCheck(core::Color from) const {

@@ -6,7 +6,10 @@ constexpr unsigned int BOARD_SIZE = 8;
 constexpr unsigned int WINDOW_PX_SIZE = 800;
 constexpr unsigned int SQUARE_PX_SIZE = WINDOW_PX_SIZE / BOARD_SIZE;
 constexpr unsigned int ATTACK_DOT_PX_SIZE =
-    static_cast<unsigned int>(static_cast<float>(SQUARE_PX_SIZE) * 0.25f + 0.5f);
+    static_cast<unsigned int>(static_cast<float>(SQUARE_PX_SIZE) * 0.45f + 0.5f);
+constexpr unsigned int CAPTURE_CIRCLE_PX_SIZE =
+    static_cast<unsigned int>(static_cast<float>(SQUARE_PX_SIZE) * 1.02f + 0.5f);
+
 constexpr unsigned int HOVER_PX_SIZE = SQUARE_PX_SIZE;
 
 constexpr float ANIM_SNAP_SPEED = .1f;
@@ -16,15 +19,18 @@ const std::string START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQk
 
 const std::string STR_TEXTURE_WHITE = "white";
 const std::string STR_TEXTURE_BLACK = "black";
+
 const std::string STR_TEXTURE_PROMOTION = "promotion";
+const std::string STR_TEXTURE_PROMOTION_SHADOW = "promotionShadow";
 
 const std::string STR_TEXTURE_TRANSPARENT = "transparent";
 const std::string STR_TEXTURE_SELECTHLIGHT = "selectHighlight";
 const std::string STR_TEXTURE_ATTACKHLIGHT = "attackHighlight";
+const std::string STR_TEXTURE_CAPTUREHLIGHT = "captureHighlight";
 const std::string STR_TEXTURE_HOVERHLIGHT = "hoverHighlight";
 
 const std::string ASSET_PIECES_FILE_PATH = "assets/textures";
-constexpr float ASSET_PIECE_SCALE = 1.5f;
+constexpr float ASSET_PIECE_SCALE = 1.6f;
 
 const std::string ASSET_SFX_FILE_PATH = "assets/audio/sfx";
 const std::string SFX_PLAYER_MOVE_NAME = "player_move";

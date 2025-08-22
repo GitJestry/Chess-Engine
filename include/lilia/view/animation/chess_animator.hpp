@@ -5,6 +5,10 @@
 #include "../piece_manager.hpp"
 #include "animation_manager.hpp"
 
+namespace lilia::view {
+class PromotionManager;
+}
+
 namespace lilia::view::animation {
 
 class ChessAnimator {
@@ -12,10 +16,10 @@ class ChessAnimator {
   ChessAnimator(const BoardView& boardRef, PieceManager& pieceMgrRef);
 
   void snapAndReturn(core::Square pieceSq, core::MousePos mousePos);
-  void movePiece(core::Square from, core::Square to);
-  void dropPiece(core::Square from, core::Square to);
+  void movePiece(core::Square from, core::Square to, core::PieceType promotion);
+  void dropPiece(core::Square from, core::Square to, core::PieceType promotion);
   void piecePlaceHolder(core::Square sq);
-  void promotionSelect(core::Square prPos, core::PieceType& prTypeRef, core::Color c);
+  void promotionSelect(core::Square prPos, PromotionManager& prOptRef, core::Color c);
   void end(core::Square sq);
 
   [[nodiscard]] bool isAnimating(Entity::ID_type entityID) const;

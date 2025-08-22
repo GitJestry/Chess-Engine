@@ -1,5 +1,6 @@
 #include "lilia/view/piece_manager.hpp"
 
+#include <iostream>
 #include <string>
 
 #include "lilia/view/animation/chess_animator.hpp"
@@ -63,6 +64,11 @@ void PieceManager::initFromFen(const std::string& fen) {
   return (m_pieces.find(sq1)->second.getColor() == m_pieces.find(sq2)->second.getColor());
 }
 
+Entity::Position PieceManager::createPiecePositon(core::Square pos) {
+  return m_board_view_ref.getSquareScreenPos(pos) +
+         Entity::Position{0.f, constant::SQUARE_PX_SIZE * 0.02f};
+}
+
 void PieceManager::addPiece(core::PieceType type, core::Color color, core::Square pos) {
   std::uint8_t numTypes = 6;
   std::string filename = constant::ASSET_PIECES_FILE_PATH + "/piece_" +
@@ -75,14 +81,19 @@ void PieceManager::addPiece(core::PieceType type, core::Color color, core::Squar
   Piece newpiece(color, type, texture);
   newpiece.setScale(constant::ASSET_PIECE_SCALE, constant::ASSET_PIECE_SCALE);
   m_pieces[pos] = std::move(newpiece);
-  m_pieces[pos].setPosition(m_board_view_ref.getSquareScreenPos(pos));
+  m_pieces[pos].setPosition(createPiecePositon(pos));
 }
 
-void PieceManager::movePiece(core::Square from, core::Square to) {
+void PieceManager::movePiece(core::Square from, core::Square to, core::PieceType promotion) {
   Piece movingPiece = std::move(m_pieces[from]);
-  m_pieces.erase(from);
+  removePiece(from);
   removePiece(to);
-  m_pieces[to] = std::move(movingPiece);
+
+  if (promotion != core::PieceType::None) {
+    addPiece(promotion, movingPiece.getColor(), to);
+  } else {
+    m_pieces[to] = std::move(movingPiece);
+  }
 }
 void PieceManager::removePiece(core::Square pos) {
   m_pieces.erase(pos);
@@ -101,7 +112,7 @@ void PieceManager::removeAll() {
 }
 
 void PieceManager::setPieceToSquareScreenPos(core::Square from, core::Square to) {
-  m_pieces[from].setPosition(m_board_view_ref.getSquareScreenPos(to));
+  m_pieces[from].setPosition(createPiecePositon(to));
 }
 
 void PieceManager::setPieceToScreenPos(core::Square pos, core::MousePos mousePos) {
@@ -117,7 +128,7 @@ void PieceManager::renderPieces(sf::RenderWindow& window,
     const auto& pos = pair.first;
     auto& piece = pair.second;
     if (!chessAnimRef.isAnimating(piece.getId())) {
-      piece.setPosition(m_board_view_ref.getSquareScreenPos(pos));
+      piece.setPosition(createPiecePositon(pos));
       piece.draw(window);
     }
   }

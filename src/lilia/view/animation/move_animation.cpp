@@ -1,10 +1,17 @@
 #include "lilia/view/animation/move_animation.hpp"
 
+#include <iostream>
+
 namespace lilia::view::animation {
 
 MoveAnim::MoveAnim(PieceManager& pieceMgrRef, Entity::Position s, Entity::Position e,
-                   core::Square from, core::Square to)
-    : m_piece_manager_ref(pieceMgrRef), m_startPos(s), m_endPos(e), m_from(from), m_to(to) {}
+                   core::Square from, core::Square to, core::PieceType promotion)
+    : m_piece_manager_ref(pieceMgrRef),
+      m_startPos(s),
+      m_endPos(e),
+      m_from(from),
+      m_to(to),
+      m_promotion(promotion) {}
 
 void MoveAnim::update(float dt) {
   m_elapsed += dt;
@@ -14,7 +21,7 @@ void MoveAnim::update(float dt) {
 
   if (t >= 1.f) {
     m_finish = true;
-    m_piece_manager_ref.movePiece(m_from, m_to);
+    m_piece_manager_ref.movePiece(m_from, m_to, m_promotion);
   }
 }
 

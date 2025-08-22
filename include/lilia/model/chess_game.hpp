@@ -14,7 +14,8 @@ class ChessGame {
   ChessGame() = default;
 
   void setPosition(const std::string& fen);
-  void doMove(core::Square from, core::Square to);
+  void doMove(core::Square from, core::Square to,
+              core::PieceType promotion = core::PieceType::None);
   bb::Piece getPiece(core::Square sq);
   const GameState& getGameState();
   const std::vector<Move>& generateLegalMoves();

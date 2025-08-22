@@ -21,20 +21,20 @@ void ChessAnimator::snapAndReturn(core::Square pieceSq, core::MousePos mousePos)
       std::make_unique<SnapToSquareAnim>(m_piece_manager_ref, pieceSq, mouseToEntityPos(mousePos),
                                          m_board_view_ref.getSquareScreenPos(pieceSq)));
 }
-void ChessAnimator::movePiece(core::Square from, core::Square to) {
+void ChessAnimator::movePiece(core::Square from, core::Square to, core::PieceType promotion) {
   m_anim_manager.add(
       m_piece_manager_ref.getPieceID(from),
       std::make_unique<MoveAnim>(m_piece_manager_ref, m_board_view_ref.getSquareScreenPos(from),
-                                 m_board_view_ref.getSquareScreenPos(to), from, to));
+                                 m_board_view_ref.getSquareScreenPos(to), from, to, promotion));
 }
-void ChessAnimator::dropPiece(core::Square from, core::Square to) {
-  m_piece_manager_ref.movePiece(from, to);
+void ChessAnimator::dropPiece(core::Square from, core::Square to, core::PieceType promotion) {
+  m_piece_manager_ref.movePiece(from, to, promotion);
 }
 
-void ChessAnimator::promotionSelect(core::Square prPos, core::PieceType& prTypeRef, core::Color c) {
+void ChessAnimator::promotionSelect(core::Square prPos, PromotionManager& prOptRef, core::Color c) {
   m_anim_manager.add(m_piece_manager_ref.getPieceID(core::NO_SQUARE),
                      std::make_unique<PromotionSelectAnim>(
-                         m_board_view_ref.getSquareScreenPos(prPos), prTypeRef, c));
+                         m_board_view_ref.getSquareScreenPos(prPos), prOptRef, c));
 }
 
 void ChessAnimator::piecePlaceHolder(core::Square sq) {

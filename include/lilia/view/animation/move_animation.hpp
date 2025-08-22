@@ -9,7 +9,8 @@ namespace lilia::view::animation {
 class MoveAnim : public IAnimation {
  public:
   explicit MoveAnim(PieceManager& pieceMgrRef, Entity::Position s, Entity::Position e,
-                    core::Square from = core::NO_SQUARE, core::Square to = core::NO_SQUARE);
+                    core::Square from = core::NO_SQUARE, core::Square to = core::NO_SQUARE,
+                    core::PieceType promotion = core::PieceType::None);
   void update(float dt) override;
   void draw(sf::RenderWindow& window) override;
   [[nodiscard]] inline bool isFinished() const override;
@@ -23,6 +24,7 @@ class MoveAnim : public IAnimation {
   bool m_finish = false;
   core::Square m_from;
   core::Square m_to;
+  core::PieceType m_promotion;
 };
 
-}  // namespace lilia
+}  // namespace lilia::view::animation

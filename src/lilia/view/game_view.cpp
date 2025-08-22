@@ -2,9 +2,8 @@
 
 namespace lilia::view {
 
-GameView::GameView(sf::RenderWindow& window, model::ChessGame& game)
+GameView::GameView(sf::RenderWindow& window)
     : m_window(window),
-      m_game(game),
       m_board_view(),
       m_piece_manager(m_board_view),
       m_highlight_manager(m_board_view),
@@ -37,13 +36,15 @@ void GameView::animationSnapAndReturn(core::Square sq, core::MousePos mousePos) 
   m_chess_animator.snapAndReturn(sq, mousePos);
 }
 
-void GameView::animationMovePiece(core::Square from, core::Square to, core::Square enPSquare) {
-  m_chess_animator.movePiece(from, to);
+void GameView::animationMovePiece(core::Square from, core::Square to, core::Square enPSquare,
+                                  core::PieceType promotion) {
+  m_chess_animator.movePiece(from, to, promotion);
   if (enPSquare != core::NO_SQUARE) m_piece_manager.removePiece(enPSquare);
 }
 
-void GameView::animationDropPiece(core::Square from, core::Square to, core::Square enPSquare) {
-  m_chess_animator.dropPiece(from, to);
+void GameView::animationDropPiece(core::Square from, core::Square to, core::Square enPSquare,
+                                  core::PieceType promotion) {
+  m_chess_animator.dropPiece(from, to, promotion);
   if (enPSquare != core::NO_SQUARE) m_piece_manager.removePiece(enPSquare);
 }
 
@@ -51,9 +52,8 @@ void GameView::playPiecePlaceHolderAnimation(core::Square sq) {
   m_chess_animator.piecePlaceHolder(sq);
 }
 
-void GameView::playPromotionSelectAnim(core::Square promSq, core::PieceType& prTypeRef,
-                                       core::Color c) {
-  m_chess_animator.promotionSelect(promSq, prTypeRef, c);
+void GameView::playPromotionSelectAnim(core::Square promSq, core::Color c) {
+  m_chess_animator.promotionSelect(promSq, m_promotion_manager, c);
 }
 
 void GameView::endAnimation(core::Square sq) {
@@ -77,6 +77,9 @@ void GameView::highlightHoverSquare(core::Square pos) {
 void GameView::highlightAttackSquare(core::Square pos) {
   m_highlight_manager.highlightAttackSquare(pos);
 }
+void GameView::highlightCaptureSquare(core::Square pos) {
+  m_highlight_manager.highlightCaptureSquare(pos);
+}
 
 void GameView::clearHighlightSquare(core::Square pos) {
   m_highlight_manager.clearHighlightSquare(pos);
@@ -90,9 +93,17 @@ void GameView::clearAllHighlights() {
   m_highlight_manager.clearAllHighlights();
 }
 
-void GameView::updateTurnIndicator(core::Color activeColor) {}
+bool GameView::isInPromotionSelection() {
+  return m_promotion_manager.hasOptions();
+}
 
-void GameView::showMessage(const std::string& message) {}
+core::PieceType GameView::getSelectedPromotion(core::MousePos mousePos) {
+  return m_promotion_manager.clickedOnType(static_cast<Entity::Position>(mousePos));
+}
+
+void GameView::removePromotionSelection() {
+  m_promotion_manager.removeOptions();
+}
 
 [[nodiscard]] core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
   int file = mousePos.x / constant::SQUARE_PX_SIZE;      // 0 = A, 7 = H
