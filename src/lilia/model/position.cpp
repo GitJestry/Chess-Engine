@@ -4,6 +4,45 @@
 
 namespace lilia::model {
 
+bool Position::checkInsufficientMaterial() {
+  bb::Bitboard occ = 0;
+  for (auto i : {core::PieceType::Pawn, core::PieceType::Queen, core::PieceType::Rook}) {
+    occ |= m_board.pieces(core::Color::White, i);
+    occ |= m_board.pieces(core::Color::Black, i);
+  }
+
+  if (bb::popcount(occ) == 0) {
+    bb::Bitboard whiteB = m_board.pieces(core::Color::White, core::PieceType::Bishop);
+    bb::Bitboard blackB = m_board.pieces(core::Color::Black, core::PieceType::Bishop);
+    bb::Bitboard whiteN = m_board.pieces(core::Color::White, core::PieceType::Knight);
+    bb::Bitboard blackN = m_board.pieces(core::Color::Black, core::PieceType::Knight);
+
+    int totalB = bb::popcount(whiteB) + bb::popcount(blackB);
+    int totalN = bb::popcount(whiteN) + bb::popcount(blackN);
+
+    if ((totalB == 0 && totalN <= 1) ||  // nur König oder König + Springer
+        (totalB == 1 && totalN == 0) ||  // König + Läufer vs König
+        (totalB == 0 && totalN == 0)) {  // nur Könige
+      return true;
+    }
+  }
+  return false;
+}
+bool Position::checkMoveRule() {
+  return (m_state.halfmoveClock >= 100);
+}
+bool Position::checkRepitition() {
+  int limit = std::min<int>(m_state.halfmoveClock, m_history.size());
+
+  // Nur jede zweite Stellung (weil Zugrecht wechseln muss)
+  for (int i = 2; i <= limit; i += 2) {
+    if (m_history[m_history.size() - i].zobristKey == m_hash) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool Position::isSquareAttacked(core::Square sq, core::Color by) const {
   bb::Bitboard occ = m_board.allPieces();
 
@@ -51,6 +90,7 @@ bool Position::isSquareAttacked(core::Square sq, core::Color by) const {
 bool Position::doMove(const Move& m) {
   StateInfo st{};
   st.move = m;
+  st.zobristKey = m_hash;  // aktuellen Hash merken
   st.prevCastlingRights = m_state.castlingRights;
   st.prevEnPassantSquare = m_state.enPassantSquare;
   st.prevHalfmoveClock = m_state.halfmoveClock;
@@ -74,8 +114,9 @@ bool Position::doMove(const Move& m) {
 void Position::undoMove() {
   if (m_history.empty()) return;
   StateInfo st = m_history.back();
-  m_history.pop_back();
   unapplyMove(st);
+  m_hash = st.zobristKey;  // Hash zurücksetzen
+  m_history.pop_back();
 }
 
 // Helpers

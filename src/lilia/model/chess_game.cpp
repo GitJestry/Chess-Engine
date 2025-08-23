@@ -102,6 +102,10 @@ void ChessGame::setPosition(const std::string& fen) {
   m_position.buildHash();
 }
 
+void ChessGame::buildHash() {
+  m_position.buildHash();
+}
+
 std::vector<Move> ChessGame::generateLegalMoves() {
   int side = bb::ci(m_position.state().sideToMove);
   auto pseudo =
@@ -120,16 +124,15 @@ const GameState& ChessGame::getGameState() {
   return m_position.state();
 }
 
-core::Square ChessGame::getRookSquareFromCastleside(CastleSide castleSide) {
-  core::Color color = m_position.state().sideToMove;
+core::Square ChessGame::getRookSquareFromCastleside(CastleSide castleSide, core::Color side) {
   if (castleSide == CastleSide::KingSide) {
-    if (color == core::Color::White)
+    if (side == core::Color::White)
       return static_cast<core::Square>(7);
     else
       return static_cast<core::Square>(63);
 
   } else if (castleSide == CastleSide::QueenSide) {
-    if (color == core::Color::White)
+    if (side == core::Color::White)
       return static_cast<core::Square>(0);
     else
       return static_cast<core::Square>(56);
@@ -150,7 +153,9 @@ void ChessGame::checkGameResult() {
     else
       m_result = core::GameResult::STALEMATE;
   }
-  if (m_position.state().halfmoveClock >= 100) m_result = core::GameResult::MOVERULE;
+  if (m_position.checkInsufficientMaterial()) m_result = core::GameResult::INSUFFICIENT;
+  if (m_position.checkMoveRule()) m_result = core::GameResult::MOVERULE;
+  if (m_position.checkRepitition()) m_result = core::GameResult::REPETITION;
 }
 
 core::GameResult ChessGame::getResult() {
@@ -172,5 +177,9 @@ bool ChessGame::isKingInCheck(core::Color from) const {
   bb::Bitboard kbb = m_position.board().pieces(from, core::PieceType::King);
   core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
   return m_position.isSquareAttacked(ksq, ~from);
+}
+
+Position& ChessGame::getPositionRefForBot() {
+  return m_position;
 }
 }  // namespace lilia::model

@@ -21,7 +21,7 @@ struct StateInfo {
   std::uint8_t prevCastlingRights{};
   core::Square prevEnPassantSquare{core::NO_SQUARE};
   int prevHalfmoveClock{};
-  // You can add Zobrist later.
+  bb::Bitboard zobristKey{};
 };
 
 }  // namespace lilia::model

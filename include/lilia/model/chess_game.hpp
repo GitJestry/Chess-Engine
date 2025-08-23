@@ -15,6 +15,7 @@ class ChessGame {
   ChessGame() = default;
 
   void setPosition(const std::string& fen);
+  void buildHash();
   void doMove(core::Square from, core::Square to,
               core::PieceType promotion = core::PieceType::None);
   bb::Piece getPiece(core::Square sq);
@@ -22,9 +23,10 @@ class ChessGame {
   std::vector<Move> generateLegalMoves();
   const Move& getMove(core::Square from, core::Square to);
   bool isKingInCheck(core::Color from) const;
-  core::Square getRookSquareFromCastleside(CastleSide castleSide);
+  core::Square getRookSquareFromCastleside(CastleSide castleSide, core::Color side);
   core::Square getKingSquare(core::Color color);
   core::GameResult getResult();
+  Position& getPositionRefForBot();
 
   void checkGameResult();
 

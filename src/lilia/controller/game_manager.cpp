@@ -14,6 +14,7 @@ void GameManager::startGame(core::Color playerColor, const std::string& fen, boo
   std::lock_guard lock(m_mutex);
   m_playerColor = playerColor;
   m_game.setPosition(fen);
+  m_game.buildHash();
   m_cancelBot.store(false);
   m_waitingPromotion = false;
 
@@ -21,10 +22,10 @@ void GameManager::startGame(core::Color playerColor, const std::string& fen, boo
   if (vsBot) {
     if (playerColor == core::Color::White) {
       m_whitePlayer.reset();  // human
-      m_blackPlayer = std::make_unique<BotPlayer>(300);
+      m_blackPlayer = std::make_unique<BotPlayer>(5000);
     } else {
       m_blackPlayer.reset();
-      m_whitePlayer = std::make_unique<BotPlayer>(300);
+      m_whitePlayer = std::make_unique<BotPlayer>(5000);
     }
   } else {
     m_whitePlayer.reset();

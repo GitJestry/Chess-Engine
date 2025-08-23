@@ -93,9 +93,12 @@ void GameController::movePieceAndClear(const model::Move& move, bool isPlayerMov
   core::Square from = move.from;
   core::Square to = move.to;
 
+  core::Color sideToTurnBeforeMove = ~m_chess_game.getGameState().sideToMove;
+  core::Color sideToTurnAfterMove = m_chess_game.getGameState().sideToMove;
+
   core::Square dEnPassantSquare = core::NO_SQUARE;
   if (move.isEnPassant) {
-    if (m_chess_game.getGameState().sideToMove == core::Color::White)
+    if (sideToTurnBeforeMove == core::Color::White)
       dEnPassantSquare = to - 8;
     else
       dEnPassantSquare = to + 8;
@@ -109,7 +112,8 @@ void GameController::movePieceAndClear(const model::Move& move, bool isPlayerMov
 
   // castling rook animation (falls relevant)
   if (move.castle != model::CastleSide::None) {
-    core::Square rookSquare = m_chess_game.getRookSquareFromCastleside(move.castle);
+    core::Square rookSquare =
+        m_chess_game.getRookSquareFromCastleside(move.castle, sideToTurnBeforeMove);
     core::Square newRookSquare;
     if (move.castle == model::CastleSide::KingSide)
       newRookSquare = to - 1;
@@ -124,7 +128,7 @@ void GameController::movePieceAndClear(const model::Move& move, bool isPlayerMov
   highlightLastMove();
 
   // Sound check: Model wurde bereits aktualisiert -> wir können aktuelle Checks abfragen
-  if (m_chess_game.isKingInCheck(m_chess_game.getGameState().sideToMove)) {
+  if (m_chess_game.isKingInCheck(sideToTurnAfterMove)) {
     m_sound_manager.playCheck();
   } else {
     if (move.promotion != core::PieceType::None) {

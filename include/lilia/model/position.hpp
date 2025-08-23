@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "../constants.hpp"
 #include "board.hpp"
 #include "core/bitboard.hpp"
 #include "game_state.hpp"
@@ -28,6 +29,9 @@ class Position {
 
   // Attack detection
   bool isSquareAttacked(core::Square sq, core::Color by) const;
+  bool checkInsufficientMaterial();
+  bool checkMoveRule();
+  bool checkRepitition();
 
  private:
   Board m_board;
