@@ -36,8 +36,9 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
 
     bb::Bitboard dbl = bb::north(single) & ~occ & (bb::RANK_2 << 16);
 
-    bb::Bitboard leftCap = bb::nw(pawns) & them;
-    bb::Bitboard rightCap = bb::ne(pawns) & them;
+    // für normale (non-promotion) captures die letzte Reihe ausschließen
+    bb::Bitboard leftCap = (bb::nw(pawns) & them) & ~bb::RANK_8;
+    bb::Bitboard rightCap = (bb::ne(pawns) & them) & ~bb::RANK_8;
 
     // Quiet
     bb::Bitboard q = quietPush;
@@ -53,7 +54,7 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
       core::Square from = to - 16;
       out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
     }
-    // Captures
+    // Captures (non-promotion)
     bb::Bitboard lc = leftCap;
     while (lc) {
       core::Square to = bb::pop_lsb(lc);
@@ -66,7 +67,7 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
       core::Square from = to - 9;
       out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
     }
-    // Promotions
+    // Promotions (pushes)
     bb::Bitboard pp = promoPush;
     while (pp) {
       core::Square to = bb::pop_lsb(pp);
@@ -75,7 +76,7 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
                                  core::PieceType::Bishop, core::PieceType::Knight})
         out.push_back({from, to, pt, false, false, CastleSide::None});
     }
-    // Promotion captures
+    // Promotion captures (links/rechts)
     bb::Bitboard lp = (bb::nw(pawns) & them) & bb::RANK_8;
     while (lp) {
       core::Square to = bb::pop_lsb(lp);
@@ -116,8 +117,9 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
 
     bb::Bitboard dbl = bb::south(single) & ~occ & (bb::RANK_7 >> 16);
 
-    bb::Bitboard leftCap = bb::se(pawns) & them;
-    bb::Bitboard rightCap = bb::sw(pawns) & them;
+    // normale non-promotion-captures: letztes Rank ausschließen
+    bb::Bitboard leftCap = (bb::se(pawns) & them) & ~bb::RANK_1;
+    bb::Bitboard rightCap = (bb::sw(pawns) & them) & ~bb::RANK_1;
 
     bb::Bitboard q = quietPush;
     while (q) {
@@ -144,6 +146,7 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
       out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
     }
 
+    // Promotions (pushes)
     bb::Bitboard pp = promoPush;
     while (pp) {
       core::Square to = bb::pop_lsb(pp);
@@ -152,6 +155,7 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
                                  core::PieceType::Bishop, core::PieceType::Knight})
         out.push_back({from, to, pt, false, false, CastleSide::None});
     }
+    // Promotion captures (se/sw into rank 1)
     bb::Bitboard lp = (bb::se(pawns) & them) & bb::RANK_1;
     while (lp) {
       core::Square to = bb::pop_lsb(lp);

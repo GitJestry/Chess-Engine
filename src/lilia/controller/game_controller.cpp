@@ -16,13 +16,39 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
 
   m_inputManager.setOnDrop(
       [this](core::MousePos start, core::MousePos end) { this->onDrop(start, end); });
-  gView.init();
-  game.setPosition(view::constant::START_FEN);
+
   m_sound_manager.loadSounds();
+  // ------- GameManager initialisieren -------
+  m_gameManager = std::make_unique<GameManager>(game);
+
+  // Callback: wenn GameManager einen Move ausgeführt hat -> Animation & Sound
+  m_gameManager->setOnMoveExecuted([this](const model::Move& mv, bool isPlayerMove, bool onClick) {
+    // GameManager hat das Model bereits aktualisiert -> wir animieren & spielen Sound
+    this->movePieceAndClear(mv, isPlayerMove, onClick);
+    this->m_chess_game.checkGameResult();
+  });
+
+  // Callback: Promotion UI anstoßen
+  m_gameManager->setOnPromotionRequested([this](core::Square sq) {
+    this->m_gameView.playPromotionSelectAnim(sq, m_chess_game.getGameState().sideToMove);
+  });
+
+  // Callback: Spielende
+  m_gameManager->setOnGameEnd([this](core::GameResult res) {
+    // Annahme: GameView hat eine passende Anzeige-Methode (ansonsten anpassen).
+    this->m_gameView.showGameOver(res);
+    this->m_sound_manager.playGameEnds();
+  });
+}
+
+void GameController::startGame(core::Color playerColor, const std::string& fen, bool vsBot) {
+  m_sound_manager.playGameBegins();
+  m_gameView.init(fen);
+  m_gameManager->startGame(playerColor, fen, vsBot);
 }
 
 void GameController::handleEvent(const sf::Event& event) {
-  m_inputManager.processEvent(event);
+  if (m_chess_game.getResult() == core::GameResult::ONGOING) m_inputManager.processEvent(event);
 }
 
 void GameController::render() {
@@ -30,7 +56,10 @@ void GameController::render() {
 }
 
 void GameController::update(float dt) {
-  m_gameView.update(dt);
+  if (m_chess_game.getResult() == core::GameResult::ONGOING) {
+    m_gameView.update(dt);
+    if (m_gameManager) m_gameManager->update(dt);  // Poll bot futures & lifecycle
+  }
 }
 
 void GameController::highlightLastMove() {
@@ -60,13 +89,11 @@ void GameController::dehoverSquare() {
   m_hover_sq = core::NO_SQUARE;
 }
 
-void GameController::movePieceAndClear(core::Square from, core::Square to, bool onClick,
-                                       core::PieceType promotion) {
-  const model::Move& move = m_chess_game.getMove(from, to);
-  bool isPlayerMove = (m_chess_game.getGameState().sideToMove == m_player_color);
-  core::Square dEnPassantSquare = core::NO_SQUARE;
+void GameController::movePieceAndClear(const model::Move& move, bool isPlayerMove, bool onClick) {
+  core::Square from = move.from;
+  core::Square to = move.to;
 
-  // enpassant
+  core::Square dEnPassantSquare = core::NO_SQUARE;
   if (move.isEnPassant) {
     if (m_chess_game.getGameState().sideToMove == core::Color::White)
       dEnPassantSquare = to - 8;
@@ -76,11 +103,11 @@ void GameController::movePieceAndClear(core::Square from, core::Square to, bool 
 
   // move animation
   if (onClick)
-    m_gameView.animationMovePiece(from, to, dEnPassantSquare, promotion);
+    m_gameView.animationMovePiece(from, to, dEnPassantSquare, move.promotion);
   else
-    m_gameView.animationDropPiece(from, to, dEnPassantSquare, promotion);
+    m_gameView.animationDropPiece(from, to, dEnPassantSquare, move.promotion);
 
-  // castling
+  // castling rook animation (falls relevant)
   if (move.castle != model::CastleSide::None) {
     core::Square rookSquare = m_chess_game.getRookSquareFromCastleside(move.castle);
     core::Square newRookSquare;
@@ -95,14 +122,14 @@ void GameController::movePieceAndClear(core::Square from, core::Square to, bool 
   m_lastMoveSquares = {from, to};
   deselectSquare();
   highlightLastMove();
-  // intern game
-  m_chess_game.doMove(from, to, promotion);
 
-  // Sound check
+  // Sound check: Model wurde bereits aktualisiert -> wir können aktuelle Checks abfragen
   if (m_chess_game.isKingInCheck(m_chess_game.getGameState().sideToMove)) {
     m_sound_manager.playCheck();
   } else {
-    if (move.isCapture) {
+    if (move.promotion != core::PieceType::None) {
+      m_sound_manager.playPromotion();
+    } else if (move.isCapture) {
       m_sound_manager.playCapture();
     } else if (move.castle == model::CastleSide::None) {
       if (isPlayerMove)
@@ -129,8 +156,7 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 }
 
 [[nodiscard]] bool GameController::isPromotion(core::Square a, core::Square b) {
-  const std::vector<model::Move>& moves = m_chess_game.generateLegalMoves();
-  for (auto m : moves) {
+  for (auto m : m_chess_game.generateLegalMoves()) {
     if (m.from == a && m.to == b && m.promotion != core::PieceType::None) return true;
   }
   return false;
@@ -142,8 +168,7 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 [[nodiscard]] std::vector<core::Square> GameController::getAttackSquares(
     core::Square pieceSQ) const {
   std::vector<core::Square> att;
-  const std::vector<model::Move>& moves = m_chess_game.generateLegalMoves();
-  for (auto m : moves) {
+  for (auto m : m_chess_game.generateLegalMoves()) {
     if (m.from == pieceSQ) att.push_back(m.to);
   }
   return att;
@@ -164,12 +189,8 @@ void GameController::onClick(core::MousePos mousePos) {
   if (m_gameView.isInPromotionSelection()) {
     core::PieceType promoType = m_gameView.getSelectedPromotion(mousePos);
     m_gameView.removePromotionSelection();
-    if (promoType != core::PieceType::None) {
-      movePieceAndClear(m_selected_sq, m_promotion_square, true, promoType);
-    } else {
-      m_promotion_square = core::NO_SQUARE;
-      deselectSquare();
-    }
+    if (m_gameManager) m_gameManager->completePendingPromotion(promoType);
+    deselectSquare();
     return;
   }
 
@@ -190,14 +211,16 @@ void GameController::onClick(core::MousePos mousePos) {
     return;
   }
 
-  // Versuch eines Zugs
+  // Versuch eines Zugs: an GameManager delegieren
   if (tryMove(m_selected_sq, sq)) {
-    if (!isPromotion(m_selected_sq, sq)) {
-      movePieceAndClear(m_selected_sq, sq, true);
-    } else {
-      m_promotion_square = sq;
-      snapAndReturn(m_selected_sq, mousePos);
-      m_gameView.playPromotionSelectAnim(sq, m_chess_game.getGameState().sideToMove);
+    // GameManager kümmert sich um Promotion event bzw. Anwendung des Moves
+    if (m_gameManager) {
+      bool accepted = m_gameManager->requestUserMove(m_selected_sq, sq, true);
+      if (!accepted) {
+        // Entweder Promotion angefragt (GameManager wird callback feuern) oder illegal -> deselect
+        // Wir vermeiden hier doppelte Warns; View/Manager kümmert sich um UI-Feedback
+        deselectSquare();
+      }
     }
   } else {
     deselectSquare();
@@ -214,7 +237,7 @@ void GameController::onDrag(core::MousePos start, core::MousePos current) {
 
   if (m_gameView.isInPromotionSelection()) {
     m_gameView.removePromotionSelection();
-    m_promotion_square = core::NO_SQUARE;
+    if (m_gameManager) m_gameManager->completePendingPromotion(core::PieceType::None);
     deselectSquare();
     return;
   }
@@ -245,7 +268,7 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
 
   if (m_gameView.isInPromotionSelection()) {
     m_gameView.removePromotionSelection();
-    m_promotion_square = core::NO_SQUARE;
+    if (m_gameManager) m_gameManager->completePendingPromotion(core::PieceType::None);
     deselectSquare();
     return;
   }
@@ -258,14 +281,18 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
   m_gameView.endAnimation(from);
 
   if (from != to && tryMove(from, to)) {
-    if (!isPromotion(from, to)) {
-      movePieceAndClear(from, to, false);
-    } else {
-      m_promotion_square = to;
-      snapAndReturn(from, end);
-      m_gameView.playPromotionSelectAnim(to, m_chess_game.getGameState().sideToMove);
+    if (m_gameManager) {
+      bool accepted = m_gameManager->requestUserMove(from, to, false);
+      if (!accepted) {
+        deselectSquare();
+      }
     }
   } else {
+    if (m_chess_game.isKingInCheck(m_chess_game.getGameState().sideToMove) && from != to) {
+      m_gameView.warningKingSquareAnim(
+          m_chess_game.getKingSquare(m_chess_game.getGameState().sideToMove));
+      m_sound_manager.playWarning();
+    }
     m_gameView.setPieceToSquareScreenPos(from, from);
     selectSquare(from);
   }

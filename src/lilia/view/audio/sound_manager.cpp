@@ -12,6 +12,8 @@ void SoundManager::loadSounds() {
   loadEffect(constant::SFX_GAME_BEGINS_NAME, constant::ASSET_SFX_FILE_PATH);
   loadEffect(constant::SFX_GAME_ENDS_NAME, constant::ASSET_SFX_FILE_PATH);
   loadEffect(constant::SFX_PLAYER_MOVE_NAME, constant::ASSET_SFX_FILE_PATH);
+  loadEffect(constant::SFX_PROMOTION_NAME, constant::ASSET_SFX_FILE_PATH);
+  loadEffect(constant::SFX_WARNING_NAME, constant::ASSET_SFX_FILE_PATH);
 }
 
 /// Play specific effects
@@ -29,6 +31,14 @@ void SoundManager::playCheck() {
 }
 void SoundManager::playGameBegins() {
   m_sounds[constant::SFX_GAME_BEGINS_NAME].play();
+}
+
+void SoundManager::playWarning() {
+  m_sounds[constant::SFX_WARNING_NAME].play();
+}
+
+void SoundManager::playPromotion() {
+  m_sounds[constant::SFX_PROMOTION_NAME].play();
 }
 void SoundManager::playGameEnds() {
   m_sounds[constant::SFX_GAME_ENDS_NAME].play();

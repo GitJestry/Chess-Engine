@@ -1,8 +1,6 @@
 #pragma once
 
-#include <SFML/Graphics.hpp>
-#include <string>
-
+#include "../constants.hpp"
 #include "../controller_view_type_bridge.hpp"
 #include "animation/chess_animator.hpp"
 #include "board_view.hpp"
@@ -28,7 +26,7 @@ class GameView {
   ~GameView() = default;
 
   /// Initialise the board + pieces according to given FEN
-  void init(const std::string& fen = constant::START_FEN);
+  void init(const std::string& fen = core::START_FEN);
 
   /// Reset to START_FEN
   void resetBoard();
@@ -55,6 +53,7 @@ class GameView {
   void clearHighlightHoverSquare(core::Square pos);
   void clearAllHighlights();
 
+  void warningKingSquareAnim(core::Square ksq);
   void animationSnapAndReturn(core::Square sq, core::MousePos mousePos);
   void animationMovePiece(core::Square from, core::Square to,
                           core::Square enPSquare = core::NO_SQUARE,
@@ -69,6 +68,7 @@ class GameView {
   bool isInPromotionSelection();
   core::PieceType getSelectedPromotion(core::MousePos mousePos);
   void removePromotionSelection();
+  void showGameOver(core::GameResult res);
 
  private:
   sf::RenderWindow& m_window;

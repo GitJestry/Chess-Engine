@@ -20,7 +20,9 @@ class SoundManager {
   void playEnemyMove();
   void playCapture();
   void playCheck();
+  void playWarning();
   void playCastle();
+  void playPromotion();
   void playGameBegins();
   void playGameEnds();
 

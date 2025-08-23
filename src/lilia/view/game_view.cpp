@@ -1,5 +1,7 @@
 #include "lilia/view/game_view.hpp"
 
+#include <iostream>
+
 namespace lilia::view {
 
 GameView::GameView(sf::RenderWindow& window)
@@ -21,6 +23,7 @@ void GameView::update(float dt) {
 void GameView::render() {
   m_board_view.renderBoard(m_window);
   m_highlight_manager.renderSelect(m_window);
+  m_chess_animator.renderHighlightLevel(m_window);
   m_highlight_manager.renderHover(m_window);
   m_piece_manager.renderPieces(m_window, m_chess_animator);
   m_highlight_manager.renderAttack(m_window);
@@ -30,6 +33,11 @@ void GameView::render() {
 void GameView::resetBoard() {
   m_piece_manager.removeAll();
   init();
+}
+
+void GameView::warningKingSquareAnim(core::Square ksq) {
+  m_chess_animator.warningAnim(ksq);
+  m_chess_animator.declareHighlightLevel(ksq);
 }
 
 void GameView::animationSnapAndReturn(core::Square sq, core::MousePos mousePos) {
@@ -103,6 +111,14 @@ core::PieceType GameView::getSelectedPromotion(core::MousePos mousePos) {
 
 void GameView::removePromotionSelection() {
   m_promotion_manager.removeOptions();
+}
+
+void GameView::showGameOver(core::GameResult res) {
+  std::cout << "Game is Over!" << std::endl;
+  if (res == core::GameResult::WHITEWON)
+    std::cout << "White won!" << std::endl;
+  else
+    std::cout << "Black won!" << std::endl;
 }
 
 [[nodiscard]] core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {

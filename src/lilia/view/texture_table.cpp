@@ -94,7 +94,7 @@ void main()
     ring.setPosition(size * 0.5f, size * 0.5f);
     ring.setFillColor(sf::Color::Transparent);
     ring.setOutlineThickness(-thickness);
-    ring.setOutlineColor(sf::Color(120, 120, 120, 60));  // eher durchsichtig
+    ring.setOutlineColor(sf::Color(120, 120, 120, 65));  // eher durchsichtig
     rt.draw(ring, sf::BlendAlpha);
     rt.display();
     return rt.getTexture();
@@ -109,7 +109,7 @@ void main()
   float softness = 3.0f / (float)size;  // weiche Kante: ~3px (bei kleinen sizes anpassen)
 
   // Etwas transparenter als vorher (Chess.com wirkt feiner)
-  sf::Glsl::Vec4 col(120.f / 255.f, 120.f / 255.f, 120.f / 255.f, 60.f / 255.f);
+  sf::Glsl::Vec4 col(120.f / 255.f, 120.f / 255.f, 120.f / 255.f, 65.f / 255.f);
 
   shader.setUniform("resolution", sf::Glsl::Vec2((float)size, (float)size));
   shader.setUniform("color", col);
@@ -179,7 +179,7 @@ void main()
     core.setOrigin(maxRadius, maxRadius);
     core.setPosition(size * 0.5f, size * 0.5f);
     // eher transparent wie bei Chess.com
-    core.setFillColor(sf::Color(120, 120, 120, 60));
+    core.setFillColor(sf::Color(120, 120, 120, 65));
     rt.draw(core, sf::BlendAlpha);
     rt.display();
     return rt.getTexture();
@@ -191,7 +191,7 @@ void main()
   float softness = 3.0f / (float)size;             // ~3px weiche Kante
 
   // Basisfarbe: etwas ausgefaerbt / transparent
-  sf::Glsl::Vec4 col(120.f / 255.f, 120.f / 255.f, 120.f / 255.f, 60.f / 255.f);
+  sf::Glsl::Vec4 col(120.f / 255.f, 120.f / 255.f, 120.f / 255.f, 65.f / 255.f);
 
   shader.setUniform("resolution", sf::Glsl::Vec2((float)size, (float)size));
   shader.setUniform("color", col);
@@ -376,7 +376,7 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
 // ---------------- makeRoundedRectShadowTexture ------------------------------
 [[nodiscard]] sf::Texture makeRoundedRectShadowTexture(
     unsigned int width, unsigned int height, float rectWidth_px, float rectHeight_px,
-    float radius_px = 6.f, float blur_px = 12.f, sf::Color shadowColor = sf::Color(0, 0, 0, 150),
+    float radius_px = 6.f, float blur_px = 12.f, sf::Color shadowColor = sf::Color(0, 0, 0, 140),
     float offsetY_px = 4.f) {
   // Create rendertexture slightly larger to accommodate blur if needed
   sf::RenderTexture rt;
@@ -436,10 +436,11 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
 }
 
 void TextureTable::preLoad() {
-  load(constant::STR_TEXTURE_WHITE, sf::Color(240, 217, 181));  // light beige
-  load(constant::STR_TEXTURE_BLACK, sf::Color(181, 136, 99));   // dark brown
-  load(constant::STR_TEXTURE_SELECTHLIGHT,
-       sf::Color(255, 255, 102, 100));  // light transparent yellow
+  load(constant::STR_TEXTURE_WHITE, sf::Color(240, 240, 210));
+  load(constant::STR_TEXTURE_BLACK, sf::Color(120, 150, 86));
+  load(constant::STR_TEXTURE_SELECTHLIGHT, sf::Color(240, 240, 50, 160));
+  load(constant::STR_TEXTURE_WARNINGHLIGHT, sf::Color(255, 50, 50, 160));
+
   m_textures[constant::STR_TEXTURE_ATTACKHLIGHT] =
       std::move(makeAttackDotTexture(constant::ATTACK_DOT_PX_SIZE));
   m_textures[constant::STR_TEXTURE_HOVERHLIGHT] =
@@ -449,8 +450,8 @@ void TextureTable::preLoad() {
   m_textures[constant::STR_TEXTURE_PROMOTION] =
       std::move(makeRoundedRectTexture(constant::SQUARE_PX_SIZE, 4 * constant::SQUARE_PX_SIZE));
   m_textures[constant::STR_TEXTURE_PROMOTION_SHADOW] = std::move(
-      makeRoundedRectShadowTexture(constant::SQUARE_PX_SIZE + 10, 4 * constant::SQUARE_PX_SIZE,
-                                   constant::SQUARE_PX_SIZE + 10, 4 * constant::SQUARE_PX_SIZE));
+      makeRoundedRectShadowTexture(constant::SQUARE_PX_SIZE * 1.1f, 4 * constant::SQUARE_PX_SIZE,
+                                   constant::SQUARE_PX_SIZE * 1.1f, 4 * constant::SQUARE_PX_SIZE));
   load(constant::STR_TEXTURE_TRANSPARENT, sf::Color::Transparent);
 }
 

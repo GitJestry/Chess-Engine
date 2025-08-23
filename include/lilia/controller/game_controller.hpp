@@ -1,6 +1,7 @@
 #pragma once
 
 // Standard library
+#include <memory>
 #include <utility>
 
 // External libraries
@@ -10,6 +11,7 @@
 #include "../model/chess_game.hpp"
 #include "../view/audio/sound_manager.hpp"
 #include "../view/game_view.hpp"
+#include "game_manager.hpp"  // neue Abhängigkeit: GameManager (sollte implementiert sein)
 #include "input_manager.hpp"
 
 namespace lilia::controller {
@@ -54,6 +56,16 @@ class GameController {
    */
   void render();
 
+  // game_controller.hpp (in public:)
+  /**
+   * @brief Startet ein Spiel über den internen GameManager.
+   * @param playerColor Farbe des menschlichen Spielers (default: White).
+   * @param fen Start-FEN (default: START_FEN).
+   * @param vsBot true = Gegner ist Bot, false = menschlicher Gegner.
+   */
+  void startGame(core::Color playerColor, const std::string& fen = core::START_FEN,
+                 bool vsBot = true);
+
  private:
   // ---------------- Input handlers ----------------
 
@@ -86,13 +98,13 @@ class GameController {
   // ---------------- Move and animation logic ----------------
 
   /**
-   * @brief Execute a piece move and animate the transition.
-   * @param from Origin square.
-   * @param to Destination square.
+   * @brief Animate a move and play corresponding sounds.
+   * Note: Das Model wurde bereits vom GameManager aktualisiert.
+   * @param move Vollständiger Move (from,to,promotion,castle,isCapture,...)
+   * @param isPlayerMove True wenn der ausgeführte Zug vom Spieler war.
    * @param onClick If true, triggered directly by user input.
    */
-  void movePieceAndClear(core::Square from, core::Square to, bool onClick,
-                         core::PieceType promotion = core::PieceType::None);
+  void movePieceAndClear(const model::Move& move, bool isPlayerMove, bool onClick);
 
   /**
    * @brief Visually snap a piece to the mouse and return it.
@@ -126,6 +138,9 @@ class GameController {
   core::Square m_hover_sq = core::NO_SQUARE;     ///< Currently hovered square.
   std::pair<core::Square, core::Square> m_lastMoveSquares = {
       core::NO_SQUARE, core::NO_SQUARE};  ///< Last executed move (from -> to).
+
+  // ---------------- New: GameManager ----------------
+  std::unique_ptr<GameManager> m_gameManager;
 };
 
 }  // namespace lilia::controller

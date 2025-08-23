@@ -15,16 +15,20 @@ class ChessAnimator {
  public:
   ChessAnimator(const BoardView& boardRef, PieceManager& pieceMgrRef);
 
+  void warningAnim(core::Square sq);
   void snapAndReturn(core::Square pieceSq, core::MousePos mousePos);
   void movePiece(core::Square from, core::Square to, core::PieceType promotion);
   void dropPiece(core::Square from, core::Square to, core::PieceType promotion);
   void piecePlaceHolder(core::Square sq);
   void promotionSelect(core::Square prPos, PromotionManager& prOptRef, core::Color c);
+
+  void declareHighlightLevel(core::Square sq);
   void end(core::Square sq);
 
   [[nodiscard]] bool isAnimating(Entity::ID_type entityID) const;
   void updateAnimations(float dt);
   void render(sf::RenderWindow& window);
+  void renderHighlightLevel(sf::RenderWindow& window);
 
  private:
   const BoardView& m_board_view_ref;

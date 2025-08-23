@@ -18,10 +18,8 @@ core::Square stringToSquare(const std::string& strSquare) {
 
 const Move& ChessGame::getMove(core::Square from, core::Square to) {
   int side = bb::ci(m_position.state().sideToMove);
-  std::vector<Move> moves;
-
-  if (m_legal_moves[side].empty()) generateLegalMoves();
-  for (auto& m : m_legal_moves[side])
+  std::vector<Move> moves = generateLegalMoves();
+  for (auto& m : moves)
     if (m.from == from && m.to == to) return m;
 
   return Move{};
@@ -104,19 +102,18 @@ void ChessGame::setPosition(const std::string& fen) {
   m_position.buildHash();
 }
 
-const std::vector<Move>& ChessGame::generateLegalMoves() {
+std::vector<Move> ChessGame::generateLegalMoves() {
   int side = bb::ci(m_position.state().sideToMove);
-  auto moves =
+  auto pseudo =
       std::move(m_move_gen.generatePseudoLegalMoves(m_position.board(), m_position.state()));
-  m_legal_moves[side].clear();
-
-  for (const auto& m : moves) {
+  std::vector<Move> legalMoves;
+  for (const auto& m : pseudo) {
     if (m_position.doMove(m)) {
       m_position.undoMove();
-      m_legal_moves[side].push_back(m);
+      legalMoves.push_back(m);
     }
   }
-  return m_legal_moves[side];
+  return legalMoves;
 }
 
 const GameState& ChessGame::getGameState() {
@@ -140,6 +137,25 @@ core::Square ChessGame::getRookSquareFromCastleside(CastleSide castleSide) {
   return core::NO_SQUARE;
 }
 
+core::Square ChessGame::getKingSquare(core::Color color) {
+  bb::Bitboard kbb = m_position.board().pieces(color, core::PieceType::King);
+  core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
+  return ksq;
+}
+
+void ChessGame::checkGameResult() {
+  if (generateLegalMoves().empty()) {
+    if (m_position.state().sideToMove == core::Color::White)
+      m_result = core::GameResult::BLACKWON;
+    else
+      m_result = core::GameResult::WHITEWON;
+  }
+}
+
+core::GameResult ChessGame::getResult() {
+  return m_result;
+}
+
 bb::Piece ChessGame::getPiece(core::Square sq) {
   bb::Piece none;
   if (m_position.board().getPiece(sq).has_value()) return m_position.board().getPiece(sq).value();
@@ -147,7 +163,7 @@ bb::Piece ChessGame::getPiece(core::Square sq) {
 }
 
 void ChessGame::doMove(core::Square from, core::Square to, core::PieceType promotion) {
-  for (auto m : m_legal_moves[bb::ci(m_position.state().sideToMove)])
+  for (auto m : generateLegalMoves())
     if (m.from == from && m.to == to && m.promotion == promotion) m_position.doMove(m);
 }
 

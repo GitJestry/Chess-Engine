@@ -4,6 +4,7 @@
 #include "lilia/view/animation/piece_placeholder_animation.hpp"
 #include "lilia/view/animation/promotion_select_animation.hpp"
 #include "lilia/view/animation/snap_to_square_animation.hpp"
+#include "lilia/view/animation/warning_animation.hpp"
 #include "lilia/view/render_constants.hpp"
 
 namespace lilia::view::animation {
@@ -13,6 +14,15 @@ ChessAnimator::ChessAnimator(const BoardView& boardRef, PieceManager& pieceMgrRe
 
 [[nodiscard]] inline Entity::Position mouseToEntityPos(core::MousePos mousePos) {
   return static_cast<Entity::Position>(mousePos);
+}
+
+void ChessAnimator::warningAnim(core::Square sq) {
+  m_anim_manager.add(m_piece_manager_ref.getPieceID(sq),
+                     std::make_unique<WarningAnim>(m_board_view_ref.getSquareScreenPos(sq)));
+}
+
+void ChessAnimator::declareHighlightLevel(core::Square sq) {
+  m_anim_manager.declareHighlightLevel(m_piece_manager_ref.getPieceID(sq));
 }
 
 void ChessAnimator::snapAndReturn(core::Square pieceSq, core::MousePos mousePos) {
@@ -51,7 +61,9 @@ void ChessAnimator::end(core::Square sq) {
 void ChessAnimator::updateAnimations(float dt) {
   m_anim_manager.update(dt);
 }
-
+void ChessAnimator::renderHighlightLevel(sf::RenderWindow& window) {
+  m_anim_manager.highlightLevelDraw(window);
+}
 void ChessAnimator::render(sf::RenderWindow& window) {
   m_anim_manager.draw(window);
 }
