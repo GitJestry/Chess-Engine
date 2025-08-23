@@ -68,7 +68,7 @@ class GameView {
   bool isInPromotionSelection();
   core::PieceType getSelectedPromotion(core::MousePos mousePos);
   void removePromotionSelection();
-  void showGameOver(core::GameResult res);
+  void showGameOver(core::GameResult res, core::Color sideToMove);
 
  private:
   sf::RenderWindow& m_window;

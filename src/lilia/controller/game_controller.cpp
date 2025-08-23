@@ -36,7 +36,7 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
   // Callback: Spielende
   m_gameManager->setOnGameEnd([this](core::GameResult res) {
     // Annahme: GameView hat eine passende Anzeige-Methode (ansonsten anpassen).
-    this->m_gameView.showGameOver(res);
+    this->m_gameView.showGameOver(res, m_chess_game.getGameState().sideToMove);
     this->m_sound_manager.playGameEnds();
   });
 }

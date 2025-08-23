@@ -145,11 +145,12 @@ core::Square ChessGame::getKingSquare(core::Color color) {
 
 void ChessGame::checkGameResult() {
   if (generateLegalMoves().empty()) {
-    if (m_position.state().sideToMove == core::Color::White)
-      m_result = core::GameResult::BLACKWON;
+    if (isKingInCheck(m_position.state().sideToMove))
+      m_result = core::GameResult::CHECKMATE;
     else
-      m_result = core::GameResult::WHITEWON;
+      m_result = core::GameResult::STALEMATE;
   }
+  if (m_position.state().halfmoveClock >= 100) m_result = core::GameResult::MOVERULE;
 }
 
 core::GameResult ChessGame::getResult() {

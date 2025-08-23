@@ -113,12 +113,27 @@ void GameView::removePromotionSelection() {
   m_promotion_manager.removeOptions();
 }
 
-void GameView::showGameOver(core::GameResult res) {
+void GameView::showGameOver(core::GameResult res, core::Color sideToMove) {
   std::cout << "Game is Over!" << std::endl;
-  if (res == core::GameResult::WHITEWON)
-    std::cout << "White won!" << std::endl;
-  else
-    std::cout << "Black won!" << std::endl;
+  switch (res) {
+    case core::GameResult::CHECKMATE:
+      std::cout << "CHECKMATE -> "
+                << (sideToMove == core::Color::White ? "Black won" : "White won");
+      break;
+    case core::GameResult::REPETITION:
+      std::cout << "REPITITION -> Draw!";
+      break;
+    case core::GameResult::MOVERULE:
+      std::cout << "MOVERULE-> Draw!";
+      break;
+    case core::GameResult::STALEMATE:
+      std::cout << "STALEMATE -> Draw!";
+      break;
+
+    default:
+      std::cout << "result is not correct";
+  }
+  std::cout << std::endl;
 }
 
 [[nodiscard]] core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
