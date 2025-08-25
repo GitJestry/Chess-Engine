@@ -2,7 +2,6 @@
 
 #include <vector>
 
-#include "../controller_view_type_bridge.hpp"
 #include "promotion.hpp"
 
 namespace lilia::view {

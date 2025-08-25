@@ -1,6 +1,7 @@
 #include "lilia/model/position.hpp"
 
 #include "lilia/model/core/magic.hpp"
+#include "lilia/model/move_generator.hpp"
 
 namespace lilia::model {
 
@@ -28,18 +29,66 @@ bool Position::checkInsufficientMaterial() {
   }
   return false;
 }
+bool Position::checkNoLegalMoves() {
+  model::MoveGenerator mg;
+  auto pseudo = std::move(mg.generatePseudoLegalMoves(m_board, m_state));
+  for (const auto& m : pseudo) {
+    if (doMove(m)) {
+      undoMove();
+      return false;
+    }
+  }
+  return true;
+}
+bool Position::inCheck() const {
+  bb::Bitboard kbb = m_board.pieces(m_state.sideToMove, core::PieceType::King);
+  if (!kbb) return false;  // defensiv
+  core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
+  return isSquareAttacked(ksq, ~m_state.sideToMove);
+}
+
 bool Position::checkMoveRule() {
   return (m_state.halfmoveClock >= 100);
 }
 bool Position::checkRepitition() {
-  int limit = std::min<int>(m_state.halfmoveClock, m_history.size());
+  int count = 0;
+  int limit = std::min<int>(m_history.size(), m_state.halfmoveClock);
 
-  // Nur jede zweite Stellung (weil Zugrecht wechseln muss)
   for (int i = 2; i <= limit; i += 2) {
     if (m_history[m_history.size() - i].zobristKey == m_hash) {
-      return true;
+      if (++count >= 2)  // 2 Treffer + aktuelle Stellung = 3-fach
+        return true;
     }
   }
+  return false;
+}
+
+// Simple SEE: returns true if capture is likely profitable (or equal)
+bool Position::see(const model::Move& m) const {
+  // trivial cases: promotions & captures
+  if (!m.isCapture && m.promotion == core::PieceType::None) return false;
+
+  // Determine victim type. For en-passant captures the target square is empty,
+  // so we fall back to Pawn which is correct for ep.
+  core::PieceType victimType = core::PieceType::Pawn;
+  if (auto vp = m_board.getPiece(m.to)) {
+    victimType = vp->type;
+  }
+
+  // Determine attacker type. If the move promotes, treat the attacker as the
+  // promoted piece (promotion capture), otherwise take the piece from the from-square.
+  core::PieceType attackerType = core::PieceType::Pawn;
+  if (m.promotion != core::PieceType::None) {
+    attackerType = m.promotion;
+  } else if (auto ap = m_board.getPiece(m.from)) {
+    attackerType = ap->type;
+  }
+
+  // if victim >= attacker (e.g. Pawn captures Queen), it's good
+  if (static_cast<int>(victimType) >= static_cast<int>(attackerType)) return true;
+
+  // otherwise: quick check → allow only if not obviously losing
+  // (full recursive SEE wäre teurer, hier reicht quick filter)
   return false;
 }
 
@@ -88,6 +137,93 @@ bool Position::isSquareAttacked(core::Square sq, core::Color by) const {
 }
 
 bool Position::doMove(const Move& m) {
+  // Vorprüfungen für spezielle Züge (Rochade)
+  core::Color us = m_state.sideToMove;
+  core::Color them = ~us;
+
+  // --- CASTLING: prüfe Vorbedingungen bevor applyMove() ausgeführt wird ---
+  if (m.castle != CastleSide::None) {
+    // König-Position aktuell bestimmen
+    bb::Bitboard kbb = m_board.pieces(us, core::PieceType::King);
+    if (!kbb) return false;  // kein König - inkonsistent
+    core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
+
+    // Der Move sollte vom König ausgehen
+    if (m.from != ksq) return false;
+
+    // 1) König darf vor dem Zug nicht im Schach stehen
+    if (isSquareAttacked(ksq, them)) return false;
+
+    // 2) Castling-Rechte prüfen (falls Move-Generator das nicht garantiert)
+    std::uint8_t cr = m_state.castlingRights;
+    if (us == core::Color::White) {
+      if (m.castle == CastleSide::KingSide && !(cr & bb::Castling::WK)) return false;
+      if (m.castle == CastleSide::QueenSide && !(cr & bb::Castling::WQ)) return false;
+    } else {
+      if (m.castle == CastleSide::KingSide && !(cr & bb::Castling::BK)) return false;
+      if (m.castle == CastleSide::QueenSide && !(cr & bb::Castling::BQ)) return false;
+    }
+
+    // 3) Rook-Präsenz am Ecke kontrollieren (H1/A1 bzw H8/A8)
+    core::Square rookSq = static_cast<core::Square>(
+        (us == core::Color::White) ? (m.castle == CastleSide::KingSide ? bb::H1 : bb::A1)
+                                   : (m.castle == CastleSide::KingSide ? bb::H8 : bb::A8));
+    auto rookPiece = m_board.getPiece(rookSq);
+    if (!rookPiece) return false;
+    if (rookPiece->type != core::PieceType::Rook || rookPiece->color != us) return false;
+
+    // 4) Zwischenfelder müssen leer sein (E1..H1 -> F1,G1 ; E1..A1 -> D1,C1,B1)
+    auto squareNotEmpty = [&](core::Square s) { return m_board.getPiece(s).has_value(); };
+    if (us == core::Color::White) {
+      if (m.castle == CastleSide::KingSide) {
+        if (squareNotEmpty(static_cast<core::Square>(5)) ||
+            squareNotEmpty(static_cast<core::Square>(6)))
+          return false;
+      } else {
+        if (squareNotEmpty(static_cast<core::Square>(3)) ||
+            squareNotEmpty(static_cast<core::Square>(2)) ||
+            squareNotEmpty(static_cast<core::Square>(1)))
+          return false;
+      }
+    } else {
+      if (m.castle == CastleSide::KingSide) {
+        if (squareNotEmpty(static_cast<core::Square>(61)) ||
+            squareNotEmpty(static_cast<core::Square>(62)))
+          return false;
+      } else {
+        if (squareNotEmpty(static_cast<core::Square>(59)) ||
+            squareNotEmpty(static_cast<core::Square>(58)) ||
+            squareNotEmpty(static_cast<core::Square>(57)))
+          return false;
+      }
+    }
+
+    // 5) König darf weder über noch auf ein angegriffenes Feld ziehen:
+    //    prüfen: das Durchgangs- und Zielquadrat (z. B. F1 und G1)
+    core::Square passSq1, passSq2;
+    if (us == core::Color::White) {
+      if (m.castle == CastleSide::KingSide) {
+        passSq1 = static_cast<core::Square>(5);  // F1
+        passSq2 = static_cast<core::Square>(6);  // G1
+      } else {
+        passSq1 = static_cast<core::Square>(3);  // D1
+        passSq2 = static_cast<core::Square>(2);  // C1
+      }
+    } else {
+      if (m.castle == CastleSide::KingSide) {
+        passSq1 = static_cast<core::Square>(61);  // F8
+        passSq2 = static_cast<core::Square>(62);  // G8
+      } else {
+        passSq1 = static_cast<core::Square>(59);  // D8
+        passSq2 = static_cast<core::Square>(58);  // C8
+      }
+    }
+
+    if (isSquareAttacked(passSq1, them) || isSquareAttacked(passSq2, them)) return false;
+    // (Hinweis: Startfeld wurde oben geprüft)
+  }
+
+  // --- Ende der Vorprüfungen. Wenn OK, applyMove und finale Legality-Prüfung wie gehabt ---
   StateInfo st{};
   st.move = m;
   st.zobristKey = m_hash;  // aktuellen Hash merken
@@ -99,8 +235,8 @@ bool Position::doMove(const Move& m) {
   applyMove(m, st);
 
   // legality: after apply, sideToMove has flipped
-  core::Color us = ~m_state.sideToMove;
-  bb::Bitboard kbb = m_board.pieces(us, core::PieceType::King);
+  core::Color us_after = ~m_state.sideToMove;
+  bb::Bitboard kbb = m_board.pieces(us_after, core::PieceType::King);
   core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
   if (isSquareAttacked(ksq, m_state.sideToMove)) {
     unapplyMove(st);  // illegal
@@ -117,6 +253,62 @@ void Position::undoMove() {
   unapplyMove(st);
   m_hash = st.zobristKey;  // Hash zurücksetzen
   m_history.pop_back();
+}
+
+bool Position::doNullMove() {
+  // Nullzug: keine Steine bewegen, nur State/Hash anpassen
+
+  NullState st{};
+  st.zobristKey = m_hash;
+  st.prevCastlingRights = m_state.castlingRights;
+  st.prevEnPassantSquare = m_state.enPassantSquare;
+  st.prevHalfmoveClock = m_state.halfmoveClock;
+  st.prevFullmoveNumber = m_state.fullmoveNumber;
+
+  // EP aus Hash/State entfernen (wie bei echtem Zug)
+  hashClearEP();
+  m_state.enPassantSquare = static_cast<core::Square>(64);
+
+  // 50-Züge-Regel: Nullzug ist weder Bauernzug noch Schlag → Halfmove++
+  ++m_state.halfmoveClock;
+
+  // Seite wechseln (Hash & State). Fullmove, wenn Schwarz → Weiß
+  hashXorSide();
+  m_state.sideToMove = ~m_state.sideToMove;
+  if (m_state.sideToMove == core::Color::White) {
+    ++m_state.fullmoveNumber;
+  }
+
+  m_nullHistory.push_back(st);
+  return true;
+}
+
+void Position::undoNullMove() {
+  if (m_nullHistory.empty()) return;
+
+  NullState st = m_nullHistory.back();
+  m_nullHistory.pop_back();
+
+  // Seite zurückdrehen (erst State flippen, dann Hash wie im Vorwärtsgang gespiegelt)
+  m_state.sideToMove = ~m_state.sideToMove;
+  hashXorSide();
+
+  // Fullmove wiederherstellen
+  m_state.fullmoveNumber = st.prevFullmoveNumber;
+
+  // EP wiederherstellen (Hash erst clear, dann ggf. set)
+  hashClearEP();
+  m_state.enPassantSquare = st.prevEnPassantSquare;
+  hashSetEP(m_state.enPassantSquare);
+
+  // Castling-Rechte (sollten unverändert sein, aber wir stellen explizit zurück)
+  m_state.castlingRights = st.prevCastlingRights;
+
+  // Halfmove-Clock zurück
+  m_state.halfmoveClock = st.prevHalfmoveClock;
+
+  // Zobrist-Key voll zurücksetzen (redundant zu obigen XORs, aber sicher & schnell)
+  m_hash = st.zobristKey;
 }
 
 // Helpers

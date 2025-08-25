@@ -17,16 +17,19 @@ void GameManager::startGame(core::Color playerColor, const std::string& fen, boo
   m_game.buildHash();
   m_cancelBot.store(false);
   m_waitingPromotion = false;
+  int thinkTime = 5000;  // ms
+  int depth = 12;
 
   // default: human for player color, bot for opponent (if vsBot)
   if (vsBot) {
     if (playerColor == core::Color::White) {
       m_whitePlayer.reset();  // human
-      m_blackPlayer = std::make_unique<BotPlayer>(5000);
+      m_blackPlayer = std::make_unique<BotPlayer>(thinkTime, depth);
     } else {
       m_blackPlayer.reset();
-      m_whitePlayer = std::make_unique<BotPlayer>(5000);
+      m_whitePlayer = std::make_unique<BotPlayer>(thinkTime, depth);
     }
+
   } else {
     m_whitePlayer.reset();
     m_blackPlayer.reset();

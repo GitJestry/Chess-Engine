@@ -1,8 +1,9 @@
 #include "lilia/engine/engine.hpp"
 
 #include "lilia/engine/search.hpp"
+#include "lilia/model/core/magic.hpp"
 
-namespace lilia {
+namespace lilia::engine {
 
 struct Engine::Impl {
   EngineConfig cfg;
@@ -22,9 +23,12 @@ std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxD
                                                   std::atomic<bool>* stop) {
   if (maxDepth <= 0) maxDepth = pimpl->cfg.maxDepth;
   pimpl->tt.new_generation();
-  std::optional<model::Move> best;
-  pimpl->search->search_root(pos, maxDepth, best, stop);
-  return best;
+  pimpl->search->search_root(pos, maxDepth, stop);
+  return getLastSearchStats().bestMove;
+}
+
+SearchStats Engine::getLastSearchStats() const {
+  return pimpl->search->getStatsCopy();
 }
 
 }  // namespace lilia

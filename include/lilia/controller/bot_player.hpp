@@ -11,17 +11,17 @@ namespace lilia::controller {
 
 class BotPlayer : public IPlayer {
  public:
-  // thinkMillis: heuristische Zeit, die die KI zum "Denken" verwenden soll.
-  explicit BotPlayer(int thinkMillis = 300) : m_thinkMillis(thinkMillis) {}
+  explicit BotPlayer(int thinkMillis = 300, int depth = 8)
+      : m_thinkMillis(thinkMillis), m_depth(depth) {}
   ~BotPlayer() override = default;
 
   bool isHuman() const override { return false; }
-
   std::future<model::Move> requestMove(model::ChessGame& gameState,
                                        std::atomic<bool>& cancelToken) override;
 
  private:
-  Engine m_engine;
+  engine::Engine m_engine;
+  int m_depth;
   int m_thinkMillis;
 };
 

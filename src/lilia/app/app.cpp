@@ -1,12 +1,13 @@
+#include "lilia/app/app.hpp"
+
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <algorithm>
 #include <cctype>
 #include <iostream>
 
-#include "lilia/application/app.hpp"
 #include "lilia/controller/game_controller.hpp"
+#include "lilia/engine/engine.hpp"
 #include "lilia/model/chess_game.hpp"
-#include "lilia/model/core/magic.hpp"
 #include "lilia/view/game_view.hpp"
 #include "lilia/view/texture_table.hpp"
 
@@ -53,7 +54,7 @@ void App::promptStartOptions() {
   std::getline(std::cin, botInput);
   m_vsBot = parseYesNoDefaultTrue(botInput);
 
-  std::cout << "Startposition as FEN (empty = Standard-Start): ";
+  std::cout << "Startposition as FEN [empty = Standard-Start]: ";
   std::string fenInput;
   std::getline(std::cin, fenInput);
   std::string fenTrim = trim(fenInput);
@@ -69,8 +70,7 @@ int App::run() {
   promptStartOptions();
 
   // model / engine init
-  lilia::model::Zobrist::init();
-  lilia::model::magic::init_magics();
+  engine::Engine::init();
   lilia::view::TextureTable::getInstance().preLoad();
 
   // create window

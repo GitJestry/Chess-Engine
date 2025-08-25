@@ -8,7 +8,7 @@ class Event;
 #include <functional>
 #include <optional>
 
-#include "../controller_view_type_bridge.hpp"
+#include "../controller/mousepos.hpp"
 
 namespace lilia::controller {
 

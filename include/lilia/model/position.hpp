@@ -2,7 +2,6 @@
 #include <cstdint>
 #include <vector>
 
-#include "../constants.hpp"
 #include "board.hpp"
 #include "core/bitboard.hpp"
 #include "game_state.hpp"
@@ -26,18 +25,35 @@ class Position {
   // Make/undo a pseudo-legal move; returns false if illegal (king in check)
   bool doMove(const Move& m);
   void undoMove();
+  bool doNullMove();
+  void undoNullMove();
 
   // Attack detection
   bool isSquareAttacked(core::Square sq, core::Color by) const;
   bool checkInsufficientMaterial();
   bool checkMoveRule();
   bool checkRepitition();
+  bool checkNoLegalMoves();
+
+  bool inCheck() const;
+  bool see(const model::Move& m) const;
 
  private:
   Board m_board;
   GameState m_state;
   std::vector<StateInfo> m_history;
   bb::Bitboard m_hash = 0;
+
+  // --- private: ---
+  struct NullState {
+    std::uint64_t zobristKey;
+    std::uint8_t prevCastlingRights;
+    core::Square prevEnPassantSquare;
+    int prevHalfmoveClock;
+    int prevFullmoveNumber;
+  };
+
+  std::vector<NullState> m_nullHistory;
 
   // do/undo details
   void applyMove(const Move& m, StateInfo& st);

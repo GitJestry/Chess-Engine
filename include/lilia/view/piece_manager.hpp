@@ -3,7 +3,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "../controller_view_type_bridge.hpp"
+#include "../controller/mousepos.hpp"
 #include "board_view.hpp"
 #include "piece.hpp"
 

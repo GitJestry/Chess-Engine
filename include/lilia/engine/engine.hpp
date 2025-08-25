@@ -3,11 +3,13 @@
 #include <atomic>
 #include <optional>
 
+#include "../model/core/magic.hpp"
 #include "../model/move.hpp"
 #include "../model/position.hpp"
 #include "config.hpp"
 
-namespace lilia {
+namespace lilia::engine {
+struct SearchStats;
 
 class Engine {
  public:
@@ -15,9 +17,13 @@ class Engine {
   ~Engine();
 
   // Find best move for the position (returns empty if none)
-
-  std::optional<model::Move> find_best_move(model::Position& pos, int maxDepth = 20,
+  static void init() {
+    model::Zobrist::init();
+    model::magic::init_magics();
+  }
+  std::optional<model::Move> find_best_move(model::Position& pos, int maxDepth = 8,
                                             std::atomic<bool>* stop = nullptr);
+  SearchStats getLastSearchStats() const;
 
  private:
   struct Impl;

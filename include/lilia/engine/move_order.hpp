@@ -2,10 +2,11 @@
 
 #include <vector>
 
+#include "config.hpp"
 #include "lilia/model/move.hpp"
 #include "lilia/model/position.hpp"
 
-namespace lilia {
+namespace lilia::engine {
 
 // Feinjustierte MVV-LVA-Implementierung
 // - realistischere Stückwerte (centipawns)
@@ -14,22 +15,7 @@ namespace lilia {
 // - primär: hoher Opferwert, sekundär: niedriger Angreiferwert
 
 inline int piece_base_value(core::PieceType pt) {
-  switch (pt) {
-    case core::PieceType::Pawn:
-      return 100;
-    case core::PieceType::Knight:
-      return 320;
-    case core::PieceType::Bishop:
-      return 330;
-    case core::PieceType::Rook:
-      return 500;
-    case core::PieceType::Queen:
-      return 900;
-    case core::PieceType::King:
-      return 20000;
-    default:
-      return 100;
-  }
+  return base_value[static_cast<int>(pt)];
 }
 
 inline int mvv_lva_score(const model::Position& pos, const model::Move& m) {

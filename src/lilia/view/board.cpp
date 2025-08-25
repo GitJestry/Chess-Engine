@@ -29,9 +29,9 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
 
       // Alternate colors
       if ((rank + file) % 2 == 0)
-        m_squares[index].setTexture(textureWhite);
-      else
         m_squares[index].setTexture(textureBlack);
+      else
+        m_squares[index].setTexture(textureWhite);
       m_squares[index].setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
       m_squares[index].setOriginToCenter();
     }

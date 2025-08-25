@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../constants.hpp"
-#include "../controller_view_type_bridge.hpp"
+#include "../controller/mousepos.hpp"
 #include "animation/chess_animator.hpp"
 #include "board_view.hpp"
 #include "highlight_manager.hpp"

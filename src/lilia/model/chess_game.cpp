@@ -16,6 +16,44 @@ core::Square stringToSquare(const std::string& strSquare) {
   return static_cast<core::Square>(file + rank * 8);
 }
 
+// Hilfsfunktion: von 'a'..'h' + '1'..'8' zu 0..63
+inline int squareFromUCI(const std::string& sq) {
+  if (sq.size() != 2) return -1;
+  int file = sq[0] - 'a';
+  int rank = sq[1] - '1';
+  return rank * 8 + file;
+}
+
+void ChessGame::doMoveUCI(const std::string& uciMove) {
+  if (uciMove.size() < 4) return;
+
+  int from = squareFromUCI(uciMove.substr(0, 2));
+  int to = squareFromUCI(uciMove.substr(2, 2));
+  core::PieceType promo = core::PieceType::None;
+
+  if (uciMove.size() == 5) {  // z.B. g7g8q
+    char c = uciMove[4];
+    switch (c) {
+      case 'q':
+        promo = core::PieceType::Queen;
+        break;
+      case 'r':
+        promo = core::PieceType::Rook;
+        break;
+      case 'b':
+        promo = core::PieceType::Bishop;
+        break;
+      case 'n':
+        promo = core::PieceType::Knight;
+        break;
+      default:
+        promo = core::PieceType::None;
+        break;
+    }
+  }
+  doMove(from, to, promo);
+}
+
 const Move& ChessGame::getMove(core::Square from, core::Square to) {
   int side = bb::ci(m_position.state().sideToMove);
   std::vector<Move> moves = generateLegalMoves();

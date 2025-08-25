@@ -18,6 +18,9 @@ class ChessGame {
   void buildHash();
   void doMove(core::Square from, core::Square to,
               core::PieceType promotion = core::PieceType::None);
+  void doMoveUCI(const std::string& uciMove);
+  std::string move_to_uci(const model::Move& m);
+
   bb::Piece getPiece(core::Square sq);
   const GameState& getGameState();
   std::vector<Move> generateLegalMoves();

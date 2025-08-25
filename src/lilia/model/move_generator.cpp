@@ -194,7 +194,6 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
   }
 }
 
-
 // --------------- Knights ---------------
 void MoveGenerator::genKnightMoves(const Board& board, core::Color side,
                                    std::vector<Move>& out) const {
