@@ -14,35 +14,58 @@ namespace lilia::engine {
 
 using steady_clock = std::chrono::steady_clock;
 
+// ------------------ Constructors ------------------
 Search::Search(model::TT4& tt_, Evaluator& eval_, const EngineConfig& cfg_)
-    : tt(tt_), eval(eval_), cfg(cfg_) {
+    : tt(tt_), mg(), cfg(cfg_), evalPtr(&eval_) {
   killers.fill(model::Move{});
   for (auto& h : history) h.fill(0);
   stopFlag = nullptr;
   stats = SearchStats{};
 }
 
-// helper: same_move
-static inline bool same_move(const model::Move& a, const model::Move& b) {
-  return a.from == b.from && a.to == b.to && a.promotion == b.promotion;
+Search::Search(model::TT4& tt_, EvalFactory evalFactory_, const EngineConfig& cfg_)
+    : tt(tt_), mg(), cfg(cfg_), evalFactory(std::move(evalFactory_)) {
+  // create a main-thread evaluator instance from factory
+  if (evalFactory) evalInstance = evalFactory();
+  killers.fill(model::Move{});
+  for (auto& h : history) h.fill(0);
+  stopFlag = nullptr;
+  stats = SearchStats{};
 }
 
-// convert evaluator result (white - black) to negamax sign convention:
-static inline int signed_eval(Evaluator& eval, model::Position& pos) {
-  int v = eval.evaluate(pos);
+// currentEval: returns the evaluator used by this Search instance (non-owning reference)
+Evaluator& Search::currentEval() {
+  if (evalPtr) return *evalPtr;
+  // else we must have an evalInstance (created from factory) for main thread
+  assert(evalInstance &&
+         "Evaluator not initialized; ensure factory provided or legacy Eval passed.");
+  return *evalInstance;
+}
+
+// signed_eval: convert evaluator result (White perspective) to negamax sign convention
+int Search::signed_eval(model::Position& pos) {
+  Evaluator& e = currentEval();
+  int v = e.evaluate(pos);
+  // we expect evaluate to return White-perspective (positive = White better).
+  // For negamax we want positive => side-to-move advantage, so flip if Black to move.
   if (pos.state().sideToMove == core::Color::Black) return -v;
   return v;
 }
 
-// ---------- quiescence ----------
+// ------------------ helpers ------------------
+static inline bool same_move(const model::Move& a, const model::Move& b) {
+  return a.from == b.from && a.to == b.to && a.promotion == b.promotion;
+}
+
+// ------------------ quiescence ------------------
 int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   stats.nodes++;
   if (stopFlag && stopFlag->load()) {
-    int safeEval = signed_eval(eval, pos);
+    int safeEval = signed_eval(pos);
     return std::clamp(safeEval, -MATE, MATE);
   }
 
-  int stand = std::clamp(signed_eval(eval, pos), -MATE, MATE);
+  int stand = std::clamp(signed_eval(pos), -MATE, MATE);
 
   if (stand >= beta) return beta;
   if (alpha < stand) alpha = stand;
@@ -84,7 +107,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   return best;
 }
 
-// ---------- negamax ----------
+// ------------------ negamax ------------------
 int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int ply,
                     model::Move& refBest) {
   stats.nodes++;
@@ -230,7 +253,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   return best;
 }
 
-// build pv from tt (copy of your old implementation)
+// build pv from tt
 std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_len) {
   std::vector<model::Move> pv;
   try {
@@ -258,7 +281,7 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
   return pv;
 }
 
-// single-threaded root search (keeps original behavior)
+// single-threaded root search
 int Search::search_root(model::Position& pos, int depth, std::atomic<bool>* stop) {
   this->stopFlag = stop;
   stats = SearchStats{};
@@ -470,25 +493,44 @@ int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bo
   std::vector<std::future<RootResult>> futures;
   futures.reserve(legal.size());
 
-  // Launch a task per root move (you can improve by limiting concurrently running tasks,
-  // but std::async with system thread-pool and hw concurrency is fine for now)
+  // Launch a task per root move (you can improve by limiting concurrently running tasks)
   for (auto& m : legal) {
     model::Position child = pos;
     if (!child.doMove(m)) continue;
 
-    futures.push_back(
-        std::async(std::launch::async, [this, child, m, depth]() mutable -> RootResult {
-          RootResult rr{};
-          // each worker has its own Search instance to avoid sharing killers/history
-          Search worker(this->tt, this->eval, this->cfg);
-          worker.stopFlag = this->stopFlag;
-          model::Move ref;
-          int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
-          rr.score = score;
-          rr.move = m;
-          rr.stats = worker.getStatsCopy();
-          return rr;
-        }));
+    // capture everything needed by value where appropriate
+    if (evalFactory) {
+      // If a factory is present, each worker Search gets its own Evaluator instance via the
+      // factory.
+      futures.push_back(
+          std::async(std::launch::async, [this, child, m, depth]() mutable -> RootResult {
+            RootResult rr{};
+            // each worker has its own Search instance to avoid sharing killers/history
+            Search worker(this->tt, this->evalFactory, this->cfg);
+            worker.stopFlag = this->stopFlag;
+            model::Move ref;
+            int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+            rr.score = score;
+            rr.move = m;
+            rr.stats = worker.getStatsCopy();
+            return rr;
+          }));
+    } else {
+      // No factory provided: fallback to using legacy constructor which uses shared Evaluator&
+      // This is safe if your Evaluator implementation is thread-safe (locks internally).
+      futures.push_back(
+          std::async(std::launch::async, [this, child, m, depth]() mutable -> RootResult {
+            RootResult rr{};
+            Search worker(this->tt, *this->evalPtr, this->cfg);
+            worker.stopFlag = this->stopFlag;
+            model::Move ref;
+            int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+            rr.score = score;
+            rr.move = m;
+            rr.stats = worker.getStatsCopy();
+            return rr;
+          }));
+    }
   }
 
   int bestScore = -MATE - 1;
@@ -544,6 +586,12 @@ int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bo
 // snapshot stats
 SearchStats Search::getStatsCopy() const {
   return stats;
+}
+
+void Search::clearSearchState() {
+  killers.fill(model::Move{});
+  for (auto& h : history) h.fill(0);
+  stats = SearchStats{};
 }
 
 }  // namespace lilia::engine

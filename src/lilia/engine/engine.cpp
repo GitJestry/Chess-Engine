@@ -10,15 +10,18 @@ namespace lilia::engine {
 struct Engine::Impl {
   EngineConfig cfg;
   model::TT4 tt;
-  Evaluator eval;
-  Search* search = nullptr;
+  std::unique_ptr<Search> search;
+
   Impl(const EngineConfig& c) : cfg(c), tt(c.ttSizeMb) {
-    unsigned int hw = std::thread::hardware_concurrency();  // 0 if unknown
+    unsigned int hw = std::thread::hardware_concurrency();
     int logical = (hw > 0 ? (int)hw : 1);
     cfg.threads = std::max(1, logical - 1);
-    search = new Search(tt, eval, cfg);
+
+    // Factory: erzeugt pro Thread einen frischen Evaluator
+    auto evalFactory = []() { return std::make_unique<Evaluator>(); };
+
+    search = std::make_unique<Search>(tt, evalFactory, cfg);
   }
-  ~Impl() { delete search; }
 };
 
 Engine::Engine(const EngineConfig& cfg) : pimpl(new Impl(cfg)) {}

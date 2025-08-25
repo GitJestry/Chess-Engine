@@ -18,20 +18,15 @@ class Position {
   GameState& state() { return m_state; }
   const GameState& state() const { return m_state; }
 
-  // After you’ve placed pieces and set state, call buildHash()
-  inline void Position::buildHash() {
-    // Full Zobrist (deine bestehende compute)
+  void buildHash() {
     m_hash = Zobrist::compute(*this);
 
-    // Pawn-only key: iterate board and xor pawn piece constants
-    // Wir nutzen die gleichen Zobrist-Konstanten wie für pieces, aber nur für Pawn entries.
-    std::uint64_t pk = 0;
+    bb::Bitboard pk = 0;
     for (core::Square sq = 0; sq < 64; ++sq) {
       auto opt = m_board.getPiece(sq);
       if (!opt.has_value()) continue;
       const bb::Piece p = *opt;
       if (p.type == core::PieceType::Pawn) {
-        // bb::ci(p.color) -> index converter that you already use for Zobrist arrays
         pk ^= Zobrist::piece[bb::ci(p.color)][static_cast<int>(core::PieceType::Pawn)][sq];
       }
     }
@@ -62,7 +57,7 @@ class Position {
 
   // --- private: ---
   struct NullState {
-    std::uint64_t zobristKey;
+    bb::Bitboard zobristKey;
     std::uint8_t prevCastlingRights;
     core::Square prevEnPassantSquare;
     int prevHalfmoveClock;
@@ -76,15 +71,10 @@ class Position {
   void unapplyMove(const StateInfo& st);
   void updateCastlingRightsOnMove(core::Square from, core::Square to);
 
-  // --- Zobrist incremental helpers ---
-  // model/position.hpp  (Ausschnitt: implementiere diese Methoden in der .cpp oder inline)
-
-  // Already existed: inline void hashXorPiece(core::Color c, core::PieceType pt, core::Square s)
-  inline void Position::hashXorPiece(core::Color c, core::PieceType pt, core::Square s) {
+  void hashXorPiece(core::Color c, core::PieceType pt, core::Square s) {
     // full board key toggle (exists already)
     m_hash ^= Zobrist::piece[bb::ci(c)][static_cast<int>(pt)][s];
 
-    // additionally toggle pawnKey when a pawn is added/removed/moved
     if (pt == core::PieceType::Pawn) {
       m_state.pawnKey ^= Zobrist::piece[bb::ci(c)][static_cast<int>(core::PieceType::Pawn)][s];
     }
