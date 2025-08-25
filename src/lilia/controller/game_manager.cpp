@@ -14,11 +14,10 @@ void GameManager::startGame(core::Color playerColor, const std::string& fen, boo
   std::lock_guard lock(m_mutex);
   m_playerColor = playerColor;
   m_game.setPosition(fen);
-  m_game.buildHash();
   m_cancelBot.store(false);
   m_waitingPromotion = false;
-  int thinkTime = 5000;  // ms
-  int depth = 12;
+  int thinkTime = 20000;  // ms
+  int depth = 9;
 
   // default: human for player color, bot for opponent (if vsBot)
   if (vsBot) {

@@ -1,6 +1,9 @@
 #pragma once
 #include <array>
+#include <atomic>
 #include <cstdint>
+#include <limits>
+#include <thread>  // for yield
 #include <vector>
 
 #include "move.hpp"
@@ -14,15 +17,24 @@ enum class Bound : std::uint8_t { Exact = 0, Lower = 1, Upper = 2 };
 struct TTEntry4 {
   std::uint64_t key = 0;
   int32_t value = 0;
-  int16_t depth = -32768;
+  int16_t depth = std::numeric_limits<int16_t>::min();  // -32768
   Bound bound = Bound::Exact;
   Move best;
   uint8_t age = 0;  // generation counter low bits
 };
 
-// Cluster of 4 TT entries
+// Cluster of 4 TT entries with lightweight spinlock
 struct Cluster {
   std::array<TTEntry4, 4> e{};
+  // spinlock for this cluster (atomic_flag is NOT copyable)
+  mutable std::atomic_flag lock = ATOMIC_FLAG_INIT;
+
+  void lockCluster() const {
+    while (lock.test_and_set(std::memory_order_acquire)) {
+      std::this_thread::yield();
+    }
+  }
+  void unlockCluster() const { lock.clear(std::memory_order_release); }
 };
 
 // Transposition table with clusters of 4 entries
@@ -52,26 +64,44 @@ class TT4 {
     if (requested == 0) requested = 1;
     // make slots a power of two (highest power of two <= requested)
     slots = highest_power_of_two(requested);
-    table.assign(slots, Cluster());
+
+    // IMPORTANT: construct a fresh vector of Clusters (no copy/assign of atomic_flag)
+    table = std::vector<Cluster>(slots);
+
     generation = 1;
   }
 
   void clear() {
-    for (auto &c : table)
+    // reset entries and reset cluster locks
+    for (auto &c : table) {
+      // ensure the lock is cleared (no deadlock if previous state left it set)
+      c.lock.clear(std::memory_order_relaxed);
       for (auto &e : c.e) e = TTEntry4{};
+    }
     generation = 0;
   }
 
+  // thread-safe probe (locks cluster briefly)
   TTEntry4 *probe(std::uint64_t key) {
     Cluster &c = table[index(key)];
-    for (auto &e : c.e)
-      if (e.key == key) return &e;
+    c.lockCluster();
+    for (auto &e : c.e) {
+      if (e.key == key) {
+        TTEntry4 *ptr = &e;
+        c.unlockCluster();
+        return ptr;
+      }
+    }
+    c.unlockCluster();
     return nullptr;
   }
 
+  // thread-safe store (locks cluster briefly); replacement policy same as before
   void store(std::uint64_t key, int32_t value, int16_t depth, Bound bound, const Move &best) {
     Cluster &c = table[index(key)];
+    c.lockCluster();
 
+    // update existing entry if key matches
     for (auto &e : c.e) {
       if (e.key == key) {
         e.key = key;
@@ -80,26 +110,31 @@ class TT4 {
         e.bound = bound;
         e.best = best;
         e.age = generation;
+        c.unlockCluster();
         return;
       }
     }
 
+    // find empty slot
     for (auto &e : c.e) {
-      if (e.depth == -32768) {
+      if (e.depth == std::numeric_limits<int16_t>::min()) {
         e.key = key;
         e.value = value;
         e.depth = depth;
         e.bound = bound;
         e.best = best;
         e.age = generation;
+        c.unlockCluster();
         return;
       }
     }
 
+    // replacement: pick lowest score to replace (depth * 256 + age diff heuristic)
     int idx = 0;
-    int bestScore = (int)c.e[0].depth * 256 + (int)(generation - c.e[0].age);
+    int bestScore =
+        static_cast<int>(c.e[0].depth) * 256 + static_cast<int>(generation - c.e[0].age);
     for (int i = 1; i < 4; i++) {
-      int score = (int)c.e[i].depth * 256 + (int)(generation - c.e[i].age);
+      int score = static_cast<int>(c.e[i].depth) * 256 + static_cast<int>(generation - c.e[i].age);
       if (score < bestScore) {
         bestScore = score;
         idx = i;
@@ -111,13 +146,18 @@ class TT4 {
     c.e[idx].bound = bound;
     c.e[idx].best = best;
     c.e[idx].age = generation;
+
+    c.unlockCluster();
   }
 
   void new_generation() {
     ++generation;
     if (generation == 0) {
-      for (auto &c : table)
+      for (auto &c : table) {
+        c.lockCluster();
         for (auto &e : c.e) e.age = 0;
+        c.unlockCluster();
+      }
       generation = 1;
     }
   }

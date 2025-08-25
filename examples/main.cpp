@@ -6,11 +6,11 @@
 
 int main() {
 #ifdef LILIA_UI
-  // UI-Build: starte die App
+  // start App
   lilia::app::App app;
   return app.run();
 #elif defined(LILIA_ENGINE)
-  // Engine-only: starte UCI-Loop
+  // Engine-only
   lilia::UCI uci;
   return uci.run();
 #else

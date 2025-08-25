@@ -1,14 +1,24 @@
 #pragma once
-#include "../model/position.hpp"
+#include <cstdint>
 
-namespace lilia::engine {
+namespace lilia {
+namespace model {
+class Position;
+}  // namespace model
+namespace engine {
 
 class Evaluator {
  public:
-  Evaluator();
-  int evaluate(model::Position& pos) const;  // centipawns: White positive
+  Evaluator() noexcept;
+  ~Evaluator() noexcept;
+
+  int evaluate(model::Position& pos) const;
+  void clearCaches() const noexcept;
+
  private:
-  int pst[2][6][64];
+  struct Impl;
+  mutable Impl* m_impl = nullptr;  // mutable: caches are modified even in const evaluate()
 };
 
+}  // namespace engine
 }  // namespace lilia

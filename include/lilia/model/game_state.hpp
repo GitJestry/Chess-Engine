@@ -13,6 +13,7 @@ struct GameState {
   core::Square enPassantSquare = core::NO_SQUARE;  // 0..63 or core::NO_SQUARE = invalid
   int halfmoveClock = 0;
   int fullmoveNumber = 1;
+  bb::Bitboard pawnKey;
 };
 
 struct StateInfo {

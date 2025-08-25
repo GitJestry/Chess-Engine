@@ -29,17 +29,6 @@ bool Position::checkInsufficientMaterial() {
   }
   return false;
 }
-bool Position::checkNoLegalMoves() {
-  model::MoveGenerator mg;
-  auto pseudo = std::move(mg.generatePseudoLegalMoves(m_board, m_state));
-  for (const auto& m : pseudo) {
-    if (doMove(m)) {
-      undoMove();
-      return false;
-    }
-  }
-  return true;
-}
 bool Position::inCheck() const {
   bb::Bitboard kbb = m_board.pieces(m_state.sideToMove, core::PieceType::King);
   if (!kbb) return false;  // defensiv

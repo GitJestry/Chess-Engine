@@ -9,6 +9,7 @@ struct EngineConfig {
   bool useLMR = true;
   bool useAspiration = true;
   int aspirationWindow = 25;  // centipawns
+  int threads = 4;
 };
 
 static const int base_value[6] = {100, 320, 330, 500, 900, 20000};

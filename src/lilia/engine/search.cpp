@@ -2,26 +2,17 @@
 
 #include <algorithm>
 #include <chrono>
-#include <exception>  // für std::exception
+#include <exception>
+#include <future>
 #include <iostream>
 #include <limits>
+#include <thread>
+
+#include "lilia/engine/move_order.hpp"
 
 namespace lilia::engine {
 
-static const int INF = 30000;
-static const int MATE = 29000;
-
-static inline bool same_move(const model::Move& a, const model::Move& b) {
-  return a.from == b.from && a.to == b.to && a.promotion == b.promotion;
-}
-
-// convert evaluator result (white - black) to negamax sign convention:
-// return value from side-to-move viewpoint
-static inline int signed_eval(Evaluator& eval, model::Position& pos) {
-  int v = eval.evaluate(pos);
-  if (pos.state().sideToMove == core::Color::Black) return -v;
-  return v;
-}
+using steady_clock = std::chrono::steady_clock;
 
 Search::Search(model::TT4& tt_, Evaluator& eval_, const EngineConfig& cfg_)
     : tt(tt_), eval(eval_), cfg(cfg_) {
@@ -31,10 +22,22 @@ Search::Search(model::TT4& tt_, Evaluator& eval_, const EngineConfig& cfg_)
   stats = SearchStats{};
 }
 
+// helper: same_move
+static inline bool same_move(const model::Move& a, const model::Move& b) {
+  return a.from == b.from && a.to == b.to && a.promotion == b.promotion;
+}
+
+// convert evaluator result (white - black) to negamax sign convention:
+static inline int signed_eval(Evaluator& eval, model::Position& pos) {
+  int v = eval.evaluate(pos);
+  if (pos.state().sideToMove == core::Color::Black) return -v;
+  return v;
+}
+
+// ---------- quiescence ----------
 int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   stats.nodes++;
   if (stopFlag && stopFlag->load()) {
-    // Stop: safe evaluation, innerhalb von [-MATE, MATE]
     int safeEval = signed_eval(eval, pos);
     return std::clamp(safeEval, -MATE, MATE);
   }
@@ -48,7 +51,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   try {
     moves = mg.generatePseudoLegalMoves(pos.board(), pos.state());
   } catch (...) {
-    return stand;  // move generator failed
+    return stand;
   }
 
   std::vector<model::Move> caps;
@@ -63,18 +66,13 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 
   int best = stand;
   for (auto& m : caps) {
-    if (stopFlag && stopFlag->load()) {
-      break;
-    }
+    if (stopFlag && stopFlag->load()) break;
 
     if (!pos.doMove(m)) continue;
-
     int score = -quiescence(pos, -beta, -alpha, ply + 1);
     pos.undoMove();
 
-    if (stopFlag && stopFlag->load()) {
-      break;
-    }
+    if (stopFlag && stopFlag->load()) break;
 
     score = std::clamp(score, -MATE, MATE);
 
@@ -85,16 +83,15 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 
   return best;
 }
+
+// ---------- negamax ----------
 int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int ply,
                     model::Move& refBest) {
   stats.nodes++;
-  if (stopFlag && stopFlag->load()) {
-    return 0;
-  }
+  if (stopFlag && stopFlag->load()) return 0;
 
   if (pos.checkInsufficientMaterial() || pos.checkMoveRule() || pos.checkRepitition()) return 0;
 
-  // --- Quiescence ---
   if (depth <= 0) return quiescence(pos, alpha, beta, ply);
 
   const int origAlpha = alpha;
@@ -102,7 +99,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   int best = -MATE - 1;
   model::Move bestLocal{};
 
-  // --- TT probe ---
+  // TT probe
   model::Move ttMove{};
   bool haveTT = false;
   try {
@@ -120,7 +117,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     haveTT = false;
   }
 
-  // --- Null Move Pruning ---
+  // Null move pruning
   if (depth >= 3 && !pos.inCheck()) {
     pos.doNullMove();
     int nullScore = -negamax(pos, depth - 1 - 2, -beta, -beta + 1, ply + 1, refBest);
@@ -128,7 +125,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (nullScore >= beta) return beta;
   }
 
-  // --- Generate legal moves ---
+  // generate moves
   std::vector<model::Move> moves;
   try {
     moves = mg.generatePseudoLegalMoves(pos.board(), pos.state());
@@ -149,7 +146,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     return 0;
   }
 
-  // --- Move ordering ---
+  // move ordering
   std::vector<std::pair<int, model::Move>> scored;
   scored.reserve(legal.size());
   for (auto& m : legal) {
@@ -161,7 +158,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     else if (m.promotion != core::PieceType::None)
       score = 9000;
     else if (same_move(m, killers[0]) || same_move(m, killers[1]))
-      score = 8000;  // killer bonus
+      score = 8000;
     else
       score = history[m.from][m.to];
     scored.push_back({score, m});
@@ -178,16 +175,12 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     int value;
     model::Move childBest{};
 
-    // --- Check extension ---
     int newDepth = depth - 1;
-    if (pos.inCheck()) {
-      newDepth += 1;  // extend check
-    }
+    if (pos.inCheck()) newDepth += 1;  // check extension
 
     if (moveCount == 0) {
       value = -negamax(pos, newDepth, -beta, -alpha, ply + 1, childBest);
     } else {
-      // --- Late Move Reductions ---
       int reduction = 0;
       if (depth >= 3 && moveCount >= 4 && !m.isCapture && m.promotion == core::PieceType::None) {
         reduction = 1;
@@ -208,7 +201,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (value > alpha) alpha = value;
 
     if (alpha >= beta) {
-      // killer + history update
       if (!m.isCapture && m.promotion == core::PieceType::None) {
         killers[1] = killers[0];
         killers[0] = m;
@@ -219,7 +211,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     ++moveCount;
   }
 
-  // --- TT store ---
+  // store TT
   if (!(stopFlag && stopFlag->load())) {
     model::Bound bound;
     if (best <= origAlpha)
@@ -238,6 +230,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   return best;
 }
 
+// build pv from tt (copy of your old implementation)
 std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_len) {
   std::vector<model::Move> pv;
   try {
@@ -265,12 +258,12 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
   return pv;
 }
 
+// single-threaded root search (keeps original behavior)
 int Search::search_root(model::Position& pos, int depth, std::atomic<bool>* stop) {
   this->stopFlag = stop;
-  stats = SearchStats{};             // reset stats
-  SearchStats lastCompletedStats{};  // snapshot of last finished depth
+  stats = SearchStats{};
+  SearchStats lastCompletedStats{};
 
-  using steady_clock = std::chrono::steady_clock;
   auto start = steady_clock::now();
 
   int lastScore = 0;
@@ -281,11 +274,8 @@ int Search::search_root(model::Position& pos, int depth, std::atomic<bool>* stop
 
   try {
     for (int d = 1; d <= depth; ++d) {
-      if (stopFlag && stopFlag->load()) {
-        break;
-      }
+      if (stopFlag && stopFlag->load()) break;
 
-      // --- aspiration window setup ---
       int a0 = -INF, b0 = INF;
       if (cfg.useAspiration && d > 1) {
         a0 = lastScore - cfg.aspirationWindow;
@@ -297,7 +287,7 @@ int Search::search_root(model::Position& pos, int depth, std::atomic<bool>* stop
         beta = INF;
       }
 
-      // --- generate legal moves ---
+      // generate legal
       std::vector<model::Move> moves;
       try {
         moves = mg.generatePseudoLegalMoves(pos.board(), pos.state());
@@ -314,7 +304,7 @@ int Search::search_root(model::Position& pos, int depth, std::atomic<bool>* stop
       }
       if (legal.empty()) break;
 
-      // --- move ordering: TT first ---
+      // tt ordering
       try {
         if (auto* e = tt.probe(rootKey)) {
           if (e->key == rootKey) {
@@ -329,13 +319,13 @@ int Search::search_root(model::Position& pos, int depth, std::atomic<bool>* stop
       } catch (...) {
       }
 
-      int bestScore = -MATE - 1;  // sichere Initialisierung
+      int bestScore = -MATE - 1;
       std::vector<std::pair<int, model::Move>> rootCandidates;
       rootCandidates.reserve(legal.size());
 
       bool first = true;
       for (auto& m : legal) {
-        if (stopFlag && stopFlag->load()) goto stop_search;  // clean abort
+        if (stopFlag && stopFlag->load()) goto stop_search;
 
         if (!pos.doMove(m)) continue;
 
@@ -362,18 +352,16 @@ int Search::search_root(model::Position& pos, int depth, std::atomic<bool>* stop
           bestMove = m;
         }
         if (score > alpha) alpha = score;
-        if (alpha >= beta) break;  // beta cutoff
+        if (alpha >= beta) break;
       }
 
       lastScore = bestScore;
 
-      // --- aspiration re-search if needed ---
       if (cfg.useAspiration && (lastScore <= a0 || lastScore >= b0)) {
         alpha = -INF;
         beta = INF;
         bestScore = -MATE - 1;
         rootCandidates.clear();
-
         for (auto& m : legal) {
           if (!pos.doMove(m)) continue;
           model::Move refBest;
@@ -389,7 +377,7 @@ int Search::search_root(model::Position& pos, int depth, std::atomic<bool>* stop
         lastScore = bestScore;
       }
 
-      // --- update stats ---
+      // stats update
       auto now = steady_clock::now();
       long long elapsedMs =
           std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
@@ -399,16 +387,16 @@ int Search::search_root(model::Position& pos, int depth, std::atomic<bool>* stop
       stats.bestScore = lastScore;
       stats.bestMove = bestMove;
 
-      // --- top-K moves ---
+      // top-K
       std::sort(rootCandidates.begin(), rootCandidates.end(),
-                [](const auto& a, const auto& b) { return a.first > b.first; });
+                [](auto& a, auto& b) { return a.first > b.first; });
       const size_t K = 5;
       stats.topMoves.clear();
       for (size_t i = 0; i < rootCandidates.size() && i < K; ++i) {
         stats.topMoves.push_back({rootCandidates[i].second, rootCandidates[i].first});
       }
 
-      // --- PV line ---
+      // pv
       stats.bestPV.clear();
       if (stats.bestMove.has_value()) {
         model::Position tmp = pos;
@@ -421,7 +409,6 @@ int Search::search_root(model::Position& pos, int depth, std::atomic<bool>* stop
 
       lastCompletedStats = stats;
     }  // end depth loop
-
   } catch (const std::exception& e) {
     std::cerr << "[Search] exception: " << e.what() << "\n";
   } catch (...) {
@@ -434,8 +421,6 @@ stop_search:
     long long elapsedMs =
         std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
     std::cerr << "[Search] stopFlag raised at " << elapsedMs << " ms\n";
-
-    // restore safe snapshot
     stats = lastCompletedStats;
     stats.elapsedMs = elapsedMs;
     stats.nps = (elapsedMs > 0) ? (double)stats.nodes / (elapsedMs / 1000.0) : (double)stats.nodes;
@@ -445,7 +430,118 @@ stop_search:
   return stats.bestScore;
 }
 
-// Return a copy of stats (thread-safe snapshot) instead of a reference
+// ---------- parallel root search ----------
+int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bool>* stop,
+                                 int maxThreads) {
+  this->stopFlag = stop;
+  stats = SearchStats{};
+
+  auto start = steady_clock::now();
+
+  // generate legal root moves
+  std::vector<model::Move> moves;
+  try {
+    moves = mg.generatePseudoLegalMoves(pos.board(), pos.state());
+  } catch (...) {
+    moves.clear();
+  }
+  std::vector<model::Move> legal;
+  legal.reserve(moves.size());
+  for (auto& m : moves) {
+    if (!pos.doMove(m)) continue;
+    pos.undoMove();
+    legal.push_back(m);
+  }
+  if (legal.empty()) {
+    this->stopFlag = nullptr;
+    return 0;
+  }
+
+  unsigned hw = std::thread::hardware_concurrency();
+  if (maxThreads <= 0) maxThreads = (hw > 0 ? (int)hw : 1);
+  if ((size_t)maxThreads > legal.size()) maxThreads = static_cast<int>(legal.size());
+
+  struct RootResult {
+    int score;
+    model::Move move;
+    SearchStats stats;
+  };
+
+  std::vector<std::future<RootResult>> futures;
+  futures.reserve(legal.size());
+
+  // Launch a task per root move (you can improve by limiting concurrently running tasks,
+  // but std::async with system thread-pool and hw concurrency is fine for now)
+  for (auto& m : legal) {
+    model::Position child = pos;
+    if (!child.doMove(m)) continue;
+
+    futures.push_back(
+        std::async(std::launch::async, [this, child, m, depth]() mutable -> RootResult {
+          RootResult rr{};
+          // each worker has its own Search instance to avoid sharing killers/history
+          Search worker(this->tt, this->eval, this->cfg);
+          worker.stopFlag = this->stopFlag;
+          model::Move ref;
+          int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+          rr.score = score;
+          rr.move = m;
+          rr.stats = worker.getStatsCopy();
+          return rr;
+        }));
+  }
+
+  int bestScore = -MATE - 1;
+  model::Move bestMove{};
+  std::vector<std::pair<int, model::Move>> rootCandidates;
+
+  for (auto& f : futures) {
+    if (this->stopFlag && this->stopFlag->load()) break;
+    RootResult rr;
+    try {
+      rr = f.get();
+    } catch (...) {
+      continue;
+    }
+    stats.nodes += rr.stats.nodes;
+    rootCandidates.push_back({rr.score, rr.move});
+    if (rr.score > bestScore) {
+      bestScore = rr.score;
+      bestMove = rr.move;
+    }
+  }
+
+  // finalize stats
+  auto now = steady_clock::now();
+  long long elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+  stats.elapsedMs = elapsedMs;
+  stats.nps = (elapsedMs > 0) ? (double)stats.nodes / (elapsedMs / 1000.0) : (double)stats.nodes;
+  stats.bestScore = bestScore;
+  stats.bestMove = bestMove;
+
+  std::sort(rootCandidates.begin(), rootCandidates.end(),
+            [](auto& a, auto& b) { return a.first > b.first; });
+  const size_t K = 5;
+  stats.topMoves.clear();
+  for (size_t i = 0; i < rootCandidates.size() && i < K; ++i) {
+    stats.topMoves.push_back({rootCandidates[i].second, rootCandidates[i].first});
+  }
+
+  stats.bestPV.clear();
+  if (stats.bestMove.has_value()) {
+    model::Position tmp = pos;
+    if (tmp.doMove(stats.bestMove.value())) {
+      stats.bestPV.push_back(stats.bestMove.value());
+      auto rest = build_pv_from_tt(tmp, 32);
+      for (auto& mv : rest) stats.bestPV.push_back(mv);
+    }
+  }
+
+  this->stopFlag = nullptr;
+  return stats.bestScore;
+}
+
+// snapshot stats
 SearchStats Search::getStatsCopy() const {
   return stats;
 }

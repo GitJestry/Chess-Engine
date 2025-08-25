@@ -32,7 +32,6 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
 
   std::atomic<bool> stopFlag(false);
 
-  // Timer + condition variable as in deinem ursprünglichen Code
   std::mutex m;
   std::condition_variable cv;
   bool timerStop = false;
@@ -58,7 +57,6 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   std::string engineErr;
 
   try {
-    // Engine::find_best_move erwartet vermutlich (pos, maxDepth, stopFlag*)
     auto mv = m_engine.find_best_move(pos, maxDepth, &stopFlag);
     res.bestMove = mv;
   } catch (const std::exception& e) {
@@ -103,7 +101,7 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   // Logging (similar style as before)
   std::cout << "\n";
   std::cout << "[BotEngine] Search finished: depth=" << maxDepth << " time=" << elapsedMs
-            << "ms reason=" << reason << "\n";
+            << "ms threads=" << m_engine.getConfig().threads << " reason=" << reason << "\n";
 
   std::cout << "[BotEngine] info nodes=" << res.stats.nodes
             << " nps=" << static_cast<long long>(res.stats.nps) << " time=" << res.stats.elapsedMs

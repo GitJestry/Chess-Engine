@@ -9,9 +9,12 @@
 #include "../model/tt4.hpp"
 #include "config.hpp"
 #include "eval.hpp"
-#include "move_order.hpp"
 
 namespace lilia::engine {
+
+// small constants
+static const int INF = 30000;
+static const int MATE = 29000;
 
 struct SearchStats {
   int nodes = 0;                                      // total nodes searched (last run)
@@ -30,9 +33,13 @@ class Search {
   // run search from root position up to `depth`. best is returned via bestOut.
   // stop is optional cooperative stop flag (nullptr = no stop).
   int search_root(model::Position& pos, int depth, std::atomic<bool>* stop = nullptr);
-
-  // get statistics from the last finished search_root call
+  int search_root_parallel(model::Position& pos, int depth, std::atomic<bool>* stop,
+                           int maxThreads = 0);  // parallel root search
+  // get snapshot of stats
   SearchStats getStatsCopy() const;
+
+  // get reference to underlying tt (if needed)
+  model::TT4& ttRef() { return tt; }
 
  private:
   int negamax(model::Position& pos, int depth, int alpha, int beta, int ply, model::Move& refBest);
@@ -43,14 +50,15 @@ class Search {
 
   model::TT4& tt;
   Evaluator& eval;
-  const EngineConfig cfg;
-  SearchStats stats;
+  const EngineConfig& cfg;
 
-  // killer and history heuristic
-  std::array<model::Move, 2> killers;           // per ply (simple)
-  std::array<std::array<int, 64>, 64> history;  // history[from][to]
-  std::atomic<bool>* stopFlag = nullptr;        // nullptr == kein Stopp gewünscht
   model::MoveGenerator mg;
+
+  std::array<model::Move, 2> killers;
+  std::array<std::array<int, 64>, 64> history;
+
+  std::atomic<bool>* stopFlag;
+  SearchStats stats;
 };
 
-}  // namespace lilia
+}  // namespace lilia::engine
