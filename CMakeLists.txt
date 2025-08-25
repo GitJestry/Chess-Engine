@@ -1,13 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
-project(ChessEngine_Lilia VERSION 1.0.1 LANGUAGES CXX)
+project(ChessEngine_Lilia VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# -------------------------------------------------------------
-# Option: baue mit oder ohne UI
-# -------------------------------------------------------------
-option(LILIA_UI "Build with SFML UI" ON)
 
 # -------------------------------------------------------------
 # Sources (Core: immer)
@@ -15,6 +10,7 @@ option(LILIA_UI "Build with SFML UI" ON)
 file(GLOB_RECURSE MODEL_FILES     ${PROJECT_SOURCE_DIR}/src/lilia/model/*.cpp)
 file(GLOB_RECURSE ENGINE_FILES    ${PROJECT_SOURCE_DIR}/src/lilia/engine/*.cpp)
 file(GLOB_RECURSE UCI_FILES       ${PROJECT_SOURCE_DIR}/src/lilia/uci/*.cpp)
+file(GLOB_RECURSE CONTROLLER_FILES ${PROJECT_SOURCE_DIR}/src/lilia/controller/*.cpp)
 
 set(CORE_FILES
     ${MODEL_FILES}
@@ -23,81 +19,75 @@ set(CORE_FILES
 )
 
 # -------------------------------------------------------------
-# Sources (UI: nur wenn gewünscht)
+# Sources (UI: nur für App)
 # -------------------------------------------------------------
-if(LILIA_UI)
-    file(GLOB_RECURSE CONTROLLER_FILES ${PROJECT_SOURCE_DIR}/src/lilia/controller/*.cpp)
-    file(GLOB_RECURSE UI_FILES         ${PROJECT_SOURCE_DIR}/src/lilia/view/*.cpp)
-    file(GLOB_RECURSE APP_FILES        ${PROJECT_SOURCE_DIR}/src/lilia/app/*.cpp)
-endif()
+file(GLOB_RECURSE UI_FILES   ${PROJECT_SOURCE_DIR}/src/lilia/view/*.cpp)
+file(GLOB_RECURSE CONTROLLER_FILES   ${PROJECT_SOURCE_DIR}/src/lilia/controller/*.cpp)
+file(GLOB_RECURSE APP_FILES  ${PROJECT_SOURCE_DIR}/src/lilia/app/*.cpp)
 
 # -------------------------------------------------------------
-# Executable
+# Engine-only executable
 # -------------------------------------------------------------
-set(EXECUTABLE_NAME "${PROJECT_NAME}-${PROJECT_VERSION}")
+add_executable(lilia_engine
+    examples/main.cpp
+    ${CORE_FILES}
+)
 
-if(LILIA_UI)
-    add_executable(${EXECUTABLE_NAME}
-        examples/main.cpp
-        ${CORE_FILES}
-        ${CONTROLLER_FILES}
-        ${UI_FILES}
-        ${APP_FILES}
-    )
-else()
-    add_executable(${EXECUTABLE_NAME}
-        examples/main.cpp
-        ${CORE_FILES}
-    )
-endif()
-
-target_include_directories(${EXECUTABLE_NAME} PRIVATE
+target_compile_definitions(lilia_engine PRIVATE LILIA_ENGINE)
+target_include_directories(lilia_engine PRIVATE
     ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/include/lilia
 )
 
 # -------------------------------------------------------------
-# Falls mit UI: SFML laden und linken
+# UI executable
 # -------------------------------------------------------------
-if(LILIA_UI)
-    message(STATUS "Building with UI (SFML)")
+add_executable(lilia_app
+    examples/main.cpp
+    ${CORE_FILES}
+    ${UI_FILES}
+    ${APP_FILES}
+    ${CONTROLLER_FILES}
+)
 
-    include(FetchContent)
-    FetchContent_Declare(
-        SFML
-        GIT_REPOSITORY https://github.com/SFML/SFML.git
-        GIT_TAG 2.6.0
-    )
-    FetchContent_MakeAvailable(SFML)
+target_compile_definitions(lilia_app PRIVATE LILIA_UI)
+target_include_directories(lilia_app PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/include/lilia
+)
 
-    target_link_libraries(${EXECUTABLE_NAME} PRIVATE
-        sfml-graphics
-        sfml-window
-        sfml-system
-        sfml-audio
-    )
+# SFML nur für UI
+include(FetchContent)
+FetchContent_Declare(
+    SFML
+    GIT_REPOSITORY https://github.com/SFML/SFML.git
+    GIT_TAG 2.6.0
+)
+FetchContent_MakeAvailable(SFML)
 
-    target_compile_definitions(${EXECUTABLE_NAME} PRIVATE LILIA_UI)
-else()
-    message(STATUS "Building engine-only (UCI mode)")
-    target_compile_definitions(${EXECUTABLE_NAME} PRIVATE LILIA_ENGINE)
-endif()
+target_link_libraries(lilia_app PRIVATE
+    sfml-graphics
+    sfml-window
+    sfml-system
+    sfml-audio
+)
 
 # -------------------------------------------------------------
 # Windows: SFML-DLLs kopieren
 # -------------------------------------------------------------
-if (WIN32 AND LILIA_UI)
-    add_custom_command(TARGET ${EXECUTABLE_NAME} POST_BUILD
+if (WIN32)
+    add_custom_command(TARGET lilia_app POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_RUNTIME_DLLS:${EXECUTABLE_NAME}>
-            $<TARGET_FILE_DIR:${EXECUTABLE_NAME}>
+            $<TARGET_RUNTIME_DLLS:lilia_app>
+            $<TARGET_FILE_DIR:lilia_app>
         COMMAND_EXPAND_LISTS
     )
 
-    add_custom_command(TARGET ${EXECUTABLE_NAME} POST_BUILD
+    add_custom_command(TARGET lilia_app POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "Copying OpenAL32.dll (if exists)..."
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll"
-            $<TARGET_FILE_DIR:${EXECUTABLE_NAME}>
+            $<TARGET_FILE_DIR:lilia_app>
         VERBATIM
     )
 endif()
@@ -105,8 +95,10 @@ endif()
 # -------------------------------------------------------------
 # Organize build output
 # -------------------------------------------------------------
-set_target_properties(${EXECUTABLE_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-)
+foreach(target lilia_engine lilia_app)
+    set_target_properties(${target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+    )
+endforeach()

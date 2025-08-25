@@ -4,7 +4,6 @@
 #include <memory>
 #include <thread>
 
-#include "../engine/engine.hpp"
 #include "player.hpp"
 
 namespace lilia::controller {
@@ -20,7 +19,6 @@ class BotPlayer : public IPlayer {
                                        std::atomic<bool>& cancelToken) override;
 
  private:
-  engine::Engine m_engine;
   int m_depth;
   int m_thinkMillis;
 };

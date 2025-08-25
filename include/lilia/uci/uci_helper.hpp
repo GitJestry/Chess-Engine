@@ -5,7 +5,7 @@
 #include "../chess_types.hpp"
 #include "../model/move.hpp"
 
-namespace lilia::controller {
+namespace lilia {
 
 inline std::string square_to_uci(int sq) {
   if (sq < 0 || sq > 63) return "--";
@@ -47,4 +47,4 @@ inline std::string move_to_uci(const model::Move& m) {
   return uci;
 }
 
-}  // namespace lilia::controller
+}  // namespace lilia
