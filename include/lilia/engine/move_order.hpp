@@ -1,7 +1,5 @@
 #pragma once
 
-#include <vector>
-
 #include "config.hpp"
 #include "lilia/model/move.hpp"
 #include "lilia/model/position.hpp"
