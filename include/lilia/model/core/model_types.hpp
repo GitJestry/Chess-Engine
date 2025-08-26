@@ -1,15 +1,6 @@
 #pragma once
 #include "../../chess_types.hpp"
 
-// =======================================================
-// Bitboard Layout in Stockfish-Convention:
-// - Bit 0 (LSB)   = a1 (bottom left white view)
-// - Bit 63 (MSB)  = h8 (top right white view)
-// This File defines:
-// - Square-Enum for every square
-// - helpfunctions and masks for Files und Ranks
-// =======================================================
-
 namespace lilia::model::bb {
 using Bitboard = std::uint64_t;
 
@@ -22,18 +13,16 @@ constexpr inline int ci(core::Color c) {
   return c == core::Color::White ? 0 : 1;
 }
 
-// Square helpers (Stockfish mapping: A1=0 .. H8=63)
 constexpr inline int file_of(core::Square s) {
   return s & 7;
-}  // 0..7
+}  
 constexpr inline int rank_of(core::Square s) {
   return s >> 3;
-}  // 0..7
+}  
 constexpr inline Bitboard sq_bb(core::Square s) {
   return Bitboard{1} << s;
 }
 
-// Files & ranks
 constexpr Bitboard FILE_A = 0x0101010101010101ULL;
 constexpr Bitboard FILE_B = 0x0202020202020202ULL;
 constexpr Bitboard FILE_G = 0x4040404040404040ULL;
@@ -44,11 +33,9 @@ constexpr Bitboard RANK_2 = 0x000000000000FF00ULL;
 constexpr Bitboard RANK_7 = 0x00FF000000000000ULL;
 constexpr Bitboard RANK_8 = 0xFF00000000000000ULL;
 
-// Useful squares
 constexpr core::Square A1 = 0, D1 = 3, E1 = 4, F1 = 5, H1 = 7;
 constexpr core::Square A8 = 56, D8 = 59, E8 = 60, F8 = 61, H8 = 63;
 
-// Castling rights bitmask: WK,WQ,BK,BQ
 enum Castling : std::uint8_t { WK = 1 << 0, WQ = 1 << 1, BK = 1 << 2, BQ = 1 << 3 };
 
-}  // namespace lilia::model::bb
+}  

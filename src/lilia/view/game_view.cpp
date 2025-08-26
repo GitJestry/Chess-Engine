@@ -137,18 +137,18 @@ void GameView::showGameOver(core::GameResult res, core::Color sideToMove) {
 }
 
 [[nodiscard]] core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
-  int file = mousePos.x / constant::SQUARE_PX_SIZE;      // 0 = A, 7 = H
-  int rankSFML = mousePos.y / constant::SQUARE_PX_SIZE;  // 0 = top row, 7 = bottom row
+  int file = mousePos.x / constant::SQUARE_PX_SIZE;      
+  int rankSFML = mousePos.y / constant::SQUARE_PX_SIZE;  
 
   int rankFromWhite = 7 - rankSFML;
 
-  // Clamp values to be safe
+  
   if (file < 0) file = 0;
   if (file > 7) file = 7;
   if (rankFromWhite < 0) rankFromWhite = 0;
   if (rankFromWhite > 7) rankFromWhite = 7;
 
-  // Index in Stockfish-like format
+  
   return static_cast<core::Square>(rankFromWhite * 8 + file);
 }
 
@@ -159,4 +159,4 @@ void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
   m_piece_manager.setPieceToSquareScreenPos(from, to);
 }
 
-}  // namespace lilia::view
+}  

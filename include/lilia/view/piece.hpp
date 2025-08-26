@@ -20,4 +20,4 @@ class Piece : public Entity {
   core::PieceType m_type;
 };
 
-}  // namespace lilia::view
+}  

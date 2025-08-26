@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+
 #include "../constants.hpp"
 #include "move_generator.hpp"
 #include "position.hpp"
@@ -26,6 +27,7 @@ class ChessGame {
   const GameState& getGameState();
   const std::vector<Move>& generateLegalMoves();
   Move getMove(core::Square from, core::Square to);
+
   bool isKingInCheck(core::Color from) const;
   core::Square getRookSquareFromCastleside(CastleSide castleSide, core::Color side);
   core::Square getKingSquare(core::Color color);
@@ -42,4 +44,4 @@ class ChessGame {
   std::vector<Move> m_legal_moves;
 };
 
-}  // namespace lilia::model
+}  

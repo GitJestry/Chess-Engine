@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 #include <optional>
 
 #include "../model/core/magic.hpp"
@@ -16,7 +17,7 @@ class Engine {
   explicit Engine(const EngineConfig& cfg = {});
   ~Engine();
 
-  // Find best move for the position (returns empty if none)
+  
   static void init() {
     model::Zobrist::init();
     model::magic::init_magics();
@@ -26,9 +27,10 @@ class Engine {
   const SearchStats& getLastSearchStats() const;
   const EngineConfig& getConfig() const;
 
+
  private:
   struct Impl;
   Impl* pimpl;
 };
 
-}  // namespace lilia::engine
+}  

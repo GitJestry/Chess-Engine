@@ -10,7 +10,7 @@ namespace lilia::model {
 
 class MoveGenerator {
  public:
-  /// Pseudo-legal (includes ep/castling when possible). Filter with Position::doMove for legality.
+  
   void generatePseudoLegalMoves(const Board& b, const GameState& st,
                                 std::vector<model::Move>& out) const;
 
@@ -22,4 +22,4 @@ class MoveGenerator {
   void genKingMoves(const Board&, const GameState&, core::Color, std::vector<Move>&) const;
 };
 
-}  // namespace lilia::model
+}  

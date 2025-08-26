@@ -17,11 +17,11 @@ void PieceManager::initFromFen(const std::string& fen) {
   int file = 0;
   for (char ch : boardPart) {
     if (ch == '/') {
-      // Nächste Reihe
+      
       rank--;
       file = 0;
     } else if (std::isdigit(ch)) {
-      // So viele leere Felder überspringen
+      
       file += ch - '0';
     } else {
       int pos = file + rank * constant::BOARD_SIZE;
@@ -138,4 +138,4 @@ void PieceManager::renderPiece(core::Square pos, sf::RenderWindow& window) {
   m_pieces.find(pos)->second.draw(window);
 }
 
-}  // namespace lilia::view
+}  

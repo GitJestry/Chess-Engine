@@ -19,4 +19,4 @@ constexpr inline bool operator==(const Move& a, const Move& b) noexcept {
           a.isCapture == b.isCapture && a.isEnPassant == b.isEnPassant && a.castle == b.castle);
 }
 
-}  // namespace lilia::model
+}  

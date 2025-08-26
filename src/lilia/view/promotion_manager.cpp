@@ -42,4 +42,4 @@ core::PieceType PromotionManager::clickedOnType(Entity::Position mousePos) {
   return core::PieceType::None;
 }
 
-}  // namespace lilia::view
+}  
