@@ -1,5 +1,7 @@
 #include "lilia/view/game_view.hpp"
 
+#include <SFML/Graphics/Image.hpp>
+#include <SFML/Graphics/RenderWindow.hpp>
 #include <iostream>
 
 namespace lilia::view {
@@ -9,7 +11,19 @@ GameView::GameView(sf::RenderWindow& window)
       m_board_view(),
       m_piece_manager(m_board_view),
       m_highlight_manager(m_board_view),
-      m_chess_animator(m_board_view, m_piece_manager) {}
+      m_chess_animator(m_board_view, m_piece_manager) {
+  m_cursor_default.loadFromSystem(sf::Cursor::Arrow);
+
+  sf::Image openImg;
+  if (openImg.loadFromFile("assets/textures/cursor_hand_open.png")) {
+    m_cursor_hand_open.loadFromPixels(openImg.getPixelsPtr(), openImg.getSize(), {0, 0});
+  }
+  sf::Image closedImg;
+  if (closedImg.loadFromFile("assets/textures/cursor_hand_closed.png")) {
+    m_cursor_hand_closed.loadFromPixels(closedImg.getPixelsPtr(), closedImg.getSize(), {0, 0});
+  }
+  m_window.setMouseCursor(m_cursor_default);
+}
 
 void GameView::init(const std::string& fen) {
   m_board_view.init();
@@ -158,5 +172,8 @@ void GameView::setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePo
 void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
   m_piece_manager.setPieceToSquareScreenPos(from, to);
 }
+void GameView::setDefaultCursor() { m_window.setMouseCursor(m_cursor_default); }
+void GameView::setHandOpenCursor() { m_window.setMouseCursor(m_cursor_hand_open); }
+void GameView::setHandClosedCursor() { m_window.setMouseCursor(m_cursor_hand_closed); }
 
-}  
+}

@@ -7,6 +7,7 @@
 #include "highlight_manager.hpp"
 #include "piece_manager.hpp"
 #include "promotion_manager.hpp"
+#include <SFML/Window/Cursor.hpp>
 
 namespace lilia::view {
 
@@ -55,6 +56,10 @@ class GameView {
   void removePromotionSelection();
   void showGameOver(core::GameResult res, core::Color sideToMove);
 
+  void setDefaultCursor();
+  void setHandOpenCursor();
+  void setHandClosedCursor();
+
  private:
   sf::RenderWindow& m_window;
 
@@ -63,6 +68,9 @@ class GameView {
   HighlightManager m_highlight_manager;
   animation::ChessAnimator m_chess_animator;
   PromotionManager m_promotion_manager;
+  sf::Cursor m_cursor_default;
+  sf::Cursor m_cursor_hand_open;
+  sf::Cursor m_cursor_hand_closed;
 };
 
 }  // namespace lilia::view
