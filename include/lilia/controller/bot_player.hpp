@@ -19,4 +19,4 @@ class BotPlayer : public IPlayer {
   int m_thinkMillis;
 };
 
-}  // namespace lilia::controller
+}  

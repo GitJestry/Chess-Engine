@@ -3,6 +3,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -31,23 +32,23 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   SearchResult res;
   auto pos = gameState.getPositionRefForBot();
 
-  std::atomic<bool> stopFlag(false);
+  auto stopFlag = std::make_shared<std::atomic<bool>>(false);
 
   std::mutex m;
   std::condition_variable cv;
   bool timerStop = false;
 
   std::thread timer([&]() {
-    if (thinkMillis <= 0) return;  // no timer requested
+    if (thinkMillis <= 0) return;  
     std::unique_lock<std::mutex> lk(m);
     bool pred = cv.wait_for(lk, std::chrono::milliseconds(thinkMillis), [&] {
       return timerStop || (externalCancel && externalCancel->load());
     });
     if (!pred) {
-      stopFlag.store(true);
+      stopFlag->store(true);
     } else {
       if (externalCancel && externalCancel->load()) {
-        stopFlag.store(true);
+        stopFlag->store(true);
       }
     }
   });
@@ -58,7 +59,7 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   std::string engineErr;
 
   try {
-    auto mv = m_engine.find_best_move(pos, maxDepth, &stopFlag);
+    auto mv = m_engine.find_best_move(pos, maxDepth, stopFlag);
     res.bestMove = mv;
   } catch (const std::exception& e) {
     engineThrew = true;
@@ -75,7 +76,7 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   auto t1 = steady_clock::now();
   long long elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 
-  // signal timer to stop and join
+  
   {
     std::lock_guard<std::mutex> lk(m);
     timerStop = true;
@@ -83,23 +84,23 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   cv.notify_one();
   if (timer.joinable()) timer.join();
 
-  // reason (for logging)
+  
   std::string reason;
   if (externalCancel && externalCancel->load()) {
     reason = "external-cancel";
   } else if (engineThrew) {
     reason = std::string("exception: ") + engineErr;
-  } else if (stopFlag.load() && thinkMillis > 0 && elapsedMs >= thinkMillis) {
+  } else if (stopFlag->load() && thinkMillis > 0 && elapsedMs >= thinkMillis) {
     reason = "timeout";
   } else {
     reason = "normal";
   }
 
-  // collect stats from engine
+  
   res.stats = m_engine.getLastSearchStats();
   res.topMoves = res.stats.topMoves;
 
-  // Logging (similar style as before)
+  
   std::cout << "\n";
   std::cout << "[BotEngine] Search finished: depth=" << maxDepth << " time=" << elapsedMs
             << "ms threads=" << m_engine.getConfig().threads << " reason=" << reason << "\n";
@@ -130,8 +131,8 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   return res;
 }
 
-SearchStats BotEngine::getLastSearchStats() const {
+const SearchStats& BotEngine::getLastSearchStats() const {
   return m_engine.getLastSearchStats();
 }
 
-}  // namespace lilia::engine
+}  

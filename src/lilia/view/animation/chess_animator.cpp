@@ -68,4 +68,4 @@ void ChessAnimator::render(sf::RenderWindow& window) {
   m_anim_manager.draw(window);
 }
 
-}  // namespace lilia::view::animation
+}  
