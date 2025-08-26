@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "lilia/uci/uci_helper.hpp"  // für move_to_uci falls gewünscht beim Logging
+#include "lilia/model/chess_game.hpp"
 
 namespace lilia::engine {
 

@@ -5,6 +5,10 @@
 #include <iostream>
 #include <string>
 
+#include "lilia/controller/game_manager.hpp"
+#include "lilia/model/chess_game.hpp"
+#include "lilia/model/move.hpp"
+
 namespace lilia::controller {
 
 GameController::GameController(view::GameView& gView, model::ChessGame& game)

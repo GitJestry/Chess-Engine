@@ -2,6 +2,10 @@
 
 #include <chrono>
 
+#include "lilia/controller/bot_player.hpp"
+#include "lilia/controller/player.hpp"
+#include "lilia/model/chess_game.hpp"
+
 namespace lilia::controller {
 
 GameManager::GameManager(model::ChessGame& model) : m_game(model) {}

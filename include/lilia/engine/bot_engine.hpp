@@ -6,10 +6,13 @@
 #include <utility>
 #include <vector>
 
-#include "../model/Move.hpp"
-#include "../model/chess_game.hpp"
+#include "../model/move.hpp"
 #include "engine.hpp"
 #include "search.hpp"
+
+namespace lilia::model {
+class ChessGame;
+}  // namespace lilia::model
 
 namespace lilia::engine {
 

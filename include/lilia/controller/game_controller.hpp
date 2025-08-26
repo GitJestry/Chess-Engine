@@ -4,15 +4,26 @@
 #include <memory>
 #include <utility>
 
-// External libraries
-#include <SFML/Window/Event.hpp>
+// Forward declaration to avoid heavy SFML header
+namespace sf {
+class Event;
+}
 
 // Project headers
-#include "../model/chess_game.hpp"
+#include "../chess_types.hpp"
+#include "../constants.hpp"
 #include "../view/audio/sound_manager.hpp"
 #include "../view/game_view.hpp"
-#include "game_manager.hpp"  // neue Abhängigkeit: GameManager (sollte implementiert sein)
 #include "input_manager.hpp"
+
+namespace lilia::model {
+class ChessGame;
+struct Move;
+}  // namespace lilia::model
+
+namespace lilia::controller {
+class GameManager;
+}
 
 namespace lilia::controller {
 

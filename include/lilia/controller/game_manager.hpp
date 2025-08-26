@@ -7,9 +7,16 @@
 #include <mutex>
 
 #include "../constants.hpp"
-#include "../model/chess_game.hpp"
-#include "bot_player.hpp"
-#include "player.hpp"
+#include "../chess_types.hpp"
+
+namespace lilia::model {
+class ChessGame;
+struct Move;
+}  // namespace lilia::model
+
+namespace lilia::controller {
+struct IPlayer;
+}
 
 namespace lilia::controller {
 
