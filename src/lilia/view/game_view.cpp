@@ -159,4 +159,10 @@ void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
   m_piece_manager.setPieceToSquareScreenPos(from, to);
 }
 
+sf::Vector2u GameView::getWindowSize() const { return m_window.getSize(); }
+
+Entity::Position GameView::getPieceSize(core::Square pos) const {
+  return m_piece_manager.getPieceSize(pos);
+}
+
 }  
