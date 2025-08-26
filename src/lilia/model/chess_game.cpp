@@ -1,6 +1,7 @@
 #include "lilia/model/chess_game.hpp"
 
 #include <sstream>
+#include <optional>
 
 namespace lilia::model {
 
@@ -54,13 +55,12 @@ void ChessGame::doMoveUCI(const std::string& uciMove) {
   doMove(from, to, promo);
 }
 
-const Move& ChessGame::getMove(core::Square from, core::Square to) {
-  int side = bb::ci(m_position.state().sideToMove);
+std::optional<Move> ChessGame::getMove(core::Square from, core::Square to) {
   std::vector<Move> moves = generateLegalMoves();
-  for (auto& m : moves)
+  for (const auto& m : moves) {
     if (m.from == from && m.to == to) return m;
-
-  return Move{};
+  }
+  return std::nullopt;
 }
 
 void ChessGame::setPosition(const std::string& fen) {
