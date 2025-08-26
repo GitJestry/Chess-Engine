@@ -6,7 +6,7 @@
 #include <mutex>
 #include <thread>
 
-#include "lilia/uci/uci_helper.hpp"  // für move_to_uci falls gewünscht beim Logging
+#include "lilia/uci/uci_helper.hpp"  
 
 namespace lilia::engine {
 
@@ -37,7 +37,7 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   bool timerStop = false;
 
   std::thread timer([&]() {
-    if (thinkMillis <= 0) return;  // no timer requested
+    if (thinkMillis <= 0) return;  
     std::unique_lock<std::mutex> lk(m);
     bool pred = cv.wait_for(lk, std::chrono::milliseconds(thinkMillis), [&] {
       return timerStop || (externalCancel && externalCancel->load());
@@ -74,7 +74,7 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   auto t1 = steady_clock::now();
   long long elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 
-  // signal timer to stop and join
+  
   {
     std::lock_guard<std::mutex> lk(m);
     timerStop = true;
@@ -82,7 +82,7 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   cv.notify_one();
   if (timer.joinable()) timer.join();
 
-  // reason (for logging)
+  
   std::string reason;
   if (externalCancel && externalCancel->load()) {
     reason = "external-cancel";
@@ -94,11 +94,11 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
     reason = "normal";
   }
 
-  // collect stats from engine
+  
   res.stats = m_engine.getLastSearchStats();
   res.topMoves = res.stats.topMoves;
 
-  // Logging (similar style as before)
+  
   std::cout << "\n";
   std::cout << "[BotEngine] Search finished: depth=" << maxDepth << " time=" << elapsedMs
             << "ms threads=" << m_engine.getConfig().threads << " reason=" << reason << "\n";
@@ -133,4 +133,4 @@ SearchStats BotEngine::getLastSearchStats() const {
   return m_engine.getLastSearchStats();
 }
 
-}  // namespace lilia::engine
+}  

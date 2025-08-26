@@ -61,4 +61,4 @@ void HighlightManager::clearHighlightHoverSquare(core::Square pos) {
   m_hl_hover_squares.erase(pos);
 }
 
-}  // namespace lilia::view
+}  

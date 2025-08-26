@@ -10,34 +10,24 @@
 
 namespace lilia::view {
 
-/**
- * @brief Facade for rendering and updating the chess game.
- *
- * GameView delegates responsibilities to specialized managers:
- * - BoardView (background, squares)
- * - PieceManager (pieces on the board)
- * - HighlightManager (move hints, hover, selections)
- * - AnimationManager (piece movements, snapping)
- * - UIOverlay (turn indicator, messages)
- */
 class GameView {
  public:
   GameView(sf::RenderWindow& window);
   ~GameView() = default;
 
-  /// Initialise the board + pieces according to given FEN
+  
   void init(const std::string& fen = core::START_FEN);
 
-  /// Reset to START_FEN
+  
   void resetBoard();
 
-  /// Update animations
+  
   void update(float dt);
 
-  /// Render board, pieces, highlights, UI
+  
   void render();
 
-  /// --- Delegated Facade Methods ---
+  
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
   void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
   void setPieceToSquareScreenPos(core::Square from, core::Square to);
@@ -80,4 +70,4 @@ class GameView {
   PromotionManager m_promotion_manager;
 };
 
-}  // namespace lilia::view
+}  
