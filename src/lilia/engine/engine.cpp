@@ -29,8 +29,9 @@ Engine::~Engine() {
   delete pimpl;
 }
 
-std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxDepth,
-                                                  std::atomic<bool>* stop) {
+std::optional<model::Move> Engine::find_best_move(
+    model::Position& pos, int maxDepth,
+    std::shared_ptr<std::atomic<bool>> stop) {
   if (maxDepth <= 0) maxDepth = pimpl->cfg.maxDepth;
   pimpl->tt.new_generation();
 

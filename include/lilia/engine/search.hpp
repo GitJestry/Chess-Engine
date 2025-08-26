@@ -45,9 +45,9 @@ class Search {
 
   ~Search() = default;
 
-  
-  int search_root_parallel(model::Position& pos, int depth, std::atomic<bool>* stop,
-                           int maxThreads = 0);
+  // parallel root search (uses EvalFactory if provided; otherwise uses shared Evaluator&).
+  int search_root_parallel(model::Position& pos, int depth,
+                           std::shared_ptr<std::atomic<bool>> stop,int maxThreads = 0);
 
   
   SearchStats getStatsCopy() const;
@@ -91,7 +91,7 @@ class Search {
   std::array<model::Move, 2> killers;
   std::array<std::array<int, 64>, 64> history;
 
-  std::atomic<bool>* stopFlag = nullptr;
+  std::shared_ptr<std::atomic<bool>> stopFlag;
   SearchStats stats;
 };
 
