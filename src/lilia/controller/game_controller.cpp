@@ -41,10 +41,11 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
   });
 }
 
-void GameController::startGame(core::Color playerColor, const std::string& fen, bool vsBot) {
+void GameController::startGame(core::Color playerColor, const std::string& fen, bool vsBot,
+                               int thinkTimeMs, int depth) {
   m_sound_manager.playGameBegins();
   m_gameView.init(fen);
-  m_gameManager->startGame(playerColor, fen, vsBot);
+  m_gameManager->startGame(playerColor, fen, vsBot, thinkTimeMs, depth);
 }
 
 void GameController::handleEvent(const sf::Event& event) {

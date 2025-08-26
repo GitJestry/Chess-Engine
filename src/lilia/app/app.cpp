@@ -35,6 +35,16 @@ bool App::parseYesNoDefaultTrue(const std::string& s) {
   return true;
 }
 
+int App::parseIntInRange(const std::string& s, int defaultVal, int minVal, int maxVal) {
+  std::string t = trim(s);
+  if (t.empty()) return defaultVal;
+  if (!std::all_of(t.begin(), t.end(), [](unsigned char c) { return std::isdigit(c); }))
+    return -1;
+  int val = std::stoi(t);
+  if (val < minVal || val > maxVal) return -1;
+  return val;
+}
+
 void App::promptStartOptions() {
   std::cout << "Player color (white / black) [Standard: white]: ";
   std::string colorInput;
@@ -63,6 +73,32 @@ void App::promptStartOptions() {
   } else {
     m_startFen = fenInput;  // use exactly what the user typed (trimmed)
   }
+
+  // Think time in seconds
+  while (true) {
+    std::cout << "Bot think time in seconds [Standard: 1]: ";
+    std::string thinkInput;
+    std::getline(std::cin, thinkInput);
+    int val = parseIntInRange(thinkInput, 1, 1, 60);
+    if (val != -1) {
+      m_thinkTimeMs = val * 1000;  // convert to ms
+      break;
+    }
+    std::cout << "Please enter a number between 1 and 60.\n";
+  }
+
+  // Search depth
+  while (true) {
+    std::cout << "Bot search depth [Standard: 5]: ";
+    std::string depthInput;
+    std::getline(std::cin, depthInput);
+    int val = parseIntInRange(depthInput, 5, 1, 20);
+    if (val != -1) {
+      m_searchDepth = val;
+      break;
+    }
+    std::cout << "Please enter a number between 1 and 20.\n";
+  }
 }
 
 int App::run() {
@@ -85,7 +121,8 @@ int App::run() {
     lilia::controller::GameController gController(view, chessgame);
 
     // start the game using GameController wrapper that delegates to GameManager
-    gController.startGame(m_playerColor, m_startFen, m_vsBot);
+    gController.startGame(m_playerColor, m_startFen, m_vsBot, m_thinkTimeMs,
+                          m_searchDepth);
 
     // main loop
     sf::Clock clock;
