@@ -44,6 +44,7 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
 void GameController::startGame(core::Color playerColor, const std::string& fen, bool vsBot) {
   m_sound_manager.playGameBegins();
   m_gameView.init(fen);
+  m_player_color = playerColor;
   m_gameManager->startGame(playerColor, fen, vsBot);
 }
 
@@ -200,8 +201,7 @@ void GameController::onClick(core::MousePos mousePos) {
 
   // Keine Auswahl
   if (m_selected_sq == core::NO_SQUARE) {
-    if (m_gameView.hasPieceOnSquare(sq) &&
-        m_chess_game.getPiece(sq).color == m_chess_game.getGameState().sideToMove) {
+    if (m_gameView.hasPieceOnSquare(sq)) {
       snapAndReturn(sq, mousePos);
       showAttacks(getAttackSquares(sq));
     }
@@ -215,20 +215,20 @@ void GameController::onClick(core::MousePos mousePos) {
     return;
   }
 
-  // Versuch eines Zugs: an GameManager delegieren
-  if (tryMove(m_selected_sq, sq)) {
-    // GameManager kümmert sich um Promotion event bzw. Anwendung des Moves
+  // Attempt a move only if it's the player's turn and a player's piece is selected
+  if (m_chess_game.getGameState().sideToMove == m_player_color &&
+      m_gameView.hasPieceOnSquare(m_selected_sq) &&
+      m_chess_game.getPiece(m_selected_sq).color == m_player_color &&
+      tryMove(m_selected_sq, sq)) {
     if (m_gameManager) {
       bool accepted = m_gameManager->requestUserMove(m_selected_sq, sq, true);
       if (!accepted) {
-        // Entweder Promotion angefragt (GameManager wird callback feuern) oder illegal -> deselect
-        // Wir vermeiden hier doppelte Warns; View/Manager kümmert sich um UI-Feedback
         deselectSquare();
       }
     }
   } else {
     deselectSquare();
-    if (m_gameView.hasPieceOnSquare(sq) && isSameColor(m_selected_sq, sq)) {
+    if (m_gameView.hasPieceOnSquare(sq)) {
       snapAndReturn(sq, mousePos);
       showAttacks(getAttackSquares(sq));
     }
@@ -247,7 +247,8 @@ void GameController::onDrag(core::MousePos start, core::MousePos current) {
   }
 
   if (!m_gameView.hasPieceOnSquare(sqStart) ||
-      m_chess_game.getPiece(sqStart).color != m_chess_game.getGameState().sideToMove)
+      m_chess_game.getPiece(sqStart).color != m_player_color ||
+      m_chess_game.getGameState().sideToMove != m_player_color)
     return;
 
   if (m_selected_sq != sqStart) {
@@ -278,7 +279,8 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
   }
 
   if (!m_gameView.hasPieceOnSquare(from) ||
-      m_chess_game.getPiece(from).color != m_chess_game.getGameState().sideToMove) {
+      m_chess_game.getPiece(from).color != m_player_color ||
+      m_chess_game.getGameState().sideToMove != m_player_color) {
     deselectSquare();
     return;
   }
