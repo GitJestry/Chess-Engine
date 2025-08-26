@@ -41,7 +41,7 @@ void Board::recomputeOccupancy() {
 }
 
 void Board::setPiece(core::Square sq, bb::Piece p) {
-  removePiece(sq);  // ensure empty first
+  removePiece(sq);  
   if (p.type == core::PieceType::None) return;
 
   int ti = type_index(p.type);
@@ -70,4 +70,4 @@ std::optional<bb::Piece> Board::getPiece(core::Square sq) const {
   return std::nullopt;
 }
 
-}  // namespace lilia::model
+}  

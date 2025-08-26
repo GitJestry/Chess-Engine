@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include "lilia/engine/bot_engine.hpp"
+#include "lilia/model/chess_game.hpp"
 #include "lilia/model/move_generator.hpp"  // falls MoveGenerator an anderem Ort, anpassen
 #include "lilia/uci/uci_helper.hpp"
 
@@ -17,21 +18,21 @@ std::future<model::Move> BotPlayer::requestMove(model::ChessGame& gameState,
 
   return std::async(std::launch::async,
                     [this, &gameState, &cancelToken, requestedDepth, thinkMs]() -> model::Move {
-                      // Erzeuge lokalen BotEngine (Thread-sicher, keine gemeinsame Engine-Instanz
-                      // nötig)
+                      
+                      
                       lilia::engine::BotEngine engine;
 
-                      // Führe Suche aus (synchron innerhalb des async-Tasks)
+                      
                       lilia::engine::SearchResult res =
                           engine.findBestMove(gameState, requestedDepth, thinkMs, &cancelToken);
 
-                      // Wenn externer cancelToken gesetzt -> invalider Move als Abbruchsignal
+                      
                       if (cancelToken.load()) {
-                        return model::Move{};  // invalider Move als Abbruch-Indikator
+                        return model::Move{};  
                       }
 
-                      // Falls Engine kein Move gefunden hat, fallback: erster legaler Move (oder
-                      // invalider Move)
+                      
+                      
                       if (!res.bestMove.has_value()) {
                         model::MoveGenerator mg;
                         thread_local std::vector<model::Move> moveBuf;
@@ -54,4 +55,4 @@ std::future<model::Move> BotPlayer::requestMove(model::ChessGame& gameState,
                     });
 }
 
-}  // namespace lilia::controller
+}  

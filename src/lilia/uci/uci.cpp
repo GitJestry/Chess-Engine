@@ -1,4 +1,4 @@
-// src/lilia/uci/uci.cpp
+
 #include "lilia/uci/uci.hpp"
 
 #include <algorithm>
@@ -14,11 +14,10 @@
 
 #include "lilia/engine/bot_engine.hpp"
 #include "lilia/model/chess_game.hpp"
-#include "lilia/uci/uci_helper.hpp"  // move_to_uci
+#include "lilia/uci/uci_helper.hpp"  
 
 namespace lilia {
 
-// split by whitespace
 static std::vector<std::string> split_ws(const std::string& s) {
   std::istringstream iss(s);
   std::vector<std::string> out;
@@ -74,7 +73,6 @@ void UCI::setOption(const std::string& line) {
   }
   if (name.empty()) return;
 
-
   if (name == "Hash") {
     int v = std::stoi(value);
     v = std::max(1, std::min(131072, v));
@@ -91,23 +89,23 @@ void UCI::setOption(const std::string& line) {
     int v = std::stoi(value);
     m_options.moveOverhead = std::max(0, v);
   }
+
 }
 
-// UCI run: verwendet BotEngine direkt (kein controller)
 int UCI::run() {
   engine::Engine::init();
   std::string line;
 
-  // search state
+  
   std::mutex stateMutex;
   std::future<lilia::model::Move> searchFuture;
   std::thread printerThread;
   std::atomic<bool> cancelToken(false);
   bool searchRunning = false;
 
-  // local engine instance not in controller
-  // We will create an engine per-search (stateless) or reuse one as needed.
-  // Here we create per-search to avoid thread-safety concerns.
+  
+  
+  
   while (std::getline(std::cin, line)) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty()) continue;
@@ -136,7 +134,7 @@ int UCI::run() {
     }
 
     if (cmd == "ucinewgame") {
-      // optional: reset engine state if you keep persistent engine
+      
       continue;
     }
 
@@ -193,7 +191,7 @@ int UCI::run() {
         }
       }
 
-      // stop running search if any
+      
       {
         std::lock_guard<std::mutex> lk(stateMutex);
         if (searchRunning) {
@@ -251,6 +249,7 @@ int UCI::run() {
           if (best.from >= 0 && best.to >= 0) {
             std::cout << "bestmove " << move_to_uci(best) << "\n";
           } else {
+
             std::cout << "bestmove 0000\n";
           }
 
@@ -263,7 +262,7 @@ int UCI::run() {
       }
 
       continue;
-    }  // end go
+    }  
 
     if (cmd == "stop") {
       cancelToken.store(true);
@@ -294,10 +293,10 @@ int UCI::run() {
       break;
     }
 
-    // unknown command -> ignore
-  }  // while getline
+    
+  }  
 
-  // cleanup
+  
   {
     std::lock_guard<std::mutex> lk(stateMutex);
     if (searchRunning && printerThread.joinable()) printerThread.join();
@@ -306,4 +305,4 @@ int UCI::run() {
   return 0;
 }
 
-}  // namespace lilia
+}  

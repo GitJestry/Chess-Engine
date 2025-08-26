@@ -18,7 +18,6 @@ using namespace lilia::model::bb;
 
 namespace lilia::engine {
 
-// ---------- Konfiguration & Konstanten (wie vorher) ----------
 constexpr int INF = std::numeric_limits<int>::max() / 4;
 constexpr int MATE_SCORE = 100000;
 
@@ -36,7 +35,6 @@ constexpr int OUTPOST_KNIGHT_BONUS = 30;
 constexpr int CENTER_CONTROL_BONUS = 6;
 constexpr int CONNECTED_ROOKS_BONUS = 20;
 
-// PSTs (unchanged)
 static constexpr std::array<int, 64> PST_P_MG = {
     0,  0,  0,  0,  0,  0,  0,  0,  5,  10, 10, -20, -20, 10, 10, 5,  5, -5, -10, 0,  0,  -10,
     -5, 5,  0,  0,  0,  20, 20, 0,  0,  0,  5,  5,   10,  25, 25, 10, 5, 5,  10,  10, 20, 30,
@@ -77,7 +75,6 @@ static inline int pst_mg_for(core::PieceType pt, int sq) noexcept {
   }
 }
 
-// ---------- Utility ----------
 inline int sq_file(int sq) noexcept {
   return sq & 7;
 }
@@ -91,7 +88,6 @@ inline int lsb_i(Bitboard b) noexcept {
   return b ? ctz64(b) : -1;
 }
 
-// Masks (lazy init) - unchanged
 struct PrecomputedMasks {
   std::array<Bitboard, 64> passed_white;
   std::array<Bitboard, 64> passed_black;
@@ -99,19 +95,21 @@ struct PrecomputedMasks {
   std::array<Bitboard, 64> adjacent_files;
   std::array<Bitboard, 64> pawn_front_white;
   std::array<Bitboard, 64> pawn_front_black;
-  bool ready = false;
-} masks;
+};
+
+static PrecomputedMasks masks;
+static std::once_flag masks_once;
 
 static void init_masks_if_needed() {
-  if (masks.ready) return;
-  for (int sq = 0; sq < 64; ++sq) {
-    Bitboard b = sq_bb(static_cast<core::Square>(sq));
-    int f = sq_file(sq);
-    int r = sq_rank(sq);
+  std::call_once(masks_once, []() {
+    for (int sq = 0; sq < 64; ++sq) {
+      Bitboard b = sq_bb(static_cast<core::Square>(sq));
+      int f = sq_file(sq);
+      int r = sq_rank(sq);
 
-    Bitboard fm = 0;
-    for (int rr = 0; rr < 8; ++rr) fm |= sq_bb(static_cast<core::Square>((rr << 3) | f));
-    masks.file_mask[sq] = fm;
+      Bitboard fm = 0;
+      for (int rr = 0; rr < 8; ++rr) fm |= sq_bb(static_cast<core::Square>((rr << 3) | f));
+      masks.file_mask[sq] = fm;
 
     Bitboard adj = 0;
     if (f > 0)
@@ -140,11 +138,8 @@ static void init_masks_if_needed() {
     for (int rr = r - 1; rr >= 0; --rr) span_b |= sq_bb(static_cast<core::Square>((rr << 3) | f));
     masks.pawn_front_black[sq] = span_b;
   }
-  masks.ready = true;
+  });
 }
-
-// ---------- Highly optimized Subkomponenten ----------
-// All functions below assume caller precomputed: wbbs[6], bbbs[6], occ, wocc, bocc
 
 static void material_pst_phase(const std::array<Bitboard, 6>& wbbs,
                                const std::array<Bitboard, 6>& bbbs, int& mg_out, int& eg_out,
@@ -171,7 +166,7 @@ static void material_pst_phase(const std::array<Bitboard, 6>& wbbs,
       int msq = 63 - sq;
       mg_out -= PIECE_VALUE_MG[pt] + pst_mg_for(piece, msq);
       eg_out -= PIECE_VALUE_EG[pt] + pst_mg_for(piece, msq);
-      phase_out += PIECE_PHASE[pt];  // note: accumulate (positive)
+      phase_out += PIECE_PHASE[pt];  
     }
   }
 }
@@ -281,8 +276,6 @@ static int mobility(Bitboard occ, Bitboard wocc, Bitboard bocc, const std::array
 
   return sc;
 }
-
-// Reworked helpers using precomputed bitboards
 
 static int king_safety(const std::array<Bitboard, 6>& wbbs, const std::array<Bitboard, 6>& bbbs,
                        Bitboard occ) {
@@ -517,8 +510,7 @@ static int rook_activity(const std::array<Bitboard, 6>& wbbs, const std::array<B
   return score;
 }
 
-// ---------- Lock-free-friendly caches (unchanged from previous optimized file) ----------
-constexpr size_t EVAL_CACHE_BITS = 14;  // 16k entries
+constexpr size_t EVAL_CACHE_BITS = 14;  
 constexpr size_t EVAL_CACHE_SIZE = 1ULL << EVAL_CACHE_BITS;
 struct EvalEntry {
   std::atomic<uint64_t> key{0};
@@ -526,7 +518,7 @@ struct EvalEntry {
   std::atomic<uint32_t> age{0};
 };
 
-constexpr size_t PAWN_CACHE_BITS = 12;  // 4k
+constexpr size_t PAWN_CACHE_BITS = 12;  
 constexpr size_t PAWN_CACHE_SIZE = 1ULL << PAWN_CACHE_BITS;
 struct PawnEntry {
   std::atomic<uint64_t> key{0};
@@ -537,7 +529,7 @@ struct PawnEntry {
 struct Evaluator::Impl {
   std::array<EvalEntry, EVAL_CACHE_SIZE> eval_cache;
   std::array<PawnEntry, PAWN_CACHE_SIZE> pawn_cache;
-  std::mutex writeMutex;  // serializes writes only
+  std::mutex writeMutex;  
   std::atomic<uint32_t> global_age{1};
   Impl() {}
   inline void incr_age() {
@@ -546,7 +538,6 @@ struct Evaluator::Impl {
   }
 };
 
-// ---------- Impl lifecycle ----------
 Evaluator::Evaluator() noexcept {
   m_impl = new Impl();
 }
@@ -577,14 +568,13 @@ static inline size_t pawn_index_from_key(Bitboard key) noexcept {
   return static_cast<size_t>(key) & (PAWN_CACHE_SIZE - 1);
 }
 
-// ---------- evaluate(Position) optimized (uses new helpers) ----------
 int Evaluator::evaluate(model::Position& pos) const {
   init_masks_if_needed();
   const Board& b = pos.board();
   const uint64_t board_key = static_cast<uint64_t>(pos.hash());
   const uint64_t pawn_key = static_cast<uint64_t>(pos.state().pawnKey);
 
-  // 1) Fast lock-free read from eval cache
+  
   {
     size_t ei = eval_index_from_key(board_key);
     uint64_t k = m_impl->eval_cache[ei].key.load(std::memory_order_relaxed);
@@ -594,7 +584,7 @@ int Evaluator::evaluate(model::Position& pos) const {
     }
   }
 
-  // 2) try pawn cache
+  
   int pawn_score = std::numeric_limits<int>::min();
   {
     size_t pi = pawn_index_from_key(pawn_key);
@@ -603,7 +593,7 @@ int Evaluator::evaluate(model::Position& pos) const {
       pawn_score = m_impl->pawn_cache[pi].pawn_score.load(std::memory_order_relaxed);
   }
 
-  // --- slow path: precompute bitboards once ---
+  
   std::array<Bitboard, 6> wbbs{}, bbbs{};
   for (int pt = 0; pt < 6; ++pt) {
     wbbs[pt] = b.pieces(Color::White, static_cast<PieceType>(pt));
@@ -639,7 +629,7 @@ int Evaluator::evaluate(model::Position& pos) const {
   mg += mg_add;
   eg += eg_add;
 
-  // phase interpolation
+  
   int max_phase = 0;
   for (int pt = 0; pt < 6; ++pt) {
     max_phase += PIECE_PHASE[pt] * (popcnt(wbbs[pt]) + popcnt(bbbs[pt]));
@@ -650,17 +640,17 @@ int Evaluator::evaluate(model::Position& pos) const {
 
   int final_score = ((mg * mg_weight) + (eg * eg_weight)) >> 8;
 
-  // write caches under short critical section
+  
   {
     std::lock_guard<std::mutex> lock(m_impl->writeMutex);
-    // pawn cache write
+    
     size_t pi = pawn_index_from_key(pawn_key);
     m_impl->pawn_cache[pi].key.store(pawn_key, std::memory_order_relaxed);
     m_impl->pawn_cache[pi].pawn_score.store(pawn_score, std::memory_order_relaxed);
     m_impl->pawn_cache[pi].age.store(m_impl->global_age.load(std::memory_order_relaxed),
                                      std::memory_order_relaxed);
 
-    // eval cache write
+    
     size_t ei = eval_index_from_key(board_key);
     m_impl->eval_cache[ei].key.store(board_key, std::memory_order_relaxed);
     m_impl->eval_cache[ei].score.store(final_score, std::memory_order_relaxed);
@@ -673,4 +663,4 @@ int Evaluator::evaluate(model::Position& pos) const {
   return final_score;
 }
 
-}  // namespace lilia::engine
+}  
