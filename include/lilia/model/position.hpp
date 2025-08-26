@@ -44,7 +44,7 @@ class Position {
   bool isSquareAttacked(core::Square sq, core::Color by) const;
   bool checkInsufficientMaterial();
   bool checkMoveRule();
-  bool checkRepitition();
+  bool checkRepetition();
 
   bool inCheck() const;
   bool see(const model::Move& m) const;

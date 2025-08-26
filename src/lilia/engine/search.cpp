@@ -189,7 +189,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   stats.nodes++;
   check_stop(stopFlag);  // statt return 0
 
-  if (pos.checkInsufficientMaterial() || pos.checkMoveRule() || pos.checkRepitition()) return 0;
+  if (pos.checkInsufficientMaterial() || pos.checkMoveRule() || pos.checkRepetition()) return 0;
 
   if (depth <= 0) return quiescence(pos, alpha, beta, ply);
 

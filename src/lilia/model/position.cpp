@@ -52,7 +52,7 @@ bool Position::inCheck() const {
 bool Position::checkMoveRule() {
   return (m_state.halfmoveClock >= 100);
 }
-bool Position::checkRepitition() {
+bool Position::checkRepetition() {
   int count = 0;
   int limit = std::min<int>(m_history.size(), m_state.halfmoveClock);
 
