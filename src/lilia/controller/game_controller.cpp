@@ -2,6 +2,8 @@
 
 #include <SFML/System/Sleep.hpp>
 #include <SFML/System/Time.hpp>
+#include <SFML/Window/Event.hpp>
+#include <SFML/Window/Mouse.hpp>
 #include <algorithm>
 #include <iostream>
 #include <string>
@@ -57,7 +59,49 @@ void GameController::startGame(core::Color playerColor, const std::string& fen, 
 }
 
 void GameController::handleEvent(const sf::Event& event) {
-  if (m_chess_game.getResult() == core::GameResult::ONGOING) m_input_manager.processEvent(event);
+  if (m_chess_game.getResult() != core::GameResult::ONGOING) return;
+  switch (event.type) {
+    case sf::Event::MouseMoved:
+      onMouseMove(core::MousePos(event.mouseMove.x, event.mouseMove.y));
+      break;
+    case sf::Event::MouseButtonPressed:
+      if (event.mouseButton.button == sf::Mouse::Left)
+        onMousePressed(core::MousePos(event.mouseButton.x, event.mouseButton.y));
+      break;
+    case sf::Event::MouseButtonReleased:
+      if (event.mouseButton.button == sf::Mouse::Left)
+        onMouseReleased(core::MousePos(event.mouseButton.x, event.mouseButton.y));
+      break;
+    default:
+      break;
+  }
+  m_input_manager.processEvent(event);
+}
+
+void GameController::onMouseMove(core::MousePos pos) {
+  if (m_mouse_down) {
+    m_game_view.setHandClosedCursor();
+    return;
+  }
+  core::Square sq = m_game_view.mousePosToSquare(pos);
+  if (m_game_view.hasPieceOnSquare(sq))
+    m_game_view.setHandOpenCursor();
+  else
+    m_game_view.setDefaultCursor();
+}
+
+void GameController::onMousePressed(core::MousePos pos) {
+  m_mouse_down = true;
+  core::Square sq = m_game_view.mousePosToSquare(pos);
+  if (m_game_view.hasPieceOnSquare(sq))
+    m_game_view.setHandClosedCursor();
+  else
+    m_game_view.setDefaultCursor();
+}
+
+void GameController::onMouseReleased(core::MousePos pos) {
+  m_mouse_down = false;
+  onMouseMove(pos);
 }
 
 void GameController::render() {

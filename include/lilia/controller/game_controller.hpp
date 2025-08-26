@@ -51,6 +51,9 @@ class GameController {
                  bool vsBot = true, int thinkTimeMs = 1000, int depth = 5);
 
  private:
+  void onMouseMove(core::MousePos pos);
+  void onMousePressed(core::MousePos pos);
+  void onMouseReleased(core::MousePos pos);
   void onClick(core::MousePos mousePos);
 
   void onDrag(core::MousePos start, core::MousePos current);
@@ -90,6 +93,7 @@ class GameController {
 
   // ---------------- New: GameManager ----------------
   std::unique_ptr<GameManager> m_game_manager;
+  bool m_mouse_down = false;
 };
 
 }  // namespace lilia::controller
