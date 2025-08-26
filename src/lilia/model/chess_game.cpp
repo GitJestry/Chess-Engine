@@ -190,7 +190,7 @@ void ChessGame::checkGameResult() {
   }
   if (m_position.checkInsufficientMaterial()) m_result = core::GameResult::INSUFFICIENT;
   if (m_position.checkMoveRule()) m_result = core::GameResult::MOVERULE;
-  if (m_position.checkRepitition()) m_result = core::GameResult::REPETITION;
+  if (m_position.checkRepetition()) m_result = core::GameResult::REPETITION;
 }
 
 core::GameResult ChessGame::getResult() {
