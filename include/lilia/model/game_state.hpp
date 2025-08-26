@@ -23,6 +23,7 @@ struct StateInfo {
   core::Square prevEnPassantSquare{core::NO_SQUARE};
   int prevHalfmoveClock{};
   bb::Bitboard zobristKey{};
+  bb::Bitboard prevPawnKey;
 };
 
 }  // namespace lilia::model

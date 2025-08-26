@@ -4,21 +4,19 @@
 
 namespace lilia::model {
 
-std::vector<Move> MoveGenerator::generatePseudoLegalMoves(const Board& board,
-                                                          const GameState& st) const {
-  std::vector<Move> moves;
-  moves.reserve(128);
+void MoveGenerator::generatePseudoLegalMoves(const Board& b, const GameState& st,
+                                             std::vector<model::Move>& out) const {
+  out.clear();
+  out.reserve(64);
 
   core::Color side = st.sideToMove;
 
-  genPawnMoves(board, st, side, moves);
-  genKnightMoves(board, side, moves);
-  genBishopMoves(board, side, moves);
-  genRookMoves(board, side, moves);
-  genQueenMoves(board, side, moves);
-  genKingMoves(board, st, side, moves);
-
-  return moves;
+  genPawnMoves(b, st, side, out);
+  genKnightMoves(b, side, out);
+  genBishopMoves(b, side, out);
+  genRookMoves(b, side, out);
+  genQueenMoves(b, side, out);
+  genKingMoves(b, st, side, out);
 }
 
 // ---------------- Pawn (incl. en passant generation) ----------------

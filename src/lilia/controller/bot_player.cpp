@@ -34,9 +34,10 @@ std::future<model::Move> BotPlayer::requestMove(model::ChessGame& gameState,
                       // invalider Move)
                       if (!res.bestMove.has_value()) {
                         model::MoveGenerator mg;
+                        thread_local std::vector<model::Move> moveBuf;
                         auto pos = gameState.getPositionRefForBot();
-                        auto moves = mg.generatePseudoLegalMoves(pos.board(), pos.state());
-                        for (auto& m : moves) {
+                        mg.generatePseudoLegalMoves(pos.board(), pos.state(), moveBuf);
+                        for (auto& m : moveBuf) {
                           if (pos.doMove(m)) {
                             pos.undoMove();
                             std::cout << "[BotPlayer] fallback move chosen: " << move_to_uci(m)

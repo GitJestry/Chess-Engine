@@ -2,47 +2,44 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <limits>
 #include <mutex>
-#include <shared_mutex>
 
 #include "lilia/model/core/bitboard.hpp"
 #include "lilia/model/position.hpp"
 
 using namespace lilia::core;
 using namespace lilia::model;
-using namespace lilia::model::bb;  // deine bitboard-helpers
+using namespace lilia::model::bb;
 
 namespace lilia::engine {
 
-// ---------- Konfiguration & Konstanten ----------
+// ---------- Konfiguration & Konstanten (wie vorher) ----------
 constexpr int INF = std::numeric_limits<int>::max() / 4;
 constexpr int MATE_SCORE = 100000;
 
-// Basiswerte (Centipawns) MG / EG (kannst du tunen)
 constexpr std::array<int, 6> PIECE_VALUE_MG = {100, 320, 330, 500, 900, 0};
 constexpr std::array<int, 6> PIECE_VALUE_EG = {100, 320, 330, 500, 900, 0};
 constexpr std::array<int, 6> PIECE_PHASE = {0, 1, 1, 2, 4, 0};
 
-// Zusatz-Boni / Strafen (tunable)
 constexpr int BISHOP_PAIR_BONUS = 50;
 constexpr int ROOK_OPEN_FILE_BONUS = 20;
 constexpr int ROOK_SEMI_OPEN_FILE_BONUS = 10;
 constexpr int ROOK_ON_SEVENTH_BONUS = 30;
 constexpr int KNIGHT_RIM_PENALTY = 15;
-constexpr int DEVELOPMENT_PENALTY = 20;  // per undeveloped minor piece (opening)
+constexpr int DEVELOPMENT_PENALTY = 20;
 constexpr int OUTPOST_KNIGHT_BONUS = 30;
-constexpr int CENTER_CONTROL_BONUS = 6;  // per attacking piece into central squares
+constexpr int CENTER_CONTROL_BONUS = 6;
 constexpr int CONNECTED_ROOKS_BONUS = 20;
 
-// Kleine PSTs (Beispielwerte). Du kannst sie später durch bessere/tuned Werte ersetzen.
+// PSTs (unchanged)
 static constexpr std::array<int, 64> PST_P_MG = {
     0,  0,  0,  0,  0,  0,  0,  0,  5,  10, 10, -20, -20, 10, 10, 5,  5, -5, -10, 0,  0,  -10,
     -5, 5,  0,  0,  0,  20, 20, 0,  0,  0,  5,  5,   10,  25, 25, 10, 5, 5,  10,  10, 20, 30,
     30, 20, 10, 10, 50, 50, 50, 50, 50, 50, 50, 50,  0,   0,  0,  0,  0, 0,  0,   0};
-
 static constexpr std::array<int, 64> PST_N_MG = {
     -50, -40, -30, -30, -30, -30, -40, -50, -40, -20, 0,   0,   0,   0,   -20, -40,
     -30, 0,   10,  15,  15,  10,  0,   -30, -30, 5,   15,  20,  20,  15,  5,   -30,
@@ -93,7 +90,7 @@ inline int lsb_i(Bitboard b) noexcept {
   return b ? ctz64(b) : -1;
 }
 
-// Masks (lazy init)
+// Masks (lazy init) - unchanged
 struct PrecomputedMasks {
   std::array<Bitboard, 64> passed_white;
   std::array<Bitboard, 64> passed_black;
@@ -111,12 +108,10 @@ static void init_masks_if_needed() {
     int f = sq_file(sq);
     int r = sq_rank(sq);
 
-    // file mask
     Bitboard fm = 0;
     for (int rr = 0; rr < 8; ++rr) fm |= sq_bb(static_cast<core::Square>((rr << 3) | f));
     masks.file_mask[sq] = fm;
 
-    // adjacent files
     Bitboard adj = 0;
     if (f > 0)
       for (int rr = 0; rr < 8; ++rr) adj |= sq_bb(static_cast<core::Square>((rr << 3) | (f - 1)));
@@ -124,7 +119,6 @@ static void init_masks_if_needed() {
       for (int rr = 0; rr < 8; ++rr) adj |= sq_bb(static_cast<core::Square>((rr << 3) | (f + 1)));
     masks.adjacent_files[sq] = adj;
 
-    // passed pawn masks
     Bitboard p_w = 0;
     for (int rr = r + 1; rr < 8; ++rr)
       for (int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ++ff)
@@ -137,7 +131,6 @@ static void init_masks_if_needed() {
         p_b |= sq_bb(static_cast<core::Square>((rr << 3) | ff));
     masks.passed_black[sq] = p_b;
 
-    // pawn front span (same file)
     Bitboard span_w = 0;
     for (int rr = r + 1; rr < 8; ++rr) span_w |= sq_bb(static_cast<core::Square>((rr << 3) | f));
     masks.pawn_front_white[sq] = span_w;
@@ -149,94 +142,80 @@ static void init_masks_if_needed() {
   masks.ready = true;
 }
 
-// ---------- Subkomponenten der Eval ----------
+// ---------- Highly optimized Subkomponenten ----------
+// All functions below assume caller precomputed: wbbs[6], bbbs[6], occ, wocc, bocc
 
-// Material + PST + Phase
-static void material_pst_phase(const Board& b, int& mg_out, int& eg_out, int& phase_out) {
-  init_masks_if_needed();
+static void material_pst_phase(const std::array<Bitboard, 6>& wbbs,
+                               const std::array<Bitboard, 6>& bbbs, int& mg_out, int& eg_out,
+                               int& phase_out) {
   mg_out = eg_out = 0;
   phase_out = 0;
-
-  // White pieces
   for (int pt = 0; pt < 6; ++pt) {
     PieceType piece = static_cast<PieceType>(pt);
-    Bitboard bs = b.pieces(core::Color::White, piece);
-    while (bs) {
-      int sq = lsb_i(bs);
-      bs &= bs - 1;
+    Bitboard wbs = wbbs[pt];
+    while (wbs) {
+      int sq = lsb_i(wbs);
+      wbs &= wbs - 1;
       mg_out += PIECE_VALUE_MG[pt] + pst_mg_for(piece, sq);
-      eg_out += PIECE_VALUE_EG[pt] + pst_mg_for(piece, sq);  // reuse mg pst for eg for simplicity
+      eg_out += PIECE_VALUE_EG[pt] + pst_mg_for(piece, sq);
       phase_out += PIECE_PHASE[pt];
     }
   }
-
-  // Black pieces (subtract; mirror PST)
   for (int pt = 0; pt < 6; ++pt) {
     PieceType piece = static_cast<PieceType>(pt);
-    Bitboard bs = b.pieces(core::Color::Black, piece);
-    while (bs) {
-      int sq = lsb_i(bs);
-      bs &= bs - 1;
-      // mirror index for black in PST: 63 - sq
+    Bitboard bbs = bbbs[pt];
+    while (bbs) {
+      int sq = lsb_i(bbs);
+      bbs &= bbs - 1;
       int msq = 63 - sq;
       mg_out -= PIECE_VALUE_MG[pt] + pst_mg_for(piece, msq);
       eg_out -= PIECE_VALUE_EG[pt] + pst_mg_for(piece, msq);
-      phase_out -= PIECE_PHASE[pt];
+      phase_out += PIECE_PHASE[pt];  // note: accumulate (positive)
     }
   }
 }
 
-// Pawn structure: isolated, doubled, passed — returns score (positive -> White better)
-static int pawn_structure(const Board& b) {
+static int pawn_structure(Bitboard wp_orig, Bitboard bp_orig) {
   init_masks_if_needed();
   int score = 0;
-  Bitboard wp = b.pieces(core::Color::White, PieceType::Pawn);
-  Bitboard bp = b.pieces(core::Color::Black, PieceType::Pawn);
+  Bitboard wp = wp_orig;
+  Bitboard bp = bp_orig;
 
-  // Isolated and doubled
-  for (int sq = 0; sq < 64; ++sq) {
-    Bitboard sqb = sq_bb(static_cast<core::Square>(sq));
-    if (wp & sqb) {
-      // isolated: no white pawn on adjacent files
-      if ((masks.adjacent_files[sq] & wp) == 0) score -= 15;
-      // doubled: another pawn on same file
-      if ((masks.file_mask[sq] & wp & ~sqb) != 0) score -= 8;
-      // passed pawn:
-      if ((masks.passed_white[sq] & bp) == 0) {
-        int r = sq_rank(sq);
-        score += 20 + r * 8;
-      }
-    }
-    if (bp & sqb) {
-      if ((masks.adjacent_files[sq] & bp) == 0) score += 15;
-      if ((masks.file_mask[sq] & bp & ~sqb) != 0) score += 8;
-      if ((masks.passed_black[sq] & wp) == 0) {
-        int r = sq_rank(sq);
-        score -= 20 + (7 - r) * 8;
-      }
+  while (wp) {
+    int sq = lsb_i(wp);
+    wp &= wp - 1;
+    if ((masks.adjacent_files[sq] & wp_orig) == 0) score -= 15;
+    if ((masks.file_mask[sq] & wp_orig & ~sq_bb(static_cast<core::Square>(sq))) != 0) score -= 8;
+    if ((masks.passed_white[sq] & bp_orig) == 0) {
+      int r = sq_rank(sq);
+      score += 20 + r * 8;
     }
   }
-
+  while (bp) {
+    int sq = lsb_i(bp);
+    bp &= bp - 1;
+    if ((masks.adjacent_files[sq] & bp_orig) == 0) score += 15;
+    if ((masks.file_mask[sq] & bp_orig & ~sq_bb(static_cast<core::Square>(sq))) != 0) score += 8;
+    if ((masks.passed_black[sq] & wp_orig) == 0) {
+      int r = sq_rank(sq);
+      score -= 20 + (7 - r) * 8;
+    }
+  }
   return score;
 }
 
-// Mobility: cheap pseudo-legal attack counts (excludes legality checks)
-static int mobility(const Board& b) {
-  init_masks_if_needed();
+static int mobility(Bitboard occ, Bitboard wocc, Bitboard bocc, const std::array<Bitboard, 6>& wbbs,
+                    const std::array<Bitboard, 6>& bbbs) {
   int sc = 0;
-  Bitboard occ = b.allPieces();
-  Bitboard wocc = b.pieces(Color::White);
-  Bitboard bocc = b.pieces(Color::Black);
 
-  // Knights
-  Bitboard wn = b.pieces(Color::White, PieceType::Knight);
+  Bitboard wn = wbbs[static_cast<int>(PieceType::Knight)];
   while (wn) {
     int sq = lsb_i(wn);
     wn &= wn - 1;
     Bitboard a = knight_attacks_from(static_cast<core::Square>(sq)) & ~wocc;
     sc += (popcnt(a) - 4) * 5;
   }
-  Bitboard bn = b.pieces(Color::Black, PieceType::Knight);
+  Bitboard bn = bbbs[static_cast<int>(PieceType::Knight)];
   while (bn) {
     int sq = lsb_i(bn);
     bn &= bn - 1;
@@ -244,15 +223,14 @@ static int mobility(const Board& b) {
     sc -= (popcnt(a) - 4) * 5;
   }
 
-  // Bishops
-  Bitboard wb = b.pieces(Color::White, PieceType::Bishop);
+  Bitboard wb = wbbs[static_cast<int>(PieceType::Bishop)];
   while (wb) {
     int sq = lsb_i(wb);
     wb &= wb - 1;
     Bitboard a = bishop_attacks(static_cast<core::Square>(sq), occ) & ~wocc;
     sc += popcnt(a) * 3;
   }
-  Bitboard bb = b.pieces(Color::Black, PieceType::Bishop);
+  Bitboard bb = bbbs[static_cast<int>(PieceType::Bishop)];
   while (bb) {
     int sq = lsb_i(bb);
     bb &= bb - 1;
@@ -260,15 +238,14 @@ static int mobility(const Board& b) {
     sc -= popcnt(a) * 3;
   }
 
-  // Rooks
-  Bitboard wr = b.pieces(Color::White, PieceType::Rook);
+  Bitboard wr = wbbs[static_cast<int>(PieceType::Rook)];
   while (wr) {
     int sq = lsb_i(wr);
     wr &= wr - 1;
     Bitboard a = rook_attacks(static_cast<core::Square>(sq), occ) & ~wocc;
     sc += popcnt(a) * 2;
   }
-  Bitboard br = b.pieces(Color::Black, PieceType::Rook);
+  Bitboard br = bbbs[static_cast<int>(PieceType::Rook)];
   while (br) {
     int sq = lsb_i(br);
     br &= br - 1;
@@ -276,15 +253,14 @@ static int mobility(const Board& b) {
     sc -= popcnt(a) * 2;
   }
 
-  // Queens
-  Bitboard wq = b.pieces(Color::White, PieceType::Queen);
+  Bitboard wq = wbbs[static_cast<int>(PieceType::Queen)];
   while (wq) {
     int sq = lsb_i(wq);
     wq &= wq - 1;
     Bitboard a = queen_attacks(static_cast<core::Square>(sq), occ) & ~wocc;
     sc += popcnt(a) * 1;
   }
-  Bitboard bq = b.pieces(Color::Black, PieceType::Queen);
+  Bitboard bq = bbbs[static_cast<int>(PieceType::Queen)];
   while (bq) {
     int sq = lsb_i(bq);
     bq &= bq - 1;
@@ -295,12 +271,13 @@ static int mobility(const Board& b) {
   return sc;
 }
 
-// King safety (pawn shield + tropism)
-static int king_safety(const Board& b) {
+// Reworked helpers using precomputed bitboards
+
+static int king_safety(const std::array<Bitboard, 6>& wbbs, const std::array<Bitboard, 6>& bbbs,
+                       Bitboard occ) {
   int sc = 0;
-  // find king squares
-  Bitboard wk = b.pieces(Color::White, PieceType::King);
-  Bitboard bk = b.pieces(Color::Black, PieceType::King);
+  Bitboard wk = wbbs[static_cast<int>(PieceType::King)];
+  Bitboard bk = bbbs[static_cast<int>(PieceType::King)];
   int wksq = lsb_i(wk);
   int bksq = lsb_i(bk);
 
@@ -317,7 +294,7 @@ static int king_safety(const Board& b) {
         shield |= sq_bb(static_cast<core::Square>((nr << 3) | nf));
       }
     }
-    sc += popcnt(b.pieces(Color::White, PieceType::Pawn) & shield) * 10;
+    sc += popcnt(wbbs[static_cast<int>(PieceType::Pawn)] & shield) * 10;
   }
 
   if (bksq >= 0) {
@@ -333,11 +310,10 @@ static int king_safety(const Board& b) {
         shield |= sq_bb(static_cast<core::Square>((nr << 3) | nf));
       }
     }
-    sc -= popcnt(b.pieces(Color::Black, PieceType::Pawn) & shield) * 10;
+    sc -= popcnt(bbbs[static_cast<int>(PieceType::Pawn)] & shield) * 10;
   }
 
-  // tropsim: enemy pieces near king increase danger
-  auto tropism = [&](int king_sq, Color enemy_color) -> int {
+  auto tropism = [&](int king_sq, const std::array<Bitboard, 6>& enemy_bb) -> int {
     if (king_sq < 0) return 0;
     int sum = 0;
     int kf = sq_file(king_sq), kr = sq_rank(king_sq);
@@ -349,39 +325,34 @@ static int king_safety(const Board& b) {
         if (nr >= 0 && nr < 8 && nf >= 0 && nf < 8)
           area |= sq_bb(static_cast<core::Square>((nr << 3) | nf));
       }
-    // knights
-    Bitboard kn = b.pieces(enemy_color, PieceType::Knight);
+    Bitboard kn = enemy_bb[static_cast<int>(PieceType::Knight)];
     sum += popcnt(kn & area) * 25;
-    // heavy pieces
-    Bitboard heavy = b.pieces(enemy_color, PieceType::Queen) |
-                     b.pieces(enemy_color, PieceType::Rook) |
-                     b.pieces(enemy_color, PieceType::Bishop);
+    Bitboard heavy = enemy_bb[static_cast<int>(PieceType::Queen)] |
+                     enemy_bb[static_cast<int>(PieceType::Rook)] |
+                     enemy_bb[static_cast<int>(PieceType::Bishop)];
     sum += popcnt(heavy & area) * 12;
     return sum;
   };
 
-  sc -= tropism(wksq, Color::Black);
-  sc += tropism(bksq, Color::White);
+  sc -= tropism(wksq, bbbs);
+  sc += tropism(bksq, wbbs);
 
   return sc;
 }
 
-// ----- Neue Subkomponenten: Development / Piece-Activity / Rooks, etc. -----
-
-// bishop pair bonus
-static int bishop_pair(const Board& b) {
+static int bishop_pair(const std::array<Bitboard, 6>& wbbs, const std::array<Bitboard, 6>& bbbs) {
   int score = 0;
-  if (popcnt(b.pieces(Color::White, PieceType::Bishop)) >= 2) score += BISHOP_PAIR_BONUS;
-  if (popcnt(b.pieces(Color::Black, PieceType::Bishop)) >= 2) score -= BISHOP_PAIR_BONUS;
+  if (popcnt(wbbs[static_cast<int>(PieceType::Bishop)]) >= 2) score += BISHOP_PAIR_BONUS;
+  if (popcnt(bbbs[static_cast<int>(PieceType::Bishop)]) >= 2) score -= BISHOP_PAIR_BONUS;
   return score;
 }
 
-// development: penalize minors on starting squares in opening (phase sensitive)
-static int development_score(const Board& b) {
+static int development_score(const std::array<Bitboard, 6>& wbbs,
+                             const std::array<Bitboard, 6>& bbbs) {
   Bitboard white_minors =
-      b.pieces(Color::White, PieceType::Knight) | b.pieces(Color::White, PieceType::Bishop);
+      wbbs[static_cast<int>(PieceType::Knight)] | wbbs[static_cast<int>(PieceType::Bishop)];
   Bitboard black_minors =
-      b.pieces(Color::Black, PieceType::Knight) | b.pieces(Color::Black, PieceType::Bishop);
+      bbbs[static_cast<int>(PieceType::Knight)] | bbbs[static_cast<int>(PieceType::Bishop)];
 
   Bitboard white_initial =
       sq_bb(static_cast<core::Square>(1)) | sq_bb(static_cast<core::Square>(6)) |
@@ -393,18 +364,16 @@ static int development_score(const Board& b) {
   int white_undeveloped = popcnt(white_minors & white_initial);
   int black_undeveloped = popcnt(black_minors & black_initial);
 
-  // Positive -> white advantage (fewer undeveloped white minors)
   return (black_undeveloped - white_undeveloped) * DEVELOPMENT_PENALTY;
 }
 
-// knight rim penalty (knights on file a/h)
-static int knight_rim(const Board& b) {
+static int knight_rim(const std::array<Bitboard, 6>& wbbs, const std::array<Bitboard, 6>& bbbs) {
   int score = 0;
   Bitboard a_mask = masks.file_mask[0];
   Bitboard h_mask = masks.file_mask[7];
 
-  Bitboard wn = b.pieces(Color::White, PieceType::Knight);
-  Bitboard bn = b.pieces(Color::Black, PieceType::Knight);
+  Bitboard wn = wbbs[static_cast<int>(PieceType::Knight)];
+  Bitboard bn = bbbs[static_cast<int>(PieceType::Knight)];
 
   score -= popcnt(wn & (a_mask | h_mask)) * KNIGHT_RIM_PENALTY;
   score += popcnt(bn & (a_mask | h_mask)) * KNIGHT_RIM_PENALTY;
@@ -412,75 +381,74 @@ static int knight_rim(const Board& b) {
   return score;
 }
 
-// outpost/center control: knights on central squares, and pieces attacking center
-static int center_and_outposts(const Board& b) {
+static int center_and_outposts(const std::array<Bitboard, 6>& wbbs,
+                               const std::array<Bitboard, 6>& bbbs, Bitboard occ) {
   Bitboard center = sq_bb(static_cast<core::Square>(27)) | sq_bb(static_cast<core::Square>(28)) |
                     sq_bb(static_cast<core::Square>(35)) | sq_bb(static_cast<core::Square>(36));
   int score = 0;
 
-  score += popcnt(b.pieces(Color::White, PieceType::Knight) & center) * OUTPOST_KNIGHT_BONUS;
-  score -= popcnt(b.pieces(Color::Black, PieceType::Knight) & center) * OUTPOST_KNIGHT_BONUS;
+  score += popcnt(wbbs[static_cast<int>(PieceType::Knight)] & center) * OUTPOST_KNIGHT_BONUS;
+  score -= popcnt(bbbs[static_cast<int>(PieceType::Knight)] & center) * OUTPOST_KNIGHT_BONUS;
 
-  Bitboard wn = b.pieces(Color::White, PieceType::Knight);
+  Bitboard wn = wbbs[static_cast<int>(PieceType::Knight)];
   while (wn) {
     int sq = lsb_i(wn);
     wn &= wn - 1;
     if (knight_attacks_from(static_cast<core::Square>(sq)) & center) score += CENTER_CONTROL_BONUS;
   }
-  Bitboard bn = b.pieces(Color::Black, PieceType::Knight);
+  Bitboard bn = bbbs[static_cast<int>(PieceType::Knight)];
   while (bn) {
     int sq = lsb_i(bn);
     bn &= bn - 1;
     if (knight_attacks_from(static_cast<core::Square>(sq)) & center) score -= CENTER_CONTROL_BONUS;
   }
 
-  Bitboard wb = b.pieces(Color::White, PieceType::Bishop);
+  Bitboard wb = wbbs[static_cast<int>(PieceType::Bishop)];
   while (wb) {
     int sq = lsb_i(wb);
     wb &= wb - 1;
-    Bitboard a = bishop_attacks(static_cast<core::Square>(sq), b.allPieces());
+    Bitboard a = bishop_attacks(static_cast<core::Square>(sq), occ);
     if (a & center) score += CENTER_CONTROL_BONUS;
   }
-  Bitboard bb = b.pieces(Color::Black, PieceType::Bishop);
+  Bitboard bb = bbbs[static_cast<int>(PieceType::Bishop)];
   while (bb) {
     int sq = lsb_i(bb);
     bb &= bb - 1;
-    Bitboard a = bishop_attacks(static_cast<core::Square>(sq), b.allPieces());
+    Bitboard a = bishop_attacks(static_cast<core::Square>(sq), occ);
     if (a & center) score -= CENTER_CONTROL_BONUS;
   }
 
-  Bitboard wq = b.pieces(Color::White, PieceType::Queen);
+  Bitboard wq = wbbs[static_cast<int>(PieceType::Queen)];
   while (wq) {
     int sq = lsb_i(wq);
     wq &= wq - 1;
-    Bitboard a = queen_attacks(static_cast<core::Square>(sq), b.allPieces());
+    Bitboard a = queen_attacks(static_cast<core::Square>(sq), occ);
     if (a & center) score += CENTER_CONTROL_BONUS;
   }
-  Bitboard bq = b.pieces(Color::Black, PieceType::Queen);
+  Bitboard bq = bbbs[static_cast<int>(PieceType::Queen)];
   while (bq) {
     int sq = lsb_i(bq);
     bq &= bq - 1;
-    Bitboard a = queen_attacks(static_cast<core::Square>(sq), b.allPieces());
+    Bitboard a = queen_attacks(static_cast<core::Square>(sq), occ);
     if (a & center) score -= CENTER_CONTROL_BONUS;
   }
 
   return score;
 }
 
-// rook on open/semi-open file and rook on 7th detection + connected rooks
-static int rook_activity(const Board& b) {
+static int rook_activity(const std::array<Bitboard, 6>& wbbs, const std::array<Bitboard, 6>& bbbs,
+                         Bitboard wp, Bitboard bp) {
   int score = 0;
-  Bitboard wr = b.pieces(Color::White, PieceType::Rook);
-  Bitboard br = b.pieces(Color::Black, PieceType::Rook);
-  Bitboard wp = b.pieces(Color::White, PieceType::Pawn);
-  Bitboard bp = b.pieces(Color::Black, PieceType::Pawn);
+  Bitboard wr = wbbs[static_cast<int>(PieceType::Rook)];
+  Bitboard br = bbbs[static_cast<int>(PieceType::Rook)];
 
   auto file_of_sq = [&](int sq) -> Bitboard { return masks.file_mask[sq]; };
   auto rank_of_sq = [&](int sq) -> int { return sq_rank(sq); };
 
-  while (wr) {
-    int sq = lsb_i(wr);
-    wr &= wr - 1;
+  Bitboard tmp_wr = wr;
+  while (tmp_wr) {
+    int sq = lsb_i(tmp_wr);
+    tmp_wr &= tmp_wr - 1;
     Bitboard file = file_of_sq(sq);
     bool has_white_pawn = (file & wp) != 0;
     bool has_black_pawn = (file & bp) != 0;
@@ -491,9 +459,10 @@ static int rook_activity(const Board& b) {
     if (rank_of_sq(sq) == 6) score += ROOK_ON_SEVENTH_BONUS;
   }
 
-  while (br) {
-    int sq = lsb_i(br);
-    br &= br - 1;
+  Bitboard tmp_br = br;
+  while (tmp_br) {
+    int sq = lsb_i(tmp_br);
+    tmp_br &= tmp_br - 1;
     Bitboard file = file_of_sq(sq);
     bool has_white_pawn = (file & wp) != 0;
     bool has_black_pawn = (file & bp) != 0;
@@ -504,7 +473,7 @@ static int rook_activity(const Board& b) {
     if (rank_of_sq(sq) == 1) score -= ROOK_ON_SEVENTH_BONUS;
   }
 
-  Bitboard wr_all = b.pieces(Color::White, PieceType::Rook);
+  Bitboard wr_all = wr;
   if (popcnt(wr_all) == 2) {
     int sq1 = lsb_i(wr_all);
     Bitboard tmp = wr_all & (wr_all - 1);
@@ -517,7 +486,7 @@ static int rook_activity(const Board& b) {
     }
   }
 
-  Bitboard br_all = b.pieces(Color::Black, PieceType::Rook);
+  Bitboard br_all = br;
   if (popcnt(br_all) == 2) {
     int sq1 = lsb_i(br_all);
     Bitboard tmp = br_all & (br_all - 1);
@@ -533,35 +502,32 @@ static int rook_activity(const Board& b) {
   return score;
 }
 
-// ---------- Thread-safe caches (direct-mapped) ----------
+// ---------- Lock-free-friendly caches (unchanged from previous optimized file) ----------
 constexpr size_t EVAL_CACHE_BITS = 14;  // 16k entries
 constexpr size_t EVAL_CACHE_SIZE = 1ULL << EVAL_CACHE_BITS;
 struct EvalEntry {
-  Bitboard key = 0;
-  int32_t score = 0;
-  uint32_t age = 0;
+  std::atomic<uint64_t> key{0};
+  std::atomic<int32_t> score{0};
+  std::atomic<uint32_t> age{0};
 };
 
-constexpr size_t PAWN_CACHE_BITS = 12;  // 4k entries
+constexpr size_t PAWN_CACHE_BITS = 12;  // 4k
 constexpr size_t PAWN_CACHE_SIZE = 1ULL << PAWN_CACHE_BITS;
 struct PawnEntry {
-  Bitboard key = 0;
-  int32_t pawn_score = 0;
-  uint32_t age = 0;
+  std::atomic<uint64_t> key{0};
+  std::atomic<int32_t> pawn_score{0};
+  std::atomic<uint32_t> age{0};
 };
 
 struct Evaluator::Impl {
   std::array<EvalEntry, EVAL_CACHE_SIZE> eval_cache;
   std::array<PawnEntry, PAWN_CACHE_SIZE> pawn_cache;
-  mutable std::shared_mutex cacheMutex;
-  uint32_t global_age = 1;
-
-  Impl() {
-    // entries default-initialized
-  }
+  std::mutex writeMutex;  // serializes writes only
+  std::atomic<uint32_t> global_age{1};
+  Impl() {}
   inline void incr_age() {
-    ++global_age;
-    if (global_age == 0) global_age = 1;
+    uint32_t g = global_age.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (g == 0) global_age.store(1, std::memory_order_relaxed);
   }
 };
 
@@ -575,13 +541,20 @@ Evaluator::~Evaluator() noexcept {
 
 void Evaluator::clearCaches() const noexcept {
   if (!m_impl) return;
-  std::unique_lock lock(m_impl->cacheMutex);
-  for (auto& e : m_impl->eval_cache) e.key = 0;
-  for (auto& p : m_impl->pawn_cache) p.key = 0;
-  m_impl->global_age = 1;
+  std::lock_guard lock(m_impl->writeMutex);
+  for (auto& e : m_impl->eval_cache) {
+    e.key.store(0, std::memory_order_relaxed);
+    e.score.store(0, std::memory_order_relaxed);
+    e.age.store(0, std::memory_order_relaxed);
+  }
+  for (auto& p : m_impl->pawn_cache) {
+    p.key.store(0, std::memory_order_relaxed);
+    p.pawn_score.store(0, std::memory_order_relaxed);
+    p.age.store(0, std::memory_order_relaxed);
+  }
+  m_impl->global_age.store(1, std::memory_order_relaxed);
 }
 
-// Index helpers
 static inline size_t eval_index_from_key(Bitboard key) noexcept {
   return static_cast<size_t>(key) & (EVAL_CACHE_SIZE - 1);
 }
@@ -589,53 +562,59 @@ static inline size_t pawn_index_from_key(Bitboard key) noexcept {
   return static_cast<size_t>(key) & (PAWN_CACHE_SIZE - 1);
 }
 
-// ---------- evaluate(Position) with thread-safe caches ----------
+// ---------- evaluate(Position) optimized (uses new helpers) ----------
 int Evaluator::evaluate(model::Position& pos) const {
+  init_masks_if_needed();
   const Board& b = pos.board();
+  const uint64_t board_key = static_cast<uint64_t>(pos.hash());
+  const uint64_t pawn_key = static_cast<uint64_t>(pos.state().pawnKey);
 
-  // use engine zobrist as board key (fast)
-  const Bitboard board_key = static_cast<Bitboard>(pos.hash());
-
-  // pawn key: prefer explicit pawnKey in GameState; fallback to compute.
-  Bitboard pawn_key = 0;
-  // if GameState has pawnKey field (recommended), use it:
-  pawn_key = pos.state().pawnKey;
-  // 1) try eval cache (shared lock)
+  // 1) Fast lock-free read from eval cache
   {
-    std::shared_lock lock(m_impl->cacheMutex);
     size_t ei = eval_index_from_key(board_key);
-    const EvalEntry& ent = m_impl->eval_cache[ei];
-    if (ent.key == board_key && ent.age == m_impl->global_age) {
-      return ent.score;
+    uint64_t k = m_impl->eval_cache[ei].key.load(std::memory_order_relaxed);
+    if (k == board_key) {
+      int32_t s = m_impl->eval_cache[ei].score.load(std::memory_order_relaxed);
+      return s;
     }
   }
 
-  // 2) try pawn cache (shared lock) to avoid recomputing pawn structure
+  // 2) try pawn cache
   int pawn_score = std::numeric_limits<int>::min();
   {
-    std::shared_lock lock(m_impl->cacheMutex);
     size_t pi = pawn_index_from_key(pawn_key);
-    const PawnEntry& pent = m_impl->pawn_cache[pi];
-    if (pent.key == pawn_key) pawn_score = pent.pawn_score;
+    uint64_t pk = m_impl->pawn_cache[pi].key.load(std::memory_order_relaxed);
+    if (pk == pawn_key)
+      pawn_score = m_impl->pawn_cache[pi].pawn_score.load(std::memory_order_relaxed);
   }
 
-  // --- slow path: compute eval without holding locks ---
+  // --- slow path: precompute bitboards once ---
+  std::array<Bitboard, 6> wbbs{}, bbbs{};
+  for (int pt = 0; pt < 6; ++pt) {
+    wbbs[pt] = b.pieces(Color::White, static_cast<PieceType>(pt));
+    bbbs[pt] = b.pieces(Color::Black, static_cast<PieceType>(pt));
+  }
+  Bitboard occ = b.allPieces();
+  Bitboard wocc = b.pieces(Color::White);
+  Bitboard bocc = b.pieces(Color::Black);
+
   int mg = 0, eg = 0, phase = 0;
-  material_pst_phase(b, mg, eg, phase);
+  material_pst_phase(wbbs, bbbs, mg, eg, phase);
 
   if (pawn_score == std::numeric_limits<int>::min()) {
-    pawn_score = pawn_structure(b);
+    pawn_score = pawn_structure(wbbs[static_cast<int>(PieceType::Pawn)],
+                                bbbs[static_cast<int>(PieceType::Pawn)]);
   }
 
-  int mob = mobility(b);
-  int ks = king_safety(b);
+  int mob = mobility(occ, wocc, bocc, wbbs, bbbs);
+  int ks = king_safety(wbbs, bbbs, occ);
 
-  // zusätzliche Features
-  int bishop_pair_score = bishop_pair(b);
-  int dev_score = development_score(b);
-  int knight_rim_score = knight_rim(b);
-  int outpost_center_score = center_and_outposts(b);
-  int rook_act = rook_activity(b);
+  int bishop_pair_score = bishop_pair(wbbs, bbbs);
+  int dev_score = development_score(wbbs, bbbs);
+  int knight_rim_score = knight_rim(wbbs, bbbs);
+  int outpost_center_score = center_and_outposts(wbbs, bbbs, occ);
+  int rook_act = rook_activity(wbbs, bbbs, wbbs[static_cast<int>(PieceType::Pawn)],
+                               bbbs[static_cast<int>(PieceType::Pawn)]);
 
   int mg_add = pawn_score + mob + ks + bishop_pair_score + dev_score + knight_rim_score +
                outpost_center_score + rook_act;
@@ -645,36 +624,34 @@ int Evaluator::evaluate(model::Position& pos) const {
   mg += mg_add;
   eg += eg_add;
 
-  // Phase-Normalisierung:
+  // phase interpolation
   int max_phase = 0;
   for (int pt = 0; pt < 6; ++pt) {
-    max_phase += PIECE_PHASE[pt] * (popcnt(b.pieces(Color::White, static_cast<PieceType>(pt))) +
-                                    popcnt(b.pieces(Color::Black, static_cast<PieceType>(pt))));
+    max_phase += PIECE_PHASE[pt] * (popcnt(wbbs[pt]) + popcnt(bbbs[pt]));
   }
-  int phase_norm = (max_phase > 0) ? std::clamp(phase, -max_phase, max_phase) : 0;
+  int phase_norm = (max_phase > 0) ? std::clamp(phase, 0, max_phase) : 0;
   int mg_weight = (max_phase > 0) ? (phase_norm * 256 / max_phase) : 0;
   int eg_weight = 256 - mg_weight;
 
   int final_score = ((mg * mg_weight) + (eg * eg_weight)) >> 8;
 
-  // store results under unique_lock (short critical section)
+  // write caches under short critical section
   {
-    std::unique_lock lock(m_impl->cacheMutex);
-    // pawn cache store
+    std::lock_guard<std::mutex> lock(m_impl->writeMutex);
+    // pawn cache write
     size_t pi = pawn_index_from_key(pawn_key);
-    PawnEntry& pent = m_impl->pawn_cache[pi];
-    pent.key = pawn_key;
-    pent.pawn_score = pawn_score;
-    pent.age = m_impl->global_age;
+    m_impl->pawn_cache[pi].key.store(pawn_key, std::memory_order_relaxed);
+    m_impl->pawn_cache[pi].pawn_score.store(pawn_score, std::memory_order_relaxed);
+    m_impl->pawn_cache[pi].age.store(m_impl->global_age.load(std::memory_order_relaxed),
+                                     std::memory_order_relaxed);
 
-    // eval cache store
+    // eval cache write
     size_t ei = eval_index_from_key(board_key);
-    EvalEntry& ent = m_impl->eval_cache[ei];
-    ent.key = board_key;
-    ent.score = final_score;
-    ent.age = m_impl->global_age;
+    m_impl->eval_cache[ei].key.store(board_key, std::memory_order_relaxed);
+    m_impl->eval_cache[ei].score.store(final_score, std::memory_order_relaxed);
+    m_impl->eval_cache[ei].age.store(m_impl->global_age.load(std::memory_order_relaxed),
+                                     std::memory_order_relaxed);
 
-    // bump age to reduce pathological collisions over time
     m_impl->incr_age();
   }
 

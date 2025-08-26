@@ -12,6 +12,15 @@
 
 namespace lilia::engine {
 
+// === cancellation exception ===
+struct SearchStoppedException : public std::exception {
+  const char* what() const noexcept override { return "Search stopped"; }
+};
+
+inline void check_stop(std::atomic<bool>* stopFlag) {
+  if (stopFlag && stopFlag->load()) throw SearchStoppedException();
+}
+
 using steady_clock = std::chrono::steady_clock;
 
 // ------------------ Constructors ------------------
@@ -60,10 +69,7 @@ static inline bool same_move(const model::Move& a, const model::Move& b) {
 // ------------------ quiescence ------------------
 int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   stats.nodes++;
-  if (stopFlag && stopFlag->load()) {
-    int safeEval = signed_eval(pos);
-    return std::clamp(safeEval, -MATE, MATE);
-  }
+  check_stop(stopFlag);
 
   int stand = std::clamp(signed_eval(pos), -MATE, MATE);
 
@@ -89,13 +95,11 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 
   int best = stand;
   for (auto& m : caps) {
-    if (stopFlag && stopFlag->load()) break;
+    check_stop(stopFlag);
 
     if (!pos.doMove(m)) continue;
     int score = -quiescence(pos, -beta, -alpha, ply + 1);
     pos.undoMove();
-
-    if (stopFlag && stopFlag->load()) break;
 
     score = std::clamp(score, -MATE, MATE);
 
@@ -111,7 +115,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int ply,
                     model::Move& refBest) {
   stats.nodes++;
-  if (stopFlag && stopFlag->load()) return 0;
+  check_stop(stopFlag);  // statt return 0
 
   if (pos.checkInsufficientMaterial() || pos.checkMoveRule() || pos.checkRepitition()) return 0;
 
@@ -297,7 +301,7 @@ int Search::search_root(model::Position& pos, int depth, std::atomic<bool>* stop
 
   try {
     for (int d = 1; d <= depth; ++d) {
-      if (stopFlag && stopFlag->load()) break;
+      check_stop(stopFlag);
 
       int a0 = -INF, b0 = INF;
       if (cfg.useAspiration && d > 1) {
@@ -432,12 +436,15 @@ int Search::search_root(model::Position& pos, int depth, std::atomic<bool>* stop
 
       lastCompletedStats = stats;
     }  // end depth loop
-  } catch (const std::exception& e) {
-    std::cerr << "[Search] exception: " << e.what() << "\n";
-  } catch (...) {
-    std::cerr << "[Search] unknown exception\n";
+  } catch (const SearchStoppedException&) {
+    // already tracked in lastCompletedStats
+    stats = lastCompletedStats;
+    auto now = steady_clock::now();
+    long long elapsedMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+    stats.elapsedMs = elapsedMs;
+    stats.nps = (elapsedMs > 0) ? (double)stats.nodes / (elapsedMs / 1000.0) : (double)stats.nodes;
   }
-
 stop_search:
   if (stopFlag && stopFlag->load()) {
     auto now = steady_clock::now();
@@ -453,7 +460,8 @@ stop_search:
   return stats.bestScore;
 }
 
-// ---------- parallel root search ----------
+// Optimized search_root_parallel with std::move usage and controlled concurrency.
+// Assumes SearchStoppedException and check_stop are defined elsewhere in the translation unit.
 int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bool>* stop,
                                  int maxThreads) {
   this->stopFlag = stop;
@@ -461,7 +469,7 @@ int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bo
 
   auto start = steady_clock::now();
 
-  // generate legal root moves
+  // generate legal root moves (keep as values in `legal`)
   std::vector<model::Move> moves;
   try {
     moves = mg.generatePseudoLegalMoves(pos.board(), pos.state());
@@ -473,7 +481,7 @@ int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bo
   for (auto& m : moves) {
     if (!pos.doMove(m)) continue;
     pos.undoMove();
-    legal.push_back(m);
+    legal.push_back(m);  // we will std::move from legal later
   }
   if (legal.empty()) {
     this->stopFlag = nullptr;
@@ -490,66 +498,112 @@ int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bo
     SearchStats stats;
   };
 
-  std::vector<std::future<RootResult>> futures;
-  futures.reserve(legal.size());
+  // running futures and collected results
+  std::vector<std::future<RootResult>> running;
+  running.reserve(maxThreads);
+  std::vector<RootResult> completedResults;
+  completedResults.reserve(legal.size());
 
-  // Launch a task per root move (you can improve by limiting concurrently running tasks)
-  for (auto& m : legal) {
-    model::Position child = pos;
-    if (!child.doMove(m)) continue;
-
-    // capture everything needed by value where appropriate
+  auto launch_worker = [&](model::Move m, model::Position child) -> std::future<RootResult> {
+    // Capture child and m by move into the async lambda (C++14 generalized capture)
     if (evalFactory) {
-      // If a factory is present, each worker Search gets its own Evaluator instance via the
-      // factory.
-      futures.push_back(
-          std::async(std::launch::async, [this, child, m, depth]() mutable -> RootResult {
+      return std::async(
+          std::launch::async,
+          [this, child = std::move(child), m = std::move(m), depth]() mutable -> RootResult {
             RootResult rr{};
-            // each worker has its own Search instance to avoid sharing killers/history
             Search worker(this->tt, this->evalFactory, this->cfg);
             worker.stopFlag = this->stopFlag;
             model::Move ref;
-            int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
-            rr.score = score;
-            rr.move = m;
-            rr.stats = worker.getStatsCopy();
+            try {
+              int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+              rr.score = score;
+              rr.move = std::move(m);
+              rr.stats = worker.getStatsCopy();
+            } catch (const SearchStoppedException&) {
+              // propagate to future (rethrow)
+              throw;
+            }
             return rr;
-          }));
+          });
     } else {
-      // No factory provided: fallback to using legacy constructor which uses shared Evaluator&
-      // This is safe if your Evaluator implementation is thread-safe (locks internally).
-      futures.push_back(
-          std::async(std::launch::async, [this, child, m, depth]() mutable -> RootResult {
+      return std::async(
+          std::launch::async,
+          [this, child = std::move(child), m = std::move(m), depth]() mutable -> RootResult {
             RootResult rr{};
             Search worker(this->tt, *this->evalPtr, this->cfg);
             worker.stopFlag = this->stopFlag;
             model::Move ref;
-            int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
-            rr.score = score;
-            rr.move = m;
-            rr.stats = worker.getStatsCopy();
+            try {
+              int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+              rr.score = score;
+              rr.move = std::move(m);
+              rr.stats = worker.getStatsCopy();
+            } catch (const SearchStoppedException&) {
+              throw;
+            }
             return rr;
-          }));
+          });
+    }
+  };
+
+  // Launch workers in waves, moving `legal` entries into the workers
+  for (size_t i = 0; i < legal.size(); ++i) {
+    if (stop && stop->load()) break;
+
+    // move the root move out of the vector to avoid copy
+    model::Move m = std::move(legal[i]);
+    model::Position child = pos;     // copy here; we'll move into lambda
+    if (!child.doMove(m)) continue;  // if illegal after all, skip
+
+    // launch worker with moved values
+    running.emplace_back(launch_worker(std::move(m), std::move(child)));
+
+    // ensure we don't exceed concurrency limit
+    while ((int)running.size() >= maxThreads) {
+      bool foundReady = false;
+      for (size_t j = 0; j < running.size(); ++j) {
+        auto& f = running[j];
+        if (f.wait_for(std::chrono::milliseconds(10)) == std::future_status::ready) {
+          try {
+            RootResult rr = f.get();
+            completedResults.push_back(std::move(rr));
+          } catch (...) {
+            // worker threw (likely SearchStoppedException) or failed; ignore
+          }
+          // remove this future by swap/pop_back
+          if (j + 1 != running.size()) std::swap(running[j], running.back());
+          running.pop_back();
+          foundReady = true;
+          break;
+        }
+      }
+      if (!foundReady) std::this_thread::yield();
+      if (stop && stop->load()) break;
+    }
+    if (stop && stop->load()) break;
+  }
+
+  // collect remaining running futures
+  for (auto& f : running) {
+    try {
+      RootResult rr = f.get();
+      completedResults.push_back(std::move(rr));
+    } catch (...) {
+      // ignore aborted/failed workers
     }
   }
 
+  // compute best from completed results
   int bestScore = -MATE - 1;
   model::Move bestMove{};
   std::vector<std::pair<int, model::Move>> rootCandidates;
-
-  for (auto& f : futures) {
-    if (this->stopFlag && this->stopFlag->load()) break;
-    RootResult rr;
-    try {
-      rr = f.get();
-    } catch (...) {
-      continue;
-    }
+  rootCandidates.reserve(completedResults.size());
+  for (auto& rr : completedResults) {
     stats.nodes += rr.stats.nodes;
-    rootCandidates.push_back({rr.score, rr.move});
+    rootCandidates.emplace_back(rr.score, std::move(rr.move));
     if (rr.score > bestScore) {
       bestScore = rr.score;
-      bestMove = rr.move;
+      bestMove = rootCandidates.back().second;
     }
   }
 
