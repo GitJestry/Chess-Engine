@@ -8,10 +8,10 @@
 
 #include "../constants.hpp"
 #include "../chess_types.hpp"
+#include "../model/move.hpp"
 
 namespace lilia::model {
 class ChessGame;
-struct Move;
 }  // namespace lilia::model
 
 namespace lilia::controller {

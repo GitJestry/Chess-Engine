@@ -397,11 +397,11 @@ int Search::search_root_parallel(model::Position& pos, int depth,
   completedResults.reserve(legal.size());
 
   // helper to spawn a worker thread using promise/future so we can join reliably
-  auto spawn_worker = [&](model::Move m, model::Position child, std::atomic<bool>* stopPtr) {
+  auto spawn_worker = [&](model::Move m, model::Position child) -> std::future<RootResult> {
     std::promise<RootResult> prom;
     auto fut = prom.get_future();
 
-    std::thread th([this, child = std::move(child), m = std::move(m), depth, stopPtr,
+    std::thread th([this, child = std::move(child), m = std::move(m), depth, stopPtr = stop,
                     p = std::move(prom)]() mutable {
       // note: promise was moved into lambda capture (named 'p')
       try {
@@ -434,9 +434,9 @@ int Search::search_root_parallel(model::Position& pos, int depth,
       }
     });
 
-    running.emplace_back(std::move(th), std::move(fut));
-
-  };
+      th.detach();
+      return fut;
+    };
 
   
   for (size_t i = 0; i < legal.size(); ++i) {
@@ -448,7 +448,7 @@ int Search::search_root_parallel(model::Position& pos, int depth,
     if (!child.doMove(m)) continue;  
 
     // spawn worker with moved values
-    running.push_back(spawn_worker(std::move(m), std::move(child)));
+      running.push_back(spawn_worker(std::move(m), std::move(child)));
 
     
     while ((int)running.size() >= maxThreads) {

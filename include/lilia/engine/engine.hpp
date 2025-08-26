@@ -23,7 +23,7 @@ class Engine {
     model::magic::init_magics();
   }
   std::optional<model::Move> find_best_move(model::Position& pos, int maxDepth = 8,
-                                            std::atomic<bool>* stop = nullptr);
+                                            std::shared_ptr<std::atomic<bool>> stop = nullptr);
   const SearchStats& getLastSearchStats() const;
   const EngineConfig& getConfig() const;
 
