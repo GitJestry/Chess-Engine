@@ -25,7 +25,7 @@ struct SearchResult {
 
 class BotEngine {
  public:
-  BotEngine();
+  explicit BotEngine(const EngineConfig& cfg = {});
   ~BotEngine();
 
   

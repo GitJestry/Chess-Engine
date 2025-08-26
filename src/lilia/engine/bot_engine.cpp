@@ -12,7 +12,7 @@
 
 namespace lilia::engine {
 
-BotEngine::BotEngine() : m_engine() {}
+BotEngine::BotEngine(const EngineConfig& cfg) : m_engine(cfg) {}
 BotEngine::~BotEngine() = default;
 
 static inline std::string format_top_moves(const std::vector<std::pair<model::Move, int>>& top) {
