@@ -15,8 +15,8 @@ namespace lilia::model::magic {
  *   lilia::model::magic::constants
  *
  * Arrays emitted (prefix defaults to "s"):
- *   prefix_rook_magic, prefix_bishop_magic (arrays of MagicEntry { uint64_t magic; uint8_t shift;
- * }) prefix_rook_table, prefix_bishop_table (arrays of std::vector<uint64_t>)
+ *   prefix_rook_magic, prefix_bishop_magic (arrays of MagicEntry { bb::Bitboard magic; uint8_t shift;
+ * }) prefix_rook_table, prefix_bishop_table (arrays of std::vector<bb::Bitboard>)
  *
  * @param outPath path to write header (e.g. "magic_constants.hpp")
  * @param arrayNamePrefix optional prefix used for generated symbol names

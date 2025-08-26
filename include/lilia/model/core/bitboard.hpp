@@ -17,7 +17,7 @@ constexpr inline bool none(Bitboard b) {
 constexpr inline int popcount(Bitboard b) {
   return std::popcount(b);
 }
-inline int ctz64(uint64_t x) noexcept {
+inline int ctz64(Bitboard x) noexcept {
   return static_cast<int>(std::countr_zero(x));
 }
 
