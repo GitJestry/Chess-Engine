@@ -7,6 +7,7 @@
 #include <future>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -58,7 +59,7 @@ struct SearchStoppedException : public std::exception {
   const char* what() const noexcept override { return "Search stopped"; }
 };
 
-inline void check_stop(std::atomic<bool>* stopFlag) {
+inline void check_stop(const std::shared_ptr<std::atomic<bool>>& stopFlag) {
   if (stopFlag && stopFlag->load()) throw SearchStoppedException();
 }
 
@@ -69,7 +70,7 @@ Search::Search(model::TT4& tt_, Evaluator& eval_, const EngineConfig& cfg_)
     : tt(tt_), mg(), cfg(cfg_), evalPtr(&eval_) {
   killers.fill(model::Move{});
   for (auto& h : history) h.fill(0);
-  stopFlag = nullptr;
+  stopFlag.reset();
   stats = SearchStats{};
 }
 
@@ -79,7 +80,7 @@ Search::Search(model::TT4& tt_, EvalFactory evalFactory_, const EngineConfig& cf
   if (evalFactory) evalInstance = evalFactory();
   killers.fill(model::Move{});
   for (auto& h : history) h.fill(0);
-  stopFlag = nullptr;
+  stopFlag.reset();
   stats = SearchStats{};
 }
 
@@ -354,7 +355,8 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
   return pv;
 }
 
-int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bool>* stop,
+int Search::search_root_parallel(model::Position& pos, int depth,
+                                 std::shared_ptr<std::atomic<bool>> stop,
                                  int maxThreads) {
   // set stop pointer for main search instance (workers will capture 'stop' explicitly)
   this->stopFlag = stop;
@@ -367,7 +369,7 @@ int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bo
   moves.clear();
   if (!safeGenerateMoves(mg, pos, moves)) {
     // no workers started, safe to clear stopFlag
-    this->stopFlag = nullptr;
+    this->stopFlag.reset();
     return 0;
   }
 
@@ -380,7 +382,7 @@ int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bo
     legal.push_back(m);  // we will std::move from legal later
   }
   if (legal.empty()) {
-    this->stopFlag = nullptr;
+    this->stopFlag.reset();
     return 0;
   }
 
@@ -394,52 +396,25 @@ int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bo
     SearchStats stats;
   };
 
-  // running threads and collected results
-  // running: pairs (thread, future)
-  std::vector<std::pair<std::thread, std::future<RootResult>>> running;
+  // futures for running tasks and collected results
+  std::vector<std::future<RootResult>> running;
   running.reserve(maxThreads);
   std::vector<RootResult> completedResults;
   completedResults.reserve(legal.size());
 
-  // helper to spawn a worker thread using promise/future so we can join reliably
-  auto spawn_worker = [&](model::Move m, model::Position child, std::atomic<bool>* stopPtr) {
-    std::promise<RootResult> prom;
-    auto fut = prom.get_future();
-
-    std::thread th([this, child = std::move(child), m = std::move(m), depth, stopPtr,
-                    p = std::move(prom)]() mutable {
-      // note: promise was moved into lambda capture (named 'p')
-      try {
-        RootResult rr{};
-        Search worker(this->tt, this->evalFactory, this->cfg);
-        worker.stopFlag = stopPtr;  // safe copy of pointer
-        model::Move ref;
-        int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
-        rr.score = score;
-        rr.move = std::move(m);
-        rr.stats = worker.getStatsCopy();
-        p.set_value(std::move(rr));
-      } catch (const SearchStoppedException& e) {
-        std::cout << "spawn worker search stopped" << std::endl;
-        try {
-          p.set_exception(std::make_exception_ptr(e));
-        } catch (...) {
-          // ignore set_exception failure
-        }
-      } catch (const std::exception& e) {
-        try {
-          p.set_exception(std::make_exception_ptr(e));
-        } catch (...) {
-        }
-      } catch (...) {
-        try {
-          p.set_exception(std::make_exception_ptr(std::runtime_error("unknown worker exception")));
-        } catch (...) {
-        }
-      }
-    });
-
-    running.emplace_back(std::move(th), std::move(fut));
+  auto spawn_worker = [&](model::Move m, model::Position child) {
+    return std::async(std::launch::async,
+                      [this, child = std::move(child), m = std::move(m), depth, stop]() mutable {
+                        RootResult rr{};
+                        Search worker(this->tt, this->evalFactory, this->cfg);
+                        worker.stopFlag = stop;
+                        model::Move ref;
+                        int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+                        rr.score = score;
+                        rr.move = std::move(m);
+                        rr.stats = worker.getStatsCopy();
+                        return rr;
+                      });
   };
 
   // Launch workers in waves, moving `legal` entries into the workers
@@ -451,18 +426,16 @@ int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bo
     model::Position child = pos;     // copy here; we'll move into thread
     if (!child.doMove(m)) continue;  // if illegal after all, skip
 
-    // spawn worker with moved values (pass stop pointer explicitly)
-    spawn_worker(std::move(m), std::move(child), stop);
+    // spawn worker with moved values
+    running.push_back(spawn_worker(std::move(m), std::move(child)));
 
     // ensure we don't exceed concurrency limit
     while ((int)running.size() >= maxThreads) {
       bool foundReady = false;
       for (size_t j = 0; j < running.size(); ++j) {
-        auto& pr = running[j];
-        auto& fut = pr.second;
-        if (fut.wait_for(std::chrono::milliseconds(10)) == std::future_status::ready) {
-          // join thread first (ensures resources cleaned up)
-          if (pr.first.joinable()) pr.first.join();
+        auto& fut = running[j];
+        if (fut.wait_for(std::chrono::milliseconds(10)) ==
+            std::future_status::ready) {
           try {
             RootResult rr = fut.get();
             completedResults.push_back(std::move(rr));
@@ -486,18 +459,16 @@ int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bo
     if (stop && stop->load()) break;
   }
 
-  // collect remaining running threads
-  for (auto& pr : running) {
-    auto& th = pr.first;
-    auto& fut = pr.second;
-    if (th.joinable()) th.join();
+  // collect remaining running futures
+  for (auto& fut : running) {
     try {
       RootResult rr = fut.get();
       completedResults.push_back(std::move(rr));
     } catch (const SearchStoppedException&) {
       std::cout << "root result bug" << std::endl;
     } catch (const std::exception& e) {
-      std::cerr << "[Search] worker exception during final collect: " << e.what() << '\n';
+      std::cerr << "[Search] worker exception during final collect: " << e.what()
+                << '\n';
     } catch (...) {
       std::cerr << "[Search] worker unknown exception during final collect\n";
     }
@@ -545,7 +516,7 @@ int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bo
   }
 
   // all worker threads have been joined above, safe to clear member stopFlag
-  this->stopFlag = nullptr;
+  this->stopFlag.reset();
   return stats.bestScore;
 }
 

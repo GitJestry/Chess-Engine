@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 #include <optional>
 
 #include "../model/core/magic.hpp"
@@ -21,8 +22,9 @@ class Engine {
     model::Zobrist::init();
     model::magic::init_magics();
   }
-  std::optional<model::Move> find_best_move(model::Position& pos, int maxDepth = 8,
-                                            std::atomic<bool>* stop = nullptr);
+  std::optional<model::Move> find_best_move(
+      model::Position& pos, int maxDepth = 8,
+      std::shared_ptr<std::atomic<bool>> stop = nullptr);
   SearchStats getLastSearchStats() const;
   EngineConfig getConfig() const;
 

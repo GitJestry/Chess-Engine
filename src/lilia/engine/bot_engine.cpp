@@ -3,6 +3,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -30,7 +31,7 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   SearchResult res;
   auto pos = gameState.getPositionRefForBot();
 
-  std::atomic<bool> stopFlag(false);
+  auto stopFlag = std::make_shared<std::atomic<bool>>(false);
 
   std::mutex m;
   std::condition_variable cv;
@@ -43,10 +44,10 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
       return timerStop || (externalCancel && externalCancel->load());
     });
     if (!pred) {
-      stopFlag.store(true);
+      stopFlag->store(true);
     } else {
       if (externalCancel && externalCancel->load()) {
-        stopFlag.store(true);
+        stopFlag->store(true);
       }
     }
   });
@@ -57,7 +58,7 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   std::string engineErr;
 
   try {
-    auto mv = m_engine.find_best_move(pos, maxDepth, &stopFlag);
+    auto mv = m_engine.find_best_move(pos, maxDepth, stopFlag);
     res.bestMove = mv;
   } catch (const std::exception& e) {
     engineThrew = true;
@@ -88,7 +89,7 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
     reason = "external-cancel";
   } else if (engineThrew) {
     reason = std::string("exception: ") + engineErr;
-  } else if (stopFlag.load() && thinkMillis > 0 && elapsedMs >= thinkMillis) {
+  } else if (stopFlag->load() && thinkMillis > 0 && elapsedMs >= thinkMillis) {
     reason = "timeout";
   } else {
     reason = "normal";
