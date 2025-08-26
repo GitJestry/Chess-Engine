@@ -124,7 +124,7 @@ void ChessGame::setPosition(const std::string& fen) {
 
   m_position.state().castlingRights = rights;
 
-  // enpassent
+  // en passant: en-passant square taken from FEN
   if (enPassant == "-") {
     m_position.state().enPassantSquare = core::NO_SQUARE;  // oder core::NO_SQUARE falls definiert
   } else {
