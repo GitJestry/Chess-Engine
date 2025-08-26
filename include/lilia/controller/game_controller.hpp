@@ -27,10 +27,18 @@ class GameController {
   
   void render();
 
-  
-  
+  // game_controller.hpp (in public:)
+  /**
+   * @brief Startet ein Spiel über den internen GameManager.
+   * @param playerColor Farbe des menschlichen Spielers (default: White).
+   * @param fen Start-FEN (default: START_FEN).
+   * @param vsBot true = Gegner ist Bot, false = menschlicher Gegner.
+   * @param thinkTimeMs Zeit in Millisekunden, die der Bot maximal denken darf.
+   * @param depth Suchtiefe für den Bot.
+   */
+
   void startGame(core::Color playerColor, const std::string& fen = core::START_FEN,
-                 bool vsBot = true);
+                 bool vsBot = true, int thinkTimeMs = 1000, int depth = 5);
 
  private:
   

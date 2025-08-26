@@ -10,23 +10,22 @@ GameManager::~GameManager() {
   stopGame();
 }
 
-void GameManager::startGame(core::Color playerColor, const std::string& fen, bool vsBot) {
+void GameManager::startGame(core::Color playerColor, const std::string& fen, bool vsBot,
+                            int thinkTimeMs, int depth) {
   std::lock_guard lock(m_mutex);
   m_playerColor = playerColor;
   m_game.setPosition(fen);
   m_cancelBot.store(false);
   m_waitingPromotion = false;
-  int thinkTime = 5000;  
-  int depth = 2;
-
   
   if (vsBot) {
     if (playerColor == core::Color::White) {
+
       m_whitePlayer.reset();  
-      m_blackPlayer = std::make_unique<BotPlayer>(thinkTime, depth);
+      m_blackPlayer = std::make_unique<BotPlayer>(thinkTimeMs, depth);
     } else {
       m_blackPlayer.reset();
-      m_whitePlayer = std::make_unique<BotPlayer>(thinkTime, depth);
+      m_whitePlayer = std::make_unique<BotPlayer>(thinkTimeMs, depth);
     }
 
   } else {
