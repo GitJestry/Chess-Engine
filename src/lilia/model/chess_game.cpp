@@ -146,8 +146,8 @@ void ChessGame::buildHash() {
 
 std::vector<Move> ChessGame::generateLegalMoves() {
   int side = bb::ci(m_position.state().sideToMove);
-  auto pseudo =
-      std::move(m_move_gen.generatePseudoLegalMoves(m_position.board(), m_position.state()));
+  std::vector<Move> pseudo;
+  m_move_gen.generatePseudoLegalMoves(m_position.board(), m_position.state(), pseudo);
   std::vector<Move> legalMoves;
   for (const auto& m : pseudo) {
     if (m_position.doMove(m)) {

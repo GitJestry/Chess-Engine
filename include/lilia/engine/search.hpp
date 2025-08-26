@@ -48,10 +48,6 @@ class Search {
 
   ~Search() = default;
 
-  // run search from root position up to `depth`. best is returned via internal stats.bestMove.
-  // stop is optional cooperative stop flag (nullptr = no stop).
-  int search_root(model::Position& pos, int depth, std::atomic<bool>* stop = nullptr);
-
   // parallel root search (uses EvalFactory if provided; otherwise uses shared Evaluator&).
   int search_root_parallel(model::Position& pos, int depth, std::atomic<bool>* stop,
                            int maxThreads = 0);

@@ -9,6 +9,7 @@
 #include <mutex>
 
 #include "lilia/model/core/bitboard.hpp"
+#include "lilia/model/core/magic.hpp"
 #include "lilia/model/position.hpp"
 
 using namespace lilia::core;
@@ -227,14 +228,16 @@ static int mobility(Bitboard occ, Bitboard wocc, Bitboard bocc, const std::array
   while (wb) {
     int sq = lsb_i(wb);
     wb &= wb - 1;
-    Bitboard a = bishop_attacks(static_cast<core::Square>(sq), occ) & ~wocc;
+    Bitboard a =
+        magic::sliding_attacks(magic::Slider::Bishop, static_cast<core::Square>(sq), occ) & ~wocc;
     sc += popcnt(a) * 3;
   }
   Bitboard bb = bbbs[static_cast<int>(PieceType::Bishop)];
   while (bb) {
     int sq = lsb_i(bb);
     bb &= bb - 1;
-    Bitboard a = bishop_attacks(static_cast<core::Square>(sq), occ) & ~bocc;
+    Bitboard a =
+        magic::sliding_attacks(magic::Slider::Bishop, static_cast<core::Square>(sq), occ) & ~bocc;
     sc -= popcnt(a) * 3;
   }
 
@@ -242,14 +245,16 @@ static int mobility(Bitboard occ, Bitboard wocc, Bitboard bocc, const std::array
   while (wr) {
     int sq = lsb_i(wr);
     wr &= wr - 1;
-    Bitboard a = rook_attacks(static_cast<core::Square>(sq), occ) & ~wocc;
+    Bitboard a =
+        magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) & ~wocc;
     sc += popcnt(a) * 2;
   }
   Bitboard br = bbbs[static_cast<int>(PieceType::Rook)];
   while (br) {
     int sq = lsb_i(br);
     br &= br - 1;
-    Bitboard a = rook_attacks(static_cast<core::Square>(sq), occ) & ~bocc;
+    Bitboard a =
+        magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) & ~bocc;
     sc -= popcnt(a) * 2;
   }
 
@@ -257,14 +262,20 @@ static int mobility(Bitboard occ, Bitboard wocc, Bitboard bocc, const std::array
   while (wq) {
     int sq = lsb_i(wq);
     wq &= wq - 1;
-    Bitboard a = queen_attacks(static_cast<core::Square>(sq), occ) & ~wocc;
+    Bitboard a =
+        (magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) ||
+         magic::sliding_attacks(magic::Slider::Bishop, static_cast<core::Square>(sq), occ)) &
+        ~wocc;
     sc += popcnt(a) * 1;
   }
   Bitboard bq = bbbs[static_cast<int>(PieceType::Queen)];
   while (bq) {
     int sq = lsb_i(bq);
     bq &= bq - 1;
-    Bitboard a = queen_attacks(static_cast<core::Square>(sq), occ) & ~bocc;
+    Bitboard a =
+        (magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) ||
+         magic::sliding_attacks(magic::Slider::Bishop, static_cast<core::Square>(sq), occ)) &
+        ~bocc;
     sc -= popcnt(a) * 1;
   }
 
@@ -407,14 +418,14 @@ static int center_and_outposts(const std::array<Bitboard, 6>& wbbs,
   while (wb) {
     int sq = lsb_i(wb);
     wb &= wb - 1;
-    Bitboard a = bishop_attacks(static_cast<core::Square>(sq), occ);
+    Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, static_cast<core::Square>(sq), occ);
     if (a & center) score += CENTER_CONTROL_BONUS;
   }
   Bitboard bb = bbbs[static_cast<int>(PieceType::Bishop)];
   while (bb) {
     int sq = lsb_i(bb);
     bb &= bb - 1;
-    Bitboard a = bishop_attacks(static_cast<core::Square>(sq), occ);
+    Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, static_cast<core::Square>(sq), occ);
     if (a & center) score -= CENTER_CONTROL_BONUS;
   }
 
@@ -422,14 +433,18 @@ static int center_and_outposts(const std::array<Bitboard, 6>& wbbs,
   while (wq) {
     int sq = lsb_i(wq);
     wq &= wq - 1;
-    Bitboard a = queen_attacks(static_cast<core::Square>(sq), occ);
+    Bitboard a =
+        (magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) ||
+         magic::sliding_attacks(magic::Slider::Bishop, static_cast<core::Square>(sq), occ));
     if (a & center) score += CENTER_CONTROL_BONUS;
   }
   Bitboard bq = bbbs[static_cast<int>(PieceType::Queen)];
   while (bq) {
     int sq = lsb_i(bq);
     bq &= bq - 1;
-    Bitboard a = queen_attacks(static_cast<core::Square>(sq), occ);
+    Bitboard a =
+        (magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) ||
+         magic::sliding_attacks(magic::Slider::Bishop, static_cast<core::Square>(sq), occ));
     if (a & center) score -= CENTER_CONTROL_BONUS;
   }
 

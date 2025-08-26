@@ -1,16 +1,21 @@
 #include "lilia/model/move_generator.hpp"
 
+
 #include "lilia/model/core/magic.hpp"
 
 namespace lilia::model {
 
+// MoveGenerator::generatePseudoLegalMoves - safer (no logic change)
+// ensure out has enough capacity, avoid repeated reallocation
 void MoveGenerator::generatePseudoLegalMoves(const Board& b, const GameState& st,
                                              std::vector<model::Move>& out) const {
+  // keep existing behavior but avoid unnecessary reallocations
+  if (out.capacity() < 128) out.reserve(128);
   out.clear();
-  out.reserve(64);
 
   core::Color side = st.sideToMove;
 
+  // These functions should themselves avoid throwing. If they need to, we catch in caller.
   genPawnMoves(b, st, side, out);
   genKnightMoves(b, side, out);
   genBishopMoves(b, side, out);

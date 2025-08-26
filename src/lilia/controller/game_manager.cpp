@@ -16,8 +16,8 @@ void GameManager::startGame(core::Color playerColor, const std::string& fen, boo
   m_game.setPosition(fen);
   m_cancelBot.store(false);
   m_waitingPromotion = false;
-  int thinkTime = 20000;  // ms
-  int depth = 9;
+  int thinkTime = 5000;  // ms
+  int depth = 2;
 
   // default: human for player color, bot for opponent (if vsBot)
   if (vsBot) {
