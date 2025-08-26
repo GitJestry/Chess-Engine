@@ -23,10 +23,10 @@ void MoveGenerator::generatePseudoLegalMoves(const Board& b, const GameState& st
 
 void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::Color side,
                                  std::vector<Move>& out) const {
-  bb::Bitboard us = board.pieces(side);
-  bb::Bitboard them = board.pieces(~side);
-  bb::Bitboard occ = board.allPieces();
-  bb::Bitboard pawns = board.pieces(side, core::PieceType::Pawn);
+  bb::Bitboard us = board.getPieces(side);
+  bb::Bitboard them = board.getPieces(~side);
+  bb::Bitboard occ = board.getAllPieces();
+  bb::Bitboard pawns = board.getPieces(side, core::PieceType::Pawn);
 
   if (side == core::Color::White) {
     bb::Bitboard single = bb::north(pawns) & ~occ;
@@ -191,9 +191,9 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
 
 void MoveGenerator::genKnightMoves(const Board& board, core::Color side,
                                    std::vector<Move>& out) const {
-  bb::Bitboard knights = board.pieces(side, core::PieceType::Knight);
-  bb::Bitboard own = board.pieces(side);
-  bb::Bitboard enemy = board.pieces(~side);
+  bb::Bitboard knights = board.getPieces(side, core::PieceType::Knight);
+  bb::Bitboard own = board.getPieces(side);
+  bb::Bitboard enemy = board.getPieces(~side);
 
   bb::Bitboard n = knights;
   while (n) {
@@ -217,10 +217,10 @@ void MoveGenerator::genKnightMoves(const Board& board, core::Color side,
 
 void MoveGenerator::genBishopMoves(const Board& board, core::Color side,
                                    std::vector<Move>& out) const {
-  bb::Bitboard bishops = board.pieces(side, core::PieceType::Bishop);
-  bb::Bitboard own = board.pieces(side);
-  bb::Bitboard enemy = board.pieces(~side);
-  bb::Bitboard occ = board.allPieces();
+  bb::Bitboard bishops = board.getPieces(side, core::PieceType::Bishop);
+  bb::Bitboard own = board.getPieces(side);
+  bb::Bitboard enemy = board.getPieces(~side);
+  bb::Bitboard occ = board.getAllPieces();
 
   bb::Bitboard b = bishops;
   while (b) {
@@ -244,10 +244,10 @@ void MoveGenerator::genBishopMoves(const Board& board, core::Color side,
 
 void MoveGenerator::genRookMoves(const Board& board, core::Color side,
                                  std::vector<Move>& out) const {
-  bb::Bitboard rooks = board.pieces(side, core::PieceType::Rook);
-  bb::Bitboard own = board.pieces(side);
-  bb::Bitboard enemy = board.pieces(~side);
-  bb::Bitboard occ = board.allPieces();
+  bb::Bitboard rooks = board.getPieces(side, core::PieceType::Rook);
+  bb::Bitboard own = board.getPieces(side);
+  bb::Bitboard enemy = board.getPieces(~side);
+  bb::Bitboard occ = board.getAllPieces();
 
   bb::Bitboard r = rooks;
   while (r) {
@@ -271,10 +271,10 @@ void MoveGenerator::genRookMoves(const Board& board, core::Color side,
 
 void MoveGenerator::genQueenMoves(const Board& board, core::Color side,
                                   std::vector<Move>& out) const {
-  bb::Bitboard queens = board.pieces(side, core::PieceType::Queen);
-  bb::Bitboard own = board.pieces(side);
-  bb::Bitboard enemy = board.pieces(~side);
-  bb::Bitboard occ = board.allPieces();
+  bb::Bitboard queens = board.getPieces(side, core::PieceType::Queen);
+  bb::Bitboard own = board.getPieces(side);
+  bb::Bitboard enemy = board.getPieces(~side);
+  bb::Bitboard occ = board.getAllPieces();
 
   bb::Bitboard qcore = queens;
   while (qcore) {
@@ -299,12 +299,12 @@ void MoveGenerator::genQueenMoves(const Board& board, core::Color side,
 
 void MoveGenerator::genKingMoves(const Board& board, const GameState& st, core::Color side,
                                  std::vector<Move>& out) const {
-  bb::Bitboard king = board.pieces(side, core::PieceType::King);
+  bb::Bitboard king = board.getPieces(side, core::PieceType::King);
   if (!king) return;
   core::Square from = static_cast<core::Square>(bb::ctz64(king));
 
-  bb::Bitboard own = board.pieces(side);
-  bb::Bitboard enemy = board.pieces(~side);
+  bb::Bitboard own = board.getPieces(side);
+  bb::Bitboard enemy = board.getPieces(~side);
 
   bb::Bitboard atk = bb::king_attacks_from(from);
   bb::Bitboard quiet = atk & ~own & ~enemy;
@@ -326,14 +326,14 @@ void MoveGenerator::genKingMoves(const Board& board, const GameState& st, core::
     
     
     if ((st.castlingRights & bb::WK) &&
-        !(board.allPieces() &
+        !(board.getAllPieces() &
           (bb::sq_bb(static_cast<core::Square>(5)) | bb::sq_bb(static_cast<core::Square>(6))))) {
       out.push_back({bb::E1, static_cast<core::Square>(6), core::PieceType::None, false, false,
                      CastleSide::KingSide});
     }
     
     if ((st.castlingRights & bb::WQ) &&
-        !(board.allPieces() &
+        !(board.getAllPieces() &
           (bb::sq_bb(static_cast<core::Square>(3)) | bb::sq_bb(static_cast<core::Square>(2)) |
            bb::sq_bb(static_cast<core::Square>(1))))) {
       out.push_back({bb::E1, static_cast<core::Square>(2), core::PieceType::None, false, false,
@@ -342,13 +342,13 @@ void MoveGenerator::genKingMoves(const Board& board, const GameState& st, core::
   } else {
     
     if ((st.castlingRights & bb::BK) &&
-        !(board.allPieces() &
+        !(board.getAllPieces() &
           (bb::sq_bb(static_cast<core::Square>(61)) | bb::sq_bb(static_cast<core::Square>(62))))) {
       out.push_back({bb::E8, static_cast<core::Square>(62), core::PieceType::None, false, false,
                      CastleSide::KingSide});
     }
     if ((st.castlingRights & bb::BQ) &&
-        !(board.allPieces() &
+        !(board.getAllPieces() &
           (bb::sq_bb(static_cast<core::Square>(59)) | bb::sq_bb(static_cast<core::Square>(58)) |
            bb::sq_bb(static_cast<core::Square>(57))))) {
       out.push_back({bb::E8, static_cast<core::Square>(58), core::PieceType::None, false, false,

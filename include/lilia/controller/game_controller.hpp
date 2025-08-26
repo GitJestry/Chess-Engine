@@ -89,22 +89,22 @@ class GameController {
   [[nodiscard]] bool isPromotion(core::Square a, core::Square b);
   [[nodiscard]] bool isSameColor(core::Square a, core::Square b);
 
-  
-  view::GameView& m_gameView;                 
-  model::ChessGame& m_chess_game;             
-  InputManager m_inputManager;                
-  view::sound::SoundManager m_sound_manager;  
+  // ---------------- Members ----------------
+  view::GameView& m_game_view;                 ///< Responsible for rendering.
+  model::ChessGame& m_chess_game;              ///< Game model containing rules and state.
+  InputManager m_input_manager;                ///< Handles raw input processing.
+  view::sound::SoundManager m_sound_manager;  ///< Handles sfx and music
 
   core::Color m_player_color = core::Color::White;
   core::Square m_promotion_square = core::NO_SQUARE;
 
-  core::Square m_selected_sq = core::NO_SQUARE;  
-  core::Square m_hover_sq = core::NO_SQUARE;     
-  std::pair<core::Square, core::Square> m_lastMoveSquares = {
-      core::NO_SQUARE, core::NO_SQUARE};  
+  core::Square m_selected_sq = core::NO_SQUARE;  ///< Currently selected square.
+  core::Square m_hover_sq = core::NO_SQUARE;     ///< Currently hovered square.
+  std::pair<core::Square, core::Square> m_last_move_squares = {
+      core::NO_SQUARE, core::NO_SQUARE};  ///< Last executed move (from -> to).
 
-  
-  std::unique_ptr<GameManager> m_gameManager;
+  // ---------------- New: GameManager ----------------
+  std::unique_ptr<GameManager> m_game_manager;
 };
 
 }  

@@ -24,11 +24,11 @@ template <class PositionLike>
 bb::Bitboard Zobrist::compute(const PositionLike& pos) {
   bb::Bitboard h = 0;
 
-  const Board& b = pos.board();
+  const Board& b = pos.getBoard();
   for (int c = 0; c < 2; ++c) {
     for (int t = 0; t < 6; ++t) {
       bb::Bitboard bitboard =
-          b.pieces(static_cast<core::Color>(c), static_cast<core::PieceType>(t));
+          b.getPieces(static_cast<core::Color>(c), static_cast<core::PieceType>(t));
       while (bitboard) {
         core::Square s = static_cast<core::Square>(bb::ctz64(bitboard));
         bitboard &= bitboard - 1;
@@ -37,7 +37,7 @@ bb::Bitboard Zobrist::compute(const PositionLike& pos) {
     }
   }
 
-  const GameState& st = pos.state();
+  const GameState& st = pos.getState();
   h ^= castling[st.castlingRights & 0xF];
 
   if (st.enPassantSquare != core::NO_SQUARE) {

@@ -4,11 +4,11 @@ namespace lilia::view::animation {
 
 SnapToSquareAnim::SnapToSquareAnim(PieceManager& pieceMgrRef, core::Square pieceSq,
                                    Entity::Position s, Entity::Position e)
-    : m_piece_manager_ref(pieceMgrRef), m_piece_square(pieceSq), m_startPos(s), m_endPos(e) {}
+    : m_piece_manager_ref(pieceMgrRef), m_piece_square(pieceSq), m_start_pos(s), m_end_pos(e) {}
 void SnapToSquareAnim::update(float dt) {
   m_elapsed += dt;
   float t = std::min(m_elapsed / m_duration, 1.f);
-  Entity::Position pos = m_startPos + t * (m_endPos - m_startPos);
+  Entity::Position pos = m_start_pos + t * (m_end_pos - m_start_pos);
   m_piece_manager_ref.setPieceToScreenPos(m_piece_square, pos);
 
   if (t >= 1.f) {

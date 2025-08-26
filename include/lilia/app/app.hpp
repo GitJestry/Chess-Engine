@@ -24,9 +24,10 @@ class App {
   static std::string toLower(const std::string& s);
   static bool parseYesNoDefaultTrue(const std::string& s);
 
-  core::Color m_playerColor = core::Color::White;
-  bool m_vsBot = true;
-  std::string m_startFen;
+  // parsed options
+  core::Color m_player_color = core::Color::White;
+  bool m_vs_bot = true;
+  std::string m_start_fen;
   int m_thinkTimeMs = 1000;  // Bot think time in milliseconds
   int m_searchDepth = 5;     // Search depth for bot
 };

@@ -570,9 +570,9 @@ static inline size_t pawn_index_from_key(Bitboard key) noexcept {
 
 int Evaluator::evaluate(model::Position& pos) const {
   init_masks_if_needed();
-  const Board& b = pos.board();
+  const Board& b = pos.getBoard();
   const uint64_t board_key = static_cast<uint64_t>(pos.hash());
-  const uint64_t pawn_key = static_cast<uint64_t>(pos.state().pawnKey);
+  const uint64_t pawn_key = static_cast<uint64_t>(pos.getState().pawnKey);
 
   
   {
@@ -596,12 +596,12 @@ int Evaluator::evaluate(model::Position& pos) const {
   
   std::array<Bitboard, 6> wbbs{}, bbbs{};
   for (int pt = 0; pt < 6; ++pt) {
-    wbbs[pt] = b.pieces(Color::White, static_cast<PieceType>(pt));
-    bbbs[pt] = b.pieces(Color::Black, static_cast<PieceType>(pt));
+    wbbs[pt] = b.getPieces(Color::White, static_cast<PieceType>(pt));
+    bbbs[pt] = b.getPieces(Color::Black, static_cast<PieceType>(pt));
   }
-  Bitboard occ = b.allPieces();
-  Bitboard wocc = b.pieces(Color::White);
-  Bitboard bocc = b.pieces(Color::Black);
+  Bitboard occ = b.getAllPieces();
+  Bitboard wocc = b.getPieces(Color::White);
+  Bitboard bocc = b.getPieces(Color::Black);
 
   int mg = 0, eg = 0, phase = 0;
   material_pst_phase(wbbs, bbbs, mg, eg, phase);

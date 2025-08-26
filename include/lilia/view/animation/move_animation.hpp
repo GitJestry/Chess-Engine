@@ -17,8 +17,8 @@ class MoveAnim : public IAnimation {
 
  private:
   PieceManager& m_piece_manager_ref;
-  Entity::Position m_startPos;
-  Entity::Position m_endPos;
+  Entity::Position m_start_pos;
+  Entity::Position m_end_pos;
   float m_elapsed = 0.f;
   float m_duration = constant::ANIM_MOVE_SPEED;
   bool m_finish = false;

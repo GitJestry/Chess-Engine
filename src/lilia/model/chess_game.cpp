@@ -53,6 +53,7 @@ void ChessGame::doMoveUCI(const std::string& uciMove) {
 }
 
 Move ChessGame::getMove(core::Square from, core::Square to) {
+ int side = bb::ci(m_position.getState().sideToMove);
   const auto& moves = generateLegalMoves();
   for (const auto& m : moves)
 
@@ -103,16 +104,15 @@ void ChessGame::setPosition(const std::string& fen) {
         default:
           throw std::runtime_error("Ungültiges Zeichen im FEN: " + std::string(1, ch));
       }
-      m_position.board().setPiece(
+      m_position.getBoard().setPiece(
           sq, {type, (std::isupper(ch) ? core::Color::White : core::Color::Black)});
 
       file++;
     }
   }
 
-  
-  m_position.state().sideToMove = (activeColor == "w" ? core::Color::White : core::Color::Black);
-
+  // active Color
+  m_position.getState().sideToMove = (activeColor == "w" ? core::Color::White : core::Color::Black);
   
   uint8_t rights = 0;
   if (castling.find('K') != std::string::npos) rights |= bb::Castling::WK;
@@ -120,19 +120,19 @@ void ChessGame::setPosition(const std::string& fen) {
   if (castling.find('k') != std::string::npos) rights |= bb::Castling::BK;
   if (castling.find('q') != std::string::npos) rights |= bb::Castling::BQ;
 
-  m_position.state().castlingRights = rights;
+  m_position.getState().castlingRights = rights;
 
   if (enPassant == "-") {
-    m_position.state().enPassantSquare = core::NO_SQUARE;  
+    m_position.getState().enPassantSquare = core::NO_SQUARE;  // oder core::NO_SQUARE falls definiert
   } else {
-    m_position.state().enPassantSquare = stringToSquare(enPassant);
+    m_position.getState().enPassantSquare = stringToSquare(enPassant);
   }
 
-  
-  m_position.state().halfmoveClock = std::stoi(halfmoveClock);
+  // halfmove clock
+  m_position.getState().halfmoveClock = std::stoi(halfmoveClock);
 
-  
-  m_position.state().fullmoveNumber = std::stoi(fullmoveNumber);
+  // fullmove number
+  m_position.getState().fullmoveNumber = std::stoi(fullmoveNumber);
 
   m_position.buildHash();
 }
@@ -142,6 +142,7 @@ void ChessGame::buildHash() {
 }
 
 const std::vector<Move>& ChessGame::generateLegalMoves() {
+  int side = bb::ci(m_position.getState().sideToMove);
   m_pseudo_moves.clear();
   m_legal_moves.clear();
   m_move_gen.generatePseudoLegalMoves(m_position.board(), m_position.state(), m_pseudo_moves);
@@ -155,7 +156,7 @@ const std::vector<Move>& ChessGame::generateLegalMoves() {
 }
 
 const GameState& ChessGame::getGameState() {
-  return m_position.state();
+  return m_position.getState();
 }
 
 core::Square ChessGame::getRookSquareFromCastleside(CastleSide castleSide, core::Color side) {
@@ -175,14 +176,14 @@ core::Square ChessGame::getRookSquareFromCastleside(CastleSide castleSide, core:
 }
 
 core::Square ChessGame::getKingSquare(core::Color color) {
-  bb::Bitboard kbb = m_position.board().pieces(color, core::PieceType::King);
+  bb::Bitboard kbb = m_position.getBoard().getPieces(color, core::PieceType::King);
   core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
   return ksq;
 }
 
 void ChessGame::checkGameResult() {
   if (generateLegalMoves().empty()) {
-    if (isKingInCheck(m_position.state().sideToMove))
+    if (isKingInCheck(m_position.getState().sideToMove))
       m_result = core::GameResult::CHECKMATE;
     else
       m_result = core::GameResult::STALEMATE;
@@ -198,7 +199,7 @@ core::GameResult ChessGame::getResult() {
 
 bb::Piece ChessGame::getPiece(core::Square sq) {
   bb::Piece none;
-  if (m_position.board().getPiece(sq).has_value()) return m_position.board().getPiece(sq).value();
+  if (m_position.getBoard().getPiece(sq).has_value()) return m_position.getBoard().getPiece(sq).value();
   return none;
 }
 
@@ -208,7 +209,7 @@ void ChessGame::doMove(core::Square from, core::Square to, core::PieceType promo
 }
 
 bool ChessGame::isKingInCheck(core::Color from) const {
-  bb::Bitboard kbb = m_position.board().pieces(from, core::PieceType::King);
+  bb::Bitboard kbb = m_position.getBoard().getPieces(from, core::PieceType::King);
   core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
   return m_position.isSquareAttacked(ksq, ~from);
 }

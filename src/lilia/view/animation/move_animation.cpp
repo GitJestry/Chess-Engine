@@ -7,8 +7,8 @@ namespace lilia::view::animation {
 MoveAnim::MoveAnim(PieceManager& pieceMgrRef, Entity::Position s, Entity::Position e,
                    core::Square from, core::Square to, core::PieceType promotion)
     : m_piece_manager_ref(pieceMgrRef),
-      m_startPos(s),
-      m_endPos(e),
+      m_start_pos(s),
+      m_end_pos(e),
       m_from(from),
       m_to(to),
       m_promotion(promotion) {}
@@ -16,7 +16,7 @@ MoveAnim::MoveAnim(PieceManager& pieceMgrRef, Entity::Position s, Entity::Positi
 void MoveAnim::update(float dt) {
   m_elapsed += dt;
   float t = std::min(m_elapsed / m_duration, 1.f);
-  Entity::Position pos = m_startPos + t * (m_endPos - m_startPos);
+  Entity::Position pos = m_start_pos + t * (m_end_pos - m_start_pos);
   m_piece_manager_ref.setPieceToScreenPos(m_from, pos);
 
   if (t >= 1.f) {

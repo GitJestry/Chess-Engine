@@ -19,13 +19,13 @@ void WarningAnim::update(float dt) {
 
   m_elapsed += dt;
 
-  if (m_elapsed >= m_totalDuration) {
+  if (m_elapsed >= m_total_duration) {
     m_finish = true;
     return;
   }
 
-  float phase = std::fmod(m_elapsed, m_blinkPeriod * 2.f);
-  if (phase < m_blinkPeriod) {
+  float phase = std::fmod(m_elapsed, m_blink_period * 2.f);
+  if (phase < m_blink_period) {
     m_warning_highlight.setTexture(
         TextureTable::getInstance().get(constant::STR_TEXTURE_WARNINGHLIGHT));
   } else {

@@ -17,24 +17,23 @@ GameManager::~GameManager() {
 void GameManager::startGame(core::Color playerColor, const std::string& fen, bool vsBot,
                             int thinkTimeMs, int depth) {
   std::lock_guard lock(m_mutex);
-  m_playerColor = playerColor;
+  m_player_color = playerColor;
   m_game.setPosition(fen);
-  m_cancelBot.store(false);
-  m_waitingPromotion = false;
+  m_cancel_bot.store(false);
+  m_waiting_promotion = false;
 
   // default: human for player color, bot for opponent (if vsBot)
   if (vsBot) {
     if (playerColor == core::Color::White) {
-      m_whitePlayer.reset();  // human
-      m_blackPlayer = std::make_unique<BotPlayer>(thinkTimeMs, depth);
+      m_white_player.reset();  // human
+      m_black_player = std::make_unique<BotPlayer>(thinkTimeMs, depth);
     } else {
-      m_blackPlayer.reset();
-      m_whitePlayer = std::make_unique<BotPlayer>(thinkTimeMs, depth);
+      m_black_player.reset();
+      m_white_player = std::make_unique<BotPlayer>(thinkTimeMs, depth);
     }
-
   } else {
-    m_whitePlayer.reset();
-    m_blackPlayer.reset();
+    m_white_player.reset();
+    m_black_player.reset();
   }
 
   
@@ -43,21 +42,18 @@ void GameManager::startGame(core::Color playerColor, const std::string& fen, boo
 
 void GameManager::stopGame() {
   std::lock_guard lock(m_mutex);
-  m_cancelBot.store(true);
-  
+  m_cancel_bot.store(true);
 }
 
 void GameManager::update([[maybe_unused]] float dt) {
   std::lock_guard lock(m_mutex);
   using namespace std::chrono_literals;
-
-  if (m_botFuture.valid()) {
-    if (m_botFuture.wait_for(0ms) == std::future_status::ready) {
-      model::Move mv = m_botFuture.get();
+  if (m_bot_future.valid()) {
+    if (m_bot_future.wait_for(0ms) == std::future_status::ready) {
+      model::Move mv = m_bot_future.get();
       
-      m_botFuture = std::future<model::Move>();
-      
-      if (!(mv.from == core::NO_SQUARE && mv.to == core::NO_SQUARE)) {
+      m_bot_future = std::future<model::Move>();
+            if (!(mv.from == core::NO_SQUARE && mv.to == core::NO_SQUARE)) {
         applyMoveAndNotify(mv, false);
       }
       
@@ -68,18 +64,17 @@ void GameManager::update([[maybe_unused]] float dt) {
 
 bool GameManager::requestUserMove(core::Square from, core::Square to, bool onClick) {
   std::lock_guard lock(m_mutex);
-  if (m_waitingPromotion) return false;  // waiting on previous promotion
+  if (m_waiting_promotion) return false;  // waiting on previous promotion
   if (m_game.getGameState().sideToMove != m_playerColor) return false;
-
 
   const auto& moves = m_game.generateLegalMoves();
   for (const auto& m : moves) {
     if (m.from == from && m.to == to) {
       if (m.promotion != core::PieceType::None) {
-        
-        m_waitingPromotion = true;
-        m_promotionFrom = from;
-        m_promotionTo = to;
+        // request UI promotion selection
+        m_waiting_promotion = true;
+        m_promotion_from = from;
+        m_promotion_to = to;
         if (onPromotionRequested_) onPromotionRequested_(to);
         return false;  
       }
@@ -96,20 +91,20 @@ bool GameManager::requestUserMove(core::Square from, core::Square to, bool onCli
 
 void GameManager::completePendingPromotion(core::PieceType promotion) {
   std::lock_guard lock(m_mutex);
-  if (!m_waitingPromotion) return;
+  if (!m_waiting_promotion) return;
 
   const auto& moves = m_game.generateLegalMoves();
   for (const auto& m : moves) {
-    if (m.from == m_promotionFrom && m.to == m_promotionTo && m.promotion == promotion) {
+    if (m.from == m_promotion_from && m.to == m_promotion_to && m.promotion == promotion) {
       applyMoveAndNotify(m, true);
-      m_waitingPromotion = false;
+      m_waiting_promotion = false;
       startBotIfNeeded();
       return;
     }
   }
 
-  
-  m_waitingPromotion = false;
+  // if we reach here, the promotion selection did not match available moves -> cancel
+  m_waiting_promotion = false;
 }
 
 void GameManager::applyMoveAndNotify(const model::Move& mv, bool onClick) {
@@ -117,8 +112,8 @@ void GameManager::applyMoveAndNotify(const model::Move& mv, bool onClick) {
   
   m_game.doMove(mv.from, mv.to, mv.promotion);
 
-  
-  bool wasPlayerMove = (m_game.getGameState().sideToMove != m_playerColor);
+  // Determine if that move was executed by the player.
+  bool wasPlayerMove = (m_game.getGameState().sideToMove != m_player_color);
 
   if (onMoveExecuted_) onMoveExecuted_(mv, wasPlayerMove, onClick);
 
@@ -126,8 +121,8 @@ void GameManager::applyMoveAndNotify(const model::Move& mv, bool onClick) {
   auto result = m_game.getResult();
   if (result != core::GameResult::ONGOING) {
     if (onGameEnd_) onGameEnd_(result);
-    
-    m_cancelBot.store(true);
+    // cancel any running bot
+    m_cancel_bot.store(true);
   }
 }
 
@@ -135,27 +130,27 @@ void GameManager::startBotIfNeeded() {
   core::Color stm = m_game.getGameState().sideToMove;
   IPlayer* p = nullptr;
   if (stm == core::Color::White)
-    p = m_whitePlayer.get();
+    p = m_white_player.get();
   else
-    p = m_blackPlayer.get();
+    p = m_black_player.get();
 
   if (p && !p->isHuman()) {
-    
-    m_cancelBot.store(true);
-    
-    m_cancelBot.store(false);
+    // cancel any running bot
+    m_cancel_bot.store(true);
+    // small window to allow previous future to see cancel and exit
+    m_cancel_bot.store(false);
 
-    m_pendingBotPlayer = p;
-    m_botFuture = p->requestMove(m_game, m_cancelBot);
+    m_pending_bot_player = p;
+    m_bot_future = p->requestMove(m_game, m_cancel_bot);
   }
 }
 
 void GameManager::setBotForColor(core::Color color, std::unique_ptr<IPlayer> bot) {
   std::lock_guard lock(m_mutex);
   if (color == core::Color::White)
-    m_whitePlayer = std::move(bot);
+    m_white_player = std::move(bot);
   else
-    m_blackPlayer = std::move(bot);
+    m_black_player = std::move(bot);
 }
 
 }  

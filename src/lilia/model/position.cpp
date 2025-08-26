@@ -10,16 +10,16 @@ bool Position::checkInsufficientMaterial() {
   
   bb::Bitboard occ = 0;
   for (auto pt : {core::PieceType::Pawn, core::PieceType::Queen, core::PieceType::Rook}) {
-    occ |= m_board.pieces(core::Color::White, pt);
-    occ |= m_board.pieces(core::Color::Black, pt);
+    occ |= m_board.getPieces(core::Color::White, pt);
+    occ |= m_board.getPieces(core::Color::Black, pt);
   }
   if (bb::popcount(occ) > 0) return false;  
 
-  
-  bb::Bitboard whiteB = m_board.pieces(core::Color::White, core::PieceType::Bishop);
-  bb::Bitboard blackB = m_board.pieces(core::Color::Black, core::PieceType::Bishop);
-  bb::Bitboard whiteN = m_board.pieces(core::Color::White, core::PieceType::Knight);
-  bb::Bitboard blackN = m_board.pieces(core::Color::Black, core::PieceType::Knight);
+  // 2. Zähle Läufer und Springer
+  bb::Bitboard whiteB = m_board.getPieces(core::Color::White, core::PieceType::Bishop);
+  bb::Bitboard blackB = m_board.getPieces(core::Color::Black, core::PieceType::Bishop);
+  bb::Bitboard whiteN = m_board.getPieces(core::Color::White, core::PieceType::Knight);
+  bb::Bitboard blackN = m_board.getPieces(core::Color::Black, core::PieceType::Knight);
 
   int totalB = bb::popcount(whiteB) + bb::popcount(blackB);
   int totalN = bb::popcount(whiteN) + bb::popcount(blackN);
@@ -43,8 +43,8 @@ bool Position::checkInsufficientMaterial() {
 }
 
 bool Position::inCheck() const {
-  bb::Bitboard kbb = m_board.pieces(m_state.sideToMove, core::PieceType::King);
-  if (!kbb) return false;  
+  bb::Bitboard kbb = m_board.getPieces(m_state.sideToMove, core::PieceType::King);
+  if (!kbb) return false;  // defensiv
   core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
   return isSquareAttacked(ksq, ~m_state.sideToMove);
 }
@@ -69,9 +69,8 @@ bool Position::see(const model::Move& m) const {
   
   if (!m.isCapture && m.promotion == core::PieceType::None) return false;
 
-  
-  bb::Bitboard occ = m_board.allPieces();
-
+  // get occupancy and piece bitboards
+  bb::Bitboard occ = m_board.getAllPieces();
   
   int captured_value = 0;
   core::Square capture_sq = m.to;
@@ -118,8 +117,8 @@ bool Position::see(const model::Move& m) const {
   
   std::array<bb::Bitboard, 6> wbbs{}, bbbs{};
   for (int pt = 0; pt < 6; ++pt) {
-    wbbs[pt] = m_board.pieces(core::Color::White, static_cast<core::PieceType>(pt));
-    bbbs[pt] = m_board.pieces(core::Color::Black, static_cast<core::PieceType>(pt));
+    wbbs[pt] = m_board.getPieces(core::Color::White, static_cast<core::PieceType>(pt));
+    bbbs[pt] = m_board.getPieces(core::Color::Black, static_cast<core::PieceType>(pt));
   }
 
   
@@ -302,19 +301,20 @@ bool Position::see(const model::Move& m) const {
 }
 
 bool Position::isSquareAttacked(core::Square sq, core::Color by) const {
-  bb::Bitboard occ = m_board.allPieces();
+  bb::Bitboard occ = m_board.getAllPieces();
 
   
   if (by == core::Color::White) {
-    bb::Bitboard pawns = m_board.pieces(core::Color::White, core::PieceType::Pawn);
+    bb::Bitboard pawns = m_board.getPieces(core::Color::White, core::PieceType::Pawn);
     if (bb::white_pawn_attacks(pawns) & bb::sq_bb(sq)) return true;
   } else {
-    bb::Bitboard pawns = m_board.pieces(core::Color::Black, core::PieceType::Pawn);
+    bb::Bitboard pawns = m_board.getPieces(core::Color::Black, core::PieceType::Pawn);
     if (bb::black_pawn_attacks(pawns) & bb::sq_bb(sq)) return true;
   }
 
-  
-  bb::Bitboard knights = m_board.pieces(by, core::PieceType::Knight);
+  // knights
+  bb::Bitboard knights = m_board.getPieces(by, core::PieceType::Knight);
+
   for (bb::Bitboard n = knights; n;) {
     core::Square s = bb::pop_lsb(n);
     if (bb::knight_attacks_from(s) & bb::sq_bb(sq)) return true;
@@ -322,7 +322,7 @@ bool Position::isSquareAttacked(core::Square sq, core::Color by) const {
 
   
   bb::Bitboard bishops =
-      m_board.pieces(by, core::PieceType::Bishop) | m_board.pieces(by, core::PieceType::Queen);
+      m_board.getPieces(by, core::PieceType::Bishop) | m_board.getPieces(by, core::PieceType::Queen);
   for (bb::Bitboard b = bishops; b;) {
     core::Square s = bb::pop_lsb(b);
     if (magic::sliding_attacks(magic::Slider::Bishop, s, occ) & bb::sq_bb(sq)) return true;
@@ -330,15 +330,16 @@ bool Position::isSquareAttacked(core::Square sq, core::Color by) const {
 
   
   bb::Bitboard rooks =
-      m_board.pieces(by, core::PieceType::Rook) | m_board.pieces(by, core::PieceType::Queen);
+      m_board.getPieces(by, core::PieceType::Rook) | m_board.getPieces(by, core::PieceType::Queen);
   for (bb::Bitboard r = rooks; r;) {
     core::Square s = bb::pop_lsb(r);
 
     if (magic::sliding_attacks(magic::Slider::Rook, s, occ) & bb::sq_bb(sq)) return true;
   }
 
-  
-  bb::Bitboard king = m_board.pieces(by, core::PieceType::King);
+  // king
+  bb::Bitboard king = m_board.getPieces(by, core::PieceType::King);
+
   if (king && (bb::king_attacks_from(static_cast<core::Square>(bb::ctz64(king))) & bb::sq_bb(sq)))
     return true;
 
@@ -352,9 +353,10 @@ bool Position::doMove(const Move& m) {
 
   
   if (m.castle != CastleSide::None) {
-    
-    bb::Bitboard kbb = m_board.pieces(us, core::PieceType::King);
-    if (!kbb) return false;  
+    // König-Position aktuell bestimmen
+    bb::Bitboard kbb = m_board.getPieces(us, core::PieceType::King);
+    if (!kbb) return false;  // kein König - inkonsistent
+
     core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
 
     
@@ -446,7 +448,7 @@ bool Position::doMove(const Move& m) {
 
   
   core::Color us_after = ~m_state.sideToMove;
-  bb::Bitboard kbb = m_board.pieces(us_after, core::PieceType::King);
+  bb::Bitboard kbb = m_board.getPieces(us_after, core::PieceType::King);
   core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
   if (isSquareAttacked(ksq, m_state.sideToMove)) {
     unapplyMove(st);  
@@ -490,15 +492,15 @@ bool Position::doNullMove() {
     ++m_state.fullmoveNumber;
   }
 
-  m_nullHistory.push_back(st);
+  m_null_history.push_back(st);
   return true;
 }
 
 void Position::undoNullMove() {
-  if (m_nullHistory.empty()) return;
+  if (m_null_history.empty()) return;
 
-  NullState st = m_nullHistory.back();
-  m_nullHistory.pop_back();
+  NullState st = m_null_history.back();
+  m_null_history.pop_back();
 
   
   m_state.sideToMove = ~m_state.sideToMove;

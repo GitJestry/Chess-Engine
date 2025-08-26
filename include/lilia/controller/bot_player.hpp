@@ -7,7 +7,7 @@ namespace lilia::controller {
 class BotPlayer : public IPlayer {
  public:
   explicit BotPlayer(int thinkMillis = 300, int depth = 8)
-      : m_thinkMillis(thinkMillis), m_depth(depth) {}
+      : m_think_millis(thinkMillis), m_depth(depth) {}
   ~BotPlayer() override = default;
 
   bool isHuman() const override { return false; }
@@ -16,7 +16,7 @@ class BotPlayer : public IPlayer {
 
  private:
   int m_depth;
-  int m_thinkMillis;
+  int m_think_millis;
 };
 
 }  

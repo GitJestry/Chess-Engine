@@ -54,25 +54,24 @@ class GameManager {
 
  private:
   model::ChessGame& m_game;
-  core::Color m_playerColor = core::Color::White;
+  core::Color m_player_color = core::Color::White;
 
-  
-  std::unique_ptr<IPlayer> m_whitePlayer;
-  std::unique_ptr<IPlayer> m_blackPlayer;
+  // Players: nullptr bedeutet menschlicher Spieler
+  std::unique_ptr<IPlayer> m_white_player;
+  std::unique_ptr<IPlayer> m_black_player;
 
-  
-  std::future<model::Move> m_botFuture;
-  IPlayer* m_pendingBotPlayer = nullptr;  
-  std::atomic<bool> m_cancelBot{false};
+  // Bot future & cancel token
+  std::future<model::Move> m_bot_future;
+  IPlayer* m_pending_bot_player = nullptr;  // roher pointer auf den aktiven Player
+  std::atomic<bool> m_cancel_bot{false};
 
-  
-  bool m_waitingPromotion = false;
-  core::Square m_promotionFrom = core::NO_SQUARE;
-  core::Square m_promotionTo = core::NO_SQUARE;
+  // pending promotion info
+  bool m_waiting_promotion = false;
+  core::Square m_promotion_from = core::NO_SQUARE;
+  core::Square m_promotion_to = core::NO_SQUARE;
 
   std::mutex m_mutex;
 
-  
   MoveCallback onMoveExecuted_;
   PromotionCallback onPromotionRequested_;
   EndCallback onGameEnd_;

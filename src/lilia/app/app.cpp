@@ -58,16 +58,16 @@ void App::promptStartOptions() {
   std::cout << "Enemy is bot? (yes / no) [Standard: yes]: ";
   std::string botInput;
   std::getline(std::cin, botInput);
-  m_vsBot = parseYesNoDefaultTrue(botInput);
+  m_vs_bot = parseYesNoDefaultTrue(botInput);
 
   std::cout << "Startposition as FEN [empty = Standard-Start]: ";
   std::string fenInput;
   std::getline(std::cin, fenInput);
   std::string fenTrim = trim(fenInput);
   if (fenTrim.empty()) {
-    m_startFen = core::START_FEN;
+    m_start_fen = core::START_FEN;
   } else {
-    m_startFen = fenInput;  // use exactly what the user typed (trimmed)
+    m_start_fen = fenInput;  // use exactly what the user typed (trimmed)
   }
 
   // Think time in seconds
@@ -113,8 +113,8 @@ int App::run() {
     lilia::controller::GameController gameController(gameView, chessGame);
 
     // start the game using GameController wrapper that delegates to GameManager
-    gController.startGame(m_playerColor, m_startFen, m_vsBot, m_thinkTimeMs,
-                          m_searchDepth);
+    gController.startGame(m_playerColor, m_startFen, m_vs_bot, m_think_time_ms,
+                          m_search_depth);
 
     sf::Clock clock;
     while (window.isOpen()) {
