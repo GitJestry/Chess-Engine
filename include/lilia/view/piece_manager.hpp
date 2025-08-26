@@ -27,6 +27,7 @@ class PieceManager {
   void removeAll();
 
   [[nodiscard]] bool hasPieceOnSquare(core::Square pos) const;
+  [[nodiscard]] Entity::Position getPieceSize(core::Square pos) const;
   void setPieceToSquareScreenPos(core::Square from, core::Square to);
   void setPieceToScreenPos(core::Square pos, core::MousePos mousePos);
   void setPieceToScreenPos(core::Square pos, Entity::Position entityPos);
