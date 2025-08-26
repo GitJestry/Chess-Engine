@@ -18,21 +18,15 @@ std::future<model::Move> BotPlayer::requestMove(model::ChessGame& gameState,
 
   return std::async(std::launch::async,
                     [this, &gameState, &cancelToken, requestedDepth, thinkMs]() -> model::Move {
-                      
-                      
                       lilia::engine::BotEngine engine;
 
-                      
                       lilia::engine::SearchResult res =
                           engine.findBestMove(gameState, requestedDepth, thinkMs, &cancelToken);
 
-                      
                       if (cancelToken.load()) {
-                        return model::Move{};  
+                        return model::Move{};
                       }
 
-                      
-                      
                       if (!res.bestMove.has_value()) {
                         model::MoveGenerator mg;
                         thread_local std::vector<model::Move> moveBuf;
@@ -55,4 +49,4 @@ std::future<model::Move> BotPlayer::requestMove(model::ChessGame& gameState,
                     });
 }
 
-}  
+}  // namespace lilia::controller

@@ -111,33 +111,33 @@ static void init_masks_if_needed() {
       for (int rr = 0; rr < 8; ++rr) fm |= sq_bb(static_cast<core::Square>((rr << 3) | f));
       masks.file_mask[sq] = fm;
 
-    Bitboard adj = 0;
-    if (f > 0)
-      for (int rr = 0; rr < 8; ++rr) adj |= sq_bb(static_cast<core::Square>((rr << 3) | (f - 1)));
-    if (f < 7)
-      for (int rr = 0; rr < 8; ++rr) adj |= sq_bb(static_cast<core::Square>((rr << 3) | (f + 1)));
-    masks.adjacent_files[sq] = adj;
+      Bitboard adj = 0;
+      if (f > 0)
+        for (int rr = 0; rr < 8; ++rr) adj |= sq_bb(static_cast<core::Square>((rr << 3) | (f - 1)));
+      if (f < 7)
+        for (int rr = 0; rr < 8; ++rr) adj |= sq_bb(static_cast<core::Square>((rr << 3) | (f + 1)));
+      masks.adjacent_files[sq] = adj;
 
-    Bitboard p_w = 0;
-    for (int rr = r + 1; rr < 8; ++rr)
-      for (int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ++ff)
-        p_w |= sq_bb(static_cast<core::Square>((rr << 3) | ff));
-    masks.passed_white[sq] = p_w;
+      Bitboard p_w = 0;
+      for (int rr = r + 1; rr < 8; ++rr)
+        for (int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ++ff)
+          p_w |= sq_bb(static_cast<core::Square>((rr << 3) | ff));
+      masks.passed_white[sq] = p_w;
 
-    Bitboard p_b = 0;
-    for (int rr = r - 1; rr >= 0; --rr)
-      for (int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ++ff)
-        p_b |= sq_bb(static_cast<core::Square>((rr << 3) | ff));
-    masks.passed_black[sq] = p_b;
+      Bitboard p_b = 0;
+      for (int rr = r - 1; rr >= 0; --rr)
+        for (int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ++ff)
+          p_b |= sq_bb(static_cast<core::Square>((rr << 3) | ff));
+      masks.passed_black[sq] = p_b;
 
-    Bitboard span_w = 0;
-    for (int rr = r + 1; rr < 8; ++rr) span_w |= sq_bb(static_cast<core::Square>((rr << 3) | f));
-    masks.pawn_front_white[sq] = span_w;
+      Bitboard span_w = 0;
+      for (int rr = r + 1; rr < 8; ++rr) span_w |= sq_bb(static_cast<core::Square>((rr << 3) | f));
+      masks.pawn_front_white[sq] = span_w;
 
-    Bitboard span_b = 0;
-    for (int rr = r - 1; rr >= 0; --rr) span_b |= sq_bb(static_cast<core::Square>((rr << 3) | f));
-    masks.pawn_front_black[sq] = span_b;
-  }
+      Bitboard span_b = 0;
+      for (int rr = r - 1; rr >= 0; --rr) span_b |= sq_bb(static_cast<core::Square>((rr << 3) | f));
+      masks.pawn_front_black[sq] = span_b;
+    }
   });
 }
 
@@ -166,7 +166,7 @@ static void material_pst_phase(const std::array<Bitboard, 6>& wbbs,
       int msq = 63 - sq;
       mg_out -= PIECE_VALUE_MG[pt] + pst_mg_for(piece, msq);
       eg_out -= PIECE_VALUE_EG[pt] + pst_mg_for(piece, msq);
-      phase_out += PIECE_PHASE[pt];  
+      phase_out += PIECE_PHASE[pt];
     }
   }
 }
@@ -510,7 +510,7 @@ static int rook_activity(const std::array<Bitboard, 6>& wbbs, const std::array<B
   return score;
 }
 
-constexpr size_t EVAL_CACHE_BITS = 14;  
+constexpr size_t EVAL_CACHE_BITS = 14;
 constexpr size_t EVAL_CACHE_SIZE = 1ULL << EVAL_CACHE_BITS;
 struct EvalEntry {
   std::atomic<uint64_t> key{0};
@@ -518,7 +518,7 @@ struct EvalEntry {
   std::atomic<uint32_t> age{0};
 };
 
-constexpr size_t PAWN_CACHE_BITS = 12;  
+constexpr size_t PAWN_CACHE_BITS = 12;
 constexpr size_t PAWN_CACHE_SIZE = 1ULL << PAWN_CACHE_BITS;
 struct PawnEntry {
   std::atomic<uint64_t> key{0};
@@ -529,7 +529,7 @@ struct PawnEntry {
 struct Evaluator::Impl {
   std::array<EvalEntry, EVAL_CACHE_SIZE> eval_cache;
   std::array<PawnEntry, PAWN_CACHE_SIZE> pawn_cache;
-  std::mutex writeMutex;  
+  std::mutex writeMutex;
   std::atomic<uint32_t> global_age{1};
   Impl() {}
   inline void incr_age() {
@@ -574,7 +574,6 @@ int Evaluator::evaluate(model::Position& pos) const {
   const uint64_t board_key = static_cast<uint64_t>(pos.hash());
   const uint64_t pawn_key = static_cast<uint64_t>(pos.getState().pawnKey);
 
-  
   {
     size_t ei = eval_index_from_key(board_key);
     uint64_t k = m_impl->eval_cache[ei].key.load(std::memory_order_relaxed);
@@ -584,7 +583,6 @@ int Evaluator::evaluate(model::Position& pos) const {
     }
   }
 
-  
   int pawn_score = std::numeric_limits<int>::min();
   {
     size_t pi = pawn_index_from_key(pawn_key);
@@ -593,7 +591,6 @@ int Evaluator::evaluate(model::Position& pos) const {
       pawn_score = m_impl->pawn_cache[pi].pawn_score.load(std::memory_order_relaxed);
   }
 
-  
   std::array<Bitboard, 6> wbbs{}, bbbs{};
   for (int pt = 0; pt < 6; ++pt) {
     wbbs[pt] = b.getPieces(Color::White, static_cast<PieceType>(pt));
@@ -629,7 +626,6 @@ int Evaluator::evaluate(model::Position& pos) const {
   mg += mg_add;
   eg += eg_add;
 
-  
   int max_phase = 0;
   for (int pt = 0; pt < 6; ++pt) {
     max_phase += PIECE_PHASE[pt] * (popcnt(wbbs[pt]) + popcnt(bbbs[pt]));
@@ -640,17 +636,15 @@ int Evaluator::evaluate(model::Position& pos) const {
 
   int final_score = ((mg * mg_weight) + (eg * eg_weight)) >> 8;
 
-  
   {
     std::lock_guard<std::mutex> lock(m_impl->writeMutex);
-    
+
     size_t pi = pawn_index_from_key(pawn_key);
     m_impl->pawn_cache[pi].key.store(pawn_key, std::memory_order_relaxed);
     m_impl->pawn_cache[pi].pawn_score.store(pawn_score, std::memory_order_relaxed);
     m_impl->pawn_cache[pi].age.store(m_impl->global_age.load(std::memory_order_relaxed),
                                      std::memory_order_relaxed);
 
-    
     size_t ei = eval_index_from_key(board_key);
     m_impl->eval_cache[ei].key.store(board_key, std::memory_order_relaxed);
     m_impl->eval_cache[ei].score.store(final_score, std::memory_order_relaxed);
@@ -663,4 +657,4 @@ int Evaluator::evaluate(model::Position& pos) const {
   return final_score;
 }
 
-}  
+}  // namespace lilia::engine

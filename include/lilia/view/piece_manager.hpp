@@ -42,4 +42,4 @@ class PieceManager {
   std::unordered_map<core::Square, Piece> m_pieces;
 };
 
-}  
+}  // namespace lilia::view

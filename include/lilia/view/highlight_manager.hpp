@@ -34,4 +34,4 @@ class HighlightManager {
   std::unordered_map<core::Square, Entity> m_hl_hover_squares;
 };
 
-}  
+}  // namespace lilia::view

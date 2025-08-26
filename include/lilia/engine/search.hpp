@@ -19,76 +19,56 @@ static const int INF = 30000;
 static const int MATE = 29000;
 
 struct SearchStats {
-  int nodes = 0;                                      
-  double nps = 0.0;                                   
-  long long elapsedMs = 0;                            
-  int bestScore = 0;                                  
-  std::optional<model::Move> bestMove;                
-  std::vector<std::pair<model::Move, int>> topMoves;  
-  std::vector<model::Move> bestPV;                    
+  int nodes = 0;
+  double nps = 0.0;
+  long long elapsedMs = 0;
+  int bestScore = 0;
+  std::optional<model::Move> bestMove;
+  std::vector<std::pair<model::Move, int>> topMoves;
+  std::vector<model::Move> bestPV;
 };
 
-class Evaluator;  
+class Evaluator;
 
 class Search {
  public:
   using EvalFactory = std::function<std::unique_ptr<Evaluator>()>;
 
-  
-  
   Search(model::TT4& tt, Evaluator& eval, const EngineConfig& cfg);
 
-  
-  
-  
   Search(model::TT4& tt, EvalFactory evalFactory, const EngineConfig& cfg);
 
   ~Search() = default;
 
   // parallel root search (uses EvalFactory if provided; otherwise uses shared Evaluator&).
-  int search_root_parallel(model::Position& pos, int depth,
-                           std::shared_ptr<std::atomic<bool>> stop,int maxThreads = 0);
+  int search_root_parallel(model::Position& pos, int depth, std::shared_ptr<std::atomic<bool>> stop,
+                           int maxThreads = 0);
 
   // access current stats without copying
   const SearchStats& getStats() const;
 
-
-  
   void clearSearchState();
 
-  
   model::TT4& ttRef() { return tt; }
 
  private:
-  
   int negamax(model::Position& pos, int depth, int alpha, int beta, int ply, model::Move& refBest);
   int quiescence(model::Position& pos, int alpha, int beta, int ply);
 
-  
   std::vector<model::Move> build_pv_from_tt(model::Position pos, int max_len = 16);
 
-  
-  
-  
   Evaluator& currentEval();
 
-  
   int signed_eval(model::Position& pos);
 
-  
   model::TT4& tt;
   model::MoveGenerator mg;
   const EngineConfig& cfg;
 
-  
-  
-  
-  
   Evaluator* evalPtr = nullptr;
   EvalFactory evalFactory;
   std::unique_ptr<Evaluator> evalInstance = nullptr;
 
-  
   std::array<model::Move, 2> killers;
   std::array<std::array<int, 64>, 64> history;
 
@@ -96,4 +76,4 @@ class Search {
   SearchStats stats;
 };
 
-}  
+}  // namespace lilia::engine

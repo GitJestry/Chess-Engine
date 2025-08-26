@@ -12,10 +12,8 @@ class SoundManager {
   SoundManager() = default;
   ~SoundManager() = default;
 
-  
   void loadSounds();
 
-  
   void playPlayerMove();
   void playEnemyMove();
   void playCapture();
@@ -26,14 +24,12 @@ class SoundManager {
   void playGameBegins();
   void playGameEnds();
 
-  
   void playBackgroundMusic(const std::string& filename, bool loop = true);
   void stopBackgroundMusic();
-  void setMusicVolume(float volume);    
-  void setEffectsVolume(float volume);  
+  void setMusicVolume(float volume);
+  void setEffectsVolume(float volume);
 
  private:
-  
   void loadEffect(const std::string& name, const std::string& filepath);
 
   std::unordered_map<std::string, sf::SoundBuffer> m_buffers;
@@ -43,4 +39,4 @@ class SoundManager {
   float m_effects_volume = 100.f;
 };
 
-}  
+}  // namespace lilia::view::sound

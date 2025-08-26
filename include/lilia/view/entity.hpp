@@ -25,30 +25,18 @@ class Entity {
 
   [[nodiscard]] Position getPosition() const;
 
-  
   [[nodiscard]] Position getOriginalSize() const;
 
-  
   [[nodiscard]] Position getCurrentSize() const;
 
-  
-  
   void setOriginToCenter();
 
-  
   virtual void draw(sf::RenderWindow &window);
 
-  
-  
-  
-  
   void setTexture(const sf::Texture &texture);
 
   [[nodiscard]] const sf::Texture &getTexture() const;
 
-  
-  
-  
   void setScale(float widthFraction, float heightFraction);
 
   [[nodiscard]] ID_type getId() const;
@@ -56,16 +44,12 @@ class Entity {
  private:
   ID_type m_id;
 
-  
-  
   [[nodiscard]] static ID_type generateId() {
     static std::atomic_size_t counter{1};
     return counter.fetch_add(1, std::memory_order_relaxed);
   }
 
-  
-  
   sf::Sprite m_sprite;
 };
 
-}  
+}  // namespace lilia::view

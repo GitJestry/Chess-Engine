@@ -6,13 +6,11 @@ namespace lilia::model {
 
 void MoveGenerator::generatePseudoLegalMoves(const Board& b, const GameState& st,
                                              std::vector<model::Move>& out) const {
-  
   if (out.capacity() < 128) out.reserve(128);
   out.clear();
 
   core::Color side = st.sideToMove;
 
-  
   genPawnMoves(b, st, side, out);
   genKnightMoves(b, side, out);
   genBishopMoves(b, side, out);
@@ -35,25 +33,23 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
 
     bb::Bitboard dbl = bb::north(single) & ~occ & (bb::RANK_2 << 16);
 
-    
     bb::Bitboard leftCap = (bb::nw(pawns) & them) & ~bb::RANK_8;
     bb::Bitboard rightCap = (bb::ne(pawns) & them) & ~bb::RANK_8;
 
-    
     bb::Bitboard q = quietPush;
     while (q) {
       core::Square to = bb::pop_lsb(q);
       core::Square from = to - 8;
       out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
     }
-    
+
     bb::Bitboard d = dbl;
     while (d) {
       core::Square to = bb::pop_lsb(d);
       core::Square from = to - 16;
       out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
     }
-    
+
     bb::Bitboard lc = leftCap;
     while (lc) {
       core::Square to = bb::pop_lsb(lc);
@@ -66,7 +62,7 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
       core::Square from = to - 9;
       out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
     }
-    
+
     bb::Bitboard pp = promoPush;
     while (pp) {
       core::Square to = bb::pop_lsb(pp);
@@ -75,7 +71,7 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
                                  core::PieceType::Bishop, core::PieceType::Knight})
         out.push_back({from, to, pt, false, false, CastleSide::None});
     }
-    
+
     bb::Bitboard lp = (bb::nw(pawns) & them) & bb::RANK_8;
     while (lp) {
       core::Square to = bb::pop_lsb(lp);
@@ -93,10 +89,9 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
         out.push_back({from, to, pt, true, false, CastleSide::None});
     }
 
-    
     if (st.enPassantSquare != core::NO_SQUARE) {
       core::Square ep = st.enPassantSquare;
-      
+
       if (bb::file_of(ep) > 0) {
         core::Square from = static_cast<core::Square>(ep - 9);
         if (pawns & bb::sq_bb(from))
@@ -109,14 +104,12 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
       }
     }
   } else {
-    
     bb::Bitboard single = bb::south(pawns) & ~occ;
     bb::Bitboard promoPush = single & bb::RANK_1;
     bb::Bitboard quietPush = single & ~bb::RANK_1;
 
     bb::Bitboard dbl = bb::south(single) & ~occ & (bb::RANK_7 >> 16);
 
-    
     bb::Bitboard leftCap = (bb::se(pawns) & them) & ~bb::RANK_1;
     bb::Bitboard rightCap = (bb::sw(pawns) & them) & ~bb::RANK_1;
 
@@ -145,7 +138,6 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
       out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
     }
 
-    
     bb::Bitboard pp = promoPush;
     while (pp) {
       core::Square to = bb::pop_lsb(pp);
@@ -154,7 +146,7 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
                                  core::PieceType::Bishop, core::PieceType::Knight})
         out.push_back({from, to, pt, false, false, CastleSide::None});
     }
-    
+
     bb::Bitboard lp = (bb::se(pawns) & them) & bb::RANK_1;
     while (lp) {
       core::Square to = bb::pop_lsb(lp);
@@ -182,8 +174,8 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
       bb::Bitboard from_candidates = (bb::nw(ep_bb) | bb::ne(ep_bb)) & pawns;
       while (from_candidates) {
         core::Square from = bb::pop_lsb(from_candidates);
-        out.push_back({from, st.enPassantSquare, core::PieceType::None, true, true,
-                       CastleSide::None});
+        out.push_back(
+            {from, st.enPassantSquare, core::PieceType::None, true, true, CastleSide::None});
       }
     }
   }
@@ -321,17 +313,14 @@ void MoveGenerator::genKingMoves(const Board& board, const GameState& st, core::
     out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
   }
 
-  
   if (side == core::Color::White) {
-    
-    
     if ((st.castlingRights & bb::WK) &&
         !(board.getAllPieces() &
           (bb::sq_bb(static_cast<core::Square>(5)) | bb::sq_bb(static_cast<core::Square>(6))))) {
       out.push_back({bb::E1, static_cast<core::Square>(6), core::PieceType::None, false, false,
                      CastleSide::KingSide});
     }
-    
+
     if ((st.castlingRights & bb::WQ) &&
         !(board.getAllPieces() &
           (bb::sq_bb(static_cast<core::Square>(3)) | bb::sq_bb(static_cast<core::Square>(2)) |
@@ -340,7 +329,6 @@ void MoveGenerator::genKingMoves(const Board& board, const GameState& st, core::
                      CastleSide::QueenSide});
     }
   } else {
-    
     if ((st.castlingRights & bb::BK) &&
         !(board.getAllPieces() &
           (bb::sq_bb(static_cast<core::Square>(61)) | bb::sq_bb(static_cast<core::Square>(62))))) {
@@ -357,4 +345,4 @@ void MoveGenerator::genKingMoves(const Board& board, const GameState& st, core::
   }
 }
 
-}  
+}  // namespace lilia::model

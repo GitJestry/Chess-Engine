@@ -1,7 +1,7 @@
 #include "lilia/model/chess_game.hpp"
 
-#include <sstream>
 #include <optional>
+#include <sstream>
 
 namespace lilia::model {
 
@@ -10,8 +10,8 @@ core::Square stringToSquare(const std::string& strSquare) {
   char f = strSquare[0];
   char r = strSquare[1];
   if (f < 'a' || f > 'h' || r < '1' || r > '8') return core::NO_SQUARE;
-  uint8_t file = static_cast<uint8_t>(f - 'a');  
-  uint8_t rank = static_cast<uint8_t>(r - '1');  
+  uint8_t file = static_cast<uint8_t>(f - 'a');
+  uint8_t rank = static_cast<uint8_t>(r - '1');
   return static_cast<core::Square>(file + rank * 8);
 }
 
@@ -29,7 +29,7 @@ void ChessGame::doMoveUCI(const std::string& uciMove) {
   int to = squareFromUCI(uciMove.substr(2, 2));
   core::PieceType promo = core::PieceType::None;
 
-  if (uciMove.size() == 5) {  
+  if (uciMove.size() == 5) {
     char c = uciMove[4];
     switch (c) {
       case 'q':
@@ -69,16 +69,13 @@ void ChessGame::setPosition(const std::string& fen) {
 
   iss >> board >> activeColor >> castling >> enPassant >> halfmoveClock >> fullmoveNumber;
 
-  
   uint8_t rank = 7;
   uint8_t file = 0;
   for (char ch : board) {
     if (ch == '/') {
-      
       rank--;
       file = 0;
     } else if (std::isdigit(ch)) {
-      
       file += ch - '0';
     } else {
       core::Square sq = file + rank * 8;
@@ -114,7 +111,7 @@ void ChessGame::setPosition(const std::string& fen) {
 
   // active Color
   m_position.getState().sideToMove = (activeColor == "w" ? core::Color::White : core::Color::Black);
-  
+
   uint8_t rights = 0;
   if (castling.find('K') != std::string::npos) rights |= bb::Castling::WK;
   if (castling.find('Q') != std::string::npos) rights |= bb::Castling::WQ;
@@ -124,7 +121,8 @@ void ChessGame::setPosition(const std::string& fen) {
   m_position.getState().castlingRights = rights;
 
   if (enPassant == "-") {
-    m_position.getState().enPassantSquare = core::NO_SQUARE;  // oder core::NO_SQUARE falls definiert
+    m_position.getState().enPassantSquare =
+        core::NO_SQUARE;  // oder core::NO_SQUARE falls definiert
   } else {
     m_position.getState().enPassantSquare = stringToSquare(enPassant);
   }
@@ -200,7 +198,8 @@ core::GameResult ChessGame::getResult() {
 
 bb::Piece ChessGame::getPiece(core::Square sq) {
   bb::Piece none;
-  if (m_position.getBoard().getPiece(sq).has_value()) return m_position.getBoard().getPiece(sq).value();
+  if (m_position.getBoard().getPiece(sq).has_value())
+    return m_position.getBoard().getPiece(sq).value();
   return none;
 }
 
@@ -218,4 +217,4 @@ bool ChessGame::isKingInCheck(core::Color from) const {
 Position& ChessGame::getPositionRefForBot() {
   return m_position;
 }
-}  
+}  // namespace lilia::model

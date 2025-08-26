@@ -32,7 +32,6 @@ void TextureTable::load(const std::string& name, const sf::Color& color, sf::Vec
   auto it = m_textures.find(filename);
   if (it != m_textures.end()) return it->second;
 
-  
   sf::Texture texture;
   if (!texture.loadFromFile(filename)) {
     throw std::runtime_error("Error when loading texture: " + filename);
@@ -43,11 +42,11 @@ void TextureTable::load(const std::string& name, const sf::Color& color, sf::Vec
 
 static const char* captureFrag = R"(
 uniform vec2 resolution;
-uniform vec4 color;    
-uniform float centerR; 
-uniform float halfThickness; 
-uniform float softness; 
-uniform float innerShade; 
+uniform vec4 color;
+uniform float centerR;
+uniform float halfThickness;
+uniform float softness;
+uniform float innerShade;
 
 void main()
 {
@@ -55,17 +54,17 @@ void main()
     vec2 c = vec2(0.5, 0.5);
     float d = distance(uv, c);
 
-    
-    
+
+
     float distFromRing = abs(d - centerR);
 
-    
+
     float edge = smoothstep(halfThickness, halfThickness - softness, distFromRing);
 
-    
+
     float ringMask = clamp(edge, 0.0, 1.0);
 
-    
+
     float shade = mix(1.0, innerShade, smoothstep(0.0, halfThickness, (centerR - d)));
 
     float alpha = color.a * ringMask;
@@ -84,7 +83,6 @@ void main()
   bool shaderOk = shader.loadFromMemory(captureFrag, sf::Shader::Fragment);
 
   if (!shaderOk) {
-    
     float radius = size * 0.45f;
     float thickness = size * 0.1f;
     sf::CircleShape ring(radius);
@@ -92,21 +90,18 @@ void main()
     ring.setPosition(size * 0.5f, size * 0.5f);
     ring.setFillColor(sf::Color::Transparent);
     ring.setOutlineThickness(-thickness);
-    ring.setOutlineColor(sf::Color(120, 120, 120, 65));  
+    ring.setOutlineColor(sf::Color(120, 120, 120, 65));
     rt.draw(ring, sf::BlendAlpha);
     rt.display();
     return rt.getTexture();
   }
 
-  
-  
   float outerR_px = size * 0.45f;
   float thickness_px = size * 0.11f;
-  float centerR = outerR_px / (float)size;                    
-  float halfThickness = (thickness_px * 0.5f) / (float)size;  
-  float softness = 3.0f / (float)size;  
+  float centerR = outerR_px / (float)size;
+  float halfThickness = (thickness_px * 0.5f) / (float)size;
+  float softness = 3.0f / (float)size;
 
-  
   sf::Glsl::Vec4 col(120.f / 255.f, 120.f / 255.f, 120.f / 255.f, 65.f / 255.f);
 
   shader.setUniform("resolution", sf::Glsl::Vec2((float)size, (float)size));
@@ -126,11 +121,11 @@ void main()
 
 static const char* dotFrag = R"(
 uniform vec2 resolution;
-uniform vec4 color;   
-uniform float radius; 
-uniform float softness; 
-uniform float coreBoost; 
-uniform float highlight; 
+uniform vec4 color;
+uniform float radius;
+uniform float softness;
+uniform float coreBoost;
+uniform float highlight;
 
 void main()
 {
@@ -138,18 +133,18 @@ void main()
     vec2 c = vec2(0.5, 0.5);
     float d = distance(uv, c);
 
-    
-    
+
+
     float a = 1.0 - smoothstep(radius - softness, radius + softness, d);
 
-    
-    
+
+
     a = pow(a, 1.2);
 
-    
+
     float core = 1.0 + coreBoost * (1.0 - smoothstep(0.0, radius * 0.9, d));
 
-    
+
     float h = 1.0 - smoothstep(0.0, radius * 0.5, d);
     float highlightMask = pow(h, 3.0) * highlight;
 
@@ -169,24 +164,21 @@ void main()
   bool shaderOk = shader.loadFromMemory(dotFrag, sf::Shader::Fragment);
 
   if (!shaderOk) {
-    
     float maxRadius = size * 0.35f;
     sf::CircleShape core(maxRadius);
     core.setOrigin(maxRadius, maxRadius);
     core.setPosition(size * 0.5f, size * 0.5f);
-    
+
     core.setFillColor(sf::Color(120, 120, 120, 65));
     rt.draw(core, sf::BlendAlpha);
     rt.display();
     return rt.getTexture();
   }
 
-  
   float maxRadius_px = size * 0.35f;
-  float radius_frac = maxRadius_px / (float)size;  
-  float softness = 3.0f / (float)size;             
+  float radius_frac = maxRadius_px / (float)size;
+  float softness = 3.0f / (float)size;
 
-  
   sf::Glsl::Vec4 col(120.f / 255.f, 120.f / 255.f, 120.f / 255.f, 65.f / 255.f);
 
   shader.setUniform("resolution", sf::Glsl::Vec2((float)size, (float)size));
@@ -211,9 +203,9 @@ void main()
 
   float thickness = size / 6.f;
   sf::RectangleShape rect(sf::Vector2f(size - thickness, size - thickness));
-  rect.setPosition(thickness / 2.f, thickness / 2.f);  
+  rect.setPosition(thickness / 2.f, thickness / 2.f);
   rect.setFillColor(sf::Color::Transparent);
-  rect.setOutlineColor(sf::Color(255, 200, 80));  
+  rect.setOutlineColor(sf::Color(255, 200, 80));
   rect.setOutlineThickness(thickness);
 
   rt.draw(rect);
@@ -224,34 +216,34 @@ void main()
 
 static const char* roundedRectFrag = R"SHADER(
 #version 120
-uniform vec2 resolution;    
-uniform float radius;       
-uniform float softness;     
-uniform vec4 color;         
+uniform vec2 resolution;
+uniform float radius;
+uniform float softness;
+uniform vec4 color;
 
 void main()
 {
-    
-    vec2 coord = gl_TexCoord[0].xy; 
-    vec2 uv = coord / resolution;   
 
-    
+    vec2 coord = gl_TexCoord[0].xy;
+    vec2 uv = coord / resolution;
+
+
     vec2 pos = uv * resolution - 0.5 * resolution;
     vec2 halfSize = 0.5 * resolution;
 
-    
+
     vec2 q = abs(pos) - (halfSize - vec2(radius));
     vec2 qpos = max(q, vec2(0.0));
-    float dist = length(qpos) - radius; 
+    float dist = length(qpos) - radius;
 
-    
-    
+
+
     float edge0 = -softness;
     float edge1 = softness;
     float a = 1.0 - smoothstep(edge0, edge1, dist);
     a = clamp(a, 0.0, 1.0);
 
-    
+
     float innerShade = mix(1.0, 0.98, smoothstep(-radius*0.6, 0.0, dist));
 
     vec3 rgb = color.rgb * innerShade;
@@ -263,12 +255,12 @@ void main()
 
 static const char* shadowFrag = R"SHADER(
 #version 120
-uniform vec2 resolution;   
-uniform vec2 rectSize;     
-uniform float radius;      
-uniform float blur;        
-uniform float offsetY;     
-uniform vec4 shadowColor;  
+uniform vec2 resolution;
+uniform vec2 rectSize;
+uniform float radius;
+uniform float blur;
+uniform float offsetY;
+uniform vec4 shadowColor;
 
 void main()
 {
@@ -276,13 +268,13 @@ void main()
     vec2 uv = coord / resolution;
     vec2 pos = uv * resolution - 0.5 * resolution - vec2(0.0, -offsetY);
 
-    
+
     vec2 halfSize = 0.5 * rectSize;
     vec2 q = abs(pos) - (halfSize - vec2(radius));
     vec2 qpos = max(q, vec2(0.0));
     float dist = length(qpos) - radius;
 
-    
+
     float a = 1.0 - smoothstep(0.0, blur, dist);
     a = clamp(pow(a, 1.1), 0.0, 1.0);
 
@@ -300,7 +292,6 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
   va[2].position = sf::Vector2f((float)width, (float)height);
   va[3].position = sf::Vector2f(0.f, (float)height);
 
-  
   va[0].texCoords = sf::Vector2f(0.f, 0.f);
   va[1].texCoords = sf::Vector2f((float)width, 0.f);
   va[2].texCoords = sf::Vector2f((float)width, (float)height);
@@ -330,13 +321,11 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
     rt.display();
 
     sf::Texture tex = rt.getTexture();
-    tex.setSmooth(false);  
+    tex.setSmooth(false);
     tex.setRepeated(false);
     return tex;
   }
 
-  
-  
   float cx = width * 0.5f, cy = height * 0.5f;
   sf::RectangleShape body(
       sf::Vector2f((float)width - 2.f * radius_px, (float)height - 2.f * radius_px));
@@ -345,7 +334,6 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
   body.setFillColor(fillColor);
   rt.draw(body);
 
-  
   sf::CircleShape corner(radius_px);
   corner.setFillColor(fillColor);
   corner.setOrigin(radius_px, radius_px);
@@ -369,7 +357,6 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
     unsigned int width, unsigned int height, float rectWidth_px, float rectHeight_px,
     float radius_px = 6.f, float blur_px = 12.f, sf::Color shadowColor = sf::Color(0, 0, 0, 140),
     float offsetY_px = 4.f) {
-  
   sf::RenderTexture rt;
   rt.create(width, height);
   rt.clear(sf::Color::Transparent);
@@ -391,12 +378,11 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
     rt.display();
 
     sf::Texture tex = rt.getTexture();
-    tex.setSmooth(true);  
+    tex.setSmooth(true);
     tex.setRepeated(false);
     return tex;
   }
 
-  
   int steps = 16;
   for (int i = steps - 1; i >= 0; --i) {
     float t = (float)i / (float)(steps - 1);
@@ -416,7 +402,6 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
     corner.setPosition((float)(width * 0.5f - rw * 0.5f) + radius_px + grow,
                        (float)(height * 0.5f - rh * 0.5f) + radius_px + grow + offsetY_px);
     rt.draw(corner);
-    
   }
 
   rt.display();
@@ -446,4 +431,4 @@ void TextureTable::preLoad() {
   load(constant::STR_TEXTURE_TRANSPARENT, sf::Color::Transparent);
 }
 
-}  
+}  // namespace lilia::view

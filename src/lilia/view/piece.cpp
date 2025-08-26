@@ -21,4 +21,4 @@ core::PieceType Piece::getType() const {
   return m_type;
 }
 
-}  
+}  // namespace lilia::view

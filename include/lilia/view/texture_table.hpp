@@ -2,7 +2,7 @@
 
 namespace sf {
 class Color;
-}  
+}
 #include <SFML/Graphics/Texture.hpp>
 #include <SFML/System/Vector2.hpp>
 #include <string>
@@ -14,14 +14,11 @@ class TextureTable {
  public:
   static TextureTable& getInstance();
 
-  
   [[nodiscard]] const sf::Texture& get(const std::string& name);
 
-  
   void preLoad();
 
  private:
-  
   void load(const std::string& name, const sf::Color& color, sf::Vector2u size = {1, 1});
 
   TextureTable();
@@ -33,4 +30,4 @@ class TextureTable {
   std::unordered_map<std::string, sf::Texture> m_textures;
 };
 
-}  
+}  // namespace lilia::view

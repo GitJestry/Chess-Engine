@@ -4,7 +4,7 @@
 namespace lilia {
 namespace model {
 class Position;
-}  
+}
 namespace engine {
 
 class Evaluator {
@@ -17,8 +17,8 @@ class Evaluator {
 
  private:
   struct Impl;
-  mutable Impl* m_impl = nullptr;  
+  mutable Impl* m_impl = nullptr;
 };
 
-}  
-}  
+}  // namespace engine
+}  // namespace lilia

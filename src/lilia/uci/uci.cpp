@@ -14,7 +14,7 @@
 
 #include "lilia/engine/bot_engine.hpp"
 #include "lilia/model/chess_game.hpp"
-#include "lilia/uci/uci_helper.hpp"  
+#include "lilia/uci/uci_helper.hpp"
 
 namespace lilia {
 
@@ -37,14 +37,12 @@ static std::string extract_fen_after(const std::string& line) {
 }
 
 void UCI::showOptions() {
-  std::cout << "option name Hash type spin default " << m_options.hashMb
-            << " min 1 max 131072\n";
-  std::cout << "option name Threads type spin default " << m_options.threads
-            << " min 1 max 64\n";
-  std::cout << "option name Ponder type check default "
-            << (m_options.ponder ? "true" : "false") << "\n";
-  std::cout << "option name Move Overhead type spin default "
-            << m_options.moveOverhead << " min 0 max 5000\n";
+  std::cout << "option name Hash type spin default " << m_options.hashMb << " min 1 max 131072\n";
+  std::cout << "option name Threads type spin default " << m_options.threads << " min 1 max 64\n";
+  std::cout << "option name Ponder type check default " << (m_options.ponder ? "true" : "false")
+            << "\n";
+  std::cout << "option name Move Overhead type spin default " << m_options.moveOverhead
+            << " min 0 max 5000\n";
 }
 
 void UCI::setOption(const std::string& line) {
@@ -83,29 +81,25 @@ void UCI::setOption(const std::string& line) {
     m_options.threads = v;
   } else if (name == "Ponder") {
     std::string vl = value;
-    std::transform(vl.begin(), vl.end(), vl.begin(), [](unsigned char c) { return std::tolower(c); });
+    std::transform(vl.begin(), vl.end(), vl.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
     m_options.ponder = (vl == "true" || vl == "1" || vl == "on");
   } else if (name == "Move Overhead") {
     int v = std::stoi(value);
     m_options.moveOverhead = std::max(0, v);
   }
-
 }
 
 int UCI::run() {
   engine::Engine::init();
   std::string line;
 
-  
   std::mutex stateMutex;
   std::future<lilia::model::Move> searchFuture;
   std::thread printerThread;
   std::atomic<bool> cancelToken(false);
   bool searchRunning = false;
 
-  
-  
-  
   while (std::getline(std::cin, line)) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty()) continue;
@@ -134,7 +128,6 @@ int UCI::run() {
     }
 
     if (cmd == "ucinewgame") {
-      
       continue;
     }
 
@@ -191,7 +184,6 @@ int UCI::run() {
         }
       }
 
-      
       {
         std::lock_guard<std::mutex> lk(stateMutex);
         if (searchRunning) {
@@ -207,8 +199,7 @@ int UCI::run() {
       if (movetime > 0)
         thinkMillis = movetime;
       else if (!infinite && !(ponder && m_options.ponder)) {
-        int timeLeft =
-            (m_game.getGameState().sideToMove == core::Color::White ? wtime : btime);
+        int timeLeft = (m_game.getGameState().sideToMove == core::Color::White ? wtime : btime);
         int inc = (m_game.getGameState().sideToMove == core::Color::White ? winc : binc);
         if (timeLeft >= 0) {
           if (movestogo > 0)
@@ -226,11 +217,9 @@ int UCI::run() {
         std::lock_guard<std::mutex> lk(stateMutex);
         auto cfg = m_options.toEngineConfig();
         searchFuture = std::async(
-            std::launch::async,
-            [this, depth, thinkMillis, &cancelToken, cfg]() -> model::Move {
+            std::launch::async, [this, depth, thinkMillis, &cancelToken, cfg]() -> model::Move {
               lilia::engine::BotEngine engine(cfg);
-              auto res = engine.findBestMove(m_game,
-                                             (depth > 0 ? depth : /*some default*/ 0),
+              auto res = engine.findBestMove(m_game, (depth > 0 ? depth : /*some default*/ 0),
                                              thinkMillis, &cancelToken);
               if (res.bestMove.has_value()) return res.bestMove.value();
               return model::Move{};
@@ -249,7 +238,6 @@ int UCI::run() {
           if (best.from >= 0 && best.to >= 0) {
             std::cout << "bestmove " << move_to_uci(best) << "\n";
           } else {
-
             std::cout << "bestmove 0000\n";
           }
 
@@ -262,7 +250,7 @@ int UCI::run() {
       }
 
       continue;
-    }  
+    }
 
     if (cmd == "stop") {
       cancelToken.store(true);
@@ -292,11 +280,8 @@ int UCI::run() {
       }
       break;
     }
+  }
 
-    
-  }  
-
-  
   {
     std::lock_guard<std::mutex> lk(stateMutex);
     if (searchRunning && printerThread.joinable()) printerThread.join();
@@ -305,4 +290,4 @@ int UCI::run() {
   return 0;
 }
 
-}  
+}  // namespace lilia

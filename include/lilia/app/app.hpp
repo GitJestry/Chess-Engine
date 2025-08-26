@@ -15,8 +15,7 @@ class App {
   void promptStartOptions();
 
   // input helper: parse integer with defaults and bounds
-  static int parseIntInRange(const std::string& s, int defaultVal, int minVal,
-                             int maxVal);
+  static int parseIntInRange(const std::string& s, int defaultVal, int minVal, int maxVal);
 
   // helpers
 
@@ -32,4 +31,4 @@ class App {
   int m_searchDepth = 5;     // Search depth for bot
 };
 
-}  
+}  // namespace lilia::app

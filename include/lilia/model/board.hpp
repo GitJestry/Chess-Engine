@@ -23,7 +23,6 @@ class Board {
   }
 
  private:
-  
   std::array<std::array<bb::Bitboard, 6>, 2> m_bb{};
   std::array<bb::Bitboard, 2> m_color_occ{};
   bb::Bitboard m_all_occ = 0;
@@ -31,4 +30,4 @@ class Board {
   void recomputeOccupancy();
 };
 
-}  
+}  // namespace lilia::model

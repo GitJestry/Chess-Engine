@@ -12,7 +12,7 @@ enum class Slider { Rook, Bishop };
 
 struct Magic {
   bb::Bitboard magic = 0ULL;
-  std::uint8_t shift = 0;  
+  std::uint8_t shift = 0;
 };
 
 void init_magics();
@@ -26,4 +26,4 @@ const std::array<Magic, 64>& bishop_magics();
 const std::array<std::vector<bb::Bitboard>, 64>& rook_tables();
 const std::array<std::vector<bb::Bitboard>, 64>& bishop_tables();
 
-}  
+}  // namespace lilia::model::magic

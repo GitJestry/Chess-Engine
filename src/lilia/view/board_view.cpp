@@ -19,4 +19,4 @@ void BoardView::renderBoard(sf::RenderWindow& window) {
   return m_board.getPosOfSquare(sq);
 }
 
-}  
+}  // namespace lilia::view

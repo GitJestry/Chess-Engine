@@ -41,8 +41,7 @@ bool App::parseYesNoDefaultTrue(const std::string& s) {
 int App::parseIntInRange(const std::string& s, int defaultVal, int minVal, int maxVal) {
   std::string t = trim(s);
   if (t.empty()) return defaultVal;
-  if (!std::all_of(t.begin(), t.end(), [](unsigned char c) { return std::isdigit(c); }))
-    return -1;
+  if (!std::all_of(t.begin(), t.end(), [](unsigned char c) { return std::isdigit(c); })) return -1;
   int val = std::stoi(t);
   if (val < minVal || val > maxVal) return -1;
   return val;
@@ -53,8 +52,8 @@ void App::promptStartOptions() {
   std::string playerColorInput;
   std::getline(std::cin, playerColorInput);
   std::string normalizedColor = toLower(trim(playerColorInput));
-  m_player_color = (normalizedColor == "black" || normalizedColor == "b") ?
-                       core::Color::Black : core::Color::White;
+  m_player_color = (normalizedColor == "black" || normalizedColor == "b") ? core::Color::Black
+                                                                          : core::Color::White;
 
   std::cout << "Enemy is bot? (yes / no) [Standard: yes]: ";
   std::string botInput;
@@ -114,8 +113,7 @@ int App::run() {
     lilia::controller::GameController gameController(gameView, chessGame);
 
     // start the game using GameController wrapper that delegates to GameManager
-    gameController.startGame(m_player_color, m_start_fen, m_vs_bot, m_thinkTimeMs,
-                             m_searchDepth);
+    gameController.startGame(m_player_color, m_start_fen, m_vs_bot, m_thinkTimeMs, m_searchDepth);
 
     sf::Clock clock;
     while (window.isOpen()) {
@@ -135,4 +133,4 @@ int App::run() {
   return 0;
 }
 
-}  
+}  // namespace lilia::app

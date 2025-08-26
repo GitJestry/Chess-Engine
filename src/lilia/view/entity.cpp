@@ -26,8 +26,8 @@ void Entity::setScale(float widthFraction, float heightFraction) {
 }
 
 void Entity::setOriginToCenter() {
-  Position bounds = getOriginalSize();                 
-  m_sprite.setOrigin(bounds.x / 2.f, bounds.y / 2.f);  
+  Position bounds = getOriginalSize();
+  m_sprite.setOrigin(bounds.x / 2.f, bounds.y / 2.f);
 }
 
 Entity::Entity(const sf::Texture &texture) : m_id(generateId()), m_sprite(texture) {
@@ -60,4 +60,4 @@ void Entity::draw(sf::RenderWindow &window) {
   window.draw(m_sprite);
 }
 
-}  
+}  // namespace lilia::view

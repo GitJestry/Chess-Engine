@@ -61,4 +61,4 @@ void InputManager::processEvent(const sf::Event& event) {
   return (dx * dx + dy * dy) <= (threshold * threshold);
 }
 
-}  
+}  // namespace lilia::controller

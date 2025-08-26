@@ -36,7 +36,6 @@ void GameManager::startGame(core::Color playerColor, const std::string& fen, boo
     m_black_player.reset();
   }
 
-  
   startBotIfNeeded();
 }
 
@@ -51,12 +50,12 @@ void GameManager::update([[maybe_unused]] float dt) {
   if (m_bot_future.valid()) {
     if (m_bot_future.wait_for(0ms) == std::future_status::ready) {
       model::Move mv = m_bot_future.get();
-      
+
       m_bot_future = std::future<model::Move>();
-            if (!(mv.from == core::NO_SQUARE && mv.to == core::NO_SQUARE)) {
+      if (!(mv.from == core::NO_SQUARE && mv.to == core::NO_SQUARE)) {
         applyMoveAndNotify(mv, false);
       }
-      
+
       startBotIfNeeded();
     }
   }
@@ -76,17 +75,16 @@ bool GameManager::requestUserMove(core::Square from, core::Square to, bool onCli
         m_promotion_from = from;
         m_promotion_to = to;
         if (onPromotionRequested_) onPromotionRequested_(to);
-        return false;  
+        return false;
       }
 
-      
       applyMoveAndNotify(m, onClick);
-      
+
       startBotIfNeeded();
       return true;
     }
   }
-  return false;  
+  return false;
 }
 
 void GameManager::completePendingPromotion(core::PieceType promotion) {
@@ -108,8 +106,6 @@ void GameManager::completePendingPromotion(core::PieceType promotion) {
 }
 
 void GameManager::applyMoveAndNotify(const model::Move& mv, bool onClick) {
-  
-  
   m_game.doMove(mv.from, mv.to, mv.promotion);
 
   // Determine if that move was executed by the player.
@@ -117,7 +113,6 @@ void GameManager::applyMoveAndNotify(const model::Move& mv, bool onClick) {
 
   if (onMoveExecuted_) onMoveExecuted_(mv, wasPlayerMove, onClick);
 
-  
   auto result = m_game.getResult();
   if (result != core::GameResult::ONGOING) {
     if (onGameEnd_) onGameEnd_(result);
@@ -153,4 +148,4 @@ void GameManager::setBotForColor(core::Color color, std::unique_ptr<IPlayer> bot
     m_black_player = std::move(bot);
 }
 
-}  
+}  // namespace lilia::controller

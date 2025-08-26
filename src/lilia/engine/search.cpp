@@ -52,7 +52,7 @@ struct NullUndoGuard {
   }
 };
 
-}  
+}  // namespace
 
 struct SearchStoppedException : public std::exception {
   const char* what() const noexcept override { return "Search stopped"; }
@@ -74,7 +74,6 @@ Search::Search(model::TT4& tt_, Evaluator& eval_, const EngineConfig& cfg_)
 
 Search::Search(model::TT4& tt_, EvalFactory evalFactory_, const EngineConfig& cfg_)
     : tt(tt_), mg(), cfg(cfg_), evalFactory(std::move(evalFactory_)) {
-  
   if (evalFactory) evalInstance = evalFactory();
   killers.fill(model::Move{});
   for (auto& h : history) h.fill(0);
@@ -84,7 +83,7 @@ Search::Search(model::TT4& tt_, EvalFactory evalFactory_, const EngineConfig& cf
 
 Evaluator& Search::currentEval() {
   if (evalPtr) return *evalPtr;
-  
+
   assert(evalInstance &&
          "Evaluator not initialized; ensure factory provided or legacy Eval passed.");
   return *evalInstance;
@@ -105,7 +104,6 @@ static inline bool same_move(const model::Move& a, const model::Move& b) {
 
 static inline bool safeGenerateMoves(model::MoveGenerator& mg, model::Position& pos,
                                      std::vector<model::Move>& out) {
-  
   if (out.capacity() < 128) out.reserve(128);
   out.clear();
   try {
@@ -136,7 +134,6 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   if (stand >= beta) return beta;
   if (alpha < stand) alpha = stand;
 
-  
   std::vector<model::Move> moves_buf;
   std::vector<model::Move> caps;
   moves_buf.clear();
@@ -146,13 +143,11 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     return stand;
   }
 
-  
   caps.reserve(moves_buf.size());
   for (auto& m : moves_buf) {
     if (m.isCapture || m.promotion != core::PieceType::None) caps.push_back(m);
   }
 
-  
   std::sort(caps.begin(), caps.end(), [&pos](const model::Move& a, const model::Move& b) {
     return mvv_lva_score(pos, a) > mvv_lva_score(pos, b);
   });
@@ -165,10 +160,9 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     MoveUndoGuard g(pos);
     if (!g.doMove(m)) continue;
 
-    int score = -quiescence(pos, -beta, -alpha, ply + 1);  
+    int score = -quiescence(pos, -beta, -alpha, ply + 1);
     score = std::clamp(score, -MATE, MATE);
 
-    
     g.rollback();
 
     if (score >= beta) return beta;
@@ -182,7 +176,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int ply,
                     model::Move& refBest) {
   stats.nodes++;
-  check_stop(stopFlag);  
+  check_stop(stopFlag);
 
   if (pos.checkInsufficientMaterial() || pos.checkMoveRule() || pos.checkRepetition()) return 0;
 
@@ -193,7 +187,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   int best = -MATE - 1;
   model::Move bestLocal{};
 
-  
   model::Move ttMove{};
   bool haveTT = false;
   try {
@@ -211,20 +204,17 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     haveTT = false;
   }
 
-  
   if (depth >= 3 && !pos.inCheck()) {
     NullUndoGuard ng(pos);
     ng.doNull();
     int nullScore = -negamax(pos, depth - 1 - 2, -beta, -beta + 1, ply + 1, refBest);
     ng.rollback();
-    if (nullScore >= beta) return beta;  
+    if (nullScore >= beta) return beta;
   }
 
-  
   std::vector<model::Move> moves;
   moves.clear();
   if (!safeGenerateMoves(mg, pos, moves)) {
-    
     if (pos.inCheck()) return -MATE + ply;
     return 0;
   }
@@ -232,10 +222,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   std::vector<model::Move> legal;
   legal.reserve(moves.size());
   for (auto& m : moves) {
-    
     MoveUndoGuard g(pos);
     if (!g.doMove(m)) continue;
-    
+
     g.rollback();
     legal.push_back(m);
   }
@@ -245,7 +234,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     return 0;
   }
 
-  
   std::vector<std::pair<int, model::Move>> scored;
   scored.reserve(legal.size());
   for (auto& m : legal) {
@@ -277,7 +265,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     model::Move childBest{};
 
     int newDepth = depth - 1;
-    if (pos.inCheck()) newDepth += 1;  
+    if (pos.inCheck()) newDepth += 1;
 
     if (moveCount == 0) {
       value = -negamax(pos, newDepth, -beta, -alpha, ply + 1, childBest);
@@ -293,7 +281,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     value = std::clamp(value, -MATE, MATE);
 
-    
     g.rollback();
 
     if (value > best) {
@@ -313,7 +300,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     ++moveCount;
   }
 
-  
   if (!(stopFlag && stopFlag->load())) {
     model::Bound bound;
     if (best <= origAlpha)
@@ -325,7 +311,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     try {
       tt.store(pos.hash(), best, static_cast<int16_t>(depth), bound, bestLocal);
     } catch (...) {
-      
     }
   }
 
@@ -337,12 +322,12 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
   std::vector<model::Move> pv;
   for (int i = 0; i < max_len; ++i) {
     auto entry = tt.probe(pos.hash());
-    if (!entry) break;  
+    if (!entry) break;
 
     model::Move m = entry->best;
-    if (m.from < 0 || m.to < 0) break;  
+    if (m.from < 0 || m.to < 0) break;
 
-    if (!pos.doMove(m)) break;  
+    if (!pos.doMove(m)) break;
 
     pv.push_back(m);
   }
@@ -350,15 +335,12 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
 }
 
 int Search::search_root_parallel(model::Position& pos, int depth,
-                                 std::shared_ptr<std::atomic<bool>> stop,
-                                 int maxThreads) {
-  
+                                 std::shared_ptr<std::atomic<bool>> stop, int maxThreads) {
   this->stopFlag = stop;
   stats = SearchStats{};
 
   auto start = steady_clock::now();
 
-  
   std::vector<model::Move> moves;
   moves.clear();
   if (!safeGenerateMoves(mg, pos, moves)) {
@@ -373,7 +355,7 @@ int Search::search_root_parallel(model::Position& pos, int depth,
     MoveUndoGuard g(pos);
     if (!g.doMove(m)) continue;
     g.rollback();
-    legal.push_back(m);  
+    legal.push_back(m);
   }
   if (legal.empty()) {
     this->stopFlag.reset();
@@ -434,29 +416,25 @@ int Search::search_root_parallel(model::Position& pos, int depth,
       }
     });
 
-      th.detach();
-      return fut;
-    };
+    th.detach();
+    return fut;
+  };
 
-  
   for (size_t i = 0; i < legal.size(); ++i) {
     if (stop && stop->load()) break;
 
-    
     model::Move m = std::move(legal[i]);
-    model::Position child = pos;     
-    if (!child.doMove(m)) continue;  
+    model::Position child = pos;
+    if (!child.doMove(m)) continue;
 
     // spawn worker with moved values
-      running.push_back(spawn_worker(std::move(m), std::move(child)));
+    running.push_back(spawn_worker(std::move(m), std::move(child)));
 
-    
     while ((int)running.size() >= maxThreads) {
       bool foundReady = false;
       for (size_t j = 0; j < running.size(); ++j) {
         auto& fut = running[j];
-        if (fut.wait_for(std::chrono::milliseconds(10)) ==
-            std::future_status::ready) {
+        if (fut.wait_for(std::chrono::milliseconds(10)) == std::future_status::ready) {
           try {
             RootResult rr = fut.get();
             completedResults.push_back(std::move(rr));
@@ -467,7 +445,7 @@ int Search::search_root_parallel(model::Position& pos, int depth,
           } catch (...) {
             std::cerr << "[Search] worker unknown exception\n";
           }
-          
+
           if (j + 1 != running.size()) std::swap(running[j], running.back());
           running.pop_back();
           foundReady = true;
@@ -482,22 +460,19 @@ int Search::search_root_parallel(model::Position& pos, int depth,
 
   // collect remaining running futures
   for (auto& fut : running) {
-
     try {
       RootResult rr = fut.get();
       completedResults.push_back(std::move(rr));
     } catch (const SearchStoppedException&) {
       std::cout << "root result bug" << std::endl;
     } catch (const std::exception& e) {
-      std::cerr << "[Search] worker exception during final collect: " << e.what()
-                << '\n';
+      std::cerr << "[Search] worker exception during final collect: " << e.what() << '\n';
     } catch (...) {
       std::cerr << "[Search] worker unknown exception during final collect\n";
     }
   }
   running.clear();
 
-  
   int bestScore = -MATE - 1;
   model::Move bestMove{};
   std::vector<std::pair<int, model::Move>> rootCandidates;
@@ -511,7 +486,6 @@ int Search::search_root_parallel(model::Position& pos, int depth,
     }
   }
 
-  
   auto now = steady_clock::now();
   long long elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
   stats.elapsedMs = elapsedMs;
@@ -545,7 +519,6 @@ int Search::search_root_parallel(model::Position& pos, int depth,
 
 // snapshot stats
 const SearchStats& Search::getStats() const {
-
   return stats;
 }
 
@@ -555,4 +528,4 @@ void Search::clearSearchState() {
   stats = SearchStats{};
 }
 
-}  
+}  // namespace lilia::engine

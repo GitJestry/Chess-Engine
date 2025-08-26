@@ -23,4 +23,4 @@ core::PieceType Promotion::getType() {
   return m_type;
 }
 
-}  
+}  // namespace lilia::view

@@ -15,10 +15,10 @@ constexpr inline int ci(core::Color c) {
 
 constexpr inline int file_of(core::Square s) {
   return s & 7;
-}  
+}
 constexpr inline int rank_of(core::Square s) {
   return s >> 3;
-}  
+}
 constexpr inline Bitboard sq_bb(core::Square s) {
   return Bitboard{1} << s;
 }
@@ -38,4 +38,4 @@ constexpr core::Square A8 = 56, D8 = 59, E8 = 60, F8 = 61, H8 = 63;
 
 enum Castling : std::uint8_t { WK = 1 << 0, WQ = 1 << 1, BK = 1 << 2, BQ = 1 << 3 };
 
-}  
+}  // namespace lilia::model::bb

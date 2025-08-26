@@ -19,7 +19,7 @@ namespace lilia::engine {
 struct SearchResult {
   std::optional<model::Move> bestMove;
   engine::SearchStats stats;
-  
+
   std::vector<std::pair<model::Move, int>> topMoves;
 };
 
@@ -28,8 +28,6 @@ class BotEngine {
   explicit BotEngine(const EngineConfig& cfg = {});
   ~BotEngine();
 
-  
-  
   SearchResult findBestMove(model::ChessGame& gameState, int maxDepth, int thinkMillis,
                             std::atomic<bool>* externalCancel = nullptr);
 
@@ -40,4 +38,4 @@ class BotEngine {
   Engine m_engine;
 };
 
-}  
+}  // namespace lilia::engine

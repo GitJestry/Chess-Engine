@@ -15,19 +15,14 @@ class GameView {
   GameView(sf::RenderWindow& window);
   ~GameView() = default;
 
-  
   void init(const std::string& fen = core::START_FEN);
 
-  
   void resetBoard();
 
-  
   void update(float dt);
 
-  
   void render();
 
-  
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
   void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
   void setPieceToSquareScreenPos(core::Square from, core::Square to);
@@ -70,4 +65,4 @@ class GameView {
   PromotionManager m_promotion_manager;
 };
 
-}  
+}  // namespace lilia::view

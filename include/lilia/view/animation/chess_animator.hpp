@@ -36,4 +36,4 @@ class ChessAnimator {
   AnimationManager m_anim_manager;
 };
 
-}  
+}  // namespace lilia::view::animation

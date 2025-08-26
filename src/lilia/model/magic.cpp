@@ -48,7 +48,7 @@ static inline uint64_t index_for_occ(bb::Bitboard occ, bb::Bitboard mask, bb::Bi
   const int bits = bb::popcount(mask);
   if (bits == 0) return 0ULL;
   const bb::Bitboard subset = occ & mask;
-  
+
   const uint64_t raw = static_cast<uint64_t>((subset * magic) >> shift);
   const uint64_t mask_idx =
       (bits >= 64) ? std::numeric_limits<uint64_t>::max() : ((1ULL << bits) - 1ULL);
@@ -74,11 +74,9 @@ static inline bool try_magic_for_square(Slider s, int sq, bb::Bitboard mask, bb:
   const size_t tableSize = (bits >= 64) ? 0 : (1ULL << bits);
   const size_t allocSize = (tableSize == 0) ? 1 : tableSize;
 
-  
   std::vector<char> used(allocSize);
   std::vector<bb::Bitboard> table(allocSize);
 
-  
   bb::Bitboard occSubset = mask;
   while (true) {
     const uint64_t idx = index_for_occ(occSubset, mask, magic, shift);
@@ -88,7 +86,6 @@ static inline bool try_magic_for_square(Slider s, int sq, bb::Bitboard mask, bb:
       used[idx] = 1;
       table[idx] = atk;
     } else if (table[idx] != atk) {
-      
       return false;
     }
 
@@ -96,7 +93,6 @@ static inline bool try_magic_for_square(Slider s, int sq, bb::Bitboard mask, bb:
     occSubset = (occSubset - 1) & mask;
   }
 
-  
   outTable = std::move(table);
   return true;
 }
@@ -112,22 +108,19 @@ static inline bool find_magic_for_square(Slider s, int sq, bb::Bitboard mask,
   bb::Bitboard seed = 0xC0FFEE123456789ULL ^ (static_cast<bb::Bitboard>(sq) << 32) ^
                       (s == Slider::Rook ? 0xF0F0F0F0ULL : 0x0F0F0F0FULL);
 
-  
   constexpr int MAX_ATTEMPTS = 2000000;
 
-  
   random::SplitMix64 splitmix(seed);
 
-  
   auto gen_candidate = [&](int strategy) -> bb::Bitboard {
     switch (strategy) {
       case 0:
-        return splitmix.next() & splitmix.next() & splitmix.next();  
+        return splitmix.next() & splitmix.next() & splitmix.next();
       case 1:
-        return splitmix.next() & splitmix.next();  
+        return splitmix.next() & splitmix.next();
       case 2:
-        return splitmix.next() ^ (splitmix.next() << 1);  
-      case 3: {  
+        return splitmix.next() ^ (splitmix.next() << 1);
+      case 3: {
         bb::Bitboard v = splitmix.next() & splitmix.next();
         bb::Bitboard hi = (splitmix.next() & 0xFFULL) << 56;
         return v | hi;
@@ -138,14 +131,12 @@ static inline bool find_magic_for_square(Slider s, int sq, bb::Bitboard mask,
   };
 
   for (int attempt = 0; attempt < MAX_ATTEMPTS; ++attempt) {
-    
     for (int strat = 0; strat < 4; ++strat) {
       bb::Bitboard cand = gen_candidate(strat);
 
-      
       if (bits > 0) {
         const int highpop = bb::popcount((cand * mask) & 0xFF00000000000000ULL);
-        if (highpop < 2) continue;  
+        if (highpop < 2) continue;
       }
 
       if (try_magic_for_square(s, sq, mask, cand, shift, outTable)) {
@@ -154,9 +145,7 @@ static inline bool find_magic_for_square(Slider s, int sq, bb::Bitboard mask,
       }
     }
 
-    
     if ((attempt & 0xFFF) == 0) {
-
 #ifndef NDEBUG
       std::cerr << "find_magic for sq=" << sq << " attempt=" << attempt << "\n";
 #endif
@@ -208,7 +197,6 @@ static inline void build_masks() {
 static inline void generate_all_magics_and_tables() {
   build_masks();
 
-  
   for (int sq = 0; sq < 64; ++sq) {
     std::vector<bb::Bitboard> table;
     bb::Bitboard magic = 0ULL;
@@ -218,13 +206,11 @@ static inline void generate_all_magics_and_tables() {
     if (!ok) {
       std::cerr << "Failed to find rook magic for sq " << sq << " (bits=" << bb::popcount(mask)
                 << ")\n";
-      
     }
     g_rook_magic[sq] = Magic{magic, shift};
     g_rook_table[sq] = std::move(table);
   }
 
-  
   for (int sq = 0; sq < 64; ++sq) {
     std::vector<bb::Bitboard> table;
     bb::Bitboard magic = 0ULL;
@@ -234,7 +220,6 @@ static inline void generate_all_magics_and_tables() {
     if (!ok) {
       std::cerr << "Failed to find bishop magic for sq " << sq << " (bits=" << bb::popcount(mask)
                 << ")\n";
-      
     }
     g_bishop_magic[sq] = Magic{magic, shift};
     g_bishop_table[sq] = std::move(table);
@@ -245,7 +230,6 @@ void init_magics() {
 #ifdef LILIA_MAGIC_HAVE_CONSTANTS
   using namespace lilia::model::magic::constants;
 
-  
   build_masks();
 
   for (int i = 0; i < 64; ++i) {
@@ -297,4 +281,4 @@ const std::array<std::vector<bb::Bitboard>, 64>& bishop_tables() {
   return g_bishop_table;
 }
 
-}  
+}  // namespace lilia::model::magic

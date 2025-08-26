@@ -14,4 +14,4 @@ struct SplitMix64 {
   }
 };
 
-}  
+}  // namespace lilia::model::random

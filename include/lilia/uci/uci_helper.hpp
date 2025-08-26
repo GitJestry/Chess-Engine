@@ -23,7 +23,7 @@ inline std::string move_to_uci(const model::Move& m) {
   std::string uci = square_to_uci(m.from) + square_to_uci(m.to);
   using core::PieceType;
   if (m.promotion != PieceType::None) {
-    char p = 'q';  
+    char p = 'q';
     switch (m.promotion) {
       case PieceType::Knight:
         p = 'n';
@@ -47,4 +47,4 @@ inline std::string move_to_uci(const model::Move& m) {
   return uci;
 }
 
-}  
+}  // namespace lilia

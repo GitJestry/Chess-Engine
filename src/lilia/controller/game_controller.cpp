@@ -22,13 +22,12 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
       [this](core::MousePos start, core::MousePos end) { this->onDrop(start, end); });
 
   m_sound_manager.loadSounds();
-      
+
   // ------- GameManager initialisieren -------
   m_game_manager = std::make_unique<GameManager>(game);
 
   // Callback: wenn GameManager einen Move ausgeführt hat -> Animation & Sound
   m_game_manager->setOnMoveExecuted([this](const model::Move& mv, bool isPlayerMove, bool onClick) {
-    
     this->movePieceAndClear(mv, isPlayerMove, onClick);
     this->m_chess_game.checkGameResult();
   });
@@ -113,13 +112,11 @@ void GameController::movePieceAndClear(const model::Move& move, bool isPlayerMov
       dEnPassantSquare = to + 8;
   }
 
-  
   if (onClick)
     m_game_view.animationMovePiece(from, to, dEnPassantSquare, move.promotion);
   else
     m_game_view.animationDropPiece(from, to, dEnPassantSquare, move.promotion);
 
-  
   if (move.castle != model::CastleSide::None) {
     core::Square rookSquare =
         m_chess_game.getRookSquareFromCastleside(move.castle, sideToTurnBeforeMove);
@@ -136,7 +133,6 @@ void GameController::movePieceAndClear(const model::Move& move, bool isPlayerMov
   deselectSquare();
   highlightLastMove();
 
-  
   if (m_chess_game.isKingInCheck(sideToTurnAfterMove)) {
     m_sound_manager.playCheck();
   } else {
@@ -207,7 +203,6 @@ void GameController::onClick(core::MousePos mousePos) {
     return;
   }
 
-  
   if (m_selected_sq == core::NO_SQUARE) {
     if (m_game_view.hasPieceOnSquare(sq)) {
       snapAndReturn(sq, mousePos);
@@ -216,7 +211,6 @@ void GameController::onClick(core::MousePos mousePos) {
     return;
   }
 
-  
   if (m_selected_sq == sq) {
     snapAndReturn(sq, mousePos);
     deselectSquare();
@@ -224,12 +218,10 @@ void GameController::onClick(core::MousePos mousePos) {
   }
   if (m_chess_game.getGameState().sideToMove == m_player_color &&
       m_game_view.hasPieceOnSquare(m_selected_sq) &&
-      m_chess_game.getPiece(m_selected_sq).color == m_player_color &&
-      tryMove(m_selected_sq, sq)) {
+      m_chess_game.getPiece(m_selected_sq).color == m_player_color && tryMove(m_selected_sq, sq)) {
     if (m_game_manager) {
       bool accepted = m_game_manager->requestUserMove(m_selected_sq, sq, true);
       if (!accepted) {
-
         deselectSquare();
       }
     }
@@ -254,10 +246,7 @@ void GameController::onDrag(core::MousePos start, core::MousePos current) {
     return;
   }
 
-  if (!m_game_view.hasPieceOnSquare(sqStart) ||
-      m_chess_game.getPiece(sqStart).color != m_player_color ||
-      m_chess_game.getGameState().sideToMove != m_player_color)
-    return;
+  if (!m_game_view.hasPieceOnSquare(sqStart)) return;
 
   if (m_selected_sq != sqStart) {
     deselectSquare();
@@ -269,8 +258,8 @@ void GameController::onDrag(core::MousePos start, core::MousePos current) {
 
   hoverSquare(sqMous);
 
-    m_game_view.setPieceToMouseScreenPos(sqStart, current);
-    m_game_view.playPiecePlaceHolderAnimation(sqStart);
+  m_game_view.setPieceToMouseScreenPos(sqStart, current);
+  m_game_view.playPiecePlaceHolderAnimation(sqStart);
 }
 
 void GameController::onDrop(core::MousePos start, core::MousePos end) {
@@ -286,31 +275,30 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
     return;
   }
 
-
-  if (!m_game_view.hasPieceOnSquare(from) ||
-      m_chess_game.getPiece(from).color != m_player_color ||
-      m_chess_game.getGameState().sideToMove != m_player_color) {
+  if (!m_game_view.hasPieceOnSquare(from)) {
     deselectSquare();
     return;
   }
   m_game_view.endAnimation(from);
 
-  if (from != to && tryMove(from, to)) {
-    if (m_game_manager) {
-      bool accepted = m_game_manager->requestUserMove(from, to, false);
-      if (!accepted) {
-        deselectSquare();
-      }
-    }
-  } else {
-    if (m_chess_game.isKingInCheck(m_chess_game.getGameState().sideToMove) && from != to) {
+  bool accepted = false;
+  if (from != to && tryMove(from, to) && m_game_manager) {
+    accepted = m_game_manager->requestUserMove(from, to, false);
+  }
+
+  if (!accepted) {
+    if (m_chess_game.isKingInCheck(m_chess_game.getGameState().sideToMove) &&
+        m_chess_game.getGameState().sideToMove == m_player_color && from != to &&
+        m_game_view.hasPieceOnSquare(from) && m_chess_game.getPiece(from).color == m_player_color) {
       m_game_view.warningKingSquareAnim(
           m_chess_game.getKingSquare(m_chess_game.getGameState().sideToMove));
       m_sound_manager.playWarning();
     }
     m_game_view.setPieceToSquareScreenPos(from, from);
     selectSquare(from);
+    snapAndReturn(from, end);
+    showAttacks(getAttackSquares(from));
   }
 }
 
-}  
+}  // namespace lilia::controller

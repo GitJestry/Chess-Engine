@@ -1,9 +1,8 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
-#include <optional>
-
 
 #include "../constants.hpp"
 #include "move_generator.hpp"
@@ -22,7 +21,6 @@ class ChessGame {
   void doMove(core::Square from, core::Square to,
               core::PieceType promotion = core::PieceType::None);
   void doMoveUCI(const std::string& uciMove);
-  std::string move_to_uci(const model::Move& m);
 
   bb::Piece getPiece(core::Square sq);
   const GameState& getGameState();
@@ -45,4 +43,4 @@ class ChessGame {
   std::vector<Move> m_legal_moves;
 };
 
-}  
+}  // namespace lilia::model

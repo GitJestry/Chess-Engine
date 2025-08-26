@@ -19,15 +19,11 @@ class Board : public Entity {
   Board(Entity::Position pos);
   Board() = default;
 
-  
-  
   void init(const sf::Texture &texture_white, const sf::Texture &texture_black,
             const sf::Texture &texture_board);
 
   [[nodiscard]] Entity::Position getPosOfSquare(core::Square sq) const;
 
-  
-  
   void draw(sf::RenderWindow &window) override;
   void setPosition(const Entity::Position &pos) override;
 
@@ -35,4 +31,4 @@ class Board : public Entity {
   std::array<Entity, constant::BOARD_SIZE * constant::BOARD_SIZE> m_squares;
 };
 
-}  
+}  // namespace lilia::view

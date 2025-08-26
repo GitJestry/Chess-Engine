@@ -15,19 +15,15 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
       getPosition().x - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2,
       getPosition().y - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2);
 
-  for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {    
-    for (int file = 0; file < constant::BOARD_SIZE; ++file) {  
-
-      
+  for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {
+    for (int file = 0; file < constant::BOARD_SIZE; ++file) {
       int index = file + rank * constant::BOARD_SIZE;
 
-      
       float x = board_offset.x + file * constant::SQUARE_PX_SIZE;
       float y = board_offset.y + (constant::BOARD_SIZE - 1 - rank) * constant::SQUARE_PX_SIZE;
 
       m_squares[index].setPosition({x, y});
 
-      
       if ((rank + file) % 2 == 0)
         m_squares[index].setTexture(textureBlack);
       else
@@ -44,7 +40,7 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
 
 void Board::draw(sf::RenderWindow &window) {
   Entity::draw(window);
-  
+
   for (auto &s : m_squares) {
     s.draw(window);
   }
@@ -56,13 +52,10 @@ void Board::setPosition(const Entity::Position &pos) {
       getPosition().x - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2,
       getPosition().y - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2);
 
-  for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {    
-    for (int file = 0; file < constant::BOARD_SIZE; ++file) {  
-
-      
+  for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {
+    for (int file = 0; file < constant::BOARD_SIZE; ++file) {
       int index = file + rank * constant::BOARD_SIZE;
 
-      
       float x = board_offset.x + file * constant::SQUARE_PX_SIZE;
       float y = board_offset.y + (constant::BOARD_SIZE - 1 - rank) * constant::SQUARE_PX_SIZE;
 
@@ -71,4 +64,4 @@ void Board::setPosition(const Entity::Position &pos) {
   }
 }
 
-}  
+}  // namespace lilia::view

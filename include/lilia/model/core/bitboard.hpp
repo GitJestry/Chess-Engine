@@ -47,10 +47,10 @@ constexpr inline Bitboard nw(Bitboard b) {
   return (b & ~FILE_A) << 7;
 }
 constexpr inline Bitboard se(Bitboard b) {
-  return (b & ~FILE_H) >> 7;  
+  return (b & ~FILE_H) >> 7;
 }
 constexpr inline Bitboard sw(Bitboard b) {
-  return (b & ~FILE_A) >> 9;  
+  return (b & ~FILE_A) >> 9;
 }
 
 constexpr inline Bitboard knight_attacks_from(core::Square s) {
@@ -99,4 +99,4 @@ constexpr inline Bitboard black_pawn_attacks(Bitboard pawns) {
   return (sw(pawns) | se(pawns));
 }
 
-}  
+}  // namespace lilia::model::bb

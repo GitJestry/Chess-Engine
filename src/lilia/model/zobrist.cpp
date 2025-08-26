@@ -52,4 +52,4 @@ bb::Bitboard Zobrist::compute(const PositionLike& pos) {
 
 template bb::Bitboard Zobrist::compute<class Position>(const Position&);
 
-}  
+}  // namespace lilia::model
