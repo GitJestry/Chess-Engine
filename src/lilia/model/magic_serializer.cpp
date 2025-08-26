@@ -14,38 +14,36 @@ bool serialize_magics_to_header(const std::string& outPath, const std::string& p
   if (!out) return false;
 
   out << "#pragma once\n\n";
+  out << "#define LILIA_MAGIC_HAVE_CONSTANTS 1\n";
   out << "#include <array>\n";
   out << "#include <vector>\n";
   out << "#include \"lilia/model/core/magic.hpp\"\n\n";
   out << "namespace lilia::model::magic::constants {\n";
 
   const auto& rmag = rook_magics();
-  out << "inline constexpr std::array<Magic, 64> " << prefix
-      << "rook_magic = {\n";
+  out << "inline constexpr std::array<Magic, 64> " << prefix << "rook_magic = {\n";
   for (int i = 0; i < 64; ++i) {
     const Magic& m = rmag[i];
-    out << "    Magic{0x" << std::hex << std::uppercase << m.magic << "ULL, "
-        << std::dec << static_cast<int>(m.shift) << "}";
+    out << "    Magic{0x" << std::hex << std::uppercase << m.magic << "ULL, " << std::dec
+        << static_cast<int>(m.shift) << "}";
     if (i != 63) out << ",";
     out << "\n";
   }
   out << "};\n\n";
 
   const auto& bmag = bishop_magics();
-  out << "inline constexpr std::array<Magic, 64> " << prefix
-      << "bishop_magic = {\n";
+  out << "inline constexpr std::array<Magic, 64> " << prefix << "bishop_magic = {\n";
   for (int i = 0; i < 64; ++i) {
     const Magic& m = bmag[i];
-    out << "    Magic{0x" << std::hex << std::uppercase << m.magic << "ULL, "
-        << std::dec << static_cast<int>(m.shift) << "}";
+    out << "    Magic{0x" << std::hex << std::uppercase << m.magic << "ULL, " << std::dec
+        << static_cast<int>(m.shift) << "}";
     if (i != 63) out << ",";
     out << "\n";
   }
   out << "};\n\n";
 
   const auto& rtab = rook_tables();
-  out << "inline const std::array<std::vector<bb::Bitboard>, 64> " << prefix
-      << "rook_table = {\n";
+  out << "inline const std::array<std::vector<bb::Bitboard>, 64> " << prefix << "rook_table = {\n";
   for (int i = 0; i < 64; ++i) {
     const auto& vec = rtab[i];
     out << "    std::vector<bb::Bitboard>{";
@@ -81,4 +79,3 @@ bool serialize_magics_to_header(const std::string& outPath, const std::string& p
 }
 
 }  // namespace lilia::model::magic
-

@@ -234,14 +234,14 @@ void init_magics() {
   build_masks();
 
   for (int i = 0; i < 64; ++i) {
-    g_rook_magic[i].magic = s_rook_magic[i].magic;
-    g_rook_magic[i].shift = s_rook_magic[i].shift;
+    g_rook_magic[i].magic = srook_magic[i].magic;
+    g_rook_magic[i].shift = srook_magic[i].shift;
 
-    g_bishop_magic[i].magic = s_bishop_magic[i].magic;
-    g_bishop_magic[i].shift = s_bishop_magic[i].shift;
+    g_bishop_magic[i].magic = sbishop_magic[i].magic;
+    g_bishop_magic[i].shift = sbishop_magic[i].shift;
 
-    g_rook_table[i] = s_rook_table[i];
-    g_bishop_table[i] = s_bishop_table[i];
+    g_rook_table[i] = srook_table[i];
+    g_bishop_table[i] = sbishop_table[i];
   }
 #else
   generate_all_magics_and_tables();

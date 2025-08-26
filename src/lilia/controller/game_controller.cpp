@@ -184,11 +184,13 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 }
 
 void GameController::showAttacks(std::vector<core::Square> att) {
-  for (auto sq : att) {
-    if (m_game_view.hasPieceOnSquare(sq))
-      m_game_view.highlightCaptureSquare(sq);
-    else
-      m_game_view.highlightAttackSquare(sq);
+  if (m_chess_game.getGameState().sideToMove == m_player_color) {
+    for (auto sq : att) {
+      if (m_game_view.hasPieceOnSquare(sq))
+        m_game_view.highlightCaptureSquare(sq);
+      else
+        m_game_view.highlightAttackSquare(sq);
+    }
   }
 }
 
@@ -203,11 +205,9 @@ void GameController::onClick(core::MousePos mousePos) {
     return;
   }
 
-  if (m_selected_sq == core::NO_SQUARE) {
-    if (m_game_view.hasPieceOnSquare(sq)) {
-      snapAndReturn(sq, mousePos);
-      showAttacks(getAttackSquares(sq));
-    }
+  if (m_selected_sq == core::NO_SQUARE && m_game_view.hasPieceOnSquare(sq)) {
+    showAttacks(getAttackSquares(sq));
+    snapAndReturn(sq, mousePos);
     return;
   }
 
@@ -229,8 +229,8 @@ void GameController::onClick(core::MousePos mousePos) {
     deselectSquare();
 
     if (m_game_view.hasPieceOnSquare(sq)) {
-      snapAndReturn(sq, mousePos);
       showAttacks(getAttackSquares(sq));
+      snapAndReturn(sq, mousePos);
     }
   }
 }

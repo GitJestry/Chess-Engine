@@ -12,7 +12,7 @@ constexpr unsigned int CAPTURE_CIRCLE_PX_SIZE =
 
 constexpr unsigned int HOVER_PX_SIZE = SQUARE_PX_SIZE;
 
-constexpr float ANIM_SNAP_SPEED = .1f;
+constexpr float ANIM_SNAP_SPEED = .02f;
 constexpr float ANIM_MOVE_SPEED = .05f;
 
 const std::string STR_TEXTURE_WHITE = "white";
@@ -42,4 +42,4 @@ const std::string SFX_PROMOTION_NAME = "promotion";
 const std::string SFX_GAME_BEGINS_NAME = "game_begins";
 const std::string SFX_GAME_ENDS_NAME = "game_ends";
 
-}  
+}  // namespace lilia::view::constant

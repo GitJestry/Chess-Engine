@@ -6,8 +6,8 @@
 #include <memory>
 #include <mutex>
 
-#include "../constants.hpp"
 #include "../chess_types.hpp"
+#include "../constants.hpp"
 #include "../model/move.hpp"
 
 namespace lilia::model {
@@ -29,27 +29,20 @@ class GameManager {
   explicit GameManager(model::ChessGame& model);
   ~GameManager();
 
-  
   void startGame(core::Color playerColor, const std::string& fen = core::START_FEN,
                  bool vsBot = true, int thinkTimeMs = 1000, int depth = 5);
   void stopGame();
 
-  
   void update(float dt);
 
-  
-  
   bool requestUserMove(core::Square from, core::Square to, bool onClick);
 
-  
   void completePendingPromotion(core::PieceType promotion);
 
-  
   void setOnMoveExecuted(MoveCallback cb) { onMoveExecuted_ = std::move(cb); }
   void setOnPromotionRequested(PromotionCallback cb) { onPromotionRequested_ = std::move(cb); }
   void setOnGameEnd(EndCallback cb) { onGameEnd_ = std::move(cb); }
 
-  
   void setBotForColor(core::Color color, std::unique_ptr<IPlayer> bot);
 
  private:
@@ -76,9 +69,8 @@ class GameManager {
   PromotionCallback onPromotionRequested_;
   EndCallback onGameEnd_;
 
-  
   void applyMoveAndNotify(const model::Move& mv, bool onClick);
   void startBotIfNeeded();
 };
 
-}  
+}  // namespace lilia::controller

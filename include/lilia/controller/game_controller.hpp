@@ -33,10 +33,8 @@ class GameController {
 
   void update(float dt);
 
-  
   void handleEvent(const sf::Event& event);
 
-  
   void render();
 
   // game_controller.hpp (in public:)
@@ -53,35 +51,23 @@ class GameController {
                  bool vsBot = true, int thinkTimeMs = 1000, int depth = 5);
 
  private:
-  
-
-  
   void onClick(core::MousePos mousePos);
 
-  
   void onDrag(core::MousePos start, core::MousePos current);
 
-  
   void onDrop(core::MousePos start, core::MousePos end);
 
-  
   void selectSquare(core::Square sq);
   void deselectSquare();
   void hoverSquare(core::Square sq);
   void dehoverSquare();
 
-  
-
-  
   void movePieceAndClear(const model::Move& move, bool isPlayerMove, bool onClick);
 
-  
   void snapAndReturn(core::Square sq, core::MousePos cur);
 
-  
   void highlightLastMove();
 
-  
   [[nodiscard]] std::vector<core::Square> getAttackSquares(core::Square pieceSQ) const;
   void showAttacks(std::vector<core::Square> att);
   [[nodiscard]] bool tryMove(core::Square a, core::Square b);
@@ -89,9 +75,9 @@ class GameController {
   [[nodiscard]] bool isSameColor(core::Square a, core::Square b);
 
   // ---------------- Members ----------------
-  view::GameView& m_game_view;                 ///< Responsible for rendering.
-  model::ChessGame& m_chess_game;              ///< Game model containing rules and state.
-  InputManager m_input_manager;                ///< Handles raw input processing.
+  view::GameView& m_game_view;                ///< Responsible for rendering.
+  model::ChessGame& m_chess_game;             ///< Game model containing rules and state.
+  InputManager m_input_manager;               ///< Handles raw input processing.
   view::sound::SoundManager m_sound_manager;  ///< Handles sfx and music
 
   core::Color m_player_color = core::Color::White;
@@ -106,4 +92,4 @@ class GameController {
   std::unique_ptr<GameManager> m_game_manager;
 };
 
-}  
+}  // namespace lilia::controller
