@@ -34,7 +34,7 @@ class GameManager {
 
   // Lifecycle
   void startGame(core::Color playerColor, const std::string& fen = core::START_FEN,
-                 bool vsBot = true);
+                 bool vsBot = true, int thinkTimeMs = 1000, int depth = 5);
   void stopGame();
 
   // Called each frame from main loop: Polls bot futures and applies moves when ready.
