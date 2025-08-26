@@ -2,6 +2,7 @@
 
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/System/Vector2.hpp>
+#include <SFML/Window/Cursor.hpp>
 
 #include "../constants.hpp"
 #include "../controller/mousepos.hpp"
@@ -10,7 +11,6 @@
 #include "highlight_manager.hpp"
 #include "piece_manager.hpp"
 #include "promotion_manager.hpp"
-#include <SFML/Window/Cursor.hpp>
 
 namespace lilia::view {
 
@@ -67,8 +67,9 @@ class GameView {
   void setHandClosedCursor();
 
  private:
-  sf::RenderWindow& m_window;
+  core::MousePos clampPosToWindowSize(core::MousePos mousePos) const noexcept;
 
+  sf::RenderWindow& m_window;
   BoardView m_board_view;
   PieceManager m_piece_manager;
   HighlightManager m_highlight_manager;

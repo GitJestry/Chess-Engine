@@ -68,7 +68,6 @@ class GameController {
   void movePieceAndClear(const model::Move& move, bool isPlayerMove, bool onClick);
 
   void snapAndReturn(core::Square sq, core::MousePos cur);
-
   void highlightLastMove();
 
   [[nodiscard]] std::vector<core::Square> getAttackSquares(core::Square pieceSQ) const;
@@ -86,6 +85,14 @@ class GameController {
   core::Color m_player_color = core::Color::White;
   core::Square m_promotion_square = core::NO_SQUARE;
 
+  bool m_dragging = false;
+  bool m_mouse_down = false;
+
+  core::Square m_drag_from = core::NO_SQUARE;
+  core::MousePos m_drag_start{0u, 0u};
+  bool m_preview_active = false;
+  core::Square m_prev_selected_before_preview = core::NO_SQUARE;
+
   core::Square m_selected_sq = core::NO_SQUARE;  ///< Currently selected square.
   core::Square m_hover_sq = core::NO_SQUARE;     ///< Currently hovered square.
   std::pair<core::Square, core::Square> m_last_move_squares = {
@@ -93,7 +100,6 @@ class GameController {
 
   // ---------------- New: GameManager ----------------
   std::unique_ptr<GameManager> m_game_manager;
-  bool m_mouse_down = false;
 };
 
 }  // namespace lilia::controller

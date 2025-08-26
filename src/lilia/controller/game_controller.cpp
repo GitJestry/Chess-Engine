@@ -11,6 +11,7 @@
 #include "lilia/controller/game_manager.hpp"
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/move.hpp"
+#include "lilia/view/render_constants.hpp"
 
 namespace lilia::controller {
 
@@ -56,6 +57,16 @@ void GameController::startGame(core::Color playerColor, const std::string& fen, 
   m_game_view.init(fen);
   m_game_manager->startGame(playerColor, fen, vsBot, think_time_ms, depth);
   m_player_color = playerColor;
+
+  // States zurücksetzen
+  m_dragging = false;
+  m_drag_from = core::NO_SQUARE;
+  m_drag_start = {0u, 0u};
+  m_preview_active = false;
+  m_prev_selected_before_preview = core::NO_SQUARE;
+  m_selected_sq = core::NO_SQUARE;
+  m_hover_sq = core::NO_SQUARE;
+  m_last_move_squares = {core::NO_SQUARE, core::NO_SQUARE};
 }
 
 void GameController::handleEvent(const sf::Event& event) {
@@ -79,12 +90,19 @@ void GameController::handleEvent(const sf::Event& event) {
 }
 
 void GameController::onMouseMove(core::MousePos pos) {
+  if (m_dragging) {
+    // während aktivem Drag kontinuierlich aktualisieren
+    onDrag(m_drag_start, pos);
+    m_game_view.setHandClosedCursor();
+    return;
+  }
+
   if (m_mouse_down) {
     m_game_view.setHandClosedCursor();
     return;
   }
   core::Square sq = m_game_view.mousePosToSquare(pos);
-  if (m_game_view.hasPieceOnSquare(sq))
+  if (m_game_view.hasPieceOnSquare(sq) && !m_game_view.isInPromotionSelection())
     m_game_view.setHandOpenCursor();
   else
     m_game_view.setDefaultCursor();
@@ -93,17 +111,75 @@ void GameController::onMouseMove(core::MousePos pos) {
 void GameController::onMousePressed(core::MousePos pos) {
   m_mouse_down = true;
 
-  core::Square sq = m_game_view.mousePosToSquare(pos);
-  if (m_game_view.hasPieceOnSquare(sq)) {
+  // Promotion-Auswahl aktiv? Dann keine neue Interaktion starten.
+  if (m_game_view.isInPromotionSelection()) {
     m_game_view.setHandClosedCursor();
+    return;
+  }
+
+  core::Square sq = m_game_view.mousePosToSquare(pos);
+
+  // Mauszeiger-Optik
+  if (m_game_view.hasPieceOnSquare(sq)) {
+    if (!tryMove(m_selected_sq, sq)) m_game_view.setHandClosedCursor();
+
   } else {
     m_game_view.setDefaultCursor();
+  }
+
+  // Leeres Feld: keine Aktion (Click kümmert sich um Deselection)
+  if (!m_game_view.hasPieceOnSquare(sq)) return;
+
+  // --- PREVIEW-LOGIK gegen kumulierende Highlights ---
+  // Falls bereits etwas ausgewählt und wir drücken auf eine ANDERE Figur -> Preview aktivieren.
+  if (m_selected_sq != core::NO_SQUARE && m_selected_sq != sq) {
+    m_preview_active = true;
+    m_prev_selected_before_preview = m_selected_sq;
+
+    // Highlights vollständig neu zeichnen (Last-Move erhalten)
+    if (!tryMove(m_selected_sq, sq)) {
+      m_game_view.clearAllHighlights();
+      highlightLastMove();
+      selectSquare(sq);
+      hoverSquare(sq);
+      showAttacks(getAttackSquares(sq));
+    }
+  } else {
+    // Press auf gleiche Figur oder erste Auswahl: ebenfalls sauber neu zeichnen
+    m_preview_active = false;
+    m_prev_selected_before_preview = core::NO_SQUARE;
+
+    m_game_view.clearAllHighlights();
+    highlightLastMove();
+    selectSquare(sq);
+    hoverSquare(sq);
+    showAttacks(getAttackSquares(sq));
+  }
+  if (!tryMove(m_selected_sq, sq)) {
+    m_dragging = true;
+    m_drag_from = sq;
+    m_drag_start = pos;
+    m_game_view.setPieceToMouseScreenPos(sq, pos);
+    m_game_view.playPiecePlaceHolderAnimation(sq);
   }
 }
 
 void GameController::onMouseReleased(core::MousePos pos) {
   m_mouse_down = false;
-  onMouseMove(pos);
+
+  if (m_dragging) {
+    // Delegiere auf bestehende Drop-Logik
+    onDrop(m_drag_start, pos);
+    // Drag-Status resetten
+    m_dragging = false;
+    m_drag_from = core::NO_SQUARE;
+  }
+
+  // Flags nach Release stets sauber aufräumen
+  m_preview_active = false;
+  m_prev_selected_before_preview = core::NO_SQUARE;
+
+  onMouseMove(pos);  // Cursor aktualisieren
 }
 
 void GameController::render() {
@@ -207,7 +283,6 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
   for (auto att : getAttackSquares(a)) {
     if (att == b) return true;
   }
-
   return false;
 }
 
@@ -248,74 +323,75 @@ void GameController::onClick(core::MousePos mousePos) {
     core::PieceType promoType = m_game_view.getSelectedPromotion(mousePos);
     m_game_view.removePromotionSelection();
     if (m_game_manager) m_game_manager->completePendingPromotion(promoType);
+    // Nach abgeschlossener Promotion Auswahl schließen
     deselectSquare();
     return;
   }
 
-  if (m_selected_sq == core::NO_SQUARE && m_game_view.hasPieceOnSquare(sq)) {
-    showAttacks(getAttackSquares(sq));
-    snapAndReturn(sq, mousePos);
-    return;
-  }
+  // 0) Falls bereits etwas selektiert ist: IMMER zuerst prüfen, ob (klick-)Zug möglich ist.
+  if (m_selected_sq != core::NO_SQUARE) {
+    const auto st = m_chess_game.getGameState();
 
-  if (m_selected_sq == sq) {
-    snapAndReturn(sq, mousePos);
-    deselectSquare();
-    return;
-  }
-  if (m_chess_game.getGameState().sideToMove == m_player_color &&
-      m_game_view.hasPieceOnSquare(m_selected_sq) &&
-      m_chess_game.getPiece(m_selected_sq).color == m_player_color && tryMove(m_selected_sq, sq)) {
-    if (m_game_manager) {
-      bool accepted = m_game_manager->requestUserMove(m_selected_sq, sq, true);
-      if (!accepted) {
-        deselectSquare();
+    // Nur eigene Figur darf ziehen
+    const bool ownTurnAndPiece = (st.sideToMove == m_player_color) &&
+                                 (m_chess_game.getPiece(m_selected_sq).color == m_player_color);
+
+    // Capture/Move hat Vorrang vor Um-Selektion!
+    if (ownTurnAndPiece && tryMove(m_selected_sq, sq)) {
+      if (m_game_manager) {
+        bool accepted = m_game_manager->requestUserMove(m_selected_sq, sq, /*onClick*/ true);
+        (void)accepted;  // bei Ablehnung Auswahl einfach bestehen lassen
       }
+      return;  // Wichtig: NICHT auf das Ziel selektieren!
     }
-  } else {
-    deselectSquare();
 
+    // Kein legaler Zug: dann je nach Klickfeld Auswahl wechseln/entfernen
     if (m_game_view.hasPieceOnSquare(sq)) {
-      showAttacks(getAttackSquares(sq));
-      snapAndReturn(sq, mousePos);
+      // Auf andere Figur (auch gegnerisch) umschalten
+      m_game_view.clearAllHighlights();
+      highlightLastMove();
+      selectSquare(sq);
+      showAttacks(getAttackSquares(sq));  // bei gegnerischer Figur i.d.R. leer -> ok
+    } else {
+      // Leeres Feld -> Auswahl entfernen
+      deselectSquare();
     }
+    return;
   }
+
+  // 1) Noch nichts selektiert: Figur anwählen, falls vorhanden (auch gegnerisch erlaubt)
+  if (m_game_view.hasPieceOnSquare(sq)) {
+    m_game_view.clearAllHighlights();
+    highlightLastMove();
+    selectSquare(sq);
+    showAttacks(getAttackSquares(sq));
+    return;
+  }
+
+  // 2) Leeres Feld ohne aktive Auswahl -> nichts tun
 }
 
 void GameController::onDrag(core::MousePos start, core::MousePos current) {
   core::Square sqStart = m_game_view.mousePosToSquare(start);
   core::Square sqMous = m_game_view.mousePosToSquare(current);
 
-  if (m_game_view.isInPromotionSelection()) {
-    m_game_view.removePromotionSelection();
-    if (m_game_manager) m_game_manager->completePendingPromotion(core::PieceType::None);
-    deselectSquare();
-    return;
-  }
+  if (m_game_view.isInPromotionSelection()) return;
 
   if (!m_game_view.hasPieceOnSquare(sqStart)) return;
+  if (!m_dragging) return;  // kein Drag ohne gültigen Start
 
+  // Falls noch nicht selektiert (Sicherheit), selektieren
   if (m_selected_sq != sqStart) {
-    deselectSquare();
+    m_game_view.clearAllHighlights();
+    highlightLastMove();
     selectSquare(sqStart);
     showAttacks(getAttackSquares(sqStart));
   }
 
   if (m_hover_sq != sqMous) dehoverSquare();
-
   hoverSquare(sqMous);
 
-  auto size = m_game_view.getPieceSize(sqStart);
-  auto window = m_game_view.getWindowSize();
-  float halfW = size.x / 2.f;
-  float halfH = size.y / 2.f;
-  float clampedX =
-      std::clamp(static_cast<float>(current.x), halfW, static_cast<float>(window.x) - halfW);
-  float clampedY =
-      std::clamp(static_cast<float>(current.y), halfH, static_cast<float>(window.y) - halfH);
-  core::MousePos clamped{static_cast<unsigned int>(clampedX), static_cast<unsigned int>(clampedY)};
-
-  m_game_view.setPieceToMouseScreenPos(sqStart, clamped);
+  m_game_view.setPieceToMouseScreenPos(sqStart, current);
   m_game_view.playPiecePlaceHolderAnimation(sqStart);
 }
 
@@ -325,15 +401,13 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
 
   dehoverSquare();
 
-  if (m_game_view.isInPromotionSelection()) {
-    m_game_view.removePromotionSelection();
-    if (m_game_manager) m_game_manager->completePendingPromotion(core::PieceType::None);
-    deselectSquare();
-    return;
-  }
+  if (m_game_view.isInPromotionSelection()) return;
 
   if (!m_game_view.hasPieceOnSquare(from)) {
     deselectSquare();
+    // Preview aufräumen
+    m_preview_active = false;
+    m_prev_selected_before_preview = core::NO_SQUARE;
     return;
   }
   m_game_view.endAnimation(from);
@@ -351,11 +425,30 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
           m_chess_game.getKingSquare(m_chess_game.getGameState().sideToMove));
       m_sound_manager.playWarning();
     }
+
+    // Figur zurückschnappen (ohne 'selectSquare(from)' zu erzwingen)
     m_game_view.setPieceToSquareScreenPos(from, from);
-    selectSquare(from);
-    snapAndReturn(from, end);
-    showAttacks(getAttackSquares(from));
+    m_game_view.animationSnapAndReturn(from, end);
+
+    if (m_preview_active && m_prev_selected_before_preview != core::NO_SQUARE &&
+        m_prev_selected_before_preview != from) {
+      // Ursprüngliche Auswahl & Attack-Highlights wiederherstellen
+      m_game_view.clearAllHighlights();
+      highlightLastMove();
+      selectSquare(m_prev_selected_before_preview);
+      showAttacks(getAttackSquares(m_prev_selected_before_preview));
+    } else {
+      // Kein Preview-Fall: Selektion am 'from' belassen (wie chess.com)
+      m_game_view.clearAllHighlights();
+      highlightLastMove();
+      selectSquare(from);
+      showAttacks(getAttackSquares(from));
+    }
   }
+
+  // Preview-Flags IMMER aufräumen (egal ob accepted oder nicht)
+  m_preview_active = false;
+  m_prev_selected_before_preview = core::NO_SQUARE;
 }
 
 }  // namespace lilia::controller

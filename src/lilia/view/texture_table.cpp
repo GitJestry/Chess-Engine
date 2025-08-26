@@ -201,11 +201,11 @@ void main()
   rt.create(size, size);
   rt.clear(sf::Color::Transparent);
 
-  float thickness = size / 6.f;
+  float thickness = size / 8.f;
   sf::RectangleShape rect(sf::Vector2f(size - thickness, size - thickness));
   rect.setPosition(thickness / 2.f, thickness / 2.f);
   rect.setFillColor(sf::Color::Transparent);
-  rect.setOutlineColor(sf::Color(255, 200, 80));
+  rect.setOutlineColor(sf::Color(255, 255, 255, 230));
   rect.setOutlineThickness(thickness);
 
   rt.draw(rect);

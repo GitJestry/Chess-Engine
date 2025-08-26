@@ -3,6 +3,7 @@
 #include <SFML/Graphics/Image.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <iostream>
+#include <limits>
 
 namespace lilia::view {
 
@@ -152,9 +153,39 @@ void GameView::showGameOver(core::GameResult res, core::Color sideToMove) {
   std::cout << std::endl;
 }
 
+static inline int normalizeUnsignedToSigned(unsigned int u) {
+  // Mappe 0..INT_MAX -> 0..INT_MAX, und (INT_MAX+1 .. UINT_MAX) -> negative Werte
+  if (u <= static_cast<unsigned int>(std::numeric_limits<int>::max())) return static_cast<int>(u);
+  // -(UINT_MAX - u + 1)  (zweierkomplement-konsistent)
+  return -static_cast<int>((std::numeric_limits<unsigned int>::max() - u) + 1u);
+}
+// clamp eines int auf inklusiven Bereich [lo, hi], hi >= lo
+constexpr int clampInt(int v, int lo, int hi) noexcept {
+  return (v < lo) ? lo : (v > hi ? hi : v);
+}
+
+core::MousePos GameView::clampPosToWindowSize(core::MousePos mousePos) const noexcept {
+  // 1) Unsigned -> Signed normalisieren (gegen negative Mauswerte außerhalb des Fensters)
+  const int sx = normalizeUnsignedToSigned(mousePos.x);
+  const int sy = normalizeUnsignedToSigned(mousePos.y);
+
+  // 2) Reale Fenstergröße holen (Methode MUSS const sein!)
+  const auto window = getWindowSize();
+
+  // inklusiver Pixelbereich: 0 .. width-1 / height-1
+  const int maxX = std::max(0, static_cast<int>(window.x) - 1);
+  const int maxY = std::max(0, static_cast<int>(window.y) - 1);
+
+  const int cx = clampInt(sx, 0, maxX);
+  const int cy = clampInt(sy, 0, maxY);
+
+  // 3) Nach Clamp garantiert >= 0 -> sicher auf unsigned
+  return {static_cast<unsigned>(cx), static_cast<unsigned>(cy)};
+}
+
 [[nodiscard]] core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
-  int file = mousePos.x / constant::SQUARE_PX_SIZE;
-  int rankSFML = mousePos.y / constant::SQUARE_PX_SIZE;
+  int file = clampPosToWindowSize(mousePos).x / constant::SQUARE_PX_SIZE;
+  int rankSFML = clampPosToWindowSize(mousePos).y / constant::SQUARE_PX_SIZE;
 
   int rankFromWhite = 7 - rankSFML;
 
@@ -167,7 +198,7 @@ void GameView::showGameOver(core::GameResult res, core::Color sideToMove) {
 }
 
 void GameView::setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos) {
-  m_piece_manager.setPieceToScreenPos(pos, mousePos);
+  m_piece_manager.setPieceToScreenPos(pos, clampPosToWindowSize(mousePos));
 }
 void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
   m_piece_manager.setPieceToSquareScreenPos(from, to);
