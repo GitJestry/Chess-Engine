@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <optional>
 
 #include "../constants.hpp"
 #include "move_generator.hpp"
@@ -24,7 +25,7 @@ class ChessGame {
   bb::Piece getPiece(core::Square sq);
   const GameState& getGameState();
   std::vector<Move> generateLegalMoves();
-  const Move& getMove(core::Square from, core::Square to);
+  std::optional<Move> getMove(core::Square from, core::Square to);
   bool isKingInCheck(core::Color from) const;
   core::Square getRookSquareFromCastleside(CastleSide castleSide, core::Color side);
   core::Square getKingSquare(core::Color color);
