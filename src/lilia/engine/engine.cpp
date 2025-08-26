@@ -31,7 +31,7 @@ Engine::~Engine() {
 std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxDepth,
                                                   std::shared_ptr<std::atomic<bool>> stop) {
   if (maxDepth <= 0) maxDepth = pimpl->cfg.maxDepth;
-
+  return std::nullopt;
   pimpl->search->search_root_parallel(pos, maxDepth, stop, pimpl->cfg.threads);
 
   return pimpl->search->getStats().bestMove;

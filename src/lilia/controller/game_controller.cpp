@@ -92,11 +92,13 @@ void GameController::onMouseMove(core::MousePos pos) {
 
 void GameController::onMousePressed(core::MousePos pos) {
   m_mouse_down = true;
+
   core::Square sq = m_game_view.mousePosToSquare(pos);
-  if (m_game_view.hasPieceOnSquare(sq))
+  if (m_game_view.hasPieceOnSquare(sq)) {
     m_game_view.setHandClosedCursor();
-  else
+  } else {
     m_game_view.setDefaultCursor();
+  }
 }
 
 void GameController::onMouseReleased(core::MousePos pos) {
@@ -311,8 +313,7 @@ void GameController::onDrag(core::MousePos start, core::MousePos current) {
       std::clamp(static_cast<float>(current.x), halfW, static_cast<float>(window.x) - halfW);
   float clampedY =
       std::clamp(static_cast<float>(current.y), halfH, static_cast<float>(window.y) - halfH);
-  core::MousePos clamped{static_cast<unsigned int>(clampedX),
-                         static_cast<unsigned int>(clampedY)};
+  core::MousePos clamped{static_cast<unsigned int>(clampedX), static_cast<unsigned int>(clampedY)};
 
   m_game_view.setPieceToMouseScreenPos(sqStart, clamped);
   m_game_view.playPiecePlaceHolderAnimation(sqStart);
