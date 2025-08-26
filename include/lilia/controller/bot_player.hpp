@@ -1,9 +1,5 @@
 #pragma once
 
-#include <chrono>
-#include <memory>
-#include <thread>
-
 #include "player.hpp"
 
 namespace lilia::controller {

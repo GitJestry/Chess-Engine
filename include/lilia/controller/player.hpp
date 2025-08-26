@@ -3,7 +3,11 @@
 #include <atomic>
 #include <future>
 
-#include "../model/chess_game.hpp"
+
+namespace lilia::model {
+class ChessGame;
+struct Move;
+}  // namespace lilia::model
 
 namespace lilia::controller {
 

@@ -7,9 +7,12 @@
 #include <vector>
 
 #include "../model/move.hpp"
-#include "../model/chess_game.hpp"
 #include "engine.hpp"
 #include "search.hpp"
+
+namespace lilia::model {
+class ChessGame;
+}  // namespace lilia::model
 
 namespace lilia::engine {
 
