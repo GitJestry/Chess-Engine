@@ -396,19 +396,46 @@ int Search::search_root_parallel(model::Position& pos, int depth,
   std::vector<RootResult> completedResults;
   completedResults.reserve(legal.size());
 
-  auto spawn_worker = [&](model::Move m, model::Position child) {
-    return std::async(std::launch::async,
-                      [this, child = std::move(child), m = std::move(m), depth, stop]() mutable {
-                        RootResult rr{};
-                        Search worker(this->tt, this->evalFactory, this->cfg);
-                        worker.stopFlag = stop;
-                        model::Move ref;
-                        int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
-                        rr.score = score;
-                        rr.move = std::move(m);
-                        rr.stats = worker.getStatsCopy();
-                        return rr;
-                      });
+  // helper to spawn a worker thread using promise/future so we can join reliably
+  auto spawn_worker = [&](model::Move m, model::Position child, std::atomic<bool>* stopPtr) {
+    std::promise<RootResult> prom;
+    auto fut = prom.get_future();
+
+    std::thread th([this, child = std::move(child), m = std::move(m), depth, stopPtr,
+                    p = std::move(prom)]() mutable {
+      // note: promise was moved into lambda capture (named 'p')
+      try {
+        RootResult rr{};
+        Search worker(this->tt, this->evalFactory, this->cfg);
+        worker.stopFlag = stopPtr;  // safe copy of pointer
+        model::Move ref;
+        int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+        rr.score = score;
+        rr.move = std::move(m);
+        rr.stats = worker.getStats();
+        p.set_value(std::move(rr));
+      } catch (const SearchStoppedException& e) {
+        std::cout << "spawn worker search stopped" << std::endl;
+        try {
+          p.set_exception(std::make_exception_ptr(e));
+        } catch (...) {
+          // ignore set_exception failure
+        }
+      } catch (const std::exception& e) {
+        try {
+          p.set_exception(std::make_exception_ptr(e));
+        } catch (...) {
+        }
+      } catch (...) {
+        try {
+          p.set_exception(std::make_exception_ptr(std::runtime_error("unknown worker exception")));
+        } catch (...) {
+        }
+      }
+    });
+
+    running.emplace_back(std::move(th), std::move(fut));
+
   };
 
   
@@ -516,7 +543,9 @@ int Search::search_root_parallel(model::Position& pos, int depth,
   return stats.bestScore;
 }
 
-SearchStats Search::getStatsCopy() const {
+// snapshot stats
+const SearchStats& Search::getStats() const {
+
   return stats;
 }
 

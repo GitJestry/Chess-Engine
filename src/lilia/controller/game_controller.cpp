@@ -160,7 +160,7 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 }
 
 [[nodiscard]] bool GameController::isPromotion(core::Square a, core::Square b) {
-  for (auto m : m_chess_game.generateLegalMoves()) {
+  for (const auto& m : m_chess_game.generateLegalMoves()) {
     if (m.from == a && m.to == b && m.promotion != core::PieceType::None) return true;
   }
   return false;
@@ -172,7 +172,7 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 [[nodiscard]] std::vector<core::Square> GameController::getAttackSquares(
     core::Square pieceSQ) const {
   std::vector<core::Square> att;
-  for (auto m : m_chess_game.generateLegalMoves()) {
+  for (const auto& m : m_chess_game.generateLegalMoves()) {
     if (m.from == pieceSQ) att.push_back(m.to);
   }
   return att;

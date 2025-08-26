@@ -37,13 +37,13 @@ std::optional<model::Move> Engine::find_best_move(
 
   pimpl->search->search_root_parallel(pos, maxDepth, stop, pimpl->cfg.threads);
 
-  return pimpl->search->getStatsCopy().bestMove;
+  return pimpl->search->getStats().bestMove;
 }
 
-SearchStats Engine::getLastSearchStats() const {
-  return pimpl->search->getStatsCopy();
+const SearchStats& Engine::getLastSearchStats() const {
+  return pimpl->search->getStats();
 }
-EngineConfig Engine::getConfig() const {
+const EngineConfig& Engine::getConfig() const {
   return pimpl->cfg;
 }
 
