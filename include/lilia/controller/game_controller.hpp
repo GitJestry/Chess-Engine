@@ -28,10 +28,9 @@ namespace lilia::controller {
 
 class GameController {
  public:
-  
   explicit GameController(view::GameView& gView, model::ChessGame& game);
+  ~GameController();
 
-  
   void update(float dt);
 
   

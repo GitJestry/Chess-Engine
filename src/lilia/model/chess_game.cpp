@@ -52,12 +52,13 @@ void ChessGame::doMoveUCI(const std::string& uciMove) {
   doMove(from, to, promo);
 }
 
-Move ChessGame::getMove(core::Square from, core::Square to) {
- int side = bb::ci(m_position.getState().sideToMove);
+std::optional<Move> ChessGame::getMove(core::Square from, core::Square to) {
+  int side = bb::ci(m_position.getState().sideToMove);
   const auto& moves = generateLegalMoves();
-  for (const auto& m : moves)
-
-    if (m.from == from && m.to == to) return m;
+  for (const auto& m : moves) {
+    if (m.from == from && m.to == to) {
+      return m;
+    }
   }
   return std::nullopt;
 }
@@ -145,7 +146,7 @@ const std::vector<Move>& ChessGame::generateLegalMoves() {
   int side = bb::ci(m_position.getState().sideToMove);
   m_pseudo_moves.clear();
   m_legal_moves.clear();
-  m_move_gen.generatePseudoLegalMoves(m_position.board(), m_position.state(), m_pseudo_moves);
+  m_move_gen.generatePseudoLegalMoves(m_position.getBoard(), m_position.getState(), m_pseudo_moves);
   for (const auto& m : m_pseudo_moves) {
     if (m_position.doMove(m)) {
       m_position.undoMove();

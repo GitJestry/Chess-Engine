@@ -27,7 +27,7 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
   m_game_manager = std::make_unique<GameManager>(game);
 
   // Callback: wenn GameManager einen Move ausgeführt hat -> Animation & Sound
-  m_gameManager->setOnMoveExecuted([this](const model::Move& mv, bool isPlayerMove, bool onClick) {
+  m_game_manager->setOnMoveExecuted([this](const model::Move& mv, bool isPlayerMove, bool onClick) {
     
     this->movePieceAndClear(mv, isPlayerMove, onClick);
     this->m_chess_game.checkGameResult();
@@ -41,10 +41,12 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
   // Callback: Spielende
   m_game_manager->setOnGameEnd([this](core::GameResult res) {
     // Annahme: GameView hat eine passende Anzeige-Methode (ansonsten anpassen).
-    this->m_gameView.showGameOver(res, m_chess_game.getGameState().sideToMove);
+    this->m_game_view.showGameOver(res, m_chess_game.getGameState().sideToMove);
     this->m_sound_manager.playGameEnds();
   });
 }
+
+GameController::~GameController() = default;
 
 void GameController::startGame(core::Color playerColor, const std::string& fen, bool vsBot,
                                int think_time_ms, int depth) {
@@ -225,7 +227,7 @@ void GameController::onClick(core::MousePos mousePos) {
       m_chess_game.getPiece(m_selected_sq).color == m_player_color &&
       tryMove(m_selected_sq, sq)) {
     if (m_game_manager) {
-      bool accepted = m_gameManager->requestUserMove(m_selected_sq, sq, true);
+      bool accepted = m_game_manager->requestUserMove(m_selected_sq, sq, true);
       if (!accepted) {
 
         deselectSquare();

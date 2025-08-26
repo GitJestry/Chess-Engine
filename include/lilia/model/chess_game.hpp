@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <optional>
 
 
 #include "../constants.hpp"
@@ -26,7 +27,7 @@ class ChessGame {
   bb::Piece getPiece(core::Square sq);
   const GameState& getGameState();
   const std::vector<Move>& generateLegalMoves();
-  Move getMove(core::Square from, core::Square to);
+  std::optional<Move> getMove(core::Square from, core::Square to);
 
   bool isKingInCheck(core::Color from) const;
   core::Square getRookSquareFromCastleside(CastleSide castleSide, core::Color side);

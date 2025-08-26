@@ -1,5 +1,3 @@
-#pragma once
-
 #include "lilia/model/core/magic.hpp"
 
 #include <algorithm>

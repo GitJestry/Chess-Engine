@@ -1,7 +1,7 @@
-#include "lilia/uci/UCI.hpp"
+#include "lilia/uci/uci.hpp"
 
 #ifdef LILIA_UI
-#include "lilia/app/App.hpp"
+#include "lilia/app/app.hpp"
 #endif
 
 int main() {

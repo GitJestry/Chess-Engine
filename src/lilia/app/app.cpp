@@ -1,6 +1,7 @@
 #include "lilia/app/app.hpp"
 
 #include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Window/Event.hpp>
 #include <algorithm>
 #include <cctype>
 #include <iostream>
@@ -52,8 +53,8 @@ void App::promptStartOptions() {
   std::string playerColorInput;
   std::getline(std::cin, playerColorInput);
   std::string normalizedColor = toLower(trim(playerColorInput));
-  m_playerColor = (normalizedColor == "black" || normalizedColor == "b") ?
-                      core::Color::Black : core::Color::White;
+  m_player_color = (normalizedColor == "black" || normalizedColor == "b") ?
+                       core::Color::Black : core::Color::White;
 
   std::cout << "Enemy is bot? (yes / no) [Standard: yes]: ";
   std::string botInput;
@@ -113,8 +114,8 @@ int App::run() {
     lilia::controller::GameController gameController(gameView, chessGame);
 
     // start the game using GameController wrapper that delegates to GameManager
-    gController.startGame(m_playerColor, m_startFen, m_vs_bot, m_think_time_ms,
-                          m_search_depth);
+    gameController.startGame(m_player_color, m_start_fen, m_vs_bot, m_thinkTimeMs,
+                             m_searchDepth);
 
     sf::Clock clock;
     while (window.isOpen()) {
