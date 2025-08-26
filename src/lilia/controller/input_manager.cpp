@@ -24,28 +24,27 @@ void InputManager::processEvent(const sf::Event& event) {
       if (event.mouseButton.button == sf::Mouse::Left) {
         m_drag_start = core::MousePos(event.mouseButton.x, event.mouseButton.y);
         m_dragging = true;
+        if (!m_moved) m_on_drag(m_drag_start.value(), m_drag_start.value());
       }
       break;
 
     case sf::Event::MouseMoved:
       if (m_dragging && m_drag_start) {
         core::MousePos currentPos(event.mouseMove.x, event.mouseMove.y);
-        if (m_on_drag) m_on_drag(m_drag_start.value(), currentPos);
+        if (m_on_drag) {
+          m_moved = true;
+          m_on_drag(m_drag_start.value(), currentPos);
+        }
       }
       break;
-
     case sf::Event::MouseButtonReleased:
       if (event.mouseButton.button == sf::Mouse::Left && m_dragging && m_drag_start) {
         core::MousePos dropPos(event.mouseButton.x, event.mouseButton.y);
-
-        if (isClick(m_drag_start.value(), dropPos)) {
-          if (m_on_click) m_on_click(dropPos);
-        } else {
-          if (m_on_drop) m_on_drop(m_drag_start.value(), dropPos);
-        }
+        if (m_on_drop) m_on_drop(m_drag_start.value(), dropPos);
 
         m_drag_start.reset();
         m_dragging = false;
+        m_moved = false;
       }
       break;
 

@@ -48,7 +48,7 @@ void GameManager::update([[maybe_unused]] float dt) {
   std::lock_guard lock(m_mutex);
   using namespace std::chrono_literals;
   if (m_bot_future.valid()) {
-    if (m_bot_future.wait_for(0ms) == std::future_status::ready) {
+    if (m_bot_future.wait_for(1ms) == std::future_status::ready) {
       model::Move mv = m_bot_future.get();
 
       m_bot_future = std::future<model::Move>();

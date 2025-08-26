@@ -4,6 +4,7 @@ namespace sf {
 class Event;
 }
 
+#include <chrono>
 #include <functional>
 #include <optional>
 
@@ -20,15 +21,14 @@ class InputManager {
   using DropCallback = std::function<void(core::MousePos start, core::MousePos end)>;
 
   void setOnClick(ClickCallback cb);
-
   void setOnDrag(DragCallback cb);
-
   void setOnDrop(DropCallback cb);
 
   void processEvent(const sf::Event& event);
 
  private:
   bool m_dragging = false;                     ///< Indicates whether a drag operation is active.
+  bool m_moved = false;
   std::optional<core::MousePos> m_drag_start;  ///< Starting position of an active drag.
 
   ClickCallback m_on_click = nullptr;  ///< Registered click callback.
