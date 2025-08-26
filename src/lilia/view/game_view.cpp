@@ -15,12 +15,14 @@ GameView::GameView(sf::RenderWindow& window)
   m_cursor_default.loadFromSystem(sf::Cursor::Arrow);
 
   sf::Image openImg;
-  if (openImg.loadFromFile("assets/textures/cursor_hand_open.png")) {
-    m_cursor_hand_open.loadFromPixels(openImg.getPixelsPtr(), openImg.getSize(), {0, 0});
+  if (openImg.loadFromFile(constant::STR_FILE_PATH_HAND_OPEN)) {
+    m_cursor_hand_open.loadFromPixels(openImg.getPixelsPtr(), openImg.getSize(),
+                                      {openImg.getSize().x / 2, openImg.getSize().y / 2});
   }
   sf::Image closedImg;
-  if (closedImg.loadFromFile("assets/textures/cursor_hand_closed.png")) {
-    m_cursor_hand_closed.loadFromPixels(closedImg.getPixelsPtr(), closedImg.getSize(), {0, 0});
+  if (closedImg.loadFromFile(constant::STR_FILE_PATH_HAND_CLOSED)) {
+    m_cursor_hand_closed.loadFromPixels(closedImg.getPixelsPtr(), closedImg.getSize(),
+                                        {openImg.getSize().x / 2, openImg.getSize().y / 2});
   }
   m_window.setMouseCursor(m_cursor_default);
 }
@@ -151,18 +153,16 @@ void GameView::showGameOver(core::GameResult res, core::Color sideToMove) {
 }
 
 [[nodiscard]] core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
-  int file = mousePos.x / constant::SQUARE_PX_SIZE;      
-  int rankSFML = mousePos.y / constant::SQUARE_PX_SIZE;  
+  int file = mousePos.x / constant::SQUARE_PX_SIZE;
+  int rankSFML = mousePos.y / constant::SQUARE_PX_SIZE;
 
   int rankFromWhite = 7 - rankSFML;
 
-  
   if (file < 0) file = 0;
   if (file > 7) file = 7;
   if (rankFromWhite < 0) rankFromWhite = 0;
   if (rankFromWhite > 7) rankFromWhite = 7;
 
-  
   return static_cast<core::Square>(rankFromWhite * 8 + file);
 }
 
@@ -172,14 +172,22 @@ void GameView::setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePo
 void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
   m_piece_manager.setPieceToSquareScreenPos(from, to);
 }
-void GameView::setDefaultCursor() { m_window.setMouseCursor(m_cursor_default); }
-void GameView::setHandOpenCursor() { m_window.setMouseCursor(m_cursor_hand_open); }
-void GameView::setHandClosedCursor() { m_window.setMouseCursor(m_cursor_hand_closed); }
+void GameView::setDefaultCursor() {
+  m_window.setMouseCursor(m_cursor_default);
+}
+void GameView::setHandOpenCursor() {
+  m_window.setMouseCursor(m_cursor_hand_open);
+}
+void GameView::setHandClosedCursor() {
+  m_window.setMouseCursor(m_cursor_hand_closed);
+}
 
-sf::Vector2u GameView::getWindowSize() const { return m_window.getSize(); }
+sf::Vector2u GameView::getWindowSize() const {
+  return m_window.getSize();
+}
 
 Entity::Position GameView::getPieceSize(core::Square pos) const {
   return m_piece_manager.getPieceSize(pos);
 }
 
-}  
+}  // namespace lilia::view
