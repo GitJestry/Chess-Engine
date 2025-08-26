@@ -99,19 +99,21 @@ struct PrecomputedMasks {
   std::array<Bitboard, 64> adjacent_files;
   std::array<Bitboard, 64> pawn_front_white;
   std::array<Bitboard, 64> pawn_front_black;
-  bool ready = false;
-} masks;
+};
+
+static PrecomputedMasks masks;
+static std::once_flag masks_once;
 
 static void init_masks_if_needed() {
-  if (masks.ready) return;
-  for (int sq = 0; sq < 64; ++sq) {
-    Bitboard b = sq_bb(static_cast<core::Square>(sq));
-    int f = sq_file(sq);
-    int r = sq_rank(sq);
+  std::call_once(masks_once, []() {
+    for (int sq = 0; sq < 64; ++sq) {
+      Bitboard b = sq_bb(static_cast<core::Square>(sq));
+      int f = sq_file(sq);
+      int r = sq_rank(sq);
 
-    Bitboard fm = 0;
-    for (int rr = 0; rr < 8; ++rr) fm |= sq_bb(static_cast<core::Square>((rr << 3) | f));
-    masks.file_mask[sq] = fm;
+      Bitboard fm = 0;
+      for (int rr = 0; rr < 8; ++rr) fm |= sq_bb(static_cast<core::Square>((rr << 3) | f));
+      masks.file_mask[sq] = fm;
 
     Bitboard adj = 0;
     if (f > 0)
@@ -140,7 +142,7 @@ static void init_masks_if_needed() {
     for (int rr = r - 1; rr >= 0; --rr) span_b |= sq_bb(static_cast<core::Square>((rr << 3) | f));
     masks.pawn_front_black[sq] = span_b;
   }
-  masks.ready = true;
+  });
 }
 
 // ---------- Highly optimized Subkomponenten ----------
