@@ -54,4 +54,4 @@ void AnimationManager::highlightLevelDraw(sf::RenderWindow& window) {
   for (auto& [id, anim] : m_highlight_level_animations) anim->draw(window);
 }
 
-}  // namespace lilia::view::animation
+}  
