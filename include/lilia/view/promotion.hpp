@@ -15,4 +15,4 @@ class Promotion : public Entity {
   core::PieceType m_type;
 };
 
-}  // namespace lilia::view
+}  

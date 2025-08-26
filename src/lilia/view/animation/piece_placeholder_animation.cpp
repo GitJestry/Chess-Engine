@@ -12,4 +12,4 @@ void PiecePlaceholderAnim::draw(sf::RenderWindow& window) {
   return false;
 }
 
-};  // namespace lilia::view::animation
+};  

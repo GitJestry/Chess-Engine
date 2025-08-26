@@ -24,4 +24,4 @@ class SnapToSquareAnim : public IAnimation {
   bool m_finish = false;
 };
 
-}  // namespace lilia::view::animation
+}  

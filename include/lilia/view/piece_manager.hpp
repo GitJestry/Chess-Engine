@@ -9,7 +9,6 @@
 
 namespace lilia::view {
 
-// forward decleration
 namespace animation {
 class ChessAnimator;
 }
@@ -43,4 +42,4 @@ class PieceManager {
   std::unordered_map<core::Square, Piece> m_pieces;
 };
 
-}  // namespace lilia::view
+}  

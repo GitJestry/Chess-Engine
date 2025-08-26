@@ -1,4 +1,4 @@
-// src/lilia/uci/uci.cpp
+
 #include "lilia/uci/uci.hpp"
 
 #include <algorithm>
@@ -15,11 +15,10 @@
 
 #include "lilia/engine/bot_engine.hpp"
 #include "lilia/model/chess_game.hpp"
-#include "lilia/uci/uci_helper.hpp"  // move_to_uci
+#include "lilia/uci/uci_helper.hpp"  
 
 namespace lilia {
 
-// split by whitespace
 static std::vector<std::string> split_ws(const std::string& s) {
   std::istringstream iss(s);
   std::vector<std::string> out;
@@ -72,23 +71,22 @@ void UCI::setOption(const std::string& line) {
 
   static std::map<std::string, std::string> options;
   options[name] = value;
-  // optional: map options to engine config if you expose setters later
+  
 }
 
-// UCI run: verwendet BotEngine direkt (kein controller)
 int UCI::run() {
   std::string line;
 
-  // search state
+  
   std::mutex stateMutex;
   std::future<lilia::model::Move> searchFuture;
   std::thread printerThread;
   std::atomic<bool> cancelToken(false);
   bool searchRunning = false;
 
-  // local engine instance not in controller
-  // We will create an engine per-search (stateless) or reuse one as needed.
-  // Here we create per-search to avoid thread-safety concerns.
+  
+  
+  
   while (std::getline(std::cin, line)) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty()) continue;
@@ -116,7 +114,7 @@ int UCI::run() {
     }
 
     if (cmd == "ucinewgame") {
-      // optional: reset engine state if you keep persistent engine
+      
       continue;
     }
 
@@ -159,7 +157,7 @@ int UCI::run() {
         }
       }
 
-      // stop running search if any
+      
       {
         std::lock_guard<std::mutex> lk(stateMutex);
         if (searchRunning) {
@@ -170,28 +168,28 @@ int UCI::run() {
         }
       }
 
-      // determine time to think (milliseconds). If movetime given use it, else if infinite use 0
-      // (no timer), else 0
+      
+      
       int thinkMillis = (movetime > 0 ? movetime : 0);
 
-      // Start asynchronous search using engine::BotEngine synchronously inside async
+      
       cancelToken.store(false);
       {
         std::lock_guard<std::mutex> lk(stateMutex);
-        // use std::async to run the engine call in background
+        
         searchFuture = std::async(
             std::launch::async, [this, depth, thinkMillis, &cancelToken]() -> model::Move {
               lilia::engine::BotEngine engine;
               auto res = engine.findBestMove(const_cast<model::ChessGame&>(m_game),
-                                             (depth > 0 ? depth : /*some default*/ 0), thinkMillis,
+                                             (depth > 0 ? depth :  0), thinkMillis,
                                              &cancelToken);
               if (res.bestMove.has_value()) return res.bestMove.value();
-              return model::Move{};  // invalid move if none
+              return model::Move{};  
             });
 
         searchRunning = true;
 
-        // printer thread: wait for future and print bestmove
+        
         printerThread = std::thread([&searchFuture, &stateMutex, &searchRunning, &cancelToken]() {
           model::Move best;
           try {
@@ -203,9 +201,9 @@ int UCI::run() {
           if (best.from >= 0 && best.to >= 0) {
             std::cout << "bestmove " << move_to_uci(best) << "\n";
           } else {
-            // UCI requires a move; if none found, send bestmove with invalid (but better send
-            // resign?) We'll send bestmove 0000 (some GUIs might treat it as invalid) —
-            // alternative: pick a legal move before returning.
+            
+            
+            
             std::cout << "bestmove 0000\n";
           }
 
@@ -218,7 +216,7 @@ int UCI::run() {
       }
 
       continue;
-    }  // end go
+    }  
 
     if (cmd == "stop") {
       cancelToken.store(true);
@@ -236,10 +234,10 @@ int UCI::run() {
       break;
     }
 
-    // unknown command -> ignore
-  }  // while getline
+    
+  }  
 
-  // cleanup
+  
   {
     std::lock_guard<std::mutex> lk(stateMutex);
     if (searchRunning && printerThread.joinable()) printerThread.join();
@@ -248,4 +246,4 @@ int UCI::run() {
   return 0;
 }
 
-}  // namespace lilia
+}  
