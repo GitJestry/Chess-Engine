@@ -18,24 +18,24 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
       [this](core::MousePos start, core::MousePos end) { this->onDrop(start, end); });
 
   m_sound_manager.loadSounds();
-  // ------- GameManager initialisieren -------
+  
   m_gameManager = std::make_unique<GameManager>(game);
 
-  // Callback: wenn GameManager einen Move ausgeführt hat -> Animation & Sound
+  
   m_gameManager->setOnMoveExecuted([this](const model::Move& mv, bool isPlayerMove, bool onClick) {
-    // GameManager hat das Model bereits aktualisiert -> wir animieren & spielen Sound
+    
     this->movePieceAndClear(mv, isPlayerMove, onClick);
     this->m_chess_game.checkGameResult();
   });
 
-  // Callback: Promotion UI anstoßen
+  
   m_gameManager->setOnPromotionRequested([this](core::Square sq) {
     this->m_gameView.playPromotionSelectAnim(sq, m_chess_game.getGameState().sideToMove);
   });
 
-  // Callback: Spielende
+  
   m_gameManager->setOnGameEnd([this](core::GameResult res) {
-    // Annahme: GameView hat eine passende Anzeige-Methode (ansonsten anpassen).
+    
     this->m_gameView.showGameOver(res, m_chess_game.getGameState().sideToMove);
     this->m_sound_manager.playGameEnds();
   });
@@ -58,7 +58,7 @@ void GameController::render() {
 void GameController::update(float dt) {
   if (m_chess_game.getResult() == core::GameResult::ONGOING) {
     m_gameView.update(dt);
-    if (m_gameManager) m_gameManager->update(dt);  // Poll bot futures & lifecycle
+    if (m_gameManager) m_gameManager->update(dt);  
   }
 }
 
@@ -104,13 +104,13 @@ void GameController::movePieceAndClear(const model::Move& move, bool isPlayerMov
       dEnPassantSquare = to + 8;
   }
 
-  // move animation
+  
   if (onClick)
     m_gameView.animationMovePiece(from, to, dEnPassantSquare, move.promotion);
   else
     m_gameView.animationDropPiece(from, to, dEnPassantSquare, move.promotion);
 
-  // castling rook animation (falls relevant)
+  
   if (move.castle != model::CastleSide::None) {
     core::Square rookSquare =
         m_chess_game.getRookSquareFromCastleside(move.castle, sideToTurnBeforeMove);
@@ -122,12 +122,12 @@ void GameController::movePieceAndClear(const model::Move& move, bool isPlayerMov
     m_gameView.animationMovePiece(rookSquare, newRookSquare);
   }
 
-  // visual highlight
+  
   m_lastMoveSquares = {from, to};
   deselectSquare();
   highlightLastMove();
 
-  // Sound check: Model wurde bereits aktualisiert -> wir können aktuelle Checks abfragen
+  
   if (m_chess_game.isKingInCheck(sideToTurnAfterMove)) {
     m_sound_manager.playCheck();
   } else {
@@ -198,7 +198,7 @@ void GameController::onClick(core::MousePos mousePos) {
     return;
   }
 
-  // Keine Auswahl
+  
   if (m_selected_sq == core::NO_SQUARE) {
     if (m_gameView.hasPieceOnSquare(sq) &&
         m_chess_game.getPiece(sq).color == m_chess_game.getGameState().sideToMove) {
@@ -208,21 +208,21 @@ void GameController::onClick(core::MousePos mousePos) {
     return;
   }
 
-  // Gleiche Figur angeklickt → deselect
+  
   if (m_selected_sq == sq) {
     snapAndReturn(sq, mousePos);
     deselectSquare();
     return;
   }
 
-  // Versuch eines Zugs: an GameManager delegieren
+  
   if (tryMove(m_selected_sq, sq)) {
-    // GameManager kümmert sich um Promotion event bzw. Anwendung des Moves
+    
     if (m_gameManager) {
       bool accepted = m_gameManager->requestUserMove(m_selected_sq, sq, true);
       if (!accepted) {
-        // Entweder Promotion angefragt (GameManager wird callback feuern) oder illegal -> deselect
-        // Wir vermeiden hier doppelte Warns; View/Manager kümmert sich um UI-Feedback
+        
+        
         deselectSquare();
       }
     }
@@ -302,4 +302,4 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
   }
 }
 
-}  // namespace lilia::controller
+}  

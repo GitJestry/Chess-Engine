@@ -1,21 +1,18 @@
 #include "lilia/model/move_generator.hpp"
 
-
 #include "lilia/model/core/magic.hpp"
 
 namespace lilia::model {
 
-// MoveGenerator::generatePseudoLegalMoves - safer (no logic change)
-// ensure out has enough capacity, avoid repeated reallocation
 void MoveGenerator::generatePseudoLegalMoves(const Board& b, const GameState& st,
                                              std::vector<model::Move>& out) const {
-  // keep existing behavior but avoid unnecessary reallocations
+  
   if (out.capacity() < 128) out.reserve(128);
   out.clear();
 
   core::Color side = st.sideToMove;
 
-  // These functions should themselves avoid throwing. If they need to, we catch in caller.
+  
   genPawnMoves(b, st, side, out);
   genKnightMoves(b, side, out);
   genBishopMoves(b, side, out);
@@ -24,7 +21,6 @@ void MoveGenerator::generatePseudoLegalMoves(const Board& b, const GameState& st
   genKingMoves(b, st, side, out);
 }
 
-// ---------------- Pawn (incl. en passant generation) ----------------
 void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::Color side,
                                  std::vector<Move>& out) const {
   bb::Bitboard us = board.pieces(side);
@@ -39,25 +35,25 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
 
     bb::Bitboard dbl = bb::north(single) & ~occ & (bb::RANK_2 << 16);
 
-    // für normale (non-promotion) captures die letzte Reihe ausschließen
+    
     bb::Bitboard leftCap = (bb::nw(pawns) & them) & ~bb::RANK_8;
     bb::Bitboard rightCap = (bb::ne(pawns) & them) & ~bb::RANK_8;
 
-    // Quiet
+    
     bb::Bitboard q = quietPush;
     while (q) {
       core::Square to = bb::pop_lsb(q);
       core::Square from = to - 8;
       out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
     }
-    // Double
+    
     bb::Bitboard d = dbl;
     while (d) {
       core::Square to = bb::pop_lsb(d);
       core::Square from = to - 16;
       out.push_back({from, to, core::PieceType::None, false, false, CastleSide::None});
     }
-    // Captures (non-promotion)
+    
     bb::Bitboard lc = leftCap;
     while (lc) {
       core::Square to = bb::pop_lsb(lc);
@@ -70,7 +66,7 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
       core::Square from = to - 9;
       out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
     }
-    // Promotions (pushes)
+    
     bb::Bitboard pp = promoPush;
     while (pp) {
       core::Square to = bb::pop_lsb(pp);
@@ -79,7 +75,7 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
                                  core::PieceType::Bishop, core::PieceType::Knight})
         out.push_back({from, to, pt, false, false, CastleSide::None});
     }
-    // Promotion captures (links/rechts)
+    
     bb::Bitboard lp = (bb::nw(pawns) & them) & bb::RANK_8;
     while (lp) {
       core::Square to = bb::pop_lsb(lp);
@@ -97,10 +93,10 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
         out.push_back({from, to, pt, true, false, CastleSide::None});
     }
 
-    // En passant (if available)
+    
     if (st.enPassantSquare != core::NO_SQUARE) {
       core::Square ep = st.enPassantSquare;
-      // white can capture ep from ep-7 (right) or ep-9 (left)
+      
       if (bb::file_of(ep) > 0) {
         core::Square from = static_cast<core::Square>(ep - 9);
         if (pawns & bb::sq_bb(from))
@@ -113,14 +109,14 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
       }
     }
   } else {
-    // Black
+    
     bb::Bitboard single = bb::south(pawns) & ~occ;
     bb::Bitboard promoPush = single & bb::RANK_1;
     bb::Bitboard quietPush = single & ~bb::RANK_1;
 
     bb::Bitboard dbl = bb::south(single) & ~occ & (bb::RANK_7 >> 16);
 
-    // normale non-promotion-captures: letztes Rank ausschließen
+    
     bb::Bitboard leftCap = (bb::se(pawns) & them) & ~bb::RANK_1;
     bb::Bitboard rightCap = (bb::sw(pawns) & them) & ~bb::RANK_1;
 
@@ -149,7 +145,7 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
       out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
     }
 
-    // Promotions (pushes)
+    
     bb::Bitboard pp = promoPush;
     while (pp) {
       core::Square to = bb::pop_lsb(pp);
@@ -158,7 +154,7 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
                                  core::PieceType::Bishop, core::PieceType::Knight})
         out.push_back({from, to, pt, false, false, CastleSide::None});
     }
-    // Promotion captures (se/sw into rank 1)
+    
     bb::Bitboard lp = (bb::se(pawns) & them) & bb::RANK_1;
     while (lp) {
       core::Square to = bb::pop_lsb(lp);
@@ -193,7 +189,6 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
   }
 }
 
-// --------------- Knights ---------------
 void MoveGenerator::genKnightMoves(const Board& board, core::Color side,
                                    std::vector<Move>& out) const {
   bb::Bitboard knights = board.pieces(side, core::PieceType::Knight);
@@ -220,7 +215,6 @@ void MoveGenerator::genKnightMoves(const Board& board, core::Color side,
   }
 }
 
-// --------------- Bishops ---------------
 void MoveGenerator::genBishopMoves(const Board& board, core::Color side,
                                    std::vector<Move>& out) const {
   bb::Bitboard bishops = board.pieces(side, core::PieceType::Bishop);
@@ -248,7 +242,6 @@ void MoveGenerator::genBishopMoves(const Board& board, core::Color side,
   }
 }
 
-// --------------- Rooks ---------------
 void MoveGenerator::genRookMoves(const Board& board, core::Color side,
                                  std::vector<Move>& out) const {
   bb::Bitboard rooks = board.pieces(side, core::PieceType::Rook);
@@ -276,7 +269,6 @@ void MoveGenerator::genRookMoves(const Board& board, core::Color side,
   }
 }
 
-// --------------- Queens ---------------
 void MoveGenerator::genQueenMoves(const Board& board, core::Color side,
                                   std::vector<Move>& out) const {
   bb::Bitboard queens = board.pieces(side, core::PieceType::Queen);
@@ -305,8 +297,6 @@ void MoveGenerator::genQueenMoves(const Board& board, core::Color side,
   }
 }
 
-// --------------- King (incl. castling gen; legality is checked in Position::doMove)
-// ---------------
 void MoveGenerator::genKingMoves(const Board& board, const GameState& st, core::Color side,
                                  std::vector<Move>& out) const {
   bb::Bitboard king = board.pieces(side, core::PieceType::King);
@@ -331,17 +321,17 @@ void MoveGenerator::genKingMoves(const Board& board, const GameState& st, core::
     out.push_back({from, to, core::PieceType::None, true, false, CastleSide::None});
   }
 
-  // --- Castling (pseudo-legal pre-checks; full legality checked by Position::doMove) ---
+  
   if (side == core::Color::White) {
-    // King side: core::squares F1, G1 empty; king not currently in check; will be checked during
-    // doMove for through/into check
+    
+    
     if ((st.castlingRights & bb::WK) &&
         !(board.allPieces() &
           (bb::sq_bb(static_cast<core::Square>(5)) | bb::sq_bb(static_cast<core::Square>(6))))) {
       out.push_back({bb::E1, static_cast<core::Square>(6), core::PieceType::None, false, false,
                      CastleSide::KingSide});
     }
-    // Queen side: core::squares D1, C1, B1 empty
+    
     if ((st.castlingRights & bb::WQ) &&
         !(board.allPieces() &
           (bb::sq_bb(static_cast<core::Square>(3)) | bb::sq_bb(static_cast<core::Square>(2)) |
@@ -350,7 +340,7 @@ void MoveGenerator::genKingMoves(const Board& board, const GameState& st, core::
                      CastleSide::QueenSide});
     }
   } else {
-    // Black
+    
     if ((st.castlingRights & bb::BK) &&
         !(board.allPieces() &
           (bb::sq_bb(static_cast<core::Square>(61)) | bb::sq_bb(static_cast<core::Square>(62))))) {
@@ -367,4 +357,4 @@ void MoveGenerator::genKingMoves(const Board& board, const GameState& st, core::
   }
 }
 
-}  // namespace lilia::model
+}  

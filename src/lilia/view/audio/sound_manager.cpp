@@ -16,7 +16,6 @@ void SoundManager::loadSounds() {
   loadEffect(constant::SFX_WARNING_NAME, constant::ASSET_SFX_FILE_PATH);
 }
 
-/// Play specific effects
 void SoundManager::playPlayerMove() {
   m_sounds[constant::SFX_PLAYER_MOVE_NAME].play();
 }
@@ -47,7 +46,6 @@ void SoundManager::playCastle() {
   m_sounds[constant::SFX_CASTLE_NAME].play();
 }
 
-/// Music control
 void SoundManager::playBackgroundMusic(const std::string& filename, bool loop) {
   if (!m_music.openFromFile(filename)) {
     throw std::runtime_error("Failed to open music file: " + filename);
@@ -71,14 +69,14 @@ void SoundManager::loadEffect(const std::string& name, const std::string& filepa
     throw std::runtime_error("Failed to load sound effect: " + filepath + "/" + name + ".wav");
   }
 
-  // Move buffer into map
+  
   auto [it, inserted] = m_buffers.emplace(name, std::move(buffer));
 
-  // Bind sound to buffer
+  
   sf::Sound sound;
   sound.setBuffer(it->second);
   sound.setVolume(m_effectsVolume);
   m_sounds[name] = std::move(sound);
 }
 
-}  // namespace lilia::view::sound
+}  

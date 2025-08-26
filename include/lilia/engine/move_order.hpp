@@ -11,7 +11,7 @@ inline int piece_base_value(core::PieceType pt) {
 }
 
 inline int mvv_lva_score(const model::Position& pos, const model::Move& m) {
-  // only meaningful for captures
+  
   if (!m.isCapture) return 0;
 
   const model::Board& b = pos.board();
@@ -37,4 +37,4 @@ inline int mvv_lva_score(const model::Position& pos, const model::Move& m) {
   return score;
 }
 
-}  // namespace lilia::engine
+}  

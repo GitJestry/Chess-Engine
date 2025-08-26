@@ -8,9 +8,9 @@ struct EngineConfig {
   bool useNullMove = true;
   bool useLMR = true;
   bool useAspiration = true;
-  int aspirationWindow = 25;  // centipawns
+  int aspirationWindow = 25;  
   int threads = 4;
 };
 
 static const int base_value[6] = {100, 320, 330, 500, 900, 20000};
-}  // namespace lilia::engine
+}  

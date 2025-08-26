@@ -39,4 +39,4 @@ class ChessGame {
   core::GameResult m_result;
 };
 
-}  // namespace lilia::model
+}  

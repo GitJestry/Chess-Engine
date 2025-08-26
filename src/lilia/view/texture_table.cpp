@@ -32,7 +32,7 @@ void TextureTable::load(const std::string& name, const sf::Color& color, sf::Vec
   auto it = m_textures.find(filename);
   if (it != m_textures.end()) return it->second;
 
-  // if filename hasnt been loaded yet
+  
   sf::Texture texture;
   if (!texture.loadFromFile(filename)) {
     throw std::runtime_error("Error when loading texture: " + filename);
@@ -41,15 +41,13 @@ void TextureTable::load(const std::string& name, const sf::Color& color, sf::Vec
   return m_textures[filename];
 }
 
-// -------------------------- Capture Circle (Ring) ---------------------------
-// Shader: zeichnet einen weichen Ring (innen->außen) mit leichter Schattierung.
 static const char* captureFrag = R"(
 uniform vec2 resolution;
-uniform vec4 color;    // r,g,b,a (0..1)
-uniform float centerR; // radius fraction (0..0.5) -> ring center
-uniform float halfThickness; // half thickness fraction (0..0.5)
-uniform float softness; // softness in normalized units (~px/size)
-uniform float innerShade; // shading multiplier towards inner edge
+uniform vec4 color;    
+uniform float centerR; 
+uniform float halfThickness; 
+uniform float softness; 
+uniform float innerShade; 
 
 void main()
 {
@@ -57,17 +55,17 @@ void main()
     vec2 c = vec2(0.5, 0.5);
     float d = distance(uv, c);
 
-    // Ziel: ein einheitlich gefuellter Ring mit weicher Kante
-    // Abstand vom Ringmittelpunkt (in normalized units)
+    
+    
     float distFromRing = abs(d - centerR);
 
-    // weiche Kante: von 0..halfThickness weiche Transition
+    
     float edge = smoothstep(halfThickness, halfThickness - softness, distFromRing);
 
-    // ringMask ist 1 im Ringbereich, 0 außerhalb
+    
     float ringMask = clamp(edge, 0.0, 1.0);
 
-    // leichte Abdunklung an der inneren Kante
+    
     float shade = mix(1.0, innerShade, smoothstep(0.0, halfThickness, (centerR - d)));
 
     float alpha = color.a * ringMask;
@@ -86,7 +84,7 @@ void main()
   bool shaderOk = shader.loadFromMemory(captureFrag, sf::Shader::Fragment);
 
   if (!shaderOk) {
-    // einfacher Fallback: ein Outline-Circle (kein perfekter Look, aber portabel)
+    
     float radius = size * 0.45f;
     float thickness = size * 0.1f;
     sf::CircleShape ring(radius);
@@ -94,21 +92,21 @@ void main()
     ring.setPosition(size * 0.5f, size * 0.5f);
     ring.setFillColor(sf::Color::Transparent);
     ring.setOutlineThickness(-thickness);
-    ring.setOutlineColor(sf::Color(120, 120, 120, 65));  // eher durchsichtig
+    ring.setOutlineColor(sf::Color(120, 120, 120, 65));  
     rt.draw(ring, sf::BlendAlpha);
     rt.display();
     return rt.getTexture();
   }
 
-  // Parameter: an Chess.com angenaehert
-  // Außenradius ~ 0.45 * size, Dicke ~ 0.08*size -> halfThickness = (thickness/2)/size
+  
+  
   float outerR_px = size * 0.45f;
   float thickness_px = size * 0.11f;
-  float centerR = outerR_px / (float)size;                    // zB ~0.45
-  float halfThickness = (thickness_px * 0.5f) / (float)size;  // zB ~0.04
-  float softness = 3.0f / (float)size;  // weiche Kante: ~3px (bei kleinen sizes anpassen)
+  float centerR = outerR_px / (float)size;                    
+  float halfThickness = (thickness_px * 0.5f) / (float)size;  
+  float softness = 3.0f / (float)size;  
 
-  // Etwas transparenter als vorher (Chess.com wirkt feiner)
+  
   sf::Glsl::Vec4 col(120.f / 255.f, 120.f / 255.f, 120.f / 255.f, 65.f / 255.f);
 
   shader.setUniform("resolution", sf::Glsl::Vec2((float)size, (float)size));
@@ -126,15 +124,13 @@ void main()
   return rt.getTexture();
 }
 
-// -------------------------- Attack Dot (filled) ----------------------------
-// Shader: homogener, leicht transparenter, gefuellter Kreis mit weichem Rand
 static const char* dotFrag = R"(
 uniform vec2 resolution;
-uniform vec4 color;   // r,g,b,a
-uniform float radius; // fraction (0..0.5) -> wo die Haelfte des Alphas faellt
-uniform float softness; // weichheit (normalized, ~px/size)
-uniform float coreBoost; // leicht aufhellender Kern
-uniform float highlight; // kleiner zentraler Glanz
+uniform vec4 color;   
+uniform float radius; 
+uniform float softness; 
+uniform float coreBoost; 
+uniform float highlight; 
 
 void main()
 {
@@ -142,18 +138,18 @@ void main()
     vec2 c = vec2(0.5, 0.5);
     float d = distance(uv, c);
 
-    // alpha: ein gefuellter Kreis mit weicher Kante
-    // inner: voll (alpha ~ color.a), dann weich abfallend bis radius
+    
+    
     float a = 1.0 - smoothstep(radius - softness, radius + softness, d);
 
-    // shape the falloff so es nicht wie mehrere Ringe aussieht
-    // pow sorgt fuer einen glatteren, einheitlicheren Kern
+    
+    
     a = pow(a, 1.2);
 
-    // leichte Helligkeitsanhebung im Kern
+    
     float core = 1.0 + coreBoost * (1.0 - smoothstep(0.0, radius * 0.9, d));
 
-    // kleiner Highlight-Peak in Zentrum
+    
     float h = 1.0 - smoothstep(0.0, radius * 0.5, d);
     float highlightMask = pow(h, 3.0) * highlight;
 
@@ -173,24 +169,24 @@ void main()
   bool shaderOk = shader.loadFromMemory(dotFrag, sf::Shader::Fragment);
 
   if (!shaderOk) {
-    // Fallback: einzelner Kreis mit weichem Highlight (kein multi-layer)
+    
     float maxRadius = size * 0.35f;
     sf::CircleShape core(maxRadius);
     core.setOrigin(maxRadius, maxRadius);
     core.setPosition(size * 0.5f, size * 0.5f);
-    // eher transparent wie bei Chess.com
+    
     core.setFillColor(sf::Color(120, 120, 120, 65));
     rt.draw(core, sf::BlendAlpha);
     rt.display();
     return rt.getTexture();
   }
 
-  // Parameter: Chess.com-ähnlich: sehr transparenter, gefuellter Punkt
+  
   float maxRadius_px = size * 0.35f;
-  float radius_frac = maxRadius_px / (float)size;  // ~0.35
-  float softness = 3.0f / (float)size;             // ~3px weiche Kante
+  float radius_frac = maxRadius_px / (float)size;  
+  float softness = 3.0f / (float)size;             
 
-  // Basisfarbe: etwas ausgefaerbt / transparent
+  
   sf::Glsl::Vec4 col(120.f / 255.f, 120.f / 255.f, 120.f / 255.f, 65.f / 255.f);
 
   shader.setUniform("resolution", sf::Glsl::Vec2((float)size, (float)size));
@@ -215,9 +211,9 @@ void main()
 
   float thickness = size / 6.f;
   sf::RectangleShape rect(sf::Vector2f(size - thickness, size - thickness));
-  rect.setPosition(thickness / 2.f, thickness / 2.f);  // Innen verschieben
+  rect.setPosition(thickness / 2.f, thickness / 2.f);  
   rect.setFillColor(sf::Color::Transparent);
-  rect.setOutlineColor(sf::Color(255, 200, 80));  // warmes Goldgelb
+  rect.setOutlineColor(sf::Color(255, 200, 80));  
   rect.setOutlineThickness(thickness);
 
   rt.draw(rect);
@@ -226,37 +222,36 @@ void main()
   return rt.getTexture();
 }
 
-// ---------------- Shader: Rounded Rect ----------------
 static const char* roundedRectFrag = R"SHADER(
 #version 120
-uniform vec2 resolution;    // px: (width, height)
-uniform float radius;       // px corner radius
-uniform float softness;     // px edge softness (1..4 typical)
-uniform vec4 color;         // rgba (0..1)
+uniform vec2 resolution;    
+uniform float radius;       
+uniform float softness;     
+uniform vec4 color;         
 
 void main()
 {
-    // use passed texcoord (in px) / resolution to build normalized uv
-    vec2 coord = gl_TexCoord[0].xy; // we will supply texCoords in px (0..width, 0..height)
-    vec2 uv = coord / resolution;   // 0..1
+    
+    vec2 coord = gl_TexCoord[0].xy; 
+    vec2 uv = coord / resolution;   
 
-    // position relative to center in pixels
+    
     vec2 pos = uv * resolution - 0.5 * resolution;
     vec2 halfSize = 0.5 * resolution;
 
-    // signed-distance to rounded rect (pixel units)
+    
     vec2 q = abs(pos) - (halfSize - vec2(radius));
     vec2 qpos = max(q, vec2(0.0));
-    float dist = length(qpos) - radius; // <0 inside
+    float dist = length(qpos) - radius; 
 
-    // alpha: smooth inside->outside
-    // we compute smoothstep from -softness .. +softness to be symmetric and stable
+    
+    
     float edge0 = -softness;
     float edge1 = softness;
     float a = 1.0 - smoothstep(edge0, edge1, dist);
     a = clamp(a, 0.0, 1.0);
 
-    // subtle inner shade optional (very small)
+    
     float innerShade = mix(1.0, 0.98, smoothstep(-radius*0.6, 0.0, dist));
 
     vec3 rgb = color.rgb * innerShade;
@@ -266,15 +261,14 @@ void main()
 }
 )SHADER";
 
-// ---------------- Shader: Shadow ----------------
 static const char* shadowFrag = R"SHADER(
 #version 120
-uniform vec2 resolution;   // px (width, height)
-uniform vec2 rectSize;     // px (width, height) of the rectangle casting the shadow
-uniform float radius;      // px corner radius of rect
-uniform float blur;        // px: how soft the shadow falls off
-uniform float offsetY;     // px vertical offset for shadow (positive = down)
-uniform vec4 shadowColor;  // rgba (0..1)
+uniform vec2 resolution;   
+uniform vec2 rectSize;     
+uniform float radius;      
+uniform float blur;        
+uniform float offsetY;     
+uniform vec4 shadowColor;  
 
 void main()
 {
@@ -282,13 +276,13 @@ void main()
     vec2 uv = coord / resolution;
     vec2 pos = uv * resolution - 0.5 * resolution - vec2(0.0, -offsetY);
 
-    // compute distance to rounded rect (same SDF)
+    
     vec2 halfSize = 0.5 * rectSize;
     vec2 q = abs(pos) - (halfSize - vec2(radius));
     vec2 qpos = max(q, vec2(0.0));
     float dist = length(qpos) - radius;
 
-    // shadow alpha: smooth falloff from dist==0 outwards over blur px
+    
     float a = 1.0 - smoothstep(0.0, blur, dist);
     a = clamp(pow(a, 1.1), 0.0, 1.0);
 
@@ -299,7 +293,6 @@ void main()
 }
 )SHADER";
 
-// ---------------- Utility: create a quad with texcoords in px ---------------
 static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
   sf::VertexArray va(sf::Quads, 4);
   va[0].position = sf::Vector2f(0.f, 0.f);
@@ -307,7 +300,7 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
   va[2].position = sf::Vector2f((float)width, (float)height);
   va[3].position = sf::Vector2f(0.f, (float)height);
 
-  // texCoords (we pass pixel coordinates so shader can divide by resolution)
+  
   va[0].texCoords = sf::Vector2f(0.f, 0.f);
   va[1].texCoords = sf::Vector2f((float)width, 0.f);
   va[2].texCoords = sf::Vector2f((float)width, (float)height);
@@ -315,7 +308,6 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
   return va;
 }
 
-// ---------------- makeRoundedRectTexture -----------------------------------
 [[nodiscard]] sf::Texture makeRoundedRectTexture(
     unsigned int width, unsigned int height, float radius_px = 6.f,
     sf::Color fillColor = sf::Color(255, 255, 255, 255), float softness_px = 1.0f) {
@@ -338,13 +330,13 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
     rt.display();
 
     sf::Texture tex = rt.getTexture();
-    tex.setSmooth(false);  // IMPORTANT: no smoothing -> crisp corners
+    tex.setSmooth(false);  
     tex.setRepeated(false);
     return tex;
   }
 
-  // Fallback: draw rectangles + corner circles (no shader)
-  // ... (kept simple)
+  
+  
   float cx = width * 0.5f, cy = height * 0.5f;
   sf::RectangleShape body(
       sf::Vector2f((float)width - 2.f * radius_px, (float)height - 2.f * radius_px));
@@ -353,7 +345,7 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
   body.setFillColor(fillColor);
   rt.draw(body);
 
-  // corners
+  
   sf::CircleShape corner(radius_px);
   corner.setFillColor(fillColor);
   corner.setOrigin(radius_px, radius_px);
@@ -373,12 +365,11 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
   return tex;
 }
 
-// ---------------- makeRoundedRectShadowTexture ------------------------------
 [[nodiscard]] sf::Texture makeRoundedRectShadowTexture(
     unsigned int width, unsigned int height, float rectWidth_px, float rectHeight_px,
     float radius_px = 6.f, float blur_px = 12.f, sf::Color shadowColor = sf::Color(0, 0, 0, 140),
     float offsetY_px = 4.f) {
-  // Create rendertexture slightly larger to accommodate blur if needed
+  
   sf::RenderTexture rt;
   rt.create(width, height);
   rt.clear(sf::Color::Transparent);
@@ -400,12 +391,12 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
     rt.display();
 
     sf::Texture tex = rt.getTexture();
-    tex.setSmooth(true);  // soften shadow when sampled is ok often
+    tex.setSmooth(true);  
     tex.setRepeated(false);
     return tex;
   }
 
-  // Fallback: naive multi-step shadow (slower)
+  
   int steps = 16;
   for (int i = steps - 1; i >= 0; --i) {
     float t = (float)i / (float)(steps - 1);
@@ -425,7 +416,7 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
     corner.setPosition((float)(width * 0.5f - rw * 0.5f) + radius_px + grow,
                        (float)(height * 0.5f - rh * 0.5f) + radius_px + grow + offsetY_px);
     rt.draw(corner);
-    // other corners (omitted repetitive code for clarity)
+    
   }
 
   rt.display();
@@ -455,4 +446,4 @@ void TextureTable::preLoad() {
   load(constant::STR_TEXTURE_TRANSPARENT, sf::Color::Transparent);
 }
 
-}  // namespace lilia::view
+}  
