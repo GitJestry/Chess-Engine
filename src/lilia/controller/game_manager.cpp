@@ -65,7 +65,9 @@ void GameManager::update([[maybe_unused]] float dt) {
 
 bool GameManager::requestUserMove(core::Square from, core::Square to, bool onClick) {
   std::lock_guard lock(m_mutex);
-  if (m_waitingPromotion) return false;  
+  if (m_waitingPromotion) return false;  // waiting on previous promotion
+  if (m_game.getGameState().sideToMove != m_playerColor) return false;
+
 
   const auto& moves = m_game.generateLegalMoves();
   for (const auto& m : moves) {
