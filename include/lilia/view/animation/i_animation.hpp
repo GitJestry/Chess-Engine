@@ -1,6 +1,5 @@
 #pragma once
 
-// forward decleration
 namespace sf {
 class RenderWindow;
 }
@@ -15,4 +14,4 @@ class IAnimation {
   [[nodiscard]] virtual bool isFinished() const = 0;
 };
 
-}  // namespace lilia
+}  

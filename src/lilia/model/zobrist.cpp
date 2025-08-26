@@ -50,7 +50,6 @@ bb::Bitboard Zobrist::compute(const PositionLike& pos) {
   return h;
 }
 
-// explicit instantiation for our Position type (defined in position.hpp)
 template bb::Bitboard Zobrist::compute<class Position>(const Position&);
 
-}  // namespace lilia::model
+}  

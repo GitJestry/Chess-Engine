@@ -6,35 +6,38 @@
 #include <utility>
 #include <vector>
 
-#include "../model/Move.hpp"
-#include "../model/chess_game.hpp"
+#include "../model/move.hpp"
 #include "engine.hpp"
 #include "search.hpp"
+
+namespace lilia::model {
+class ChessGame;
+}  // namespace lilia::model
 
 namespace lilia::engine {
 
 struct SearchResult {
   std::optional<model::Move> bestMove;
   engine::SearchStats stats;
-  // topMoves sind meist schon in stats.topMoves, aber kept here for convenience
+  
   std::vector<std::pair<model::Move, int>> topMoves;
 };
 
 class BotEngine {
  public:
-  BotEngine();
+  explicit BotEngine(const EngineConfig& cfg = {});
   ~BotEngine();
 
-  // Führe die Suche aus. thinkMillis = max Denkzeit in ms (0 = no timer).
-  // externalCancel kann nullptr sein; wenn gesetzt, wird diese atomische bool geprüft.
+  
+  
   SearchResult findBestMove(model::ChessGame& gameState, int maxDepth, int thinkMillis,
                             std::atomic<bool>* externalCancel = nullptr);
 
   // Direkt zugänglich, falls jemand Stats separat lesen will
-  engine::SearchStats getLastSearchStats() const;
+  const engine::SearchStats& getLastSearchStats() const;
 
  private:
   Engine m_engine;
 };
 
-}  // namespace lilia::engine
+}  

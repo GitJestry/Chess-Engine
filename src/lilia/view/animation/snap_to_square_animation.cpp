@@ -22,4 +22,4 @@ void SnapToSquareAnim::draw(sf::RenderWindow& window) {
   return m_finish;
 }
 
-};  // namespace lilia::view::animation
+};  

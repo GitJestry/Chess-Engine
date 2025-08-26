@@ -2,6 +2,10 @@
 
 #include <chrono>
 
+#include "lilia/controller/bot_player.hpp"
+#include "lilia/controller/player.hpp"
+#include "lilia/model/chess_game.hpp"
+
 namespace lilia::controller {
 
 GameManager::GameManager(model::ChessGame& model) : m_game(model) {}
@@ -10,54 +14,49 @@ GameManager::~GameManager() {
   stopGame();
 }
 
-void GameManager::startGame(core::Color playerColor, const std::string& fen, bool vsBot) {
+void GameManager::startGame(core::Color playerColor, const std::string& fen, bool vsBot,
+                            int thinkTimeMs, int depth) {
   std::lock_guard lock(m_mutex);
   m_player_color = playerColor;
   m_game.setPosition(fen);
   m_cancel_bot.store(false);
   m_waiting_promotion = false;
-  int thinkTime = 5000;  // ms
-  int depth = 2;
 
   // default: human for player color, bot for opponent (if vsBot)
   if (vsBot) {
     if (playerColor == core::Color::White) {
       m_white_player.reset();  // human
-      m_black_player = std::make_unique<BotPlayer>(thinkTime, depth);
+      m_black_player = std::make_unique<BotPlayer>(thinkTimeMs, depth);
     } else {
       m_black_player.reset();
-      m_white_player = std::make_unique<BotPlayer>(thinkTime, depth);
+      m_white_player = std::make_unique<BotPlayer>(thinkTimeMs, depth);
     }
-
   } else {
     m_white_player.reset();
     m_black_player.reset();
   }
 
-  // Start bot if opponent to move
+  
   startBotIfNeeded();
 }
 
 void GameManager::stopGame() {
   std::lock_guard lock(m_mutex);
   m_cancel_bot.store(true);
-  // Let the future finish naturally or be ignored. We don't block in destructor.
 }
 
-void GameManager::update(float /*dt*/) {
+void GameManager::update([[maybe_unused]] float dt) {
   std::lock_guard lock(m_mutex);
   using namespace std::chrono_literals;
-
   if (m_bot_future.valid()) {
     if (m_bot_future.wait_for(0ms) == std::future_status::ready) {
       model::Move mv = m_bot_future.get();
-      // reset future
+      
       m_bot_future = std::future<model::Move>();
-      // If move is valid -> apply
-      if (!(mv.from == core::NO_SQUARE && mv.to == core::NO_SQUARE)) {
-        applyMoveAndNotify(mv, /*onClick=*/false);
+            if (!(mv.from == core::NO_SQUARE && mv.to == core::NO_SQUARE)) {
+        applyMoveAndNotify(mv, false);
       }
-      // maybe chain another bot move
+      
       startBotIfNeeded();
     }
   }
@@ -66,6 +65,7 @@ void GameManager::update(float /*dt*/) {
 bool GameManager::requestUserMove(core::Square from, core::Square to, bool onClick) {
   std::lock_guard lock(m_mutex);
   if (m_waiting_promotion) return false;  // waiting on previous promotion
+  if (m_game.getGameState().sideToMove != m_playerColor) return false;
 
   const auto& moves = m_game.generateLegalMoves();
   for (const auto& m : moves) {
@@ -76,17 +76,17 @@ bool GameManager::requestUserMove(core::Square from, core::Square to, bool onCli
         m_promotion_from = from;
         m_promotion_to = to;
         if (onPromotionRequested_) onPromotionRequested_(to);
-        return false;  // not yet applied
+        return false;  
       }
 
-      // apply move immediately
+      
       applyMoveAndNotify(m, onClick);
-      // start bot if needed after applying
+      
       startBotIfNeeded();
       return true;
     }
   }
-  return false;  // illegal move
+  return false;  
 }
 
 void GameManager::completePendingPromotion(core::PieceType promotion) {
@@ -96,7 +96,7 @@ void GameManager::completePendingPromotion(core::PieceType promotion) {
   const auto& moves = m_game.generateLegalMoves();
   for (const auto& m : moves) {
     if (m.from == m_promotion_from && m.to == m_promotion_to && m.promotion == promotion) {
-      applyMoveAndNotify(m, /*onClick=*/true);
+      applyMoveAndNotify(m, true);
       m_waiting_promotion = false;
       startBotIfNeeded();
       return;
@@ -108,8 +108,8 @@ void GameManager::completePendingPromotion(core::PieceType promotion) {
 }
 
 void GameManager::applyMoveAndNotify(const model::Move& mv, bool onClick) {
-  // Apply move to model (must be main-thread). GameController will animate and play
-  // sounds using the callbacks.
+  
+  
   m_game.doMove(mv.from, mv.to, mv.promotion);
 
   // Determine if that move was executed by the player.
@@ -117,7 +117,7 @@ void GameManager::applyMoveAndNotify(const model::Move& mv, bool onClick) {
 
   if (onMoveExecuted_) onMoveExecuted_(mv, wasPlayerMove, onClick);
 
-  // Check for end state
+  
   auto result = m_game.getResult();
   if (result != core::GameResult::ONGOING) {
     if (onGameEnd_) onGameEnd_(result);
@@ -153,4 +153,4 @@ void GameManager::setBotForColor(core::Color color, std::unique_ptr<IPlayer> bot
     m_black_player = std::move(bot);
 }
 
-}  // namespace lilia::controller
+}  

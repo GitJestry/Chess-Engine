@@ -6,7 +6,6 @@
 
 namespace lilia::model {
 
-/// 12 piece bitboards: [color][PieceType] for Pawn..King (None unused)
 class Board {
  public:
   Board();
@@ -24,7 +23,7 @@ class Board {
   }
 
  private:
-  // [color][type] where type indices 0..5 are Pawn..King
+  
   std::array<std::array<bb::Bitboard, 6>, 2> m_bb{};
   std::array<bb::Bitboard, 2> m_color_occ{};
   bb::Bitboard m_all_occ = 0;
@@ -32,4 +31,4 @@ class Board {
   void recomputeOccupancy();
 };
 
-}  // namespace lilia::model
+}  

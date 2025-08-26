@@ -1,22 +1,20 @@
 #include "lilia/model/chess_game.hpp"
 
 #include <sstream>
+#include <optional>
 
 namespace lilia::model {
 
-// START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-// Square = e3
 core::Square stringToSquare(const std::string& strSquare) {
   if (strSquare.size() < 2) return core::NO_SQUARE;
   char f = strSquare[0];
   char r = strSquare[1];
   if (f < 'a' || f > 'h' || r < '1' || r > '8') return core::NO_SQUARE;
-  uint8_t file = static_cast<uint8_t>(f - 'a');  // 0..7
-  uint8_t rank = static_cast<uint8_t>(r - '1');  // 0..7  <-- important: rank-1
+  uint8_t file = static_cast<uint8_t>(f - 'a');  
+  uint8_t rank = static_cast<uint8_t>(r - '1');  
   return static_cast<core::Square>(file + rank * 8);
 }
 
-// Hilfsfunktion: von 'a'..'h' + '1'..'8' zu 0..63
 inline int squareFromUCI(const std::string& sq) {
   if (sq.size() != 2) return -1;
   int file = sq[0] - 'a';
@@ -31,7 +29,7 @@ void ChessGame::doMoveUCI(const std::string& uciMove) {
   int to = squareFromUCI(uciMove.substr(2, 2));
   core::PieceType promo = core::PieceType::None;
 
-  if (uciMove.size() == 5) {  // z.B. g7g8q
+  if (uciMove.size() == 5) {  
     char c = uciMove[4];
     switch (c) {
       case 'q':
@@ -54,13 +52,14 @@ void ChessGame::doMoveUCI(const std::string& uciMove) {
   doMove(from, to, promo);
 }
 
-const Move& ChessGame::getMove(core::Square from, core::Square to) {
-  int side = bb::ci(m_position.getState().sideToMove);
-  std::vector<Move> moves = generateLegalMoves();
-  for (auto& m : moves)
-    if (m.from == from && m.to == to) return m;
+Move ChessGame::getMove(core::Square from, core::Square to) {
+ int side = bb::ci(m_position.getState().sideToMove);
+  const auto& moves = generateLegalMoves();
+  for (const auto& m : moves)
 
-  return Move{};
+    if (m.from == from && m.to == to) return m;
+  }
+  return std::nullopt;
 }
 
 void ChessGame::setPosition(const std::string& fen) {
@@ -69,16 +68,16 @@ void ChessGame::setPosition(const std::string& fen) {
 
   iss >> board >> activeColor >> castling >> enPassant >> halfmoveClock >> fullmoveNumber;
 
-  // board
+  
   uint8_t rank = 7;
   uint8_t file = 0;
   for (char ch : board) {
     if (ch == '/') {
-      // Nächste Reihe
+      
       rank--;
       file = 0;
     } else if (std::isdigit(ch)) {
-      // So viele leere Felder überspringen
+      
       file += ch - '0';
     } else {
       core::Square sq = file + rank * 8;
@@ -114,8 +113,7 @@ void ChessGame::setPosition(const std::string& fen) {
 
   // active Color
   m_position.getState().sideToMove = (activeColor == "w" ? core::Color::White : core::Color::Black);
-
-  // castling
+  
   uint8_t rights = 0;
   if (castling.find('K') != std::string::npos) rights |= bb::Castling::WK;
   if (castling.find('Q') != std::string::npos) rights |= bb::Castling::WQ;
@@ -124,7 +122,6 @@ void ChessGame::setPosition(const std::string& fen) {
 
   m_position.getState().castlingRights = rights;
 
-  // enpassent
   if (enPassant == "-") {
     m_position.getState().enPassantSquare = core::NO_SQUARE;  // oder core::NO_SQUARE falls definiert
   } else {
@@ -144,18 +141,18 @@ void ChessGame::buildHash() {
   m_position.buildHash();
 }
 
-std::vector<Move> ChessGame::generateLegalMoves() {
+const std::vector<Move>& ChessGame::generateLegalMoves() {
   int side = bb::ci(m_position.getState().sideToMove);
-  std::vector<Move> pseudo;
-  m_move_gen.generatePseudoLegalMoves(m_position.getBoard(), m_position.getState(), pseudo);
-  std::vector<Move> legalMoves;
-  for (const auto& m : pseudo) {
+  m_pseudo_moves.clear();
+  m_legal_moves.clear();
+  m_move_gen.generatePseudoLegalMoves(m_position.board(), m_position.state(), m_pseudo_moves);
+  for (const auto& m : m_pseudo_moves) {
     if (m_position.doMove(m)) {
       m_position.undoMove();
-      legalMoves.push_back(m);
+      m_legal_moves.push_back(m);
     }
   }
-  return legalMoves;
+  return m_legal_moves;
 }
 
 const GameState& ChessGame::getGameState() {
@@ -193,7 +190,7 @@ void ChessGame::checkGameResult() {
   }
   if (m_position.checkInsufficientMaterial()) m_result = core::GameResult::INSUFFICIENT;
   if (m_position.checkMoveRule()) m_result = core::GameResult::MOVERULE;
-  if (m_position.checkRepitition()) m_result = core::GameResult::REPETITION;
+  if (m_position.checkRepetition()) m_result = core::GameResult::REPETITION;
 }
 
 core::GameResult ChessGame::getResult() {
@@ -207,7 +204,7 @@ bb::Piece ChessGame::getPiece(core::Square sq) {
 }
 
 void ChessGame::doMove(core::Square from, core::Square to, core::PieceType promotion) {
-  for (auto m : generateLegalMoves())
+  for (const auto& m : generateLegalMoves())
     if (m.from == from && m.to == to && m.promotion == promotion) m_position.doMove(m);
 }
 
@@ -220,4 +217,4 @@ bool ChessGame::isKingInCheck(core::Color from) const {
 Position& ChessGame::getPositionRefForBot() {
   return m_position;
 }
-}  // namespace lilia::model
+}  

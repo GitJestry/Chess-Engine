@@ -7,22 +7,19 @@
 #include <mutex>
 
 #include "../constants.hpp"
-#include "../model/chess_game.hpp"
-#include "bot_player.hpp"
-#include "player.hpp"
+#include "../chess_types.hpp"
+
+namespace lilia::model {
+class ChessGame;
+struct Move;
+}  // namespace lilia::model
+
+namespace lilia::controller {
+struct IPlayer;
+}
 
 namespace lilia::controller {
 
-/**
- * @brief GameManager: trennt Spiel-Lifecycle & Bot-Orchestrierung vom Controller.
- *
- * Responsibilities:
- * - Start/Stop/Restart eines Spiels
- * - Aufnahme von User-Move-Requests und Anwendung auf das Model
- * - Asynchrone Anforderung von Bot-Zügen und Anwendung auf das Model (main-thread)
- * - Promotion-Flow: feuert einen Callback, damit die View die Promotion auswähler
- * - Gibt Events/Callbacks für den Controller (Animate/Sound/etc.) aus
- */
 class GameManager {
  public:
   using MoveCallback = std::function<void(const model::Move& mv, bool isPlayerMove, bool onClick)>;
@@ -32,27 +29,27 @@ class GameManager {
   explicit GameManager(model::ChessGame& model);
   ~GameManager();
 
-  // Lifecycle
+  
   void startGame(core::Color playerColor, const std::string& fen = core::START_FEN,
-                 bool vsBot = true);
+                 bool vsBot = true, int thinkTimeMs = 1000, int depth = 5);
   void stopGame();
 
-  // Called each frame from main loop: Polls bot futures and applies moves when ready.
+  
   void update(float dt);
 
-  // Called by controller on user-move (drag/drop / click)
-  // returns true wenn move angewendet wurde (bei Promotion -> false und PromotionEvent feuern)
+  
+  
   bool requestUserMove(core::Square from, core::Square to, bool onClick);
 
-  // Called when user selected promotion piece after onPromotionRequested
+  
   void completePendingPromotion(core::PieceType promotion);
 
-  // Register callbacks
+  
   void setOnMoveExecuted(MoveCallback cb) { onMoveExecuted_ = std::move(cb); }
   void setOnPromotionRequested(PromotionCallback cb) { onPromotionRequested_ = std::move(cb); }
   void setOnGameEnd(EndCallback cb) { onGameEnd_ = std::move(cb); }
 
-  // Optional: set bot for specific color
+  
   void setBotForColor(core::Color color, std::unique_ptr<IPlayer> bot);
 
  private:
@@ -75,14 +72,13 @@ class GameManager {
 
   std::mutex m_mutex;
 
-  // callbacks
   MoveCallback onMoveExecuted_;
   PromotionCallback onPromotionRequested_;
   EndCallback onGameEnd_;
 
-  // intern
+  
   void applyMoveAndNotify(const model::Move& mv, bool onClick);
   void startBotIfNeeded();
 };
 
-}  // namespace lilia::controller
+}  

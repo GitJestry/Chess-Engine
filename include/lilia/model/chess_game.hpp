@@ -1,6 +1,8 @@
 #pragma once
 
 #include <string>
+#include <vector>
+
 
 #include "../constants.hpp"
 #include "move_generator.hpp"
@@ -23,8 +25,9 @@ class ChessGame {
 
   bb::Piece getPiece(core::Square sq);
   const GameState& getGameState();
-  std::vector<Move> generateLegalMoves();
-  const Move& getMove(core::Square from, core::Square to);
+  const std::vector<Move>& generateLegalMoves();
+  Move getMove(core::Square from, core::Square to);
+
   bool isKingInCheck(core::Color from) const;
   core::Square getRookSquareFromCastleside(CastleSide castleSide, core::Color side);
   core::Square getKingSquare(core::Color color);
@@ -37,6 +40,8 @@ class ChessGame {
   MoveGenerator m_move_gen;
   Position m_position;
   core::GameResult m_result;
+  std::vector<Move> m_pseudo_moves;
+  std::vector<Move> m_legal_moves;
 };
 
-}  // namespace lilia::model
+}  

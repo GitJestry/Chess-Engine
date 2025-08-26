@@ -1,9 +1,5 @@
 #pragma once
 
-#include <chrono>
-#include <memory>
-#include <thread>
-
 #include "player.hpp"
 
 namespace lilia::controller {
@@ -23,4 +19,4 @@ class BotPlayer : public IPlayer {
   int m_think_millis;
 };
 
-}  // namespace lilia::controller
+}  
