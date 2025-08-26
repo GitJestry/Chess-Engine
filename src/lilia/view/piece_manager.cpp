@@ -105,6 +105,12 @@ void PieceManager::removeAll() {
   return m_pieces.find(pos) != m_pieces.end();
 }
 
+Entity::Position PieceManager::getPieceSize(core::Square pos) const {
+  auto it = m_pieces.find(pos);
+  if (it == m_pieces.end()) return {0.f, 0.f};
+  return it->second.getCurrentSize();
+}
+
 [[nodiscard]] inline Entity::Position mouseToEntityPos(core::MousePos mousePos) {
   return static_cast<Entity::Position>(mousePos);
 }

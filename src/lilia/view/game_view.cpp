@@ -176,4 +176,10 @@ void GameView::setDefaultCursor() { m_window.setMouseCursor(m_cursor_default); }
 void GameView::setHandOpenCursor() { m_window.setMouseCursor(m_cursor_hand_open); }
 void GameView::setHandClosedCursor() { m_window.setMouseCursor(m_cursor_hand_closed); }
 
+sf::Vector2u GameView::getWindowSize() const { return m_window.getSize(); }
+
+Entity::Position GameView::getPieceSize(core::Square pos) const {
+  return m_piece_manager.getPieceSize(pos);
 }
+
+}  

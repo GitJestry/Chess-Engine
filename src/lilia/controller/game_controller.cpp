@@ -4,6 +4,7 @@
 #include <SFML/System/Time.hpp>
 #include <SFML/Window/Event.hpp>
 #include <SFML/Window/Mouse.hpp>
+#include <algorithm>
 #include <iostream>
 #include <string>
 
@@ -302,7 +303,18 @@ void GameController::onDrag(core::MousePos start, core::MousePos current) {
 
   hoverSquare(sqMous);
 
-  m_game_view.setPieceToMouseScreenPos(sqStart, current);
+  auto size = m_game_view.getPieceSize(sqStart);
+  auto window = m_game_view.getWindowSize();
+  float halfW = size.x / 2.f;
+  float halfH = size.y / 2.f;
+  float clampedX =
+      std::clamp(static_cast<float>(current.x), halfW, static_cast<float>(window.x) - halfW);
+  float clampedY =
+      std::clamp(static_cast<float>(current.y), halfH, static_cast<float>(window.y) - halfH);
+  core::MousePos clamped{static_cast<unsigned int>(clampedX),
+                         static_cast<unsigned int>(clampedY)};
+
+  m_game_view.setPieceToMouseScreenPos(sqStart, clamped);
   m_game_view.playPiecePlaceHolderAnimation(sqStart);
 }
 

@@ -1,5 +1,8 @@
 #pragma once
 
+#include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/System/Vector2.hpp>
+
 #include "../constants.hpp"
 #include "../controller/mousepos.hpp"
 #include "animation/chess_animator.hpp"
@@ -27,6 +30,9 @@ class GameView {
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
   void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
   void setPieceToSquareScreenPos(core::Square from, core::Square to);
+
+  [[nodiscard]] sf::Vector2u getWindowSize() const;
+  [[nodiscard]] Entity::Position getPieceSize(core::Square pos) const;
 
   [[nodiscard]] bool hasPieceOnSquare(core::Square pos) const;
   [[nodiscard]] bool isSameColorPiece(core::Square sq1, core::Square sq2) const;
