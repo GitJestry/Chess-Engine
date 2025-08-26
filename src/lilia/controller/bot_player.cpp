@@ -13,7 +13,7 @@ namespace lilia::controller {
 std::future<model::Move> BotPlayer::requestMove(model::ChessGame& gameState,
                                                 std::atomic<bool>& cancelToken) {
   int requestedDepth = m_depth;
-  int thinkMs = m_thinkMillis;
+  int thinkMs = m_think_millis;
 
   return std::async(std::launch::async,
                     [this, &gameState, &cancelToken, requestedDepth, thinkMs]() -> model::Move {
@@ -36,7 +36,7 @@ std::future<model::Move> BotPlayer::requestMove(model::ChessGame& gameState,
                         model::MoveGenerator mg;
                         thread_local std::vector<model::Move> moveBuf;
                         auto pos = gameState.getPositionRefForBot();
-                        mg.generatePseudoLegalMoves(pos.board(), pos.state(), moveBuf);
+                        mg.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), moveBuf);
                         for (auto& m : moveBuf) {
                           if (pos.doMove(m)) {
                             pos.undoMove();

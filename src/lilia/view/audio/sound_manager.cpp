@@ -63,7 +63,12 @@ void SoundManager::stopBackgroundMusic() {
 void SoundManager::setMusicVolume(float volume) {
   m_music.setVolume(volume);
 }
-void SoundManager::setEffectsVolume(float volume) {}
+void SoundManager::setEffectsVolume(float volume) {
+  m_effects_volume = volume;
+  for (auto& [_, sound] : m_sounds) {
+    sound.setVolume(m_effects_volume);
+  }
+}
 
 void SoundManager::loadEffect(const std::string& name, const std::string& filepath) {
   sf::SoundBuffer buffer;
@@ -77,7 +82,7 @@ void SoundManager::loadEffect(const std::string& name, const std::string& filepa
   // Bind sound to buffer
   sf::Sound sound;
   sound.setBuffer(it->second);
-  sound.setVolume(m_effectsVolume);
+  sound.setVolume(m_effects_volume);
   m_sounds[name] = std::move(sound);
 }
 

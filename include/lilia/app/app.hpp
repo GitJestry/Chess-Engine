@@ -22,9 +22,9 @@ class App {
   static bool parseYesNoDefaultTrue(const std::string& s);
 
   // parsed options
-  core::Color m_playerColor = core::Color::White;
-  bool m_vsBot = true;
-  std::string m_startFen;
+  core::Color m_player_color = core::Color::White;
+  bool m_vs_bot = true;
+  std::string m_start_fen;
 };
 
 }  // namespace lilia::app

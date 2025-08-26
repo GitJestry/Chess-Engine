@@ -40,7 +40,7 @@ class SoundManager {
   std::unordered_map<std::string, sf::Sound> m_sounds;
 
   sf::Music m_music;
-  float m_effectsVolume = 100.f;
+  float m_effects_volume = 100.f;
 };
 
 }  // namespace lilia::view::sound

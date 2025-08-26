@@ -7,44 +7,44 @@
 namespace lilia::controller {
 
 void InputManager::setOnClick(ClickCallback cb) {
-  m_onClick = std::move(cb);
+  m_on_click = std::move(cb);
 }
 
 void InputManager::setOnDrag(DragCallback cb) {
-  m_onDrag = std::move(cb);
+  m_on_drag = std::move(cb);
 }
 
 void InputManager::setOnDrop(DropCallback cb) {
-  m_onDrop = std::move(cb);
+  m_on_drop = std::move(cb);
 }
 
 void InputManager::processEvent(const sf::Event& event) {
   switch (event.type) {
     case sf::Event::MouseButtonPressed:
       if (event.mouseButton.button == sf::Mouse::Left) {
-        m_dragStart = core::MousePos(event.mouseButton.x, event.mouseButton.y);
+        m_drag_start = core::MousePos(event.mouseButton.x, event.mouseButton.y);
         m_dragging = true;
       }
       break;
 
     case sf::Event::MouseMoved:
-      if (m_dragging && m_dragStart) {
+      if (m_dragging && m_drag_start) {
         core::MousePos currentPos(event.mouseMove.x, event.mouseMove.y);
-        if (m_onDrag) m_onDrag(m_dragStart.value(), currentPos);
+        if (m_on_drag) m_on_drag(m_drag_start.value(), currentPos);
       }
       break;
 
     case sf::Event::MouseButtonReleased:
-      if (event.mouseButton.button == sf::Mouse::Left && m_dragging && m_dragStart) {
+      if (event.mouseButton.button == sf::Mouse::Left && m_dragging && m_drag_start) {
         core::MousePos dropPos(event.mouseButton.x, event.mouseButton.y);
 
-        if (isClick(m_dragStart.value(), dropPos)) {
-          if (m_onClick) m_onClick(dropPos);
+        if (isClick(m_drag_start.value(), dropPos)) {
+          if (m_on_click) m_on_click(dropPos);
         } else {
-          if (m_onDrop) m_onDrop(m_dragStart.value(), dropPos);
+          if (m_on_drop) m_on_drop(m_drag_start.value(), dropPos);
         }
 
-        m_dragStart.reset();
+        m_drag_start.reset();
         m_dragging = false;
       }
       break;

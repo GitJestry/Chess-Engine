@@ -13,10 +13,10 @@ class Position {
  public:
   Position() = default;
 
-  Board& board() { return m_board; }
-  const Board& board() const { return m_board; }
-  GameState& state() { return m_state; }
-  const GameState& state() const { return m_state; }
+  Board& getBoard() { return m_board; }
+  const Board& getBoard() const { return m_board; }
+  GameState& getState() { return m_state; }
+  const GameState& getState() const { return m_state; }
 
   void buildHash() {
     m_hash = Zobrist::compute(*this);
@@ -64,7 +64,7 @@ class Position {
     int prevFullmoveNumber;
   };
 
-  std::vector<NullState> m_nullHistory;
+  std::vector<NullState> m_null_history;
 
   // do/undo details
   void applyMove(const Move& m, StateInfo& st);

@@ -17,9 +17,9 @@ class Board {
   void removePiece(lilia::core::Square sq);
   std::optional<bb::Piece> getPiece(core::Square sq) const;
 
-  bb::Bitboard pieces(core::Color c) const { return m_color_occ[bb::ci(c)]; }
-  bb::Bitboard allPieces() const { return m_all_occ; }
-  bb::Bitboard pieces(core::Color c, core::PieceType t) const {
+  bb::Bitboard getPieces(core::Color c) const { return m_color_occ[bb::ci(c)]; }
+  bb::Bitboard getAllPieces() const { return m_all_occ; }
+  bb::Bitboard getPieces(core::Color c, core::PieceType t) const {
     return m_bb[bb::ci(c)][static_cast<int>(t)];
   }
 

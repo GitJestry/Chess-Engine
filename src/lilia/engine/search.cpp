@@ -98,7 +98,7 @@ int Search::signed_eval(model::Position& pos) {
   int v = e.evaluate(pos);
   // we expect evaluate to return White-perspective (positive = White better).
   // For negamax we want positive => side-to-move advantage, so flip if Black to move.
-  if (pos.state().sideToMove == core::Color::Black) return -v;
+  if (pos.getState().sideToMove == core::Color::Black) return -v;
   return v;
 }
 
@@ -113,7 +113,7 @@ static inline bool safeGenerateMoves(model::MoveGenerator& mg, model::Position& 
   if (out.capacity() < 128) out.reserve(128);
   out.clear();
   try {
-    mg.generatePseudoLegalMoves(pos.board(), pos.state(), out);
+    mg.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), out);
     return true;
   } catch (const SearchStoppedException&) {
     throw;

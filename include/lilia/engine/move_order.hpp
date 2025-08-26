@@ -16,7 +16,7 @@ inline int mvv_lva_score(const model::Position& pos, const model::Move& m) {
   // only meaningful for captures
   if (!m.isCapture) return 0;
 
-  const model::Board& b = pos.board();
+  const model::Board& b = pos.getBoard();
 
   core::PieceType victimType = core::PieceType::Pawn;
   if (auto vp = b.getPiece(m.to)) {
