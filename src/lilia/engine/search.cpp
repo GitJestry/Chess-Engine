@@ -187,6 +187,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   int best = -MATE - 1;
   model::Move bestLocal{};
 
+  // --- TT Probe ---
   model::Move ttMove{};
   bool haveTT = false;
   try {
@@ -204,14 +205,17 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     haveTT = false;
   }
 
+  // --- Null move pruning ---
   if (depth >= 3 && !pos.inCheck()) {
     NullUndoGuard ng(pos);
     ng.doNull();
-    int nullScore = -negamax(pos, depth - 1 - 2, -beta, -beta + 1, ply + 1, refBest);
+    int R = 2;  // standard null-move reduction
+    int nullScore = -negamax(pos, depth - 1 - R, -beta, -beta + 1, ply + 1, refBest);
     ng.rollback();
     if (nullScore >= beta) return beta;
   }
 
+  // --- Move generation (legal only) ---
   std::vector<model::Move> moves;
   moves.clear();
   if (!safeGenerateMoves(mg, pos, moves)) {
@@ -234,6 +238,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     return 0;
   }
 
+  // --- Move ordering ---
   std::vector<std::pair<int, model::Move>> scored;
   scored.reserve(legal.size());
   for (auto& m : legal) {
@@ -252,6 +257,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   }
   std::sort(scored.begin(), scored.end(), [](auto& a, auto& b) { return a.first > b.first; });
 
+  // --- Search loop ---
   int moveCount = 0;
   for (auto& sm : scored) {
     if (stopFlag && stopFlag->load()) break;
@@ -265,14 +271,14 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     model::Move childBest{};
 
     int newDepth = depth - 1;
-    if (pos.inCheck()) newDepth += 1;
+    if (pos.inCheck()) newDepth += 1;  // check extension
 
     if (moveCount == 0) {
       value = -negamax(pos, newDepth, -beta, -alpha, ply + 1, childBest);
     } else {
       int reduction = 0;
       if (depth >= 3 && moveCount >= 4 && !m.isCapture && m.promotion == core::PieceType::None)
-        reduction = 1;
+        reduction = 1;  // LMR
 
       value = -negamax(pos, newDepth - reduction, -alpha - 1, -alpha, ply + 1, childBest);
       if (value > alpha && value < beta)
@@ -300,14 +306,15 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     ++moveCount;
   }
 
+  // --- TT Store ---
   if (!(stopFlag && stopFlag->load())) {
     model::Bound bound;
     if (best <= origAlpha)
-      bound = model::Bound::Upper;
+      bound = model::Bound::Upper;  // fail-low
     else if (best >= origBeta)
-      bound = model::Bound::Lower;
+      bound = model::Bound::Lower;  // fail-high
     else
-      bound = model::Bound::Exact;
+      bound = model::Bound::Exact;  // exact
     try {
       tt.store(pos.hash(), best, static_cast<int16_t>(depth), bound, bestLocal);
     } catch (...) {
@@ -338,6 +345,13 @@ int Search::search_root_parallel(model::Position& pos, int depth,
                                  std::shared_ptr<std::atomic<bool>> stop, int maxThreads) {
   this->stopFlag = stop;
   stats = SearchStats{};
+
+  // >>> Neue TT-Generation pro Root-Suche (ohne ID)
+  // Falls du iterative deepening hast, rufe new_generation() stattdessen pro Iteration auf.
+  try {
+    tt.new_generation();
+  } catch (...) {
+  }
 
   auto start = steady_clock::now();
 
@@ -385,11 +399,14 @@ int Search::search_root_parallel(model::Position& pos, int depth,
 
     std::thread th([this, child = std::move(child), m = std::move(m), depth, stopPtr = stop,
                     p = std::move(prom)]() mutable {
-      // note: promise was moved into lambda capture (named 'p')
       try {
         RootResult rr{};
+        // Eigene Search-Instanz je Thread (keine gemeinsamen Killer/History/MoveGen)
         Search worker(this->tt, this->evalFactory, this->cfg);
-        worker.stopFlag = stopPtr;  // safe copy of pointer
+        worker.stopFlag = stopPtr;  // shared_ptr kopieren – hält Flag am Leben
+
+        // Wichtig: KEIN new_generation() pro Worker aufrufen – eine Generation pro Root/Iteration!
+
         model::Move ref;
         int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
         rr.score = score;
@@ -401,7 +418,6 @@ int Search::search_root_parallel(model::Position& pos, int depth,
         try {
           p.set_exception(std::make_exception_ptr(e));
         } catch (...) {
-          // ignore set_exception failure
         }
       } catch (const std::exception& e) {
         try {
@@ -511,7 +527,7 @@ int Search::search_root_parallel(model::Position& pos, int depth,
     }
   }
 
-  // all worker threads have been joined above, safe to clear member stopFlag
+  // all worker threads have been joined via futures above, safe to clear member stopFlag
   this->stopFlag.reset();
 
   return stats.bestScore;
