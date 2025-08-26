@@ -178,20 +178,16 @@ void MoveGenerator::genPawnMoves(const Board& board, const GameState& st, core::
 
     if (st.enPassantSquare != core::NO_SQUARE) {
       bb::Bitboard ep_bb = bb::sq_bb(st.enPassantSquare);
-      if (side == core::Color::White) {
-        bb::Bitboard from_candidates = (bb::sw(ep_bb) | bb::se(ep_bb)) & pawns;
-        while (from_candidates) {
-          core::Square from = bb::pop_lsb(from_candidates);
-          out.push_back(
-              {from, st.enPassantSquare, core::PieceType::None, true, true, CastleSide::None});
-        }
-      } else {
-        bb::Bitboard from_candidates = (bb::nw(ep_bb) | bb::ne(ep_bb)) & pawns;
-        while (from_candidates) {
-          core::Square from = bb::pop_lsb(from_candidates);
-          out.push_back(
-              {from, st.enPassantSquare, core::PieceType::None, true, true, CastleSide::None});
-        }
+      // For black pawns the capturing squares are north-west and north-east of the
+      // en passant target. The previous implementation redundantly checked the
+      // side-to-move again and contained an unreachable white branch, which could
+      // lead to confusion and future errors. We only need to consider the black
+      // case here, because this code is already inside the black section.
+      bb::Bitboard from_candidates = (bb::nw(ep_bb) | bb::ne(ep_bb)) & pawns;
+      while (from_candidates) {
+        core::Square from = bb::pop_lsb(from_candidates);
+        out.push_back({from, st.enPassantSquare, core::PieceType::None, true, true,
+                       CastleSide::None});
       }
     }
   }
