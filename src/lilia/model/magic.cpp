@@ -11,6 +11,7 @@
 
 #include "lilia/model/core/random.hpp"
 #include "lilia/model/generated/magic_constants.hpp"
+#include "lilia/model/magic_serializer.hpp"
 
 namespace lilia::model::magic {
 
@@ -260,6 +261,7 @@ void init_magics() {
   }
 #else
   generate_all_magics_and_tables();
+  serialize_magics_to_header("include/lilia/model/generated/magic_constants.hpp");
 
 #endif
 }
