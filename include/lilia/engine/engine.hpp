@@ -17,7 +17,7 @@ class Engine {
   explicit Engine(const EngineConfig& cfg = {});
   ~Engine();
 
-  // Find best move for the position (returns empty if none)
+  
   static void init() {
     model::Zobrist::init();
     model::magic::init_magics();
@@ -33,4 +33,4 @@ class Engine {
   Impl* pimpl;
 };
 
-}  // namespace lilia::engine
+}  

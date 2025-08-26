@@ -42,4 +42,4 @@ const std::string SFX_PROMOTION_NAME = "promotion";
 const std::string SFX_GAME_BEGINS_NAME = "game_begins";
 const std::string SFX_GAME_ENDS_NAME = "game_ends";
 
-}  // namespace lilia::view::constant
+}  

@@ -26,4 +26,4 @@ class AnimationManager {
   std::unordered_map<Entity::ID_type, std::unique_ptr<IAnimation>> m_animations;
 };
 
-}  // namespace lilia::view::animation
+}  

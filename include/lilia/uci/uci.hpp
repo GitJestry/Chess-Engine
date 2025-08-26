@@ -20,4 +20,4 @@ class UCI {
   model::ChessGame m_game;
 };
 
-}  // namespace lilia
+}  

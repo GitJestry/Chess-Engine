@@ -17,7 +17,7 @@ struct Engine::Impl {
     int logical = (hw > 0 ? (int)hw : 1);
     cfg.threads = std::max(1, logical - 1);
 
-    // Factory: erzeugt pro Thread einen frischen Evaluator
+    
     auto evalFactory = []() { return std::make_unique<Evaluator>(); };
 
     search = std::make_unique<Search>(tt, evalFactory, cfg);
@@ -47,4 +47,4 @@ EngineConfig Engine::getConfig() const {
   return pimpl->cfg;
 }
 
-}  // namespace lilia::engine
+}  

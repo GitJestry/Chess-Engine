@@ -21,4 +21,4 @@ class PromotionManager {
   std::vector<Promotion> m_promotions;
 };
 
-}  // namespace lilia::view
+}  
