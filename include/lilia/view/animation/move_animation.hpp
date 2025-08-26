@@ -27,4 +27,4 @@ class MoveAnim : public IAnimation {
   core::PieceType m_promotion;
 };
 
-}  // namespace lilia::view::animation
+}  

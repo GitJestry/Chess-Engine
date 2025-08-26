@@ -20,4 +20,4 @@ class PromotionSelectAnim : public IAnimation {
   Entity m_white_boarder_shadow;
 };
 
-}  // namespace lilia::view::animation
+}  

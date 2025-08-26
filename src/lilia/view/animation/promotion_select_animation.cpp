@@ -33,4 +33,4 @@ void PromotionSelectAnim::draw(sf::RenderWindow& window) {
   return !m_promo_mgr_ref.hasOptions();
 }
 
-}  // namespace lilia::view::animation
+}  
