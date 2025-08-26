@@ -1,56 +1,61 @@
-# Chess Engine
+# Lilia Chess Engine
 
-This is a chess engine written from scratch in C++ with a graphical user interface (GUI) built using the SFML library.
+Lilia is a Windows-only chess project written in modern **C++20**. It is split into the SFML-based **LiliaApp** graphical client and the standalone **liliaengine** core, which is fully UCI compatible and can be used with any UCI front-end.
 
----
+## Design Highlights
+- Clear separation between *engine* and *app* modules.
+- Modular MVC layout (`model`, `engine`, `uci` / `view`, `controller`, `app`).
+- Bitboard-based board representation for fast move generation.
+- Multithreaded search designed for maintainability and experimentation.
 
-## Building the Project (Windows 64-bit Only)
+## Algorithms & Techniques
+- Negamax search with alpha-beta pruning.
+- Iterative deepening with aspiration windows.
+- Quiescence search to reduce horizon effects.
+- Transposition table (TT4) using Zobrist hashing.
+- Move ordering heuristics (killer moves, history heuristic, null-move pruning).
 
-### Prerequisites
+## Project Structure
+```
+.
+├── assets/        # textures and audio for the GUI
+├── examples/      # example entry point
+├── include/
+│   └── lilia/     # public headers
+└── src/lilia/
+    ├── app/       # LiliaApp front-end
+    ├── controller/ # MVC controllers for the GUI
+    ├── engine/    # search, evaluation & transposition table
+    ├── model/     # board representation & move generation
+    ├── uci/       # UCI protocol implementation
+    └── view/      # SFML-based rendering
+```
 
-1. **Install MinGW64**: 
-   - You need to install MinGW64. We recommend following the official Microsoft guide for setting up `msys64`. Here's a helpful video to guide you through the process:
-     - [Microsoft Guide to MSYS64 Setup](https://www.youtube.com/watch?v=oC69vlWofJQ)
+## Building (Windows 64-bit)
+1. **Prerequisites**
+   - [CMake](https://cmake.org/)
+   - A C++20 compiler (tested with MinGW-w64)
+   - Git (for fetching SFML via `FetchContent`)
 
-2. **Directory Structure**:
-   - Ensure your directory looks like this:
-     ```
-     C:\path\to\your\project\Chess-Engine
-     ```
-
-### Steps to Build
-
-1. **Open the MinGW64 shell** and navigate to the folder where you want to place the project.
-
-   ```bash
-   git clone <repo-url>
-   cd Chess-Engine
-   ```
-
-2. **Configure and build** the engine in release mode with optimisation flags:
+2. **Configure and build**
 
    ```bash
    cmake -S . -B build
    cmake --build build --config Release
    ```
+   The Release binaries will be placed in `build/bin/Release/`.
 
-   These commands generate a `build/` directory and compile an optimised release binary.
+3. **Run**
+   - `build/bin/Release/lilia_engine.exe` – console UCI engine
+   - `build/bin/Release/lilia_app.exe` – SFML GUI
 
-3. **Run the engine**:
+## Using the Engine
+- `liliaengine` speaks the [UCI protocol](https://en.wikipedia.org/wiki/Universal_Chess_Interface) and can be plugged into any UCI-compatible GUI.
+- The engine can also be linked as a library; see `examples/main.cpp` for a minimal integration example.
 
-   ```bash
-   build/Release/ChessEngine_Lilia-VERSION.exe
-   ```
-
-   The executable lives in `build/Release/` after a successful build.
-
----
-
-## Notes
-
+## Acknowledgements
+- Graphics, windowing and audio are provided by [SFML](https://www.sfml-dev.org/).
 - This setup is currently optimized for **Windows 64-bit** architecture.
-
----
 
 ## Architecture & Design Patterns
 
