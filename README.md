@@ -38,6 +38,7 @@ Lilia is a Windows-only chess project written in modern **C++20**. It is split i
    - Git (for fetching SFML via `FetchContent`)
 
 2. **Configure and build**
+
    ```bash
    cmake -S . -B build
    cmake --build build --config Release
@@ -54,3 +55,22 @@ Lilia is a Windows-only chess project written in modern **C++20**. It is split i
 
 ## Acknowledgements
 - Graphics, windowing and audio are provided by [SFML](https://www.sfml-dev.org/).
+- This setup is currently optimized for **Windows 64-bit** architecture.
+
+## Architecture & Design Patterns
+
+The project is structured around a clear separation of responsibilities:
+
+- **Model** – core chess logic such as the board representation, move generation and evaluation (`include/lilia/model`, `src/lilia/model`).
+- **View** – SFML-based rendering layer (`include/lilia/view`, `src/lilia/view`). `GameView` acts as a façade over SFML, while textures are managed by the Singleton `TextureTable`.
+- **Controller** – orchestrates user input and the game loop (`include/lilia/controller`, `src/lilia/controller`). `GameManager` exposes callbacks for moves, promotions and game end events, enabling an observer-style communication with the view.
+- **Engine** – search and evaluation algorithms for AI play (`include/lilia/engine`, `src/lilia/engine`).
+
+Design patterns used include:
+
+- **Model–View–Controller** to separate state, presentation and interaction.
+- **Strategy** via the `IPlayer` interface, allowing interchangeable bot or human move providers.
+- **Singleton** for central texture management (`TextureTable`).
+- **Observer-like callbacks** from `GameManager` to notify other components of state changes.
+- **Factory** to generate fresh evaluator instances for each search thread (`EvalFactory`).
+- **Facade** through `GameView`, which offers a simplified interface to the rendering subsystem.

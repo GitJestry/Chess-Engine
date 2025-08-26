@@ -18,4 +18,4 @@ class BoardView {
   Board m_board;
 };
 
-}  // namespace lilia
+}  

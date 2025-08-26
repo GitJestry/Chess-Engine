@@ -47,10 +47,10 @@ constexpr inline Bitboard nw(Bitboard b) {
   return (b & ~FILE_A) << 7;
 }
 constexpr inline Bitboard se(Bitboard b) {
-  return (b & ~FILE_H) >> 7;  // south-east: mask H-file
+  return (b & ~FILE_H) >> 7;  
 }
 constexpr inline Bitboard sw(Bitboard b) {
-  return (b & ~FILE_A) >> 9;  // south-west: mask A-file
+  return (b & ~FILE_A) >> 9;  
 }
 
 constexpr inline Bitboard knight_attacks_from(core::Square s) {
@@ -66,7 +66,6 @@ constexpr inline Bitboard king_attacks_from(core::Square s) {
   return east(b) | west(b) | north(b) | south(b) | ne(b) | nw(b) | se(b) | sw(b);
 }
 
-// Sliding rays (on-the-fly, branchless-ish loops)
 inline Bitboard ray_attack_dir(Bitboard from, Bitboard occ, Bitboard (*step)(Bitboard)) {
   Bitboard atk = 0, r = step(from);
   while (r) {
@@ -93,7 +92,6 @@ inline Bitboard queen_attacks(core::Square s, Bitboard occ) {
   return bishop_attacks(s, occ) | rook_attacks(s, occ);
 }
 
-// Pawn attack masks (independent of occupancy)
 constexpr inline Bitboard white_pawn_attacks(Bitboard pawns) {
   return (nw(pawns) | ne(pawns));
 }
@@ -101,4 +99,4 @@ constexpr inline Bitboard black_pawn_attacks(Bitboard pawns) {
   return (sw(pawns) | se(pawns));
 }
 
-}  // namespace lilia::model::bb
+}  

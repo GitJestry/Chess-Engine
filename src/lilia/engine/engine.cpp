@@ -17,7 +17,7 @@ struct Engine::Impl {
     int logical = (hw > 0 ? (int)hw : 1);
     cfg.threads = std::max(1, logical - 1);
 
-    // Factory: erzeugt pro Thread einen frischen Evaluator
+    
     auto evalFactory = []() { return std::make_unique<Evaluator>(); };
 
     search = std::make_unique<Search>(tt, evalFactory, cfg);
@@ -29,21 +29,22 @@ Engine::~Engine() {
   delete pimpl;
 }
 
-std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxDepth,
-                                                  std::atomic<bool>* stop) {
+std::optional<model::Move> Engine::find_best_move(
+    model::Position& pos, int maxDepth,
+    std::shared_ptr<std::atomic<bool>> stop) {
   if (maxDepth <= 0) maxDepth = pimpl->cfg.maxDepth;
   pimpl->tt.new_generation();
 
   pimpl->search->search_root_parallel(pos, maxDepth, stop, pimpl->cfg.threads);
 
-  return pimpl->search->getStatsCopy().bestMove;
+  return pimpl->search->getStats().bestMove;
 }
 
-SearchStats Engine::getLastSearchStats() const {
-  return pimpl->search->getStatsCopy();
+const SearchStats& Engine::getLastSearchStats() const {
+  return pimpl->search->getStats();
 }
-EngineConfig Engine::getConfig() const {
+const EngineConfig& Engine::getConfig() const {
   return pimpl->cfg;
 }
 
-}  // namespace lilia::engine
+}  
