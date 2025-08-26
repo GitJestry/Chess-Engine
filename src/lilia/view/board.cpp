@@ -15,19 +15,19 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
       getPosition().x - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2,
       getPosition().y - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2);
 
-  for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {    // rank 0 = 1st rank (bottom)
-    for (int file = 0; file < constant::BOARD_SIZE; ++file) {  // file 0 = 'a' file (left)
+  for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {    
+    for (int file = 0; file < constant::BOARD_SIZE; ++file) {  
 
-      // Stockfish index: file + rank * 8
+      
       int index = file + rank * constant::BOARD_SIZE;
 
-      // Convert to SFML coordinates (y inverted if origin is top-left)
+      
       float x = board_offset.x + file * constant::SQUARE_PX_SIZE;
       float y = board_offset.y + (constant::BOARD_SIZE - 1 - rank) * constant::SQUARE_PX_SIZE;
 
       m_squares[index].setPosition({x, y});
 
-      // Alternate colors
+      
       if ((rank + file) % 2 == 0)
         m_squares[index].setTexture(textureBlack);
       else
@@ -44,7 +44,7 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
 
 void Board::draw(sf::RenderWindow &window) {
   Entity::draw(window);
-  // Draw the board
+  
   for (auto &s : m_squares) {
     s.draw(window);
   }
@@ -56,13 +56,13 @@ void Board::setPosition(const Entity::Position &pos) {
       getPosition().x - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2,
       getPosition().y - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2);
 
-  for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {    // rank 0 = 1st rank (bottom)
-    for (int file = 0; file < constant::BOARD_SIZE; ++file) {  // file 0 = 'a' file (left)
+  for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {    
+    for (int file = 0; file < constant::BOARD_SIZE; ++file) {  
 
-      // Stockfish index: file + rank * 8
+      
       int index = file + rank * constant::BOARD_SIZE;
 
-      // Convert to SFML coordinates (y inverted if origin is top-left)
+      
       float x = board_offset.x + file * constant::SQUARE_PX_SIZE;
       float y = board_offset.y + (constant::BOARD_SIZE - 1 - rank) * constant::SQUARE_PX_SIZE;
 
@@ -71,4 +71,4 @@ void Board::setPosition(const Entity::Position &pos) {
   }
 }
 
-}  // namespace lilia::view
+}  

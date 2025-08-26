@@ -34,17 +34,17 @@ class Position {
   }
   bb::Bitboard hash() const { return m_hash; }
 
-  // Make/undo a pseudo-legal move; returns false if illegal (king in check)
+  
   bool doMove(const Move& m);
   void undoMove();
   bool doNullMove();
   void undoNullMove();
 
-  // Attack detection
+  
   bool isSquareAttacked(core::Square sq, core::Color by) const;
   bool checkInsufficientMaterial();
   bool checkMoveRule();
-  bool checkRepitition();
+  bool checkRepetition();
 
   bool inCheck() const;
   bool see(const model::Move& m) const;
@@ -55,7 +55,7 @@ class Position {
   std::vector<StateInfo> m_history;
   bb::Bitboard m_hash = 0;
 
-  // --- private: ---
+  
   struct NullState {
     bb::Bitboard zobristKey;
     std::uint8_t prevCastlingRights;
@@ -66,13 +66,13 @@ class Position {
 
   std::vector<NullState> m_nullHistory;
 
-  // do/undo details
+  
   void applyMove(const Move& m, StateInfo& st);
   void unapplyMove(const StateInfo& st);
   void updateCastlingRightsOnMove(core::Square from, core::Square to);
 
   void hashXorPiece(core::Color c, core::PieceType pt, core::Square s) {
-    // full board key toggle (exists already)
+    
     m_hash ^= Zobrist::piece[bb::ci(c)][static_cast<int>(pt)][s];
 
     if (pt == core::PieceType::Pawn) {
@@ -97,4 +97,4 @@ class Position {
   }
 };
 
-}  // namespace lilia::model
+}  

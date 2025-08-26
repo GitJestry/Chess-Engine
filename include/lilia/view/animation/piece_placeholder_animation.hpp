@@ -17,4 +17,4 @@ class PiecePlaceholderAnim : public IAnimation {
   core::Square m_piece_square;
 };
 
-}  // namespace lilia
+}  
