@@ -54,10 +54,9 @@ void ChessGame::doMoveUCI(const std::string& uciMove) {
   doMove(from, to, promo);
 }
 
-const Move& ChessGame::getMove(core::Square from, core::Square to) {
-  int side = bb::ci(m_position.state().sideToMove);
-  std::vector<Move> moves = generateLegalMoves();
-  for (auto& m : moves)
+Move ChessGame::getMove(core::Square from, core::Square to) {
+  const auto& moves = generateLegalMoves();
+  for (const auto& m : moves)
     if (m.from == from && m.to == to) return m;
 
   return Move{};
@@ -144,18 +143,17 @@ void ChessGame::buildHash() {
   m_position.buildHash();
 }
 
-std::vector<Move> ChessGame::generateLegalMoves() {
-  int side = bb::ci(m_position.state().sideToMove);
-  std::vector<Move> pseudo;
-  m_move_gen.generatePseudoLegalMoves(m_position.board(), m_position.state(), pseudo);
-  std::vector<Move> legalMoves;
-  for (const auto& m : pseudo) {
+const std::vector<Move>& ChessGame::generateLegalMoves() {
+  m_pseudo_moves.clear();
+  m_legal_moves.clear();
+  m_move_gen.generatePseudoLegalMoves(m_position.board(), m_position.state(), m_pseudo_moves);
+  for (const auto& m : m_pseudo_moves) {
     if (m_position.doMove(m)) {
       m_position.undoMove();
-      legalMoves.push_back(m);
+      m_legal_moves.push_back(m);
     }
   }
-  return legalMoves;
+  return m_legal_moves;
 }
 
 const GameState& ChessGame::getGameState() {
@@ -207,7 +205,7 @@ bb::Piece ChessGame::getPiece(core::Square sq) {
 }
 
 void ChessGame::doMove(core::Square from, core::Square to, core::PieceType promotion) {
-  for (auto m : generateLegalMoves())
+  for (const auto& m : generateLegalMoves())
     if (m.from == from && m.to == to && m.promotion == promotion) m_position.doMove(m);
 }
 

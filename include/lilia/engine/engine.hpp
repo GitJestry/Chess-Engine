@@ -23,8 +23,8 @@ class Engine {
   }
   std::optional<model::Move> find_best_move(model::Position& pos, int maxDepth = 8,
                                             std::atomic<bool>* stop = nullptr);
-  SearchStats getLastSearchStats() const;
-  EngineConfig getConfig() const;
+  const SearchStats& getLastSearchStats() const;
+  const EngineConfig& getConfig() const;
 
  private:
   struct Impl;

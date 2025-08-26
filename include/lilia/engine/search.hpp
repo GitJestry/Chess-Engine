@@ -52,8 +52,8 @@ class Search {
   int search_root_parallel(model::Position& pos, int depth, std::atomic<bool>* stop,
                            int maxThreads = 0);
 
-  // get snapshot of stats
-  SearchStats getStatsCopy() const;
+  // access current stats without copying
+  const SearchStats& getStats() const;
 
   // clear/initialize search internal state (killers/history/stats)
   void clearSearchState();

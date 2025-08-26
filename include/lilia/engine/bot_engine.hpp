@@ -31,7 +31,7 @@ class BotEngine {
                             std::atomic<bool>* externalCancel = nullptr);
 
   // Direkt zugänglich, falls jemand Stats separat lesen will
-  engine::SearchStats getLastSearchStats() const;
+  const engine::SearchStats& getLastSearchStats() const;
 
  private:
   Engine m_engine;

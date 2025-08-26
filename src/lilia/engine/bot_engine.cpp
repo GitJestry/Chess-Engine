@@ -129,7 +129,7 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   return res;
 }
 
-SearchStats BotEngine::getLastSearchStats() const {
+const SearchStats& BotEngine::getLastSearchStats() const {
   return m_engine.getLastSearchStats();
 }
 

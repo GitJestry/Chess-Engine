@@ -417,7 +417,7 @@ int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bo
         int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
         rr.score = score;
         rr.move = std::move(m);
-        rr.stats = worker.getStatsCopy();
+        rr.stats = worker.getStats();
         p.set_value(std::move(rr));
       } catch (const SearchStoppedException& e) {
         std::cout << "spawn worker search stopped" << std::endl;
@@ -550,7 +550,7 @@ int Search::search_root_parallel(model::Position& pos, int depth, std::atomic<bo
 }
 
 // snapshot stats
-SearchStats Search::getStatsCopy() const {
+const SearchStats& Search::getStats() const {
   return stats;
 }
 
