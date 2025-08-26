@@ -22,7 +22,7 @@ struct SearchResult {
 
 class BotEngine {
  public:
-  BotEngine();
+  explicit BotEngine(const EngineConfig& cfg = {});
   ~BotEngine();
 
   // Führe die Suche aus. thinkMillis = max Denkzeit in ms (0 = no timer).
