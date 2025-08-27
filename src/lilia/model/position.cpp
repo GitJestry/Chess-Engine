@@ -1,6 +1,9 @@
 #include "lilia/model/position.hpp"
 
 #include <algorithm>
+#include <array>
+#include <limits>
+#include <mutex>
 
 #include "lilia/engine/config.hpp"
 #include "lilia/model/core/magic.hpp"
@@ -8,56 +11,89 @@
 
 namespace lilia::model {
 
+namespace {
+// --------- Castling-Right Clear-Masken (FROM/TO) ----------
+static std::once_flag s_cr_once;
+static std::array<std::uint8_t, 64> CR_CLEAR_FROM{};
+static std::array<std::uint8_t, 64> CR_CLEAR_TO{};
+
+inline void init_cr_tables_once() {
+  std::call_once(s_cr_once, [] {
+    CR_CLEAR_FROM.fill(0);
+    CR_CLEAR_TO.fill(0);
+
+    // Könige bewegen / werden geschlagen
+    CR_CLEAR_FROM[bb::E1] |= bb::Castling::WK | bb::Castling::WQ;
+    CR_CLEAR_TO[bb::E1] |= bb::Castling::WK | bb::Castling::WQ;
+    CR_CLEAR_FROM[bb::E8] |= bb::Castling::BK | bb::Castling::BQ;
+    CR_CLEAR_TO[bb::E8] |= bb::Castling::BK | bb::Castling::BQ;
+
+    // Türme bewegen / werden geschlagen
+    CR_CLEAR_FROM[bb::H1] |= bb::Castling::WK;
+    CR_CLEAR_TO[bb::H1] |= bb::Castling::WK;
+    CR_CLEAR_FROM[bb::A1] |= bb::Castling::WQ;
+    CR_CLEAR_TO[bb::A1] |= bb::Castling::WQ;
+    CR_CLEAR_FROM[bb::H8] |= bb::Castling::BK;
+    CR_CLEAR_TO[bb::H8] |= bb::Castling::BK;
+    CR_CLEAR_FROM[bb::A8] |= bb::Castling::BQ;
+    CR_CLEAR_TO[bb::A8] |= bb::Castling::BQ;
+  });
+}
+
+// Schnelle Helper für SEE/Attack-Checks
+inline bb::Bitboard pawn_attackers_to(core::Square sq, core::Color by, bb::Bitboard pawns) {
+  const bb::Bitboard t = bb::sq_bb(sq);
+  if (by == core::Color::White) {
+    // weiße Bauern, die sq schlagen: stehen auf SW oder SE von sq
+    return (bb::sw(t) | bb::se(t)) & pawns;
+  } else {
+    // schwarze Bauern: stehen auf NW oder NE von sq
+    return (bb::nw(t) | bb::ne(t)) & pawns;
+  }
+}
+
+}  // namespace
+
 // ---------------------- Utility Checks ----------------------
 
 bool Position::checkInsufficientMaterial() {
-  // Wenn eine Seite noch Bauern/Türme/Damen hat -> nicht insufficient
-  bb::Bitboard occ = 0;
-  for (auto pt : {core::PieceType::Pawn, core::PieceType::Queen, core::PieceType::Rook}) {
-    occ |= m_board.getPieces(core::Color::White, pt);
-    occ |= m_board.getPieces(core::Color::Black, pt);
+  // Schnell: Bauern/Türme/Damen vorhanden? -> kein Insufficient
+  bb::Bitboard majorsMinors = 0;
+  for (auto pt : {core::PieceType::Pawn, core::PieceType::Rook, core::PieceType::Queen}) {
+    majorsMinors |= m_board.getPieces(core::Color::White, pt);
+    majorsMinors |= m_board.getPieces(core::Color::Black, pt);
   }
-  if (bb::popcount(occ) > 0) return false;
+  if (majorsMinors) return false;
 
-  // Zähle Leichtfiguren
-  bb::Bitboard whiteB = m_board.getPieces(core::Color::White, core::PieceType::Bishop);
-  bb::Bitboard blackB = m_board.getPieces(core::Color::Black, core::PieceType::Bishop);
-  bb::Bitboard whiteN = m_board.getPieces(core::Color::White, core::PieceType::Knight);
-  bb::Bitboard blackN = m_board.getPieces(core::Color::Black, core::PieceType::Knight);
+  const bb::Bitboard whiteB = m_board.getPieces(core::Color::White, core::PieceType::Bishop);
+  const bb::Bitboard blackB = m_board.getPieces(core::Color::Black, core::PieceType::Bishop);
+  const bb::Bitboard whiteN = m_board.getPieces(core::Color::White, core::PieceType::Knight);
+  const bb::Bitboard blackN = m_board.getPieces(core::Color::Black, core::PieceType::Knight);
 
-  int totalB = bb::popcount(whiteB) + bb::popcount(blackB);
-  int totalN = bb::popcount(whiteN) + bb::popcount(blackN);
+  const int totalB = bb::popcount(whiteB) + bb::popcount(blackB);
+  const int totalN = bb::popcount(whiteN) + bb::popcount(blackN);
 
-  // König gegen König
+  // K vs K
   if (totalB == 0 && totalN == 0) return true;
+  // K + eine Leichtfigur vs K
+  if ((totalB == 0 && totalN == 1) || (totalB == 1 && totalN == 0)) return true;
 
-  // König + einzelne Leichtfigur gegen König
-  if (totalB == 0 && totalN == 1) return true;
-  if (totalB == 1 && totalN == 0) return true;
-
-  // Zwei Läufer auf gleicher Feldfarbe gegen König (egal ob beide bei einer Partei)
+  // (Dein bisheriges Verhalten beibehalten:)
+  // Zwei Läufer auf gleicher Farbe gesamt (über beide Seiten hinweg) -> insufficient
   if (totalB == 2 && totalN == 0) {
-    // Prüfe Feldfarben-Parität beider Läufer
-    auto same_color_squares = [&](bb::Bitboard bishops) -> int {
+    auto same_color_squares = [](bb::Bitboard bishops) {
       int light = 0, dark = 0;
-      bb::Bitboard b = bishops;
-      while (b) {
-        core::Square s = bb::pop_lsb(b);
-        // Feldfarbe: (file + rank) % 2 == 0 -> hell (je nach Board-Definition)
-        int f = (int)s & 7;
-        int r = (int)s >> 3;
+      while (bishops) {
+        core::Square s = bb::pop_lsb(bishops);
+        int f = (int)s & 7, r = (int)s >> 3;
         ((f + r) & 1) ? ++dark : ++light;
       }
-      // Wir geben die max Anz. gleicher Farbe zurück
       return std::max(light, dark);
     };
-    int sameWhite = same_color_squares(whiteB);
-    int sameBlack = same_color_squares(blackB);
-    if (sameWhite == 2 || sameBlack == 2) return true;
+    if (same_color_squares(whiteB) == 2 || same_color_squares(blackB) == 2) return true;
   }
 
-  // Zwei Springer gegen König gilt in Praxis meist als remis, aber theoretisch nicht immer.
-  // Viele Engines zählen es als insufficient:
+  // Zwei Springer vs König -> als insufficient behandeln (wie bisher)
   if (totalB == 0 && totalN == 2) return true;
 
   return false;
@@ -68,207 +104,194 @@ bool Position::checkMoveRule() {
 }
 
 bool Position::checkRepetition() {
+  // 3-fach: aktuelle Stellung (+2 Rücksprünge) schon 2x in der Historie
   int count = 0;
-  int limit = std::min<int>((int)m_history.size(), m_state.halfmoveClock);
-  for (int i = 2; i <= limit; i += 2) {
-    const auto idx = (int)m_history.size() - i;
-    if (idx >= 0 && m_history[idx].zobristKey == m_hash) {
-      if (++count >= 2) return true;  // 3-fold
+  const int n = (int)m_history.size();
+  const int lim = std::min<int>(n, m_state.halfmoveClock);
+  for (int back = 2; back <= lim; back += 2) {
+    const int idx = n - back;
+    if (idx < 0) break;
+    if (m_history[idx].zobristKey == m_hash) {
+      if (++count >= 2) return true;
     }
   }
   return false;
 }
 
 bool Position::inCheck() const {
-  bb::Bitboard kbb = m_board.getPieces(m_state.sideToMove, core::PieceType::King);
+  const bb::Bitboard kbb = m_board.getPieces(m_state.sideToMove, core::PieceType::King);
   if (!kbb) return false;
-  core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
+  const core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
   return isSquareAttacked(ksq, ~m_state.sideToMove);
 }
 
 bool Position::isSquareAttacked(core::Square sq, core::Color by) const {
   const bb::Bitboard occ = m_board.getAllPieces();
+  const bb::Bitboard pawns = m_board.getPieces(by, core::PieceType::Pawn);
+  const bb::Bitboard knights = m_board.getPieces(by, core::PieceType::Knight);
+  const bb::Bitboard bishops = m_board.getPieces(by, core::PieceType::Bishop);
+  const bb::Bitboard rooks = m_board.getPieces(by, core::PieceType::Rook);
+  const bb::Bitboard queens = m_board.getPieces(by, core::PieceType::Queen);
+  const bb::Bitboard king = m_board.getPieces(by, core::PieceType::King);
   const bb::Bitboard target = bb::sq_bb(sq);
 
-  // Pawns (Achtung: „wer greift sq an?“ => gegengerichtete Angriffsmaske)
-  if (by == core::Color::White) {
-    if (bb::white_pawn_attacks(m_board.getPieces(core::Color::White, core::PieceType::Pawn)) &
-        target)
-      return true;
-  } else {
-    if (bb::black_pawn_attacks(m_board.getPieces(core::Color::Black, core::PieceType::Pawn)) &
-        target)
-      return true;
-  }
+  // Pawns (invertierte Richtung, nur 2 Kandidatenfelder)
+  if (pawn_attackers_to(sq, by, pawns)) return true;
 
   // Knights
-  bb::Bitboard n = m_board.getPieces(by, core::PieceType::Knight);
-  if (n && (bb::knight_attacks_from(sq) & n)) return true;
+  if (knights && (bb::knight_attacks_from(sq) & knights)) return true;
 
   // Bishops/Queens (diagonal)
-  {
-    const bb::Bitboard diagAttackers = m_board.getPieces(by, core::PieceType::Bishop) |
-                                       m_board.getPieces(by, core::PieceType::Queen);
-    if (diagAttackers && (magic::sliding_attacks(magic::Slider::Bishop, sq, occ) & diagAttackers))
-      return true;
-  }
+  if ((bishops | queens) &&
+      (magic::sliding_attacks(magic::Slider::Bishop, sq, occ) & (bishops | queens)))
+    return true;
 
   // Rooks/Queens (orthogonal)
-  {
-    const bb::Bitboard orthoAttackers = m_board.getPieces(by, core::PieceType::Rook) |
-                                        m_board.getPieces(by, core::PieceType::Queen);
-    if (orthoAttackers && (magic::sliding_attacks(magic::Slider::Rook, sq, occ) & orthoAttackers))
-      return true;
-  }
+  if ((rooks | queens) && (magic::sliding_attacks(magic::Slider::Rook, sq, occ) & (rooks | queens)))
+    return true;
 
   // King
-  bb::Bitboard k = m_board.getPieces(by, core::PieceType::King);
-  if (k && (bb::king_attacks_from(sq) & k)) return true;
+  if (king && (bb::king_attacks_from(sq) & king)) return true;
 
+  (void)target;  // (nur falls target in Warnlevel-Builds genutzt werden soll)
   return false;
 }
+
+// ------- Schneller SEE (Static Exchange Evaluation) -------
+// Stabil & einfach: wir recomputen die Slider-Strahlen pro Tausch (Anzahl klein).
 bool Position::see(const model::Move& m) const {
   using core::Color;
   using core::PieceType;
 
-  // Nur für Captures/EP relevant – sonst neutral (nicht negativ)
   if (!m.isCapture && !m.isEnPassant) return true;
 
-  // Lokale Kopien (veränderbar)
-  bb::Bitboard occ = m_board.getAllPieces();
-  std::array<bb::Bitboard, 6> wbbs{}, bbbs{};
-  for (int pt = 0; pt < 6; ++pt) {
-    wbbs[pt] = m_board.getPieces(Color::White, static_cast<PieceType>(pt));
-    bbbs[pt] = m_board.getPieces(Color::Black, static_cast<PieceType>(pt));
-  }
-
-  // Angreifer
+  // Ausgangsdaten (defensiv)
   auto attackerP = m_board.getPiece(m.from);
-  if (!attackerP) return true;  // defensiv: lieber nicht zu streng
+  if (!attackerP) return true;
   const Color us = attackerP->color;
   const Color them = ~us;
-
   const core::Square sq = m.to;
 
-  // Opfer korrekt entfernen + captured value
+  // Lokale Kopien der Bitboards
+  bb::Bitboard occ = m_board.getAllPieces();
+  std::array<bb::Bitboard, 6> W{}, B{};
+  for (int pt = 0; pt < 6; ++pt) {
+    W[pt] = m_board.getPieces(Color::White, static_cast<PieceType>(pt));
+    B[pt] = m_board.getPieces(Color::Black, static_cast<PieceType>(pt));
+  }
+
+  // Opfer entfernen & captured value bestimmen
   int capturedVal = 0;
   if (m.isEnPassant) {
-    // EP: Das Opfer steht "hinter" dem Zielfeld
     const core::Square capSq = (us == Color::White) ? static_cast<core::Square>(sq - 8)
                                                     : static_cast<core::Square>(sq + 8);
     capturedVal = engine::base_value[(int)PieceType::Pawn];
     occ &= ~bb::sq_bb(capSq);
     if (us == Color::White)
-      bbbs[(int)PieceType::Pawn] &= ~bb::sq_bb(capSq);
+      B[(int)PieceType::Pawn] &= ~bb::sq_bb(capSq);
     else
-      wbbs[(int)PieceType::Pawn] &= ~bb::sq_bb(capSq);
+      W[(int)PieceType::Pawn] &= ~bb::sq_bb(capSq);
   } else {
-    if (auto cap = m_board.getPiece(sq)) {
+    if (auto cap = m_board.getPiece(sq))
       capturedVal = engine::base_value[(int)cap->type];
-      occ &= ~bb::sq_bb(sq);
-      if (cap->color == Color::White)
-        wbbs[(int)cap->type] &= ~bb::sq_bb(sq);
-      else
-        bbbs[(int)cap->type] &= ~bb::sq_bb(sq);
-    } else {
-      // "Capture" auf leeres Feld – behandle neutral (nicht negativ)
-      return true;
-    }
+    else
+      return true;  // "Capture" ins Leere -> neutral
+    // Das Opfer wird durch occ-Update implizit entfernt, sobald wir den From-Angreifer ziehen
   }
 
-  // Angreifer vom Ursprungsfeld entfernen
+  // Angreifer von 'from' entfernen, auf 'sq' stellen (Promo beachten)
   occ &= ~bb::sq_bb(m.from);
   if (us == Color::White)
-    wbbs[(int)attackerP->type] &= ~bb::sq_bb(m.from);
+    W[(int)attackerP->type] &= ~bb::sq_bb(m.from);
   else
-    bbbs[(int)attackerP->type] &= ~bb::sq_bb(m.from);
+    B[(int)attackerP->type] &= ~bb::sq_bb(m.from);
 
-  // Ziel gilt als belegt (mit ziehender Figur; Promotions berücksichtigen)
   PieceType curOccType = (m.promotion != PieceType::None) ? m.promotion : attackerP->type;
   Color curOccSide = us;
+
   occ |= bb::sq_bb(sq);
   if (curOccSide == Color::White)
-    wbbs[(int)curOccType] |= bb::sq_bb(sq);
+    W[(int)curOccType] |= bb::sq_bb(sq);
   else
-    bbbs[(int)curOccType] |= bb::sq_bb(sq);
+    B[(int)curOccType] |= bb::sq_bb(sq);
 
-  // Attack-Generator lokal (nur für EVAL der Folge-Schläge)
-  auto attacks_from_local = [&](Color who, PieceType pt, core::Square s,
-                                bb::Bitboard o) -> bb::Bitboard {
-    switch (pt) {
-      case PieceType::Pawn:
-        return (who == Color::White) ? bb::white_pawn_attacks(bb::sq_bb(s))
-                                     : bb::black_pawn_attacks(bb::sq_bb(s));
-      case PieceType::Knight:
-        return bb::knight_attacks_from(s);
-      case PieceType::Bishop:
-        return magic::sliding_attacks(magic::Slider::Bishop, s, o);
-      case PieceType::Rook:
-        return magic::sliding_attacks(magic::Slider::Rook, s, o);
-      case PieceType::Queen:
-        return magic::sliding_attacks(magic::Slider::Bishop, s, o) |
-               magic::sliding_attacks(magic::Slider::Rook, s, o);
-      case PieceType::King:
-        return bb::king_attacks_from(s);
-      default:
-        return 0;
-    }
-  };
-
-  // Least Valuable Attacker finden (unter aktueller Belegung)
-  auto find_lva = [&](Color who, core::Square target, bb::Bitboard o) -> std::pair<int, PieceType> {
-    static constexpr PieceType order[6] = {PieceType::Pawn, PieceType::Knight, PieceType::Bishop,
-                                           PieceType::Rook, PieceType::Queen,  PieceType::King};
-    for (PieceType pt : order) {
-      bb::Bitboard set = (who == Color::White) ? wbbs[(int)pt] : bbbs[(int)pt];
-      bb::Bitboard scan = set;
-      while (scan) {
-        core::Square s = bb::pop_lsb(scan);
-        if (attacks_from_local(who, pt, s, o) & bb::sq_bb(target)) return {(int)s, pt};
-      }
-    }
-    return {-1, PieceType::Pawn};
-  };
-
-  // Standard-Gain-Array
+  // Gain-Array
   int gain[64];
   int d = 0;
   gain[d++] = capturedVal;
 
+  auto attackers_to_sq = [&](bb::Bitboard o, Color side) -> std::array<bb::Bitboard, 6> {
+    std::array<bb::Bitboard, 6> out{};
+    const bb::Bitboard pawns =
+        (side == Color::White) ? W[(int)PieceType::Pawn] : B[(int)PieceType::Pawn];
+    const bb::Bitboard knights =
+        (side == Color::White) ? W[(int)PieceType::Knight] : B[(int)PieceType::Knight];
+    const bb::Bitboard bishops =
+        (side == Color::White) ? W[(int)PieceType::Bishop] : B[(int)PieceType::Bishop];
+    const bb::Bitboard rooks =
+        (side == Color::White) ? W[(int)PieceType::Rook] : B[(int)PieceType::Rook];
+    const bb::Bitboard queens =
+        (side == Color::White) ? W[(int)PieceType::Queen] : B[(int)PieceType::Queen];
+    const bb::Bitboard king =
+        (side == Color::White) ? W[(int)PieceType::King] : B[(int)PieceType::King];
+
+    const bb::Bitboard diag = magic::sliding_attacks(magic::Slider::Bishop, sq, o);
+    const bb::Bitboard ortho = magic::sliding_attacks(magic::Slider::Rook, sq, o);
+
+    out[(int)PieceType::Pawn] = pawn_attackers_to(sq, side, pawns);
+    out[(int)PieceType::Knight] = bb::knight_attacks_from(sq) & knights;
+    out[(int)PieceType::Bishop] = diag & bishops;
+    out[(int)PieceType::Rook] = ortho & rooks;
+    out[(int)PieceType::Queen] = (diag | ortho) & queens;
+    out[(int)PieceType::King] = bb::king_attacks_from(sq) & king;
+    return out;
+  };
+
   Color side = them;
 
-  // Folge-Schlagkette
   while (true) {
-    auto [aSq, aType] = find_lva(side, sq, occ);
-    if (aSq < 0) break;
+    // aktuelle Angreifer beider Seiten: wir brauchen nur 'side'
+    auto A = attackers_to_sq(occ, side);
+    int chosenType = -1;
+    core::Square aSq = core::NO_SQUARE;
 
-    // bisherigen Besetzer vom Ziel entfernen
+    // LVA-Order
+    for (int pt = (int)PieceType::Pawn; pt <= (int)PieceType::King; ++pt) {
+      if (A[pt]) {
+        chosenType = pt;
+        aSq = bb::pop_lsb(A[pt]);
+        break;
+      }
+    }
+    if (chosenType < 0) break;  // keiner kann (weiter) schlagen
+
+    // den bisherigen Besetzer vom Ziel entfernen
     if (curOccSide == Color::White)
-      wbbs[(int)curOccType] &= ~bb::sq_bb(sq);
+      W[(int)curOccType] &= ~bb::sq_bb(sq);
     else
-      bbbs[(int)curOccType] &= ~bb::sq_bb(sq);
+      B[(int)curOccType] &= ~bb::sq_bb(sq);
 
     // Angreifer vom Ursprungsfeld entfernen
     if (side == Color::White)
-      wbbs[(int)aType] &= ~bb::sq_bb(static_cast<core::Square>(aSq));
+      W[chosenType] &= ~bb::sq_bb(aSq);
     else
-      bbbs[(int)aType] &= ~bb::sq_bb(static_cast<core::Square>(aSq));
-    occ &= ~bb::sq_bb(static_cast<core::Square>(aSq));
+      B[chosenType] &= ~bb::sq_bb(aSq);
+    occ &= ~bb::sq_bb(aSq);
 
-    // Wert des gerade ziehenden Angreifers abziehen/aufsummieren
-    gain[d] = engine::base_value[(int)aType] - gain[d - 1];
+    // Gewinn aufbauen: Wert des gerade geschlagenen Besetzers – bisheriger Gewinn
+    gain[d] = engine::base_value[(int)curOccType] - gain[d - 1];
     ++d;
 
-    // Neuer Besetzer ist der eben ziehende Angreifer
+    // Neuer Besetzer ist jetzt der eben ziehende Angreifer
     curOccSide = side;
-    curOccType = aType;
+    curOccType = static_cast<PieceType>(chosenType);
 
-    // Ziel wieder als belegt markieren + in die Seiten-BBs eintragen
+    // gesetztes Ziel wieder mit neuem Besetzer belegen
     occ |= bb::sq_bb(sq);
     if (curOccSide == Color::White)
-      wbbs[(int)curOccType] |= bb::sq_bb(sq);
+      W[(int)curOccType] |= bb::sq_bb(sq);
     else
-      bbbs[(int)curOccType] |= bb::sq_bb(sq);
+      B[(int)curOccType] |= bb::sq_bb(sq);
 
     side = ~side;
     if (d >= 63) break;  // Sicherheitsbremse
@@ -276,7 +299,6 @@ bool Position::see(const model::Move& m) const {
 
   // Rückwärts-Maximierung
   while (--d) gain[d - 1] = std::max(-gain[d], gain[d - 1]);
-
   return gain[0] >= 0;
 }
 
@@ -284,27 +306,23 @@ bool Position::doMove(const Move& m) {
   if (m.from == m.to) return false;
 
   core::Color us = m_state.sideToMove;
-  core::Color them = ~us;
-
   auto fromPiece = m_board.getPiece(m.from);
-  if (!fromPiece) return false;              // kein Stück auf from
-  if (fromPiece->color != us) return false;  // falsche Seite
+  if (!fromPiece || fromPiece->color != us) return false;
 
-  // --- NEU: Promotions robust validieren ---
+  // Promotions robust validieren
   if (m.promotion != core::PieceType::None) {
     if (fromPiece->type != core::PieceType::Pawn) return false;
     const int toRank = bb::rank_of(m.to);
     const bool onPromoRank = (us == core::Color::White) ? (toRank == 7) : (toRank == 0);
     if (!onPromoRank) return false;
-
     switch (m.promotion) {
       case core::PieceType::Knight:
       case core::PieceType::Bishop:
       case core::PieceType::Rook:
       case core::PieceType::Queen:
-        break;  // erlaubt
+        break;
       default:
-        return false;  // König/None etc. verbieten
+        return false;
     }
   }
 
@@ -314,24 +332,24 @@ bool Position::doMove(const Move& m) {
   st.prevCastlingRights = m_state.castlingRights;
   st.prevEnPassantSquare = m_state.enPassantSquare;
   st.prevHalfmoveClock = m_state.halfmoveClock;
-  st.prevPawnKey = m_state.pawnKey;  // <<-- WICHTIG: PawnKey für Undo sichern
+  st.prevPawnKey = m_state.pawnKey;
 
   applyMove(m, st);
 
-  // Illegal (eigener König im Schach)? -> rückgängig
+  // Illegal (eigener König im Schach) => rollback
   core::Color movedSide = ~m_state.sideToMove;
   bb::Bitboard kbbAfter = m_board.getPieces(movedSide, core::PieceType::King);
   if (!kbbAfter) {
     unapplyMove(st);
     m_hash = st.zobristKey;
-    m_state.pawnKey = st.prevPawnKey;  // <<-- PawnKey exakt wiederherstellen
+    m_state.pawnKey = st.prevPawnKey;
     return false;
   }
   core::Square ksqAfter = static_cast<core::Square>(bb::ctz64(kbbAfter));
   if (isSquareAttacked(ksqAfter, m_state.sideToMove)) {
     unapplyMove(st);
     m_hash = st.zobristKey;
-    m_state.pawnKey = st.prevPawnKey;  // <<-- PawnKey exakt wiederherstellen
+    m_state.pawnKey = st.prevPawnKey;
     return false;
   }
 
@@ -356,7 +374,7 @@ bool Position::doNullMove() {
   st.prevHalfmoveClock = m_state.halfmoveClock;
   st.prevFullmoveNumber = m_state.fullmoveNumber;
 
-  // altes EP (falls relevant) aus dem Hash
+  // altes EP aus dem Hash (falls relevant)
   xorEPRelevant();
   m_state.enPassantSquare = core::NO_SQUARE;
 
@@ -367,24 +385,20 @@ bool Position::doNullMove() {
   m_state.sideToMove = ~m_state.sideToMove;
   if (m_state.sideToMove == core::Color::White) ++m_state.fullmoveNumber;
 
-  // neues EP gibt es im Nullmove nicht
   m_null_history.push_back(st);
   return true;
 }
 
 void Position::undoNullMove() {
   if (m_null_history.empty()) return;
-
   NullState st = m_null_history.back();
   m_null_history.pop_back();
 
-  // Seite zurückflippen
   m_state.sideToMove = ~m_state.sideToMove;
   hashXorSide();
 
   m_state.fullmoveNumber = st.prevFullmoveNumber;
 
-  // EP wieder in Hash aufnehmen (falls relevant)
   m_state.enPassantSquare = st.prevEnPassantSquare;
   xorEPRelevant();
 
@@ -395,23 +409,21 @@ void Position::undoNullMove() {
 }
 
 void Position::applyMove(const Move& m, StateInfo& st) {
+  init_cr_tables_once();
+
   core::Color us = m_state.sideToMove;
   core::Color them = ~us;
 
   // EP aus aktuellem Hash entfernen (falls relevant)
   xorEPRelevant();
-
-  // >>> NEU: alten EP-Square cachen, BEVOR wir ihn löschen
   const core::Square prevEP = m_state.enPassantSquare;
-
-  // jetzt EP resetten (wir setzen ggf. später neuen EP-Square)
   m_state.enPassantSquare = core::NO_SQUARE;
 
   const auto fromPiece = m_board.getPiece(m.from);
   if (!fromPiece) return;
   const bool movingPawn = (fromPiece->type == core::PieceType::Pawn);
 
-  // Rochade-Erkennung wie gehabt (m.castle oder „König 2 Felder“)
+  // Rochade?
   bool isCastleMove = (m.castle != CastleSide::None);
   if (!isCastleMove && fromPiece->type == core::PieceType::King) {
     if (us == core::Color::White && m.from == bb::E1 &&
@@ -422,41 +434,36 @@ void Position::applyMove(const Move& m, StateInfo& st) {
       isCastleMove = true;
   }
 
-  // --- EP-Erkennung ROBUST ---
+  // En passant sicher erkennen
   bool isEP = m.isEnPassant;
   if (!isEP && movingPawn) {
     const int df = (int)m.to - (int)m.from;
     const bool diag = (df == 7 || df == 9 || df == -7 || df == -9);
     if (diag && prevEP != core::NO_SQUARE && m.to == prevEP) {
-      // Ziel leer? Dann ist es wirklich EP
       if (!m_board.getPiece(m.to).has_value()) isEP = true;
     }
   }
 
-  // --- „normales“ Capture?
   bool isCap = m.isCapture;
   if (!isCap && !isEP) {
     auto cap = m_board.getPiece(m.to);
     if (cap && cap->color == them) isCap = true;
   }
 
-  // --- Capture anwenden (EP/Capture robust) ---
+  // Capture anwenden
   if (isEP) {
-    // EP: der geschlagene Bauer steht hinter dem Zielfeld
     core::Square capSq = (us == core::Color::White) ? static_cast<core::Square>(m.to - 8)
                                                     : static_cast<core::Square>(m.to + 8);
     auto cap = m_board.getPiece(capSq);
     st.captured = cap.value_or(bb::Piece{core::PieceType::None, them});
     if (cap) {
-      // Hash & PawnKey: Bauer des Gegners entfernen
-      hashXorPiece(them, core::PieceType::Pawn, capSq);  // <<< pawnKey aktualisiert sich hier
+      hashXorPiece(them, core::PieceType::Pawn, capSq);
       m_board.removePiece(capSq);
     }
   } else if (isCap) {
     auto cap = m_board.getPiece(m.to);
     st.captured = cap.value_or(bb::Piece{core::PieceType::None, them});
     if (cap) {
-      // Hash & PawnKey: gegnerisches Opfer entfernen (falls Bauer -> pawnKey flip)
       hashXorPiece(them, st.captured.type, m.to);
       m_board.removePiece(m.to);
     }
@@ -464,87 +471,82 @@ void Position::applyMove(const Move& m, StateInfo& st) {
     st.captured = bb::Piece{core::PieceType::None, them};
   }
 
-  // --- ziehende Figur vom from-Feld entfernen (Hash & pawnKey, falls Bauer) ---
+  // ziehende Figur abtragen
   bb::Piece placed = *fromPiece;
-  hashXorPiece(us, placed.type, m.from);  // <<< bei Bauer: pawnKey flip
+  hashXorPiece(us, placed.type, m.from);
   m_board.removePiece(m.from);
 
-  // --- Promotion anwenden (Bauer wird zu N/B/R/Q) ---
-  if (m.promotion != core::PieceType::None) {
-    placed.type = m.promotion;  // kein Bauer mehr -> kein pawnKey an 'to'
-  }
+  // Promotion anwenden
+  if (m.promotion != core::PieceType::None) placed.type = m.promotion;
 
-  // --- Figur auf 'to' setzen (Hash & pawnKey, falls es nach der Promo noch ein Bauer wäre) ---
+  // Figur setzen
   hashXorPiece(us, placed.type, m.to);
   m_board.setPiece(m.to, placed);
 
-  // --- Rochade: Turm versetzen (Hash & pawnKey korrekt via hashXorPiece) ---
+  // Rochade: Turm versetzen
   if (isCastleMove) {
     if (us == core::Color::White) {
-      if (m.to == static_cast<core::Square>(6) /*G1*/ || m.castle == CastleSide::KingSide) {
+      if (m.to == static_cast<core::Square>(6) || m.castle == CastleSide::KingSide) {
         hashXorPiece(core::Color::White, core::PieceType::Rook, bb::H1);
         m_board.removePiece(bb::H1);
-        hashXorPiece(core::Color::White, core::PieceType::Rook,
-                     static_cast<core::Square>(5));  // F1
+        hashXorPiece(core::Color::White, core::PieceType::Rook, static_cast<core::Square>(5));
         m_board.setPiece(static_cast<core::Square>(5),
                          bb::Piece{core::PieceType::Rook, core::Color::White});
       } else {
         hashXorPiece(core::Color::White, core::PieceType::Rook, bb::A1);
         m_board.removePiece(bb::A1);
-        hashXorPiece(core::Color::White, core::PieceType::Rook,
-                     static_cast<core::Square>(3));  // C1->D1 rook lands on D1 (=3)
+        hashXorPiece(core::Color::White, core::PieceType::Rook, static_cast<core::Square>(3));
         m_board.setPiece(static_cast<core::Square>(3),
                          bb::Piece{core::PieceType::Rook, core::Color::White});
       }
     } else {
-      if (m.to == static_cast<core::Square>(62) /*G8*/ || m.castle == CastleSide::KingSide) {
+      if (m.to == static_cast<core::Square>(62) || m.castle == CastleSide::KingSide) {
         hashXorPiece(core::Color::Black, core::PieceType::Rook, bb::H8);
         m_board.removePiece(bb::H8);
-        hashXorPiece(core::Color::Black, core::PieceType::Rook,
-                     static_cast<core::Square>(61));  // F8
+        hashXorPiece(core::Color::Black, core::PieceType::Rook, static_cast<core::Square>(61));
         m_board.setPiece(static_cast<core::Square>(61),
                          bb::Piece{core::PieceType::Rook, core::Color::Black});
       } else {
         hashXorPiece(core::Color::Black, core::PieceType::Rook, bb::A8);
         m_board.removePiece(bb::A8);
-        hashXorPiece(core::Color::Black, core::PieceType::Rook,
-                     static_cast<core::Square>(59));  // D8
+        hashXorPiece(core::Color::Black, core::PieceType::Rook, static_cast<core::Square>(59));
         m_board.setPiece(static_cast<core::Square>(59),
                          bb::Piece{core::PieceType::Rook, core::Color::Black});
       }
     }
   }
 
-  // --- 50-Züge-Regel (Bauer bewegt ODER capture) ---
+  // 50-Züge-Regel
   if (placed.type == core::PieceType::Pawn || st.captured.type != core::PieceType::None)
     m_state.halfmoveClock = 0;
   else
     ++m_state.halfmoveClock;
 
-  // --- neuen EP-Square setzen (nur bei Doppelzug eines Bauern) ---
+  // neuen EP-Square (Doppelschritt)
   if (placed.type == core::PieceType::Pawn) {
     if (us == core::Color::White && bb::rank_of(m.from) == 1 && bb::rank_of(m.to) == 3)
       m_state.enPassantSquare = static_cast<core::Square>(m.from + 8);
     else if (us == core::Color::Black && bb::rank_of(m.from) == 6 && bb::rank_of(m.to) == 4)
       m_state.enPassantSquare = static_cast<core::Square>(m.from - 8);
-    // (kein direkter Einfluss auf pawnKey – nur Zobrist-Hash via epHashIfRelevant)
   }
 
-  // --- Castling-Rechte updaten (Hash für CR via hashSetCastling) ---
+  // Castling-Rechte updaten (schnell über Tabellen)
   const std::uint8_t prevCR = m_state.castlingRights;
-  updateCastlingRightsOnMove(m.from, m.to);
+  m_state.castlingRights &= ~(CR_CLEAR_FROM[(int)m.from] | CR_CLEAR_TO[(int)m.to]);
   if (prevCR != m_state.castlingRights) hashSetCastling(prevCR, m_state.castlingRights);
 
-  // --- sideToMove flippen (Hash side xor) ---
+  // sideToMove flippen
   hashXorSide();
   m_state.sideToMove = them;
   if (them == core::Color::White) ++m_state.fullmoveNumber;
 
-  // --- neues EP (falls gesetzt) wieder in den Hash (mit neuer sideToMove bewertet) ---
+  // neues EP ggf. in Hash
   xorEPRelevant();
 }
 
 void Position::unapplyMove(const StateInfo& st) {
+  init_cr_tables_once();
+
   // Seite zurück
   m_state.sideToMove = ~m_state.sideToMove;
   hashXorSide();
@@ -554,16 +556,16 @@ void Position::unapplyMove(const StateInfo& st) {
   hashSetCastling(m_state.castlingRights, st.prevCastlingRights);
   m_state.castlingRights = st.prevCastlingRights;
 
-  // EP zurück in Hash integrieren
+  // EP zurück
   m_state.enPassantSquare = st.prevEnPassantSquare;
   xorEPRelevant();
 
   // 50-Züge
   m_state.halfmoveClock = st.prevHalfmoveClock;
 
-  // Figuren zurücksetzen
+  // Figuren zurück
   const Move& m = st.move;
-  core::Color us = m_state.sideToMove;  // Spieler, der den Zug gemacht hatte
+  core::Color us = m_state.sideToMove;
 
   // Rochade rückgängig
   if (m.castle != CastleSide::None) {
@@ -594,7 +596,7 @@ void Position::unapplyMove(const StateInfo& st) {
     }
   }
 
-  // ziehende Figur zurück auf "from" (Promos werden zu Bauern zurückverwandelt)
+  // Zieher zurück auf from (Promo rückverwandeln)
   if (auto moving = m_board.getPiece(m.to)) {
     m_board.removePiece(m.to);
     bb::Piece placed = *moving;
@@ -604,12 +606,10 @@ void Position::unapplyMove(const StateInfo& st) {
     hashXorPiece(us, placed.type, m.from);
     m_board.setPiece(m.from, placed);
   } else {
-    // Defensive: Inkonsistenz – brich sauber ab (keine Exceptions/ctz auf 0)
-    // Hash und PawnKey werden vom Aufrufer (undoMove/doMove-Illegalität) zurückgesetzt.
-    return;
+    return;  // defensiv
   }
 
-  // Capture rückgängig machen
+  // Capture zurück
   if (m.isEnPassant) {
     core::Square capSq = (us == core::Color::White) ? static_cast<core::Square>(m.to - 8)
                                                     : static_cast<core::Square>(m.to + 8);
@@ -621,22 +621,6 @@ void Position::unapplyMove(const StateInfo& st) {
     hashXorPiece(~us, st.captured.type, m.to);
     m_board.setPiece(m.to, st.captured);
   }
-}
-
-// ---------------------- Castling Rights Helper ----------------------
-
-void Position::updateCastlingRightsOnMove(core::Square from, core::Square to) {
-  auto clear = [&](std::uint8_t rights) { m_state.castlingRights &= ~rights; };
-
-  // König zieht oder wird geschlagen
-  if (from == bb::E1 || to == bb::E1) clear(bb::Castling::WK | bb::Castling::WQ);
-  if (from == bb::E8 || to == bb::E8) clear(bb::Castling::BK | bb::Castling::BQ);
-
-  // Türme ziehen oder werden geschlagen
-  if (from == bb::H1 || to == bb::H1) clear(bb::Castling::WK);
-  if (from == bb::A1 || to == bb::A1) clear(bb::Castling::WQ);
-  if (from == bb::H8 || to == bb::H8) clear(bb::Castling::BK);
-  if (from == bb::A8 || to == bb::A8) clear(bb::Castling::BQ);
 }
 
 }  // namespace lilia::model

@@ -1,4 +1,11 @@
 #pragma once
+#if defined(__GNUC__) || defined(__clang__)
+#define LILIA_LIKELY(x) __builtin_expect(!!(x), 1)
+#define LILIA_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#else
+#define LILIA_LIKELY(x) (x)
+#define LILIA_UNLIKELY(x) (x)
+#endif
 
 #include <array>
 #include <atomic>
@@ -61,9 +68,14 @@ class Search {
 
   // Per-Ply-Killers: 2 Killer-Moves je Suchtiefe
   std::array<std::array<model::Move, 2>, MAX_PLY> killers;
-
+  // Allokationsfreie Move-Listen (eine Instanz pro Search, also threadsicher)
+  std::array<std::vector<model::Move>, MAX_PLY> genBuf_;
+  std::array<std::vector<model::Move>, MAX_PLY> legalBuf_;
+  // Für Quiescence: einmalige wiederverwendete Buffers
+  std::vector<model::Move> qAllBuf_;
+  std::vector<model::Move> qMovesBuf_;
   // History-Heuristik (einfach: von->nach)
-  std::array<std::array<int, 64>, 64> history;
+  std::array<std::array<int16_t, 64>, 64> history{};
 
   std::shared_ptr<std::atomic<bool>> stopFlag;
   SearchStats stats;

@@ -69,7 +69,6 @@ class Position {
   // interne Helfer
   void applyMove(const Move& m, StateInfo& st);
   void unapplyMove(const StateInfo& st);
-  void updateCastlingRightsOnMove(core::Square from, core::Square to);
 
   // Zobrist/PawnKey inkrementell
   inline void hashXorPiece(core::Color c, core::PieceType pt, core::Square s) {

@@ -78,72 +78,80 @@ class TT4 {
     generation_.store(1, std::memory_order_relaxed);
   }
 
-  // Konsistente Probe dank Seqlock + Key-Recheck
-  std::optional<TTEntry4> probe(std::uint64_t key) const {
+  // --------- FAST PROBE (no-optional), zero-overhead for search hot path ----------
+  // returns true on hit, fills 'out' with a consistent snapshot
+  bool probe_into(std::uint64_t key, TTEntry4& out) const noexcept {
     const Cluster& c = table_[index(key)];
     LILIA_PREFETCH_L1(&c);
 
+    // First pass: look for matching key (relaxed), only then do seqlock dance.
     for (const auto& ent : c.e) {
-      const std::uint64_t k1 = ent.key.load(std::memory_order_acquire);
+      const std::uint64_t k1 = ent.key.load(std::memory_order_relaxed);
       if (k1 != key) continue;
 
-      // kleine Retry-Schleife, falls Writer gerade aktiv ist
+      // Small retry-loop if writer is active
       for (int tries = 0; tries < 3; ++tries) {
         const std::uint32_t s1 = ent.seq.load(std::memory_order_acquire);
-        if (s1 & 1u) {  // Writer aktiv
-          continue;     // nächster Try / Slot
-        }
+        if (s1 & 1u) continue;  // writer active
 
-        const std::uint64_t pay = ent.payload.load(std::memory_order_acquire);
-        const std::uint32_t mv = ent.mv.load(std::memory_order_acquire);
+        // Under seqlock: payload/mv can be relaxed; seq provides ordering.
+        const std::uint64_t pay = ent.payload.load(std::memory_order_relaxed);
+        const std::uint32_t mv = ent.mv.load(std::memory_order_relaxed);
 
         const std::uint32_t s2 = ent.seq.load(std::memory_order_acquire);
-        const std::uint64_t k2 = ent.key.load(std::memory_order_acquire);
+        // Consistent snapshot iff s1==s2 and even.
+        if ((s2 != s1) || (s2 & 1u) || pay == 0) continue;
 
-        // Konsistenzcheck: gleicher Key, stabiler Seqlock, gültiger Payload
-        if (k2 != k1 || (s2 != s1) || (s2 & 1u) || pay == 0) {
-          continue;
-        }
-
-        TTEntry4 out{};
         out.key = key;
         unpack_payload(pay, out.value, out.depth, out.bound, out.age);
         out.best = unpack_move(mv);
-        return out;
+        return true;
       }
     }
+    return false;
+  }
+
+  // --------- Backwards-compatible API (still works) ----------
+  std::optional<TTEntry4> probe(std::uint64_t key) const {
+    TTEntry4 tmp{};
+    if (probe_into(key, tmp)) return tmp;
     return std::nullopt;
   }
 
   // Thread-sicheres Store mit Seqlock
-  void store(std::uint64_t key, int32_t value, int16_t depth, Bound bound, const Move& best) {
+  void store(std::uint64_t key, int32_t value, int16_t depth, Bound bound,
+             const Move& best) noexcept {
     Cluster& c = table_[index(key)];
     const std::uint8_t curAge =
         static_cast<std::uint8_t>(generation_.load(std::memory_order_relaxed));
 
-    const auto write_entry_newkey = [&](PackedEntry& ent) {
-      // Neu-Publikation: zuerst Seqlock öffnen (odd), Daten schreiben, Key publishen, Seqlock
-      // schließen
+    const auto write_entry_newkey = [&](PackedEntry& ent) noexcept {
+      // Neu-Publikation: Seqlock öffnen (odd), Daten schreiben, Key publishen, Seqlock schließen
       const std::uint32_t s0 = ent.seq.load(std::memory_order_relaxed);
       ent.seq.store(s0 | 1u, std::memory_order_release);  // begin (odd)
+
       ent.mv.store(pack_move(best), std::memory_order_relaxed);
       ent.payload.store(pack_payload(value, depth, bound, curAge), std::memory_order_relaxed);
-      ent.key.store(key, std::memory_order_release);  // publish key last (für Neu-Eintrag)
+
+      // publish key last for a new entry
+      ent.key.store(key, std::memory_order_release);
       ent.seq.store((s0 | 1u) + 1u, std::memory_order_release);  // end (even)
     };
 
-    const auto write_entry_update = [&](PackedEntry& ent) {
+    const auto write_entry_update = [&](PackedEntry& ent) noexcept {
       // Update existierender Key: Key bleibt gleich, Seqlock schützt (payload,mv)
       const std::uint32_t s0 = ent.seq.load(std::memory_order_relaxed);
       ent.seq.store(s0 | 1u, std::memory_order_release);  // begin (odd)
+
       ent.mv.store(pack_move(best), std::memory_order_relaxed);
       ent.payload.store(pack_payload(value, depth, bound, curAge), std::memory_order_relaxed);
+
       ent.seq.store((s0 | 1u) + 1u, std::memory_order_release);  // end (even)
     };
 
-    // 1) Update existing
+    // 1) Update existing (relaxed key check is enough here)
     for (auto& ent : c.e) {
-      if (ent.key.load(std::memory_order_acquire) == key) {
+      if (ent.key.load(std::memory_order_relaxed) == key) {
         write_entry_update(ent);
         return;
       }
@@ -151,13 +159,13 @@ class TT4 {
 
     // 2) Empty slot
     for (auto& ent : c.e) {
-      if (ent.key.load(std::memory_order_acquire) == 0) {
+      if (ent.key.load(std::memory_order_relaxed) == 0) {
         write_entry_newkey(ent);
         return;
       }
     }
 
-    // 3) Replacement (Depth bevorzugen, danach Alter)
+    // 3) Replacement (Depth bevorzugen, danach Alter, Bound-Qualität leicht gewichten)
     int victim = 0;
     int scoreV = replacement_score(c.e[0], curAge);
     for (int i = 1; i < 4; ++i) {
@@ -170,23 +178,27 @@ class TT4 {
     write_entry_newkey(c.e[victim]);
   }
 
-  void new_generation() {
+  void new_generation() noexcept {
     auto g = generation_.fetch_add(1, std::memory_order_relaxed) + 1;
     if (g == 0) generation_.store(1, std::memory_order_relaxed);
   }
 
+  // in TT4:
+  void prefetch(std::uint64_t key) const { LILIA_PREFETCH_L1(&table_[index(key)]); }
+
  private:
   // — Helpers —
   static inline std::uint64_t pack_payload(int32_t value, int16_t depth, Bound bound,
-                                           std::uint8_t age) {
+                                           std::uint8_t age) noexcept {
     std::uint64_t p = static_cast<std::uint32_t>(value);
     p |= (static_cast<std::uint64_t>(static_cast<std::uint16_t>(depth)) << 32);
     p |= (static_cast<std::uint64_t>(static_cast<std::uint8_t>(bound)) << 48);
     p |= (static_cast<std::uint64_t>(age) << 56);
     return p;
   }
+
   static inline void unpack_payload(std::uint64_t p, int32_t& value, int16_t& depth, Bound& bound,
-                                    std::uint8_t& age) {
+                                    std::uint8_t& age) noexcept {
     value = static_cast<int32_t>(p & 0xffffffffULL);
     depth = static_cast<int16_t>((p >> 32) & 0xffffULL);
     bound = static_cast<Bound>((p >> 48) & 0xffULL);
@@ -194,7 +206,7 @@ class TT4 {
   }
 
   // pack: [0..5]=from, [6..11]=to, [12..15]=promo, [16]=isCapture, [17]=isEP, [18..19]=castle
-  static inline std::uint32_t pack_move(const Move& m) {
+  static inline std::uint32_t pack_move(const Move& m) noexcept {
     std::uint32_t v = 0;
     v |= (static_cast<std::uint32_t>(m.from) & 0x3f);
     v |= (static_cast<std::uint32_t>(m.to) & 0x3f) << 6;
@@ -211,7 +223,7 @@ class TT4 {
     return v;
   }
 
-  static inline Move unpack_move(std::uint32_t v) {
+  static inline Move unpack_move(std::uint32_t v) noexcept {
     Move m{};
     m.from = static_cast<core::Square>(v & 0x3f);
     m.to = static_cast<core::Square>((v >> 6) & 0x3f);
@@ -224,7 +236,8 @@ class TT4 {
     return m;
   }
 
-  static inline int replacement_score(const PackedEntry& ent, std::uint8_t curAge) {
+  // Victim scoring: tiefer besser; jünger besser; Exact leicht bevorzugen
+  static inline int replacement_score(const PackedEntry& ent, std::uint8_t curAge) noexcept {
     const std::uint64_t k = ent.key.load(std::memory_order_relaxed);
     if (k == 0) return -1;  // leer -> Topkandidat
 
@@ -237,17 +250,20 @@ class TT4 {
     std::uint8_t age;
     unpack_payload(pay, v, d, b, age);
 
-    // älter = schlechter; tiefer = besser (negativer Score = eher Opfer)
+    // small bias: keep Exact > Lower > Upper when depths similar
+    const int boundBias = (b == Bound::Exact ? 6 : (b == Bound::Lower ? 3 : 0));
+
     const int ageDelta = static_cast<std::uint8_t>(curAge - age);
-    return static_cast<int>(d) * 256 - ageDelta;
+    // higher score = better to keep; we pick the minimum as victim
+    return static_cast<int>(d) * 256 + boundBias - ageDelta;
   }
 
-  inline std::size_t index(std::uint64_t key) const {
+  inline std::size_t index(std::uint64_t key) const noexcept {
     assert((slots_ & (slots_ - 1)) == 0 && slots_ != 0);
     return static_cast<std::size_t>(key) & (slots_ - 1);
   }
 
-  static std::size_t highest_power_of_two(std::size_t x) {
+  static std::size_t highest_power_of_two(std::size_t x) noexcept {
     if (x == 0) return 1;
     std::size_t p = 1;
     while ((p << 1) && ((p << 1) <= x)) p <<= 1;
