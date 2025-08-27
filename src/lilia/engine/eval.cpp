@@ -737,8 +737,10 @@ static int center_and_outposts(const std::array<Bitboard, 6>& wbbs,
   const Bitboard wn = wbbs[(int)PieceType::Knight];
   const Bitboard bn = bbbs[(int)PieceType::Knight];
 
-  score += popcnt(wn & CENTER_MASK) * OUTPOST_KNIGHT_BONUS;
-  score -= popcnt(bn & CENTER_MASK) * OUTPOST_KNIGHT_BONUS;
+  // minimaler PSQT-Boost für zentrale Springer im MG
+  constexpr int KNIGHT_CENTER_PSQT = 6;  // sehr klein, Stackt kaum mit OUTPOST_KNIGHT_BONUS
+  score += popcnt(wn & CENTER_MASK) * (OUTPOST_KNIGHT_BONUS + KNIGHT_CENTER_PSQT);
+  score -= popcnt(bn & CENTER_MASK) * (OUTPOST_KNIGHT_BONUS + KNIGHT_CENTER_PSQT);
 
   Bitboard t = wn;
   while (t) {
@@ -972,9 +974,19 @@ int Evaluator::evaluate(model::Position& pos) const {
   const int rpp = rook_behind_passed(wbbs, bbbs);
 
   // MG/EG additiv (Threats/KS stärker in MG)
-  const int mg_add = pawn_score + mob_mg + ks + (thr) + bp + dev + rim + cent + ract + bbad + rpp;
-  const int eg_add = (pawn_score / 2) + mob_eg + (ks / 4) + (thr / 2) + (bp / 2) + (dev / 4) +
-                     (cent / 2) + (ract / 3) + (bbad / 2) + (rpp / 2);
+  // MG/EG additive Terme (phase-tuned)
+  const int mg_add =
+      /*Pawns*/ pawn_score + /*Mobility*/ mob_mg + /*KingSafety*/ ks + /*Threats*/ thr +
+      /*BishopPair*/ bp + /*Develop*/ dev + /*Rim*/ rim + /*Center*/ cent + /*RookAct*/ ract +
+      /*BadBishop*/ bbad + /*RookBehind*/ (rpp / 3);  // nur leichter MG-Anteil
+
+  const int eg_add =
+      /*Pawns*/ (pawn_score / 2) + /*Mobility*/ mob_eg +
+      /*KingSafety*/ (ks / 6)                            // noch schwächer im EG
+      + /*Threats*/ (thr / 3)                            // Threats primär MG
+      + /*BishopPair*/ (bp / 2) + /*Develop*/ (dev / 8)  // Entwicklung im EG sehr schwach
+      + /*Center*/ (cent / 2) + /*RookAct*/ (ract / 3) + /*BadBishop*/ (bbad / 3) +
+      /*RookBehind*/ rpp;  // im EG voll gewichtet
 
   mg += mg_add;
   eg += eg_add;
