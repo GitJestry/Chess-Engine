@@ -4,6 +4,7 @@
 #include <thread>  // hardware_concurrency
 
 #include "lilia/engine/eval.hpp"  // <- Evaluator
+#include "lilia/engine/move_order.hpp"
 #include "lilia/engine/search.hpp"
 #include "lilia/model/core/magic.hpp"
 
@@ -18,21 +19,23 @@ struct Engine::Impl {
   std::unique_ptr<Search> search;
 
   explicit Impl(const EngineConfig& c) : cfg(c), tt(c.ttSizeMb) {
-    // Threads: standardmäßig (logical - 1), mind. 1
-    unsigned int hw = std::thread::hardware_concurrency();
-    int logical = (hw > 0 ? static_cast<int>(hw) : 1);
-    cfg.threads = std::max(1, logical - 1);
+    unsigned hw = std::thread::hardware_concurrency();
+    int logical = (hw > 0 ? (int)hw : 1);
 
-    // Eine Evaluator-Instanz für die gesamte Engine
-    // (falls dein Evaluator einen speziellen Ctor braucht, hier entsprechend anpassen)
+    if (cfg.threads <= 0) {
+      cfg.threads = std::max(1, logical - 1);  // auto
+    } else {
+      cfg.threads = std::clamp(cfg.threads, 1, logical);
+    }
+
     eval = std::make_shared<Evaluator>();
-
-    // Search nutzt dieselbe TT und teilt sich den Evaluator via shared_ptr
     search = std::make_unique<Search>(tt, eval, cfg);
   }
 };
 
-Engine::Engine(const EngineConfig& cfg) : pimpl(new Impl(cfg)) {}
+Engine::Engine(const EngineConfig& cfg) : pimpl(new Impl(cfg)) {
+  Engine::init();
+}
 
 Engine::~Engine() {
   delete pimpl;
@@ -42,11 +45,73 @@ std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxD
                                                   std::shared_ptr<std::atomic<bool>> stop) {
   if (maxDepth <= 0) maxDepth = pimpl->cfg.maxDepth;
 
-  // Root-Search (parallel)
-  pimpl->search->search_root_parallel(pos, maxDepth, std::move(stop), pimpl->cfg.threads);
+  // Suche immer sauber zurücksetzen (Killers/History etc.)
+  try {
+    pimpl->search->clearSearchState();
+  } catch (...) {
+  }
 
-  // BestMove aus den Stats zurückgeben
-  return pimpl->search->getStats().bestMove;
+  // 1) Suche ausführen – niemals Exceptions nach außen lassen
+  try {
+    (void)pimpl->search->search_root_parallel(pos, maxDepth, stop, pimpl->cfg.threads);
+  } catch (...) {
+    // Wir fallen gleich auf TT/Legal zurück; keine Weitergabe
+  }
+
+  // 2) BestMove aus Stats, wenn vorhanden
+  const auto& stats = pimpl->search->getStats();
+  if (stats.bestMove.has_value()) return stats.bestMove;  // safe
+
+  // 3) TT-Fallback: am Root-Hash nachsehen und legalisieren
+  try {
+    auto& tt = pimpl->search->ttRef();
+    if (auto e = tt.probe(pos.hash())) {
+      model::Move ttMove = e->best;
+      if (ttMove.from >= 0 && ttMove.to >= 0) {
+        model::Position tmp = pos;
+        if (tmp.doMove(ttMove))  // legal?
+          return ttMove;
+      }
+    }
+  } catch (...) {
+    // TT defekt/leer: ignorieren
+  }
+
+  // 4) Letzter Fallback: generiere legale Züge und wähle eine vernünftige Heuristik
+  try {
+    model::MoveGenerator mg;
+    std::vector<model::Move> pseudo;
+    pseudo.reserve(128);
+    mg.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), pseudo);
+
+    // Legal filtern und „gute“ Züge bevorzugen (Captures/Promos via MVV-LVA)
+    std::optional<model::Move> bestCapPromo;
+    int bestCapScore = std::numeric_limits<int>::min();
+    std::optional<model::Move> firstLegal;
+
+    for (auto& m : pseudo) {
+      model::Position tmp = pos;
+      if (!tmp.doMove(m)) continue;  // illegal -> raus
+
+      if (m.isCapture || m.promotion != core::PieceType::None) {
+        int sc = mvv_lva_score(pos, m);  // vorhandene Heuristik
+        if (!bestCapPromo || sc > bestCapScore) {
+          bestCapPromo = m;
+          bestCapScore = sc;
+        }
+      } else if (!firstLegal) {
+        firstLegal = m;  // merken als "zur Not"
+      }
+    }
+
+    if (bestCapPromo) return bestCapPromo;
+    if (firstLegal) return firstLegal;
+  } catch (...) {
+    // Movegen kaputt? Dann gibt es wirklich nichts zu ziehen.
+  }
+
+  // 5) Keine Züge -> Matt/Pat, gib leer zurück (sicher! kein value()-Crash)
+  return std::nullopt;
 }
 
 const SearchStats& Engine::getLastSearchStats() const {

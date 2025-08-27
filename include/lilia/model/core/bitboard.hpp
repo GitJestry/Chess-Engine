@@ -66,7 +66,7 @@ constexpr inline Bitboard king_attacks_from(core::Square s) {
   return east(b) | west(b) | north(b) | south(b) | ne(b) | nw(b) | se(b) | sw(b);
 }
 
-inline Bitboard ray_attack_dir(Bitboard from, Bitboard occ, Bitboard (*step)(Bitboard)) {
+constexpr inline Bitboard ray_attack_dir(Bitboard from, Bitboard occ, Bitboard (*step)(Bitboard)) {
   Bitboard atk = 0, r = step(from);
   while (r) {
     atk |= r;
@@ -76,19 +76,19 @@ inline Bitboard ray_attack_dir(Bitboard from, Bitboard occ, Bitboard (*step)(Bit
   return atk;
 }
 
-inline Bitboard bishop_attacks(core::Square s, Bitboard occ) {
+constexpr inline Bitboard bishop_attacks(core::Square s, Bitboard occ) {
   Bitboard from = sq_bb(s);
   return ray_attack_dir(from, occ, ne) | ray_attack_dir(from, occ, nw) |
          ray_attack_dir(from, occ, se) | ray_attack_dir(from, occ, sw);
 }
 
-inline Bitboard rook_attacks(core::Square s, Bitboard occ) {
+constexpr inline Bitboard rook_attacks(core::Square s, Bitboard occ) {
   Bitboard from = sq_bb(s);
   return ray_attack_dir(from, occ, north) | ray_attack_dir(from, occ, south) |
          ray_attack_dir(from, occ, east) | ray_attack_dir(from, occ, west);
 }
 
-inline Bitboard queen_attacks(core::Square s, Bitboard occ) {
+constexpr inline Bitboard queen_attacks(core::Square s, Bitboard occ) {
   return bishop_attacks(s, occ) | rook_attacks(s, occ);
 }
 

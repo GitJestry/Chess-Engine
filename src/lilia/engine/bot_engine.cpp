@@ -21,12 +21,11 @@ static inline std::string format_top_moves(const std::vector<std::pair<model::Mo
   for (auto& p : top) {
     if (!first) out += ", ";
     first = false;
-    out += move_to_uci(p.first) + " (" + std::to_string(p.second) + ")";
+    out += move_to_uci(p.first) + "(" + std::to_string(p.second) + ")";
   }
   if (out.empty()) out = "<none>";
   return out;
 }
-
 SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, int thinkMillis,
                                      std::atomic<bool>* externalCancel) {
   SearchResult res;
@@ -44,33 +43,30 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
     bool pred = cv.wait_for(lk, std::chrono::milliseconds(thinkMillis), [&] {
       return timerStop || (externalCancel && externalCancel->load());
     });
-    if (!pred) {
+    if (!pred || (externalCancel && externalCancel->load())) {
       stopFlag->store(true);
-    } else {
-      if (externalCancel && externalCancel->load()) {
-        stopFlag->store(true);
-      }
     }
   });
 
   using steady_clock = std::chrono::steady_clock;
   auto t0 = steady_clock::now();
+
   bool engineThrew = false;
   std::string engineErr;
 
   try {
     auto mv = m_engine.find_best_move(pos, maxDepth, stopFlag);
-    res.bestMove = mv;
+    res.bestMove = mv;  // std::optional<Move>
   } catch (const std::exception& e) {
     engineThrew = true;
-    engineErr = std::string("exception: ") + e.what();
+    engineErr = e.what();
     std::cerr << "[BotEngine] engine threw exception: " << e.what() << "\n";
-    res.bestMove = std::nullopt;
+    res.bestMove.reset();
   } catch (...) {
     engineThrew = true;
     engineErr = "unknown exception";
     std::cerr << "[BotEngine] engine threw unknown exception\n";
-    res.bestMove = std::nullopt;
+    res.bestMove.reset();
   }
 
   auto t1 = steady_clock::now();
@@ -94,12 +90,20 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
     reason = "normal";
   }
 
-  res.stats = m_engine.getLastSearchStats();
-  res.topMoves = res.stats.topMoves;
+  // >>> WICHTIG: Nur dann Stats übernehmen, wenn die Suche NICHT geworfen hat
+  if (!engineThrew) {
+    res.stats = m_engine.getLastSearchStats();
+    res.topMoves = res.stats.topMoves;
+  } else {
+    res.stats = SearchStats{};  // leere/neutrale Stats statt alter Werte
+    res.topMoves.clear();
+  }
 
-  std::cout << "\n";
-  std::cout << "[BotEngine] Search finished: depth=" << maxDepth << " time=" << elapsedMs
-            << "ms threads=" << m_engine.getConfig().threads << " reason=" << reason << "\n";
+  // Logging – alles optional-sicher
+  std::cout << "\n[BotEngine] Search finished: reason=" << reason << "\n";
+  std::cout << "[BotEngine] depth=" << maxDepth << " time=" << elapsedMs
+            << "ms maxTime=" << thinkMillis << "ms threads=" << m_engine.getConfig().threads
+            << "\n";
 
   std::cout << "[BotEngine] info nodes=" << res.stats.nodes
             << " nps=" << static_cast<long long>(res.stats.nps) << " time=" << res.stats.elapsedMs
@@ -113,7 +117,7 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
     std::cout << "[BotEngine] pv ";
     bool first = true;
     for (auto& mv : res.stats.bestPV) {
-      if (!first) std::cout << " ";
+      if (!first) std::cout << "->";
       first = false;
       std::cout << move_to_uci(mv);
     }

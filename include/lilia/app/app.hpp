@@ -27,8 +27,8 @@ class App {
   core::Color m_player_color = core::Color::White;
   bool m_vs_bot = true;
   std::string m_start_fen;
-  int m_thinkTimeMs = 1000;  // Bot think time in milliseconds
-  int m_searchDepth = 5;     // Search depth for bot
+  int m_thinkTimeMs = 10000;  // Bot think time in milliseconds
+  int m_searchDepth = 10;     // Search depth for bot
 };
 
 }  // namespace lilia::app

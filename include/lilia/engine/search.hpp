@@ -15,8 +15,8 @@
 
 namespace lilia::engine {
 
-static const int INF = 30000;
-static const int MATE = 29000;
+// Einheitliche, „kleine“ Mate-/Inf-Konstanten
+static constexpr int MAX_PLY = 128;
 
 struct SearchStats {
   int nodes = 0;
@@ -44,18 +44,25 @@ class Search {
   model::TT4& ttRef() { return tt; }
 
  private:
+  // Tiefe Suche
   int negamax(model::Position& pos, int depth, int alpha, int beta, int ply, model::Move& refBest);
+  // Quiet-Suche
   int quiescence(model::Position& pos, int alpha, int beta, int ply);
+  // PV aus TT
   std::vector<model::Move> build_pv_from_tt(model::Position pos, int max_len = 16);
+  // Eval (Signierung)
   int signed_eval(model::Position& pos);
 
+  // --- Daten
   model::TT4& tt;
   model::MoveGenerator mg;
   const EngineConfig& cfg;
-
   std::shared_ptr<const Evaluator> eval_;
 
-  std::array<model::Move, 2> killers;
+  // Per-Ply-Killers: 2 Killer-Moves je Suchtiefe
+  std::array<std::array<model::Move, 2>, MAX_PLY> killers;
+
+  // History-Heuristik (einfach: von->nach)
   std::array<std::array<int, 64>, 64> history;
 
   std::shared_ptr<std::atomic<bool>> stopFlag;

@@ -7,6 +7,7 @@
 #include "i_animation.hpp"
 
 namespace lilia::view::animation {
+enum class AnimLayer { Base, Highlight };
 
 class AnimationManager {
  public:
@@ -20,6 +21,13 @@ class AnimationManager {
   void update(float dt);
   void draw(sf::RenderWindow& window);
   void highlightLevelDraw(sf::RenderWindow& window);
+
+  void addOrReplace(Entity::ID_type entityID, std::unique_ptr<IAnimation> anim,
+                    AnimLayer layer = AnimLayer::Base);
+
+  void cancelAll(Entity::ID_type entityID);
+
+  bool hasInAnyLayer(Entity::ID_type entityID) const;
 
  private:
   std::unordered_map<Entity::ID_type, std::unique_ptr<IAnimation>> m_highlight_level_animations;

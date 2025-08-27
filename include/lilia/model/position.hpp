@@ -18,6 +18,7 @@ class Position {
   GameState& getState() { return m_state; }
   const GameState& getState() const { return m_state; }
 
+  // Vollständigen Hash und pawnKey aus der aktuellen Stellung neu berechnen
   void buildHash() {
     m_hash = Zobrist::compute(*this);
 
@@ -32,13 +33,16 @@ class Position {
     }
     m_state.pawnKey = pk;
   }
+
   bb::Bitboard hash() const { return m_hash; }
 
+  // Make/Unmake
   bool doMove(const Move& m);
   void undoMove();
   bool doNullMove();
   void undoNullMove();
 
+  // Statusabfragen
   bool isSquareAttacked(core::Square sq, core::Color by) const;
   bool checkInsufficientMaterial();
   bool checkMoveRule();
@@ -60,34 +64,32 @@ class Position {
     int prevHalfmoveClock;
     int prevFullmoveNumber;
   };
-
   std::vector<NullState> m_null_history;
 
+  // interne Helfer
   void applyMove(const Move& m, StateInfo& st);
   void unapplyMove(const StateInfo& st);
   void updateCastlingRightsOnMove(core::Square from, core::Square to);
 
-  void hashXorPiece(core::Color c, core::PieceType pt, core::Square s) {
+  // Zobrist/PawnKey inkrementell
+  inline void hashXorPiece(core::Color c, core::PieceType pt, core::Square s) {
     m_hash ^= Zobrist::piece[bb::ci(c)][static_cast<int>(pt)][s];
-
     if (pt == core::PieceType::Pawn) {
       m_state.pawnKey ^= Zobrist::piece[bb::ci(c)][static_cast<int>(core::PieceType::Pawn)][s];
     }
   }
-
   inline void hashXorSide() { m_hash ^= Zobrist::side; }
   inline void hashSetCastling(std::uint8_t prev, std::uint8_t next) {
     m_hash ^= Zobrist::castling[prev & 0xF];
     m_hash ^= Zobrist::castling[next & 0xF];
   }
-  inline void hashClearEP() {
-    if (m_state.enPassantSquare != 64) {
-      m_hash ^= Zobrist::epFile[bb::file_of(m_state.enPassantSquare)];
-    }
-  }
-  inline void hashSetEP(core::Square epSq) {
-    if (epSq != 64) {
-      m_hash ^= Zobrist::epFile[bb::file_of(epSq)];
+
+  // EP-Hash nur dann xoren, wenn EP in der aktuellen State-Kombination relevant ist.
+  // Wichtig: Vor State-Änderungen aufrufen, um "alt" aus dem Hash zu entfernen,
+  // und NACH allen State-Änderungen erneut, um "neu" zu addieren.
+  inline void xorEPRelevant() {
+    if (m_state.enPassantSquare != core::NO_SQUARE) {
+      m_hash ^= Zobrist::epHashIfRelevant(m_board, m_state);
     }
   }
 };

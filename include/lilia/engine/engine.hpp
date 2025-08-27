@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <optional>
 
 #include "../model/core/magic.hpp"
@@ -18,8 +19,10 @@ class Engine {
   ~Engine();
 
   static void init() {
+    // Zobrist inner once_flag
     model::Zobrist::init();
-    model::magic::init_magics();
+    static std::once_flag magic_once;
+    std::call_once(magic_once, []() { lilia::model::magic::init_magics(); });
   }
   std::optional<model::Move> find_best_move(model::Position& pos, int maxDepth = 8,
                                             std::shared_ptr<std::atomic<bool>> stop = nullptr);

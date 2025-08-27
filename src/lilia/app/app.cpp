@@ -72,12 +72,13 @@ void App::promptStartOptions() {
 
   // Think time in seconds
   while (true) {
-    std::cout << "Bot think time in seconds [Standard: 1]: ";
+    int thinkSec = m_thinkTimeMs / 1000;
+    std::cout << "Bot think time in seconds [Standard: " << thinkSec << "]: ";
     std::string thinkInput;
     std::getline(std::cin, thinkInput);
-    int val = parseIntInRange(thinkInput, 1, 1, 60);
+    int val = parseIntInRange(thinkInput, thinkSec, 1, 60);
     if (val != -1) {
-      m_thinkTimeMs = val * 1000;  // convert to ms
+      m_thinkTimeMs = val * 1000;
       break;
     }
     std::cout << "Please enter a number between 1 and 60.\n";
@@ -85,10 +86,10 @@ void App::promptStartOptions() {
 
   // Search depth
   while (true) {
-    std::cout << "Bot search depth [Standard: 5]: ";
+    std::cout << "Bot search depth [Standard: " << m_searchDepth << "]: ";
     std::string depthInput;
     std::getline(std::cin, depthInput);
-    int val = parseIntInRange(depthInput, 5, 1, 20);
+    int val = parseIntInRange(depthInput, m_searchDepth, 1, 20);
     if (val != -1) {
       m_searchDepth = val;
       break;

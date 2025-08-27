@@ -30,6 +30,10 @@ constexpr Bitboard FILE_H = 0x8080808080808080ULL;
 
 constexpr Bitboard RANK_1 = 0x00000000000000FFULL;
 constexpr Bitboard RANK_2 = 0x000000000000FF00ULL;
+constexpr Bitboard RANK_3 = 0x0000000000FF0000ULL;
+constexpr Bitboard RANK_4 = 0x00000000FF000000ULL;
+constexpr Bitboard RANK_5 = 0x000000FF00000000ULL;
+constexpr Bitboard RANK_6 = 0x0000FF0000000000ULL;
 constexpr Bitboard RANK_7 = 0x00FF000000000000ULL;
 constexpr Bitboard RANK_8 = 0xFF00000000000000ULL;
 
