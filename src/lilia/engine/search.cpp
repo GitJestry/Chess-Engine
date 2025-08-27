@@ -64,36 +64,18 @@ inline void check_stop(const std::shared_ptr<std::atomic<bool>>& stopFlag) {
 
 using steady_clock = std::chrono::steady_clock;
 
-Search::Search(model::TT4& tt_, Evaluator& eval_, const EngineConfig& cfg_)
-    : tt(tt_), mg(), cfg(cfg_), evalPtr(&eval_) {
+// Konstruktor übernimmt shared_ptr
+Search::Search(model::TT4& tt_, std::shared_ptr<const Evaluator> eval_, const EngineConfig& cfg_)
+    : tt(tt_), mg(), cfg(cfg_), eval_(std::move(eval_)) {
   killers.fill(model::Move{});
   for (auto& h : history) h.fill(0);
   stopFlag.reset();
   stats = SearchStats{};
-}
-
-Search::Search(model::TT4& tt_, EvalFactory evalFactory_, const EngineConfig& cfg_)
-    : tt(tt_), mg(), cfg(cfg_), evalFactory(std::move(evalFactory_)) {
-  if (evalFactory) evalInstance = evalFactory();
-  killers.fill(model::Move{});
-  for (auto& h : history) h.fill(0);
-  stopFlag.reset();
-  stats = SearchStats{};
-}
-
-Evaluator& Search::currentEval() {
-  if (evalPtr) return *evalPtr;
-
-  assert(evalInstance &&
-         "Evaluator not initialized; ensure factory provided or legacy Eval passed.");
-  return *evalInstance;
 }
 
 int Search::signed_eval(model::Position& pos) {
-  Evaluator& e = currentEval();
-  int v = e.evaluate(pos);
-  // we expect evaluate to return White-perspective (positive = White better).
-  // For negamax we want positive => side-to-move advantage, so flip if Black to move.
+  // evaluate sollte const sein
+  int v = eval_->evaluate(pos);
   if (pos.getState().sideToMove == core::Color::Black) return -v;
   return v;
 }
@@ -346,8 +328,6 @@ int Search::search_root_parallel(model::Position& pos, int depth,
   this->stopFlag = stop;
   stats = SearchStats{};
 
-  // >>> Neue TT-Generation pro Root-Suche (ohne ID)
-  // Falls du iterative deepening hast, rufe new_generation() stattdessen pro Iteration auf.
   try {
     tt.new_generation();
   } catch (...) {
@@ -392,48 +372,23 @@ int Search::search_root_parallel(model::Position& pos, int depth,
   std::vector<RootResult> completedResults;
   completedResults.reserve(legal.size());
 
-  // helper to spawn a worker thread using promise/future so we can join reliably
-  auto spawn_worker = [&](model::Move m, model::Position child) -> std::future<RootResult> {
-    std::promise<RootResult> prom;
-    auto fut = prom.get_future();
+  auto spawn_worker = [&](model::Move m, model::Position child) {
+    auto evalCopy = this->eval_;
+    auto ttPtr = &this->tt;
+    auto stopPtr = stop;
+    auto cfgCopy = this->cfg;
 
-    std::thread th([this, child = std::move(child), m = std::move(m), depth, stopPtr = stop,
-                    p = std::move(prom)]() mutable {
-      try {
-        RootResult rr{};
-        // Eigene Search-Instanz je Thread (keine gemeinsamen Killer/History/MoveGen)
-        Search worker(this->tt, this->evalFactory, this->cfg);
-        worker.stopFlag = stopPtr;  // shared_ptr kopieren – hält Flag am Leben
-
-        // Wichtig: KEIN new_generation() pro Worker aufrufen – eine Generation pro Root/Iteration!
-
-        model::Move ref;
-        int score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
-        rr.score = score;
-        rr.move = std::move(m);
-        rr.stats = worker.getStats();
-        p.set_value(std::move(rr));
-      } catch (const SearchStoppedException& e) {
-        std::cout << "spawn worker search stopped" << std::endl;
-        try {
-          p.set_exception(std::make_exception_ptr(e));
-        } catch (...) {
-        }
-      } catch (const std::exception& e) {
-        try {
-          p.set_exception(std::make_exception_ptr(e));
-        } catch (...) {
-        }
-      } catch (...) {
-        try {
-          p.set_exception(std::make_exception_ptr(std::runtime_error("unknown worker exception")));
-        } catch (...) {
-        }
-      }
+    return std::async(std::launch::async, [m = std::move(m), child = std::move(child), evalCopy,
+                                           ttPtr, stopPtr, cfgCopy, depth]() mutable {
+      RootResult rr{};
+      Search worker(*ttPtr, evalCopy, cfgCopy);
+      worker.stopFlag = stopPtr;
+      model::Move ref;
+      rr.score = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+      rr.move = std::move(m);
+      rr.stats = worker.getStats();
+      return rr;
     });
-
-    th.detach();
-    return fut;
   };
 
   for (size_t i = 0; i < legal.size(); ++i) {
@@ -447,29 +402,32 @@ int Search::search_root_parallel(model::Position& pos, int depth,
     running.push_back(spawn_worker(std::move(m), std::move(child)));
 
     while ((int)running.size() >= maxThreads) {
-      bool foundReady = false;
-      for (size_t j = 0; j < running.size(); ++j) {
-        auto& fut = running[j];
-        if (fut.wait_for(std::chrono::milliseconds(10)) == std::future_status::ready) {
-          try {
-            RootResult rr = fut.get();
-            completedResults.push_back(std::move(rr));
-          } catch (const SearchStoppedException&) {
-            std::cout << "safe generate search stopped outer" << std::endl;
-          } catch (const std::exception& e) {
-            std::cerr << "[Search] worker exception: " << e.what() << '\n';
-          } catch (...) {
-            std::cerr << "[Search] worker unknown exception\n";
+      // REPLACE the inner while with a blocking collect:
+      auto wait_one_ready = [&]() {
+        for (;;) {
+          bool foundReady = false;
+          for (size_t j = 0; j < running.size(); ++j) {
+            auto& fut = running[j];
+            if (fut.wait_for(std::chrono::milliseconds(200)) == std::future_status::ready) {
+              try {
+                RootResult rr = fut.get();
+                completedResults.push_back(std::move(rr));
+              } catch (...) {
+                // handle exceptions like before
+              }
+              if (j + 1 != running.size()) std::swap(running[j], running.back());
+              running.pop_back();
+              return;  // exactly one consumed
+            }
           }
-
-          if (j + 1 != running.size()) std::swap(running[j], running.back());
-          running.pop_back();
-          foundReady = true;
-          break;
+          // Nichts fertig? Kurzer Sleep statt heißem Spin:
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
+          if (stop && stop->load()) return;
         }
-      }
-      if (!foundReady) std::this_thread::yield();
-      if (stop && stop->load()) break;
+      };
+
+      running.push_back(spawn_worker(std::move(m), std::move(child)));
+      while ((int)running.size() >= maxThreads && !(stop && stop->load())) wait_one_ready();
     }
     if (stop && stop->load()) break;
   }

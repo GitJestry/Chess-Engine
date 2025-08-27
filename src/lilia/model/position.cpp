@@ -7,6 +7,7 @@
 namespace lilia::model {
 
 bool Position::checkInsufficientMaterial() {
+  // Wenn irgendein Bauer, Turm oder Dame auf dem Brett ist, keine Stellungs-Remis
   bb::Bitboard occ = 0;
   for (auto pt : {core::PieceType::Pawn, core::PieceType::Queen, core::PieceType::Rook}) {
     occ |= m_board.getPieces(core::Color::White, pt);
@@ -14,26 +15,34 @@ bool Position::checkInsufficientMaterial() {
   }
   if (bb::popcount(occ) > 0) return false;
 
-  // 2. Zähle Läufer und Springer
   bb::Bitboard whiteB = m_board.getPieces(core::Color::White, core::PieceType::Bishop);
   bb::Bitboard blackB = m_board.getPieces(core::Color::Black, core::PieceType::Bishop);
   bb::Bitboard whiteN = m_board.getPieces(core::Color::White, core::PieceType::Knight);
   bb::Bitboard blackN = m_board.getPieces(core::Color::Black, core::PieceType::Knight);
 
-  int totalB = bb::popcount(whiteB) + bb::popcount(blackB);
-  int totalN = bb::popcount(whiteN) + bb::popcount(blackN);
+  const int wB = bb::popcount(whiteB), bB = bb::popcount(blackB);
+  const int wN = bb::popcount(whiteN), bN = bb::popcount(blackN);
 
+  const int totalB = wB + bB;
+  const int totalN = wN + bN;
+
+  // K vs K
   if (totalB == 0 && totalN == 0) return true;
+  // K + N vs K
   if (totalB == 0 && totalN == 1) return true;
+  // K + B vs K
   if (totalB == 1 && totalN == 0) return true;
 
-  if (totalB == 2 && totalN == 0) {
-    auto whiteSq = static_cast<core::Square>(bb::ctz64(whiteB));
-    auto blackSq = static_cast<core::Square>(bb::ctz64(blackB));
-    if ((whiteSq % 2 == blackSq % 2)) return true;
+  // K+B vs K+B (beide Seiten je 1 Läufer) und Läufer auf gleicher Feldfarbe
+  if (wB == 1 && bB == 1 && totalN == 0) {
+    const int wSq = bb::ctz64(whiteB);
+    const int bSq = bb::ctz64(blackB);
+    // gleiche Felderfarbe ⇒ theoretisch Remis
+    if ((wSq & 1) == (bSq & 1)) return true;
   }
 
-  if (totalB == 0 && totalN == 2) return true;
+  // K+N vs K+N ist NICHT automatisch Remis (zwei Springer matt sind i. A. nicht erzwungen,
+  // aber theoretisch möglich), viele Engines lassen das hier NICHT als Remis gelten.
 
   return false;
 }
@@ -61,185 +70,170 @@ bool Position::checkRepetition() {
 }
 
 bool Position::see(const model::Move& m) const {
-  if (!m.isCapture && m.promotion == core::PieceType::None) return false;
+  using bb::Bitboard;
+  using core::Color;
+  using core::PieceType;
 
-  // get occupancy and piece bitboards
-  bb::Bitboard occ = m_board.getAllPieces();
+  // Nur für Captures oder Promotions relevant (Quiescence)
+  if (!m.isCapture && m.promotion == PieceType::None) return false;
 
-  int captured_value = 0;
-  core::Square capture_sq = m.to;
-  if (m.isEnPassant) {
-    core::Square capSq = (m_board.getPiece(m.from).value().color == core::Color::White)
-                             ? static_cast<core::Square>(m.to - 8)
-                             : static_cast<core::Square>(m.to + 8);
-    capture_sq = capSq;
+  const Color side = m_board.getPiece(m.from).value().color;
+  const Color enemy = ~side;
 
-    captured_value = engine::base_value[static_cast<int>(core::PieceType::Pawn)];
-  } else if (m.isCapture) {
-    auto cap = m_board.getPiece(m.to);
-    if (cap)
-      captured_value = engine::base_value[static_cast<int>(cap->type)];
-    else
-      captured_value = 0;
-  } else {
-    captured_value = 0;
-  }
-
-  core::PieceType attackerType = core::PieceType::Pawn;
-  {
-    auto p = m_board.getPiece(m.from);
-    if (!p) return false;
-    attackerType = (m.promotion != core::PieceType::None) ? m.promotion : p->type;
-  }
-  const auto piece_value = [&](core::PieceType pt) -> int {
-    return engine::base_value[static_cast<int>(pt)];
-  };
-
-  core::Color side = m_board.getPiece(m.from).value().color;
-  core::Color opponent = ~side;
-
-  std::array<bb::Bitboard, 6> wbbs{}, bbbs{};
+  // Arbeitskopien der Bitboards
+  std::array<Bitboard, 6> wbbs{}, bbbs{};
   for (int pt = 0; pt < 6; ++pt) {
-    wbbs[pt] = m_board.getPieces(core::Color::White, static_cast<core::PieceType>(pt));
-    bbbs[pt] = m_board.getPieces(core::Color::Black, static_cast<core::PieceType>(pt));
+    wbbs[pt] = m_board.getPieces(Color::White, static_cast<PieceType>(pt));
+    bbbs[pt] = m_board.getPieces(Color::Black, static_cast<PieceType>(pt));
+  }
+  Bitboard occ = m_board.getAllPieces();
+
+  // Tauschfeld ist IMMER m.to (auch bei EP)
+  const core::Square sq = m.to;
+
+  // Erbeutete Figur + Wert
+  int captured_value = 0;
+  if (m.isEnPassant) {
+    const core::Square capSq = (side == Color::White) ? static_cast<core::Square>(m.to - 8)
+                                                      : static_cast<core::Square>(m.to + 8);
+    // Entferne den geschlagenen Bauern vom Brettzustand
+    if (side == Color::White) {
+      // Weiß schlägt schwarz en passant ⇒ schwarzer Bauer fällt
+      if (bbbs[static_cast<int>(PieceType::Pawn)] & bb::sq_bb(capSq))
+        bbbs[static_cast<int>(PieceType::Pawn)] &= ~bb::sq_bb(capSq);
+    } else {
+      if (wbbs[static_cast<int>(PieceType::Pawn)] & bb::sq_bb(capSq))
+        wbbs[static_cast<int>(PieceType::Pawn)] &= ~bb::sq_bb(capSq);
+    }
+    occ &= ~bb::sq_bb(capSq);
+    captured_value = engine::base_value[static_cast<int>(PieceType::Pawn)];
+  } else if (m.isCapture) {
+    // Normales Capture: Figur auf m.to entfernen
+    auto cap = m_board.getPiece(m.to);
+    if (cap) {
+      captured_value = engine::base_value[static_cast<int>(cap->type)];
+      if (cap->color == Color::White)
+        wbbs[static_cast<int>(cap->type)] &= ~bb::sq_bb(m.to);
+      else
+        bbbs[static_cast<int>(cap->type)] &= ~bb::sq_bb(m.to);
+    }
+    occ &= ~bb::sq_bb(m.to);
   }
 
-  occ &= ~bb::sq_bb(static_cast<core::Square>(m.from));
+  // Angreifer (inkl. Promotiontyp) von from nach sq setzen
+  auto movingOpt = m_board.getPiece(m.from);
+  if (!movingOpt) return false;  // defensive
+  PieceType movingType = movingOpt->type;
+  if (m.promotion != PieceType::None) movingType = m.promotion;
 
+  if (side == Color::White) {
+    wbbs[static_cast<int>(movingOpt->type)] &= ~bb::sq_bb(m.from);
+    wbbs[static_cast<int>(movingType)] |= bb::sq_bb(sq);
+  } else {
+    bbbs[static_cast<int>(movingOpt->type)] &= ~bb::sq_bb(m.from);
+    bbbs[static_cast<int>(movingType)] |= bb::sq_bb(sq);
+  }
+  occ &= ~bb::sq_bb(m.from);
+  occ |= bb::sq_bb(sq);
+
+  // Bewertungssequenz
   std::vector<int> gains;
   gains.reserve(32);
   gains.push_back(captured_value);
 
-  bb::Bitboard occ_local = occ;
+  auto piece_value = [&](PieceType pt) { return engine::base_value[static_cast<int>(pt)]; };
 
-  occ_local |= bb::sq_bb(capture_sq);
+  // Hilfsfunktionen zum Finden des billigsten Angreifers auf 'sq'
+  auto has_slider_attack = [&](magic::Slider sl, core::Square s, Bitboard occ_) -> bool {
+    return (magic::sliding_attacks(sl, s, occ_) & bb::sq_bb(sq)) != 0;
+  };
+  auto find_lva = [&](Color who, Bitboard occ_local, std::array<Bitboard, 6>& W,
+                      std::array<Bitboard, 6>& B) -> std::pair<int, PieceType> {
+    // Reihenfolge: Bauer, Springer, Läufer, Turm, Dame, König
+    const auto& mine = (who == Color::White) ? W : B;
 
-  auto find_least_valuable_attacker = [&](core::Color who, core::Square sq) -> int {
-    auto check_and_get = [&](bb::Bitboard src_bb, auto attack_fn) -> int {
-      bb::Bitboard bb = src_bb;
-      while (bb) {
-        int s = bb::ctz64(bb);
-        bb &= bb - 1;
-
-        if (attack_fn(static_cast<core::Square>(s), sq, occ_local)) return s;
-      }
-      return -1;
-    };
-
-    bb::Bitboard pawns = (who == core::Color::White)
-                             ? wbbs[static_cast<int>(core::PieceType::Pawn)]
-                             : bbbs[static_cast<int>(core::PieceType::Pawn)];
-
-    auto pawn_attacks_from = [&](core::Square s, core::Square target, bb::Bitboard) -> bool {
-      if (who == core::Color::White) {
-        bb::Bitboard attacked = bb::white_pawn_attacks(bb::sq_bb(s));
-        return (attacked & bb::sq_bb(target)) != 0;
-      } else {
-        bb::Bitboard attacked = bb::black_pawn_attacks(bb::sq_bb(s));
-        return (attacked & bb::sq_bb(target)) != 0;
-      }
-    };
-    int sqPawn = check_and_get(pawns, pawn_attacks_from);
-    if (sqPawn >= 0) return sqPawn;
-
-    bb::Bitboard knights = (who == core::Color::White)
-                               ? wbbs[static_cast<int>(core::PieceType::Knight)]
-                               : bbbs[static_cast<int>(core::PieceType::Knight)];
-    auto knight_att = [&](core::Square s, core::Square target, bb::Bitboard) -> bool {
-      return (bb::knight_attacks_from(s) & bb::sq_bb(target)) != 0;
-    };
-    int sqKnight = check_and_get(knights, knight_att);
-    if (sqKnight >= 0) return sqKnight;
-
-    bb::Bitboard bishops = (who == core::Color::White)
-                               ? wbbs[static_cast<int>(core::PieceType::Bishop)]
-                               : bbbs[static_cast<int>(core::PieceType::Bishop)];
-    auto bishop_att = [&](core::Square s, core::Square target, bb::Bitboard occ_) -> bool {
-      return (magic::sliding_attacks(magic::Slider::Bishop, s, occ_) & bb::sq_bb(target)) != 0;
-    };
-    int sqB = check_and_get(bishops, bishop_att);
-    if (sqB >= 0) return sqB;
-
-    bb::Bitboard rooks = (who == core::Color::White)
-                             ? wbbs[static_cast<int>(core::PieceType::Rook)]
-                             : bbbs[static_cast<int>(core::PieceType::Rook)];
-    auto rook_att = [&](core::Square s, core::Square target, bb::Bitboard occ_) -> bool {
-      return (magic::sliding_attacks(magic::Slider::Rook, s, occ_) & bb::sq_bb(target)) != 0;
-    };
-    int sqR = check_and_get(rooks, rook_att);
-    if (sqR >= 0) return sqR;
-
-    bb::Bitboard queens = (who == core::Color::White)
-                              ? wbbs[static_cast<int>(core::PieceType::Queen)]
-                              : bbbs[static_cast<int>(core::PieceType::Queen)];
-    auto queen_att = [&](core::Square s, core::Square target, bb::Bitboard occ_) -> bool {
-      return (magic::sliding_attacks(magic::Slider::Rook, s, occ_) & bb::sq_bb(target)) != 0 ||
-             (magic::sliding_attacks(magic::Slider::Bishop, s, occ_) & bb::sq_bb(target)) != 0;
-    };
-    int sqQ = check_and_get(queens, queen_att);
-    if (sqQ >= 0) return sqQ;
-
-    bb::Bitboard kingb = (who == core::Color::White)
-                             ? wbbs[static_cast<int>(core::PieceType::King)]
-                             : bbbs[static_cast<int>(core::PieceType::King)];
-    auto king_att = [&](core::Square s, core::Square target, bb::Bitboard) -> bool {
-      return (bb::king_attacks_from(s) & bb::sq_bb(target)) != 0;
-    };
-    int sqK = check_and_get(kingb, king_att);
-    if (sqK >= 0) return sqK;
-
-    return -1;
+    // Bauer
+    Bitboard pawns = mine[static_cast<int>(PieceType::Pawn)];
+    while (pawns) {
+      int s = bb::ctz64(pawns);
+      pawns &= pawns - 1;
+      Bitboard atk = (who == Color::White)
+                         ? bb::white_pawn_attacks(bb::sq_bb(static_cast<core::Square>(s)))
+                         : bb::black_pawn_attacks(bb::sq_bb(static_cast<core::Square>(s)));
+      if (atk & bb::sq_bb(sq)) return {s, PieceType::Pawn};
+    }
+    // Springer
+    Bitboard knights = mine[static_cast<int>(PieceType::Knight)];
+    while (knights) {
+      int s = bb::ctz64(knights);
+      knights &= knights - 1;
+      if (bb::knight_attacks_from(static_cast<core::Square>(s)) & bb::sq_bb(sq))
+        return {s, PieceType::Knight};
+    }
+    // Läufer
+    Bitboard bishops = mine[static_cast<int>(PieceType::Bishop)];
+    while (bishops) {
+      int s = bb::ctz64(bishops);
+      bishops &= bishops - 1;
+      if (has_slider_attack(magic::Slider::Bishop, static_cast<core::Square>(s), occ_local))
+        return {s, PieceType::Bishop};
+    }
+    // Turm
+    Bitboard rooks = mine[static_cast<int>(PieceType::Rook)];
+    while (rooks) {
+      int s = bb::ctz64(rooks);
+      rooks &= rooks - 1;
+      if (has_slider_attack(magic::Slider::Rook, static_cast<core::Square>(s), occ_local))
+        return {s, PieceType::Rook};
+    }
+    // Dame
+    Bitboard queens = mine[static_cast<int>(PieceType::Queen)];
+    while (queens) {
+      int s = bb::ctz64(queens);
+      queens &= queens - 1;
+      if (has_slider_attack(magic::Slider::Rook, static_cast<core::Square>(s), occ_local) ||
+          has_slider_attack(magic::Slider::Bishop, static_cast<core::Square>(s), occ_local))
+        return {s, PieceType::Queen};
+    }
+    // König
+    Bitboard king = mine[static_cast<int>(PieceType::King)];
+    if (king) {
+      int s = bb::ctz64(king);
+      if (bb::king_attacks_from(static_cast<core::Square>(s)) & bb::sq_bb(sq))
+        return {s, PieceType::King};
+    }
+    return {-1, PieceType::None};
   };
 
-  auto wbbs_mut = wbbs;
-  auto bbbs_mut = bbbs;
+  // Jetzt abwechselnd „schlagen zurück“
+  Color cur = enemy;
+  Bitboard occ_local = occ;
+  auto W = wbbs, B = bbbs;
 
-  core::Color cur = opponent;
+  while (true) {
+    auto [att_sq, att_type] = find_lva(cur, occ_local, W, B);
+    if (att_sq < 0) break;
 
-  auto& from_board = (side == core::Color::White) ? wbbs_mut : bbbs_mut;
+    // Angreifer vom Brett nehmen
+    if (cur == Color::White)
+      W[static_cast<int>(att_type)] &= ~bb::sq_bb(static_cast<core::Square>(att_sq));
+    else
+      B[static_cast<int>(att_type)] &= ~bb::sq_bb(static_cast<core::Square>(att_sq));
 
-  from_board[static_cast<int>(m_board.getPiece(m.from).value().type)] &= ~bb::sq_bb(m.from);
+    occ_local &= ~bb::sq_bb(static_cast<core::Square>(att_sq));
 
-  core::PieceType final_att_type =
-      (m.promotion != core::PieceType::None) ? m.promotion : m_board.getPiece(m.from).value().type;
-  from_board[static_cast<int>(final_att_type)] |= bb::sq_bb(capture_sq);
+    // Gewinnfolge aktualisieren
+    gains.push_back(piece_value(att_type) - gains.back());
 
-  for (;;) {
-    int attacker_sq = find_least_valuable_attacker(cur, capture_sq);
-    if (attacker_sq < 0) break;
-
-    core::PieceType atype = core::PieceType::Pawn;
-
-    for (int pt = 0; pt < 6; ++pt) {
-      if (cur == core::Color::White) {
-        if (wbbs_mut[pt] & bb::sq_bb(static_cast<core::Square>(attacker_sq))) {
-          atype = static_cast<core::PieceType>(pt);
-          wbbs_mut[pt] &= ~bb::sq_bb(static_cast<core::Square>(attacker_sq));
-          break;
-        }
-      } else {
-        if (bbbs_mut[pt] & bb::sq_bb(static_cast<core::Square>(attacker_sq))) {
-          atype = static_cast<core::PieceType>(pt);
-          bbbs_mut[pt] &= ~bb::sq_bb(static_cast<core::Square>(attacker_sq));
-          break;
-        }
-      }
-    }
-
-    occ_local &= ~bb::sq_bb(static_cast<core::Square>(attacker_sq));
-
-    int v = piece_value(atype);
-    gains.push_back(v - gains.back());
-
+    // Seite wechseln
     cur = ~cur;
   }
 
-  int n = static_cast<int>(gains.size());
-  for (int i = n - 2; i >= 0; --i) {
+  // Negamax-Backprop auf den Gewinnen
+  for (int i = static_cast<int>(gains.size()) - 2; i >= 0; --i)
     gains[i] = std::max(-gains[i + 1], gains[i]);
-  }
 
-  return gains.empty() ? false : (gains[0] >= 0);
+  return !gains.empty() && gains[0] >= 0;
 }
 
 bool Position::isSquareAttacked(core::Square sq, core::Color by) const {

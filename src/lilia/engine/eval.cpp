@@ -258,7 +258,7 @@ static int mobility(Bitboard occ, Bitboard wocc, Bitboard bocc, const std::array
     int sq = lsb_i(wq);
     wq &= wq - 1;
     Bitboard a =
-        (magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) ||
+        (magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) |
          magic::sliding_attacks(magic::Slider::Bishop, static_cast<core::Square>(sq), occ)) &
         ~wocc;
     sc += popcnt(a) * 1;
@@ -268,7 +268,7 @@ static int mobility(Bitboard occ, Bitboard wocc, Bitboard bocc, const std::array
     int sq = lsb_i(bq);
     bq &= bq - 1;
     Bitboard a =
-        (magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) ||
+        (magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) |
          magic::sliding_attacks(magic::Slider::Bishop, static_cast<core::Square>(sq), occ)) &
         ~bocc;
     sc -= popcnt(a) * 1;
@@ -427,7 +427,7 @@ static int center_and_outposts(const std::array<Bitboard, 6>& wbbs,
     int sq = lsb_i(wq);
     wq &= wq - 1;
     Bitboard a =
-        (magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) ||
+        (magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) |
          magic::sliding_attacks(magic::Slider::Bishop, static_cast<core::Square>(sq), occ));
     if (a & center) score += CENTER_CONTROL_BONUS;
   }
@@ -436,7 +436,7 @@ static int center_and_outposts(const std::array<Bitboard, 6>& wbbs,
     int sq = lsb_i(bq);
     bq &= bq - 1;
     Bitboard a =
-        (magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) ||
+        (magic::sliding_attacks(magic::Slider::Rook, static_cast<core::Square>(sq), occ) |
          magic::sliding_attacks(magic::Slider::Bishop, static_cast<core::Square>(sq), occ));
     if (a & center) score -= CENTER_CONTROL_BONUS;
   }
@@ -529,7 +529,6 @@ struct PawnEntry {
 struct Evaluator::Impl {
   std::array<EvalEntry, EVAL_CACHE_SIZE> eval_cache;
   std::array<PawnEntry, PAWN_CACHE_SIZE> pawn_cache;
-  std::mutex writeMutex;
   std::atomic<uint32_t> global_age{1};
   Impl() {}
   inline void incr_age() {
@@ -547,7 +546,6 @@ Evaluator::~Evaluator() noexcept {
 
 void Evaluator::clearCaches() const noexcept {
   if (!m_impl) return;
-  std::lock_guard lock(m_impl->writeMutex);
   for (auto& e : m_impl->eval_cache) {
     e.key.store(0, std::memory_order_relaxed);
     e.score.store(0, std::memory_order_relaxed);
@@ -567,39 +565,43 @@ static inline size_t eval_index_from_key(Bitboard key) noexcept {
 static inline size_t pawn_index_from_key(Bitboard key) noexcept {
   return static_cast<size_t>(key) & (PAWN_CACHE_SIZE - 1);
 }
-
 int Evaluator::evaluate(model::Position& pos) const {
   init_masks_if_needed();
+
   const Board& b = pos.getBoard();
   const uint64_t board_key = static_cast<uint64_t>(pos.hash());
   const uint64_t pawn_key = static_cast<uint64_t>(pos.getState().pawnKey);
 
+  // --- Eval-Cache: Fast-Path (Acquire = sieht publizierte Writes vollständig)
   {
-    size_t ei = eval_index_from_key(board_key);
-    uint64_t k = m_impl->eval_cache[ei].key.load(std::memory_order_relaxed);
+    const size_t ei = eval_index_from_key(board_key);
+    const uint64_t k = m_impl->eval_cache[ei].key.load(std::memory_order_acquire);
     if (k == board_key) {
-      int32_t s = m_impl->eval_cache[ei].score.load(std::memory_order_relaxed);
-      return s;
+      return m_impl->eval_cache[ei].score.load(std::memory_order_relaxed);
     }
   }
 
+  // --- Pawn-Cache (optional)
   int pawn_score = std::numeric_limits<int>::min();
   {
-    size_t pi = pawn_index_from_key(pawn_key);
-    uint64_t pk = m_impl->pawn_cache[pi].key.load(std::memory_order_relaxed);
-    if (pk == pawn_key)
+    const size_t pi = pawn_index_from_key(pawn_key);
+    const uint64_t pk = m_impl->pawn_cache[pi].key.load(std::memory_order_acquire);
+    if (pk == pawn_key) {
       pawn_score = m_impl->pawn_cache[pi].pawn_score.load(std::memory_order_relaxed);
+    }
   }
 
+  // --- Bitboards einsammeln
   std::array<Bitboard, 6> wbbs{}, bbbs{};
   for (int pt = 0; pt < 6; ++pt) {
     wbbs[pt] = b.getPieces(Color::White, static_cast<PieceType>(pt));
     bbbs[pt] = b.getPieces(Color::Black, static_cast<PieceType>(pt));
   }
-  Bitboard occ = b.getAllPieces();
-  Bitboard wocc = b.getPieces(Color::White);
-  Bitboard bocc = b.getPieces(Color::Black);
+  const Bitboard occ = b.getAllPieces();
+  const Bitboard wocc = b.getPieces(Color::White);
+  const Bitboard bocc = b.getPieces(Color::Black);
 
+  // --- Material + PST + Phase
   int mg = 0, eg = 0, phase = 0;
   material_pst_phase(wbbs, bbbs, mg, eg, phase);
 
@@ -608,50 +610,57 @@ int Evaluator::evaluate(model::Position& pos) const {
                                 bbbs[static_cast<int>(PieceType::Pawn)]);
   }
 
-  int mob = mobility(occ, wocc, bocc, wbbs, bbbs);
-  int ks = king_safety(wbbs, bbbs, occ);
+  // --- weitere Terme
+  const int mob = mobility(occ, wocc, bocc, wbbs, bbbs);
+  const int ks = king_safety(wbbs, bbbs, occ);
+  const int bp = bishop_pair(wbbs, bbbs);
+  const int dev = development_score(wbbs, bbbs);
+  const int rim = knight_rim(wbbs, bbbs);
+  const int cent = center_and_outposts(wbbs, bbbs, occ);
+  const int ract = rook_activity(wbbs, bbbs, wbbs[static_cast<int>(PieceType::Pawn)],
+                                 bbbs[static_cast<int>(PieceType::Pawn)]);
 
-  int bishop_pair_score = bishop_pair(wbbs, bbbs);
-  int dev_score = development_score(wbbs, bbbs);
-  int knight_rim_score = knight_rim(wbbs, bbbs);
-  int outpost_center_score = center_and_outposts(wbbs, bbbs, occ);
-  int rook_act = rook_activity(wbbs, bbbs, wbbs[static_cast<int>(PieceType::Pawn)],
-                               bbbs[static_cast<int>(PieceType::Pawn)]);
-
-  int mg_add = pawn_score + mob + ks + bishop_pair_score + dev_score + knight_rim_score +
-               outpost_center_score + rook_act;
-  int eg_add = (pawn_score / 2) + (mob / 3) + (ks / 2) + (bishop_pair_score / 2) + (dev_score / 4) +
-               (outpost_center_score / 2) + (rook_act / 3);
+  const int mg_add = pawn_score + mob + ks + bp + dev + rim + cent + ract;
+  const int eg_add =
+      (pawn_score / 2) + (mob / 3) + (ks / 2) + (bp / 2) + (dev / 4) + (cent / 2) + (ract / 3);
 
   mg += mg_add;
   eg += eg_add;
 
+  // --- Phasenmischung (MG/EG blend)
   int max_phase = 0;
-  for (int pt = 0; pt < 6; ++pt) {
-    max_phase += PIECE_PHASE[pt] * (popcnt(wbbs[pt]) + popcnt(bbbs[pt]));
+  for (int pt = 0; pt < 6; ++pt)
+    max_phase += PIECE_PHASE[pt] * (popcount(wbbs[pt]) + popcount(bbbs[pt]));
+
+  const int phase_norm = (max_phase > 0) ? std::clamp(phase, 0, max_phase) : 0;
+  const int mg_w = (max_phase > 0) ? (phase_norm * 256 / max_phase) : 0;
+  const int eg_w = 256 - mg_w;
+
+  const int final_score = ((mg * mg_w) + (eg * eg_w)) >> 8;
+
+  // --- Caches aktualisieren (ohne Mutex; key zuletzt = Publikation)
+  uint32_t age = m_impl->global_age.fetch_add(1, std::memory_order_relaxed) + 1;
+  if (age == 0) {  // Wrap-Schutz
+    m_impl->global_age.store(1, std::memory_order_relaxed);
+    age = 1;
   }
-  int phase_norm = (max_phase > 0) ? std::clamp(phase, 0, max_phase) : 0;
-  int mg_weight = (max_phase > 0) ? (phase_norm * 256 / max_phase) : 0;
-  int eg_weight = 256 - mg_weight;
 
-  int final_score = ((mg * mg_weight) + (eg * eg_weight)) >> 8;
-
+  // Pawn-Cache
   {
-    std::lock_guard<std::mutex> lock(m_impl->writeMutex);
+    const size_t pi = pawn_index_from_key(pawn_key);
+    auto& pe = m_impl->pawn_cache[pi];
+    pe.pawn_score.store(pawn_score, std::memory_order_relaxed);
+    pe.age.store(age, std::memory_order_relaxed);
+    pe.key.store(pawn_key, std::memory_order_release);  // publish last
+  }
 
-    size_t pi = pawn_index_from_key(pawn_key);
-    m_impl->pawn_cache[pi].key.store(pawn_key, std::memory_order_relaxed);
-    m_impl->pawn_cache[pi].pawn_score.store(pawn_score, std::memory_order_relaxed);
-    m_impl->pawn_cache[pi].age.store(m_impl->global_age.load(std::memory_order_relaxed),
-                                     std::memory_order_relaxed);
-
-    size_t ei = eval_index_from_key(board_key);
-    m_impl->eval_cache[ei].key.store(board_key, std::memory_order_relaxed);
-    m_impl->eval_cache[ei].score.store(final_score, std::memory_order_relaxed);
-    m_impl->eval_cache[ei].age.store(m_impl->global_age.load(std::memory_order_relaxed),
-                                     std::memory_order_relaxed);
-
-    m_impl->incr_age();
+  // Eval-Cache
+  {
+    const size_t ei = eval_index_from_key(board_key);
+    auto& ee = m_impl->eval_cache[ei];
+    ee.score.store(final_score, std::memory_order_relaxed);
+    ee.age.store(age, std::memory_order_relaxed);
+    ee.key.store(board_key, std::memory_order_release);  // publish last
   }
 
   return final_score;

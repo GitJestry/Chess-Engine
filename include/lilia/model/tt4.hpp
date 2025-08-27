@@ -74,7 +74,7 @@ class TT4 {
     if (requested == 0) requested = 1;
 
     slots = highest_power_of_two(requested);
-    if (slots == 0) slots = 1; // Sicherheitsnetz
+    if (slots == 0) slots = 1;  // Sicherheitsnetz
 
     m_table = std::vector<Cluster>(slots);
 
@@ -87,7 +87,7 @@ class TT4 {
       auto lk = c.lockCluster();
       for (auto &entry : c.e) entry = TTEntry4{};
     }
-    generation = 0; // nach nächstem new_generation() wird auf 1 gesetzt
+    generation = 0;  // nach nächstem new_generation() wird auf 1 gesetzt
   }
 
   std::optional<TTEntry4> probe(std::uint64_t key) const {
@@ -105,7 +105,7 @@ class TT4 {
     Cluster &c = m_table[index(key)];
     auto lk = c.lockCluster();
 
-    const uint8_t curGen = static_cast<uint8_t>(generation); // implizit mod 256
+    const uint8_t curGen = static_cast<uint8_t>(generation);  // implizit mod 256
 
     // 1) Update, falls Key bereits vorhanden
     for (auto &entry : c.e) {
@@ -136,9 +136,8 @@ class TT4 {
     // 3) Ersetzungsheuristik: möglichst "schlechter" (flach + alt)
     int idx = 0;
     auto score_of = [&](const TTEntry4 &en) {
-      // ageDelta modulo-sicher (uint8_t Wrap)
       int ageDelta = static_cast<uint8_t>(curGen - en.age);
-      return static_cast<int>(en.depth) * 256 + ageDelta;
+      return static_cast<int>(en.depth) * 256 - ageDelta;  // <--- minus!
     };
 
     int bestScore = score_of(c.e[0]);
@@ -176,13 +175,14 @@ class TT4 {
   mutable std::vector<Cluster> m_table;
   std::size_t slots = 0;
   std::size_t bytes = 0;
-  uint32_t generation = 1; // nur die unteren 8 Bit werden für age benutzt
+  uint32_t generation = 1;  // nur die unteren 8 Bit werden für age benutzt
 
   inline std::size_t index(std::uint64_t key) const {
     assert((slots & (slots - 1)) == 0 && slots != 0);
-    // Maske über die niedrigstwertigen Bits – schnell und ok; optional könnte man hier noch ein Mixen des Keys einbauen
+    // Maske über die niedrigstwertigen Bits – schnell und ok; optional könnte man hier noch ein
+    // Mixen des Keys einbauen
     return static_cast<std::size_t>(key) & (slots - 1);
   }
 };
 
-} // namespace lilia::model
+}  // namespace lilia::model

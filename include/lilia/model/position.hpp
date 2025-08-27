@@ -23,7 +23,7 @@ class Position {
 
     bb::Bitboard pk = 0;
     for (core::Square sq = 0; sq < 64; ++sq) {
-      auto opt = m_board.getPiece(sq);
+      auto opt = m_board.getPiece(static_cast<core::Square>(sq));
       if (!opt.has_value()) continue;
       const bb::Piece p = *opt;
       if (p.type == core::PieceType::Pawn) {
