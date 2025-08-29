@@ -1,41 +1,42 @@
 #include "lilia/model/move_generator.hpp"
 
+#include <array>
+#include <cstdint>
+
 #include "lilia/model/core/magic.hpp"
 
 namespace lilia::model {
 
 namespace {
 
-// Feld von Seite "by" angegriffen?
-inline bool attackedBy(const Board& board, core::Square sq, core::Color by) {
-  using PT = core::PieceType;
-  const auto target = bb::sq_bb(sq);
-  if (by == core::Color::White) {
-    if ((bb::sw(target) | bb::se(target)) & board.getPieces(core::Color::White, PT::Pawn))
-      return true;
-  } else {
-    if ((bb::nw(target) | bb::ne(target)) & board.getPieces(core::Color::Black, PT::Pawn))
-      return true;
-  }
-  if (bb::knight_attacks_from(sq) & board.getPieces(by, PT::Knight)) return true;
+using core::Color;
+using core::PieceType;
+using core::Square;
 
-  const auto occ = board.getAllPieces();
-  if (magic::sliding_attacks(magic::Slider::Bishop, sq, occ) &
-      (board.getPieces(by, PT::Bishop) | board.getPieces(by, PT::Queen)))
-    return true;
-  if (magic::sliding_attacks(magic::Slider::Rook, sq, occ) &
-      (board.getPieces(by, PT::Rook) | board.getPieces(by, PT::Queen)))
-    return true;
+using PT = core::PieceType;
 
-  if (bb::king_attacks_from(sq) & board.getPieces(by, PT::King)) return true;
-  return false;
+struct SideSets {
+  bb::Bitboard pawns, knights, bishops, rooks, queens, king, all;
+};
+
+inline SideSets side_sets(const Board& b, Color c) noexcept {
+  return SideSets{b.getPieces(c, PT::Pawn),
+                  b.getPieces(c, PT::Knight),
+                  b.getPieces(c, PT::Bishop),
+                  b.getPieces(c, PT::Rook),
+                  b.getPieces(c, PT::Queen),
+                  b.getPieces(c, PT::King),
+                  b.getPieces(c)};
 }
 
-// Squares strictly between a und b
-inline bb::Bitboard squares_between(core::Square a, core::Square b) {
-  bb::Bitboard mask = 0;
-  int ai = (int)a, bi = (int)b;
-  int d = bi - ai, step = 0;
+// ---------------- Between-Tabelle ----------------
+// Precompute squares_between(a,b) -> Bitboard der strikt dazwischen liegenden Felder.
+// Beschleunigt Pins und Evasions spürbar.
+
+inline bb::Bitboard compute_between_single(int ai, int bi) noexcept {
+  if (ai == bi) return 0ULL;
+  const int d = bi - ai;
+  int step = 0;
   if (d % 9 == 0)
     step = (d > 0 ? 9 : -9);
   else if (d % 7 == 0)
@@ -45,91 +46,147 @@ inline bb::Bitboard squares_between(core::Square a, core::Square b) {
   else if ((ai % 8) == (bi % 8))
     step = (d > 0 ? 8 : -8);
   else
-    return 0;
-  for (int cur = ai + step; cur != bi; cur += step)
-    mask |= bb::sq_bb(static_cast<core::Square>(cur));
+    return 0ULL;
+
+  bb::Bitboard mask = 0ULL;
+  for (int cur = ai + step; cur != bi; cur += step) mask |= bb::sq_bb(static_cast<Square>(cur));
   return mask;
 }
 
-// ---------------- Pin-Infos ----------------
+std::array<std::array<bb::Bitboard, 64>, 64> Between = [] {
+  std::array<std::array<bb::Bitboard, 64>, 64> T{};
+  for (int a = 0; a < 64; ++a)
+    for (int b = 0; b < 64; ++b) T[a][b] = compute_between_single(a, b);
+  return T;
+}();
 
-struct PinInfo {
-  bb::Bitboard pinned = 0;
-  std::array<bb::Bitboard, 64> allow{};
+inline bb::Bitboard squares_between(Square a, Square b) noexcept {
+  return Between[(int)a][(int)b];
+}
+
+// ---------------- Pin-Infos (sparse) ----------------
+
+struct PinEntry {
+  uint8_t sq;          // pinned piece square
+  bb::Bitboard allow;  // allowed destinations (line to pinner incl. pinner)
 };
 
-inline void compute_pins(const Board& b, core::Color us, PinInfo& out) {
-  using PT = core::PieceType;
-  out.pinned = 0;
-  out.allow.fill(~0ULL);
+struct PinInfo {
+  bb::Bitboard pinned = 0ULL;
+  PinEntry entries[8]{};
+  uint8_t count = 0;
+
+  inline bb::Bitboard allow_mask(Square s) const noexcept {
+    if (!(pinned & bb::sq_bb(s))) return ~0ULL;
+    for (uint8_t i = 0; i < count; ++i)
+      if (entries[i].sq == (uint8_t)s) return entries[i].allow;
+    return 0ULL;  // sollte praktisch nie passieren
+  }
+
+  inline void add(Square pinnedSq, bb::Bitboard allow) noexcept {
+    pinned |= bb::sq_bb(pinnedSq);
+    entries[count++] = PinEntry{(uint8_t)pinnedSq, allow};
+  }
+};
+
+// Nur Pinner auf Königsstrahlen betrachten, keine doppelte Between-Berechnung
+inline void compute_pins(const Board& b, Color us, const bb::Bitboard occ, PinInfo& out) noexcept {
+  out.pinned = 0ULL;
+  out.count = 0;
 
   const bb::Bitboard kbb = b.getPieces(us, PT::King);
   if (!kbb) return;
-  const core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
-  const bb::Bitboard occ = b.getAllPieces();
+  const Square ksq = static_cast<Square>(bb::ctz64(kbb));
 
-  auto mark_if_pinned = [&](core::Square pinnerSq) {
+  const bb::Bitboard diagRaysFromK = magic::sliding_attacks(magic::Slider::Bishop, ksq, occ) &
+                                     (b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Queen));
+  const bb::Bitboard orthoRaysFromK = magic::sliding_attacks(magic::Slider::Rook, ksq, occ) &
+                                      (b.getPieces(~us, PT::Rook) | b.getPieces(~us, PT::Queen));
+
+  auto try_mark = [&](Square pinnerSq) noexcept {
     const bb::Bitboard between = squares_between(ksq, pinnerSq);
     if (!between) return;
     const bb::Bitboard blockers = between & occ;
     if (bb::popcount(blockers) != 1) return;
     const bb::Bitboard ours = blockers & b.getPieces(us);
     if (!ours) return;
-    const core::Square pinnedSq = static_cast<core::Square>(bb::ctz64(ours));
-    out.pinned |= ours;
-    out.allow[(int)pinnedSq] = between | bb::sq_bb(pinnerSq);
+    const Square pinnedSq = static_cast<Square>(bb::ctz64(ours));
+    out.add(pinnedSq, between | bb::sq_bb(pinnerSq));
   };
 
-  for (bb::Bitboard s = b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Queen); s;) {
-    const core::Square sq = bb::pop_lsb(s);
-    if (squares_between(ksq, sq)) mark_if_pinned(sq);
+  for (bb::Bitboard s = diagRaysFromK; s;) {
+    const Square sq = bb::pop_lsb(s);
+    try_mark(sq);
   }
-  for (bb::Bitboard s = b.getPieces(~us, PT::Rook) | b.getPieces(~us, PT::Queen); s;) {
-    const core::Square sq = bb::pop_lsb(s);
-    if (squares_between(ksq, sq)) mark_if_pinned(sq);
+  for (bb::Bitboard s = orthoRaysFromK; s;) {
+    const Square sq = bb::pop_lsb(s);
+    try_mark(sq);
   }
 }
 
-// --------- schneller EP-Legalitätscheck ---------
-// Nur horizontale (Rook/Queen) Entblößung ist neu möglich.
-// Prüft nach virtueller Ausführung, ob der König durch R/T angegriffen ist.
-inline bool ep_is_legal_fast(const Board& b, core::Color side, core::Square from,
-                             core::Square to) {  // [EP-FAST]
-  using PT = core::PieceType;
+// --------- schneller EP-Legalitätscheck (unverändert, minimal gesäubert) ---------
+inline bool ep_is_legal_fast(const Board& b, Color side, Square from, Square to) noexcept {
   const bb::Bitboard kbb = b.getPieces(side, PT::King);
   if (!kbb) return false;
-  const core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
+  const Square ksq = static_cast<Square>(bb::ctz64(kbb));
 
-  // nur relevant wenn König und EP-Konstellation auf derselben Reihe (5. für Weiß, 4. für Schwarz)
+  // Relevanz nur bei gleicher Reihe
   if (bb::rank_of(ksq) != bb::rank_of(from)) return true;
 
-  const core::Square capSq = (side == core::Color::White) ? static_cast<core::Square>(to - 8)
-                                                          : static_cast<core::Square>(to + 8);
+  const int to_i = (int)to;
+  const int cap_i = (side == Color::White) ? (to_i - 8) : (to_i + 8);
+  const Square capSq = static_cast<Square>(cap_i);
 
   bb::Bitboard occ = b.getAllPieces();
-  occ &= ~bb::sq_bb(from);   // mover verlässt from
-  occ &= ~bb::sq_bb(capSq);  // geschlagener Bauer verschwindet
-  occ |= bb::sq_bb(to);      // mover landet auf to
+  occ &= ~bb::sq_bb(from);
+  occ &= ~bb::sq_bb(capSq);
+  occ |= bb::sq_bb(to);
 
   const bb::Bitboard sliders = b.getPieces(~side, PT::Rook) | b.getPieces(~side, PT::Queen);
   const bb::Bitboard rays = magic::sliding_attacks(magic::Slider::Rook, ksq, occ);
-  return (rays & sliders) == 0;  // legal, wenn kein R/T jetzt auf Königslinie sitzt
+  return (rays & sliders) == 0ULL;
+}
+
+// ---------------- Angriffsabfrage ----------------
+
+inline bool attackedBy(const Board& b, Square sq, Color by, bb::Bitboard occ) noexcept {
+  const bb::Bitboard target = bb::sq_bb(sq);
+
+  // Pawns
+  const bb::Bitboard pawns = b.getPieces(by, PT::Pawn);
+  const bb::Bitboard pawnAtkToSq =
+      (by == Color::White) ? (bb::sw(target) | bb::se(target)) : (bb::nw(target) | bb::ne(target));
+  if (pawnAtkToSq & pawns) return true;
+
+  if (bb::knight_attacks_from(sq) & b.getPieces(by, PT::Knight)) return true;
+
+  const bb::Bitboard diag = magic::sliding_attacks(magic::Slider::Bishop, sq, occ);
+  if (diag & (b.getPieces(by, PT::Bishop) | b.getPieces(by, PT::Queen))) return true;
+
+  const bb::Bitboard ortho = magic::sliding_attacks(magic::Slider::Rook, sq, occ);
+  if (ortho & (b.getPieces(by, PT::Rook) | b.getPieces(by, PT::Queen))) return true;
+
+  if (bb::king_attacks_from(sq) & b.getPieces(by, PT::King)) return true;
+
+  return false;
 }
 
 // ---------------- Template-Generatoren ----------------
 
-template <class Emit>
-inline void genPawnMoves_T(const Board& board, const GameState& st, core::Color side, Emit&& emit) {
-  const bb::Bitboard occ = board.getAllPieces();
+template <Color Side, class Emit>
+inline void genPawnMoves_T(const Board& board, const GameState& st, bb::Bitboard occ,
+                           const SideSets& our, const SideSets& opp, Emit&& emit) noexcept {
   const bb::Bitboard empty = ~occ;
 
-  const bb::Bitboard enemyAll = board.getPieces(~side);
-  const bb::Bitboard enemyKing = board.getPieces(~side, core::PieceType::King);
+  const bb::Bitboard enemyAll = opp.all;
+  const bb::Bitboard enemyKing = opp.king;
   const bb::Bitboard them = enemyAll & ~enemyKing;
 
-  bb::Bitboard pawns = board.getPieces(side, core::PieceType::Pawn);
+  bb::Bitboard pawns = our.pawns;
 
-  if (side == core::Color::White) {
+  constexpr bool W = (Side == Color::White);
+
+  if constexpr (W) {
     bb::Bitboard one = bb::north(pawns) & empty;
     bb::Bitboard dbl = bb::north(one & bb::RANK_3) & empty;
 
@@ -140,49 +197,45 @@ inline void genPawnMoves_T(const Board& board, const GameState& st, core::Color 
     bb::Bitboard capR = (bb::ne(pawns) & them) & ~bb::RANK_8;
 
     for (bb::Bitboard q = quietPush; q;) {
-      core::Square to = bb::pop_lsb(q);
-      emit(Move{static_cast<core::Square>(to - 8), to, core::PieceType::None, false, false,
-                CastleSide::None});
+      Square to = bb::pop_lsb(q);
+      emit(Move{static_cast<Square>(to - 8), to, PT::None, false, false, CastleSide::None});
     }
     for (bb::Bitboard d = dbl; d;) {
-      core::Square to = bb::pop_lsb(d);
-      emit(Move{static_cast<core::Square>(to - 16), to, core::PieceType::None, false, false,
-                CastleSide::None});
+      Square to = bb::pop_lsb(d);
+      emit(Move{static_cast<Square>(to - 16), to, PT::None, false, false, CastleSide::None});
     }
     for (bb::Bitboard c = capL; c;) {
-      core::Square to = bb::pop_lsb(c);
-      emit(Move{static_cast<core::Square>(to - 7), to, core::PieceType::None, true, false,
-                CastleSide::None});
+      Square to = bb::pop_lsb(c);
+      emit(Move{static_cast<Square>(to - 7), to, PT::None, true, false, CastleSide::None});
     }
     for (bb::Bitboard c = capR; c;) {
-      core::Square to = bb::pop_lsb(c);
-      emit(Move{static_cast<core::Square>(to - 9), to, core::PieceType::None, true, false,
-                CastleSide::None});
+      Square to = bb::pop_lsb(c);
+      emit(Move{static_cast<Square>(to - 9), to, PT::None, true, false, CastleSide::None});
     }
+
+    // Promotions – ohne initializer_list
+    constexpr PT promoOrder[4] = {PT::Queen, PT::Rook, PT::Bishop, PT::Knight};
     for (bb::Bitboard pp = promoPush; pp;) {
-      core::Square to = bb::pop_lsb(pp);
-      core::Square from = static_cast<core::Square>(to - 8);
-      for (core::PieceType pt : {core::PieceType::Queen, core::PieceType::Rook,
-                                 core::PieceType::Bishop, core::PieceType::Knight})
-        emit(Move{from, to, pt, false, false, CastleSide::None});
+      Square to = bb::pop_lsb(pp);
+      Square from = static_cast<Square>(to - 8);
+      for (int i = 0; i < 4; ++i)
+        emit(Move{from, to, promoOrder[i], false, false, CastleSide::None});
     }
     bb::Bitboard capLP = (bb::nw(pawns) & them) & bb::RANK_8;
     bb::Bitboard capRP = (bb::ne(pawns) & them) & bb::RANK_8;
     for (bb::Bitboard c = capLP; c;) {
-      core::Square to = bb::pop_lsb(c);
-      core::Square from = static_cast<core::Square>(to - 7);
-      for (core::PieceType pt : {core::PieceType::Queen, core::PieceType::Rook,
-                                 core::PieceType::Bishop, core::PieceType::Knight})
-        emit(Move{from, to, pt, true, false, CastleSide::None});
+      Square to = bb::pop_lsb(c);
+      Square from = static_cast<Square>(to - 7);
+      for (int i = 0; i < 4; ++i)
+        emit(Move{from, to, promoOrder[i], true, false, CastleSide::None});
     }
     for (bb::Bitboard c = capRP; c;) {
-      core::Square to = bb::pop_lsb(c);
-      core::Square from = static_cast<core::Square>(to - 9);
-      for (core::PieceType pt : {core::PieceType::Queen, core::PieceType::Rook,
-                                 core::PieceType::Bishop, core::PieceType::Knight})
-        emit(Move{from, to, pt, true, false, CastleSide::None});
+      Square to = bb::pop_lsb(c);
+      Square from = static_cast<Square>(to - 9);
+      for (int i = 0; i < 4; ++i)
+        emit(Move{from, to, promoOrder[i], true, false, CastleSide::None});
     }
-  } else {
+  } else {  // Black
     bb::Bitboard one = bb::south(pawns) & empty;
     bb::Bitboard dbl = bb::south(one & bb::RANK_6) & empty;
 
@@ -193,362 +246,369 @@ inline void genPawnMoves_T(const Board& board, const GameState& st, core::Color 
     bb::Bitboard capR = (bb::sw(pawns) & them) & ~bb::RANK_1;
 
     for (bb::Bitboard q = quietPush; q;) {
-      core::Square to = bb::pop_lsb(q);
-      emit(Move{static_cast<core::Square>(to + 8), to, core::PieceType::None, false, false,
-                CastleSide::None});
+      Square to = bb::pop_lsb(q);
+      emit(Move{static_cast<Square>(to + 8), to, PT::None, false, false, CastleSide::None});
     }
     for (bb::Bitboard d = dbl; d;) {
-      core::Square to = bb::pop_lsb(d);
-      emit(Move{static_cast<core::Square>(to + 16), to, core::PieceType::None, false, false,
-                CastleSide::None});
+      Square to = bb::pop_lsb(d);
+      emit(Move{static_cast<Square>(to + 16), to, PT::None, false, false, CastleSide::None});
     }
     for (bb::Bitboard c = capL; c;) {
-      core::Square to = bb::pop_lsb(c);
-      emit(Move{static_cast<core::Square>(to + 7), to, core::PieceType::None, true, false,
-                CastleSide::None});
+      Square to = bb::pop_lsb(c);
+      emit(Move{static_cast<Square>(to + 7), to, PT::None, true, false, CastleSide::None});
     }
     for (bb::Bitboard c = capR; c;) {
-      core::Square to = bb::pop_lsb(c);
-      emit(Move{static_cast<core::Square>(to + 9), to, core::PieceType::None, true, false,
-                CastleSide::None});
+      Square to = bb::pop_lsb(c);
+      emit(Move{static_cast<Square>(to + 9), to, PT::None, true, false, CastleSide::None});
     }
+
+    constexpr PT promoOrder[4] = {PT::Queen, PT::Rook, PT::Bishop, PT::Knight};
     for (bb::Bitboard pp = promoPush; pp;) {
-      core::Square to = bb::pop_lsb(pp);
-      core::Square from = static_cast<core::Square>(to + 8);
-      for (core::PieceType pt : {core::PieceType::Queen, core::PieceType::Rook,
-                                 core::PieceType::Bishop, core::PieceType::Knight})
-        emit(Move{from, to, pt, false, false, CastleSide::None});
+      Square to = bb::pop_lsb(pp);
+      Square from = static_cast<Square>(to + 8);
+      for (int i = 0; i < 4; ++i)
+        emit(Move{from, to, promoOrder[i], false, false, CastleSide::None});
     }
     bb::Bitboard capLP = (bb::se(pawns) & them) & bb::RANK_1;
     bb::Bitboard capRP = (bb::sw(pawns) & them) & bb::RANK_1;
     for (bb::Bitboard c = capLP; c;) {
-      core::Square to = bb::pop_lsb(c);
-      core::Square from = static_cast<core::Square>(to + 7);
-      for (core::PieceType pt : {core::PieceType::Queen, core::PieceType::Rook,
-                                 core::PieceType::Bishop, core::PieceType::Knight})
-        emit(Move{from, to, pt, true, false, CastleSide::None});
+      Square to = bb::pop_lsb(c);
+      Square from = static_cast<Square>(to + 7);
+      for (int i = 0; i < 4; ++i)
+        emit(Move{from, to, promoOrder[i], true, false, CastleSide::None});
     }
     for (bb::Bitboard c = capRP; c;) {
-      core::Square to = bb::pop_lsb(c);
-      core::Square from = static_cast<core::Square>(to + 9);
-      for (core::PieceType pt : {core::PieceType::Queen, core::PieceType::Rook,
-                                 core::PieceType::Bishop, core::PieceType::Knight})
-        emit(Move{from, to, pt, true, false, CastleSide::None});
+      Square to = bb::pop_lsb(c);
+      Square from = static_cast<Square>(to + 9);
+      for (int i = 0; i < 4; ++i)
+        emit(Move{from, to, promoOrder[i], true, false, CastleSide::None});
     }
   }
 
-  // En passant – jetzt mit schnellem Legalitätscheck
+  // En passant mit schnellem Legalitätscheck
   if (st.enPassantSquare != core::NO_SQUARE) {
-    const bb::Bitboard ep = bb::sq_bb(st.enPassantSquare);
-    if (side == core::Color::White) {
-      bb::Bitboard froms =
-          (bb::sw(ep) | bb::se(ep)) & board.getPieces(core::Color::White, core::PieceType::Pawn);
+    const Square epSq = st.enPassantSquare;
+    const bb::Bitboard ep = bb::sq_bb(epSq);
+    if constexpr (W) {
+      bb::Bitboard froms = (bb::sw(ep) | bb::se(ep)) & our.pawns;
       for (bb::Bitboard f = froms; f;) {
-        core::Square from = bb::pop_lsb(f);
-        core::Square to = st.enPassantSquare;
-        if (ep_is_legal_fast(board, side, from, to)) {  // [EP-FAST]
-          emit(Move{from, to, core::PieceType::None, true, true, CastleSide::None});
-        }
+        Square from = bb::pop_lsb(f);
+        if (ep_is_legal_fast(board, Side, from, epSq))
+          emit(Move{from, epSq, PT::None, true, true, CastleSide::None});
       }
     } else {
-      bb::Bitboard froms =
-          (bb::nw(ep) | bb::ne(ep)) & board.getPieces(core::Color::Black, core::PieceType::Pawn);
+      bb::Bitboard froms = (bb::nw(ep) | bb::ne(ep)) & our.pawns;
       for (bb::Bitboard f = froms; f;) {
-        core::Square from = bb::pop_lsb(f);
-        core::Square to = st.enPassantSquare;
-        if (ep_is_legal_fast(board, side, from, to)) {  // [EP-FAST]
-          emit(Move{from, to, core::PieceType::None, true, true, CastleSide::None});
-        }
+        Square from = bb::pop_lsb(f);
+        if (ep_is_legal_fast(board, Side, from, epSq))
+          emit(Move{from, epSq, PT::None, true, true, CastleSide::None});
       }
     }
   }
 }
 
 template <class Emit>
-inline void genKnightMoves_T(const Board& board, core::Color side, Emit&& emit) {
-  const bb::Bitboard knights = board.getPieces(side, core::PieceType::Knight);
-  const bb::Bitboard enemyK = board.getPieces(~side, core::PieceType::King);
-  const bb::Bitboard enemyNoK = board.getPieces(~side) & ~enemyK;
-  const bb::Bitboard occ = board.getAllPieces();
+inline void genKnightMoves_T(const Board& board, const SideSets& our, const SideSets& opp,
+                             bb::Bitboard occ, Emit&& emit) noexcept {
+  const bb::Bitboard knights = our.knights;
+  const bb::Bitboard enemyK = opp.king;
+  const bb::Bitboard enemyNoK = opp.all & ~enemyK;
 
   for (bb::Bitboard n = knights; n;) {
-    core::Square from = bb::pop_lsb(n);
+    Square from = bb::pop_lsb(n);
     bb::Bitboard atk = bb::knight_attacks_from(from);
     for (bb::Bitboard caps = atk & enemyNoK; caps;) {
-      core::Square to = bb::pop_lsb(caps);
-      emit(Move{from, to, core::PieceType::None, true, false, CastleSide::None});
+      Square to = bb::pop_lsb(caps);
+      emit(Move{from, to, PT::None, true, false, CastleSide::None});
     }
     for (bb::Bitboard quiet = atk & ~occ; quiet;) {
-      core::Square to = bb::pop_lsb(quiet);
-      emit(Move{from, to, core::PieceType::None, false, false, CastleSide::None});
+      Square to = bb::pop_lsb(quiet);
+      emit(Move{from, to, PT::None, false, false, CastleSide::None});
     }
   }
 }
 
 template <class Emit>
-inline void genBishopMoves_T(const Board& board, core::Color side, Emit&& emit) {
-  const bb::Bitboard bishops = board.getPieces(side, core::PieceType::Bishop);
-  const bb::Bitboard occ = board.getAllPieces();
-  const bb::Bitboard enemyK = board.getPieces(~side, core::PieceType::King);
-  const bb::Bitboard enemyNoK = board.getPieces(~side) & ~enemyK;
+inline void genBishopMoves_T(const SideSets& our, const SideSets& opp, bb::Bitboard occ,
+                             Emit&& emit) noexcept {
+  const bb::Bitboard bishops = our.bishops;
+  const bb::Bitboard enemyK = opp.king;
+  const bb::Bitboard enemyNoK = opp.all & ~enemyK;
 
   for (bb::Bitboard b = bishops; b;) {
-    core::Square from = bb::pop_lsb(b);
+    Square from = bb::pop_lsb(b);
     bb::Bitboard atk = magic::sliding_attacks(magic::Slider::Bishop, from, occ);
     for (bb::Bitboard caps = atk & enemyNoK; caps;) {
-      core::Square to = bb::pop_lsb(caps);
-      emit(Move{from, to, core::PieceType::None, true, false, CastleSide::None});
+      Square to = bb::pop_lsb(caps);
+      emit(Move{from, to, PT::None, true, false, CastleSide::None});
     }
     for (bb::Bitboard quiet = atk & ~occ; quiet;) {
-      core::Square to = bb::pop_lsb(quiet);
-      emit(Move{from, to, core::PieceType::None, false, false, CastleSide::None});
+      Square to = bb::pop_lsb(quiet);
+      emit(Move{from, to, PT::None, false, false, CastleSide::None});
     }
   }
 }
 
 template <class Emit>
-inline void genRookMoves_T(const Board& board, core::Color side, Emit&& emit) {
-  const bb::Bitboard rooks = board.getPieces(side, core::PieceType::Rook);
-  const bb::Bitboard occ = board.getAllPieces();
-  const bb::Bitboard enemyK = board.getPieces(~side, core::PieceType::King);
-  const bb::Bitboard enemyNoK = board.getPieces(~side) & ~enemyK;
+inline void genRookMoves_T(const SideSets& our, const SideSets& opp, bb::Bitboard occ,
+                           Emit&& emit) noexcept {
+  const bb::Bitboard rooks = our.rooks;
+  const bb::Bitboard enemyK = opp.king;
+  const bb::Bitboard enemyNoK = opp.all & ~enemyK;
 
   for (bb::Bitboard r = rooks; r;) {
-    core::Square from = bb::pop_lsb(r);
+    Square from = bb::pop_lsb(r);
     bb::Bitboard atk = magic::sliding_attacks(magic::Slider::Rook, from, occ);
     for (bb::Bitboard caps = atk & enemyNoK; caps;) {
-      core::Square to = bb::pop_lsb(caps);
-      emit(Move{from, to, core::PieceType::None, true, false, CastleSide::None});
+      Square to = bb::pop_lsb(caps);
+      emit(Move{from, to, PT::None, true, false, CastleSide::None});
     }
     for (bb::Bitboard quiet = atk & ~occ; quiet;) {
-      core::Square to = bb::pop_lsb(quiet);
-      emit(Move{from, to, core::PieceType::None, false, false, CastleSide::None});
+      Square to = bb::pop_lsb(quiet);
+      emit(Move{from, to, PT::None, false, false, CastleSide::None});
     }
   }
 }
 
 template <class Emit>
-inline void genQueenMoves_T(const Board& board, core::Color side, Emit&& emit) {
-  const bb::Bitboard queens = board.getPieces(side, core::PieceType::Queen);
-  const bb::Bitboard occ = board.getAllPieces();
-  const bb::Bitboard enemyK = board.getPieces(~side, core::PieceType::King);
-  const bb::Bitboard enemyNoK = board.getPieces(~side) & ~enemyK;
+inline void genQueenMoves_T(const SideSets& our, const SideSets& opp, bb::Bitboard occ,
+                            Emit&& emit) noexcept {
+  const bb::Bitboard queens = our.queens;
+  const bb::Bitboard enemyK = opp.king;
+  const bb::Bitboard enemyNoK = opp.all & ~enemyK;
 
   for (bb::Bitboard q = queens; q;) {
-    core::Square from = bb::pop_lsb(q);
+    Square from = bb::pop_lsb(q);
     bb::Bitboard atk = magic::sliding_attacks(magic::Slider::Bishop, from, occ) |
                        magic::sliding_attacks(magic::Slider::Rook, from, occ);
     for (bb::Bitboard caps = atk & enemyNoK; caps;) {
-      core::Square to = bb::pop_lsb(caps);
-      emit(Move{from, to, core::PieceType::None, true, false, CastleSide::None});
+      Square to = bb::pop_lsb(caps);
+      emit(Move{from, to, PT::None, true, false, CastleSide::None});
     }
     for (bb::Bitboard quiet = atk & ~occ; quiet;) {
-      core::Square to = bb::pop_lsb(quiet);
-      emit(Move{from, to, core::PieceType::None, false, false, CastleSide::None});
+      Square to = bb::pop_lsb(quiet);
+      emit(Move{from, to, PT::None, false, false, CastleSide::None});
     }
   }
 }
 
 template <class Emit>
-inline void genKingMoves_T(const Board& board, const GameState& st, core::Color side, Emit&& emit) {
-  const bb::Bitboard king = board.getPieces(side, core::PieceType::King);
+inline void genKingMoves_T(const Board& board, const GameState& st, Color side, const SideSets& our,
+                           const SideSets& opp, bb::Bitboard occ, Emit&& emit) noexcept {
+  const bb::Bitboard king = our.king;
   if (!king) return;
-  const core::Square from = static_cast<core::Square>(bb::ctz64(king));
+  const Square from = static_cast<Square>(bb::ctz64(king));
 
-  const bb::Bitboard occ = board.getAllPieces();
-  const bb::Bitboard enemyK = board.getPieces(~side, core::PieceType::King);
-  const bb::Bitboard enemyNoK = board.getPieces(~side) & ~enemyK;
-
+  const bb::Bitboard enemyK = opp.king;
+  const bb::Bitboard enemyNoK = opp.all & ~enemyK;
   const bb::Bitboard atk = bb::king_attacks_from(from);
 
   for (bb::Bitboard caps = atk & enemyNoK; caps;) {
-    core::Square to = bb::pop_lsb(caps);
-    emit(Move{from, to, core::PieceType::None, true, false, CastleSide::None});
+    Square to = bb::pop_lsb(caps);
+    if (!attackedBy(board, to, ~side, occ))
+      emit(Move{from, to, PT::None, true, false, CastleSide::None});
   }
   for (bb::Bitboard quiet = atk & ~occ; quiet;) {
-    core::Square to = bb::pop_lsb(quiet);
-    emit(Move{from, to, core::PieceType::None, false, false, CastleSide::None});
+    Square to = bb::pop_lsb(quiet);
+    if (!attackedBy(board, to, ~side, occ))
+      emit(Move{from, to, PT::None, false, false, CastleSide::None});
   }
 
-  const core::Color enemySide = ~side;
-
-  if (side == core::Color::White) {
-    if ((st.castlingRights & bb::Castling::WK) &&
-        (board.getPieces(core::Color::White, core::PieceType::Rook) & bb::sq_bb(bb::H1)) &&
-        !(occ & (bb::sq_bb(core::Square{5}) | bb::sq_bb(core::Square{6})))) {
-      if (!attackedBy(board, core::Square{4}, enemySide) &&
-          !attackedBy(board, core::Square{5}, enemySide) &&
-          !attackedBy(board, core::Square{6}, enemySide)) {
-        emit(Move{bb::E1, core::Square{6}, core::PieceType::None, false, false,
-                  CastleSide::KingSide});
+  // Rochade
+  const Color enemySide = ~side;
+  if (side == Color::White) {
+    if ((st.castlingRights & bb::Castling::WK) && (our.rooks & bb::sq_bb(bb::H1)) &&
+        !(occ & (bb::sq_bb(Square{5}) | bb::sq_bb(Square{6})))) {
+      if (!attackedBy(board, Square{4}, enemySide, occ) &&
+          !attackedBy(board, Square{5}, enemySide, occ) &&
+          !attackedBy(board, Square{6}, enemySide, occ)) {
+        emit(Move{bb::E1, Square{6}, PT::None, false, false, CastleSide::KingSide});
       }
     }
-    if ((st.castlingRights & bb::Castling::WQ) &&
-        (board.getPieces(core::Color::White, core::PieceType::Rook) & bb::sq_bb(bb::A1)) &&
-        !(occ &
-          (bb::sq_bb(core::Square{3}) | bb::sq_bb(core::Square{2}) | bb::sq_bb(core::Square{1})))) {
-      if (!attackedBy(board, core::Square{4}, enemySide) &&
-          !attackedBy(board, core::Square{3}, enemySide) &&
-          !attackedBy(board, core::Square{2}, enemySide)) {
-        emit(Move{bb::E1, core::Square{2}, core::PieceType::None, false, false,
-                  CastleSide::QueenSide});
+    if ((st.castlingRights & bb::Castling::WQ) && (our.rooks & bb::sq_bb(bb::A1)) &&
+        !(occ & (bb::sq_bb(Square{3}) | bb::sq_bb(Square{2}) | bb::sq_bb(Square{1})))) {
+      if (!attackedBy(board, Square{4}, enemySide, occ) &&
+          !attackedBy(board, Square{3}, enemySide, occ) &&
+          !attackedBy(board, Square{2}, enemySide, occ)) {
+        emit(Move{bb::E1, Square{2}, PT::None, false, false, CastleSide::QueenSide});
       }
     }
   } else {
-    if ((st.castlingRights & bb::Castling::BK) &&
-        (board.getPieces(core::Color::Black, core::PieceType::Rook) & bb::sq_bb(bb::H8)) &&
-        !(occ & (bb::sq_bb(core::Square{61}) | bb::sq_bb(core::Square{62})))) {
-      if (!attackedBy(board, core::Square{60}, enemySide) &&
-          !attackedBy(board, core::Square{61}, enemySide) &&
-          !attackedBy(board, core::Square{62}, enemySide)) {
-        emit(Move{bb::E8, core::Square{62}, core::PieceType::None, false, false,
-                  CastleSide::KingSide});
+    if ((st.castlingRights & bb::Castling::BK) && (our.rooks & bb::sq_bb(bb::H8)) &&
+        !(occ & (bb::sq_bb(Square{61}) | bb::sq_bb(Square{62})))) {
+      if (!attackedBy(board, Square{60}, enemySide, occ) &&
+          !attackedBy(board, Square{61}, enemySide, occ) &&
+          !attackedBy(board, Square{62}, enemySide, occ)) {
+        emit(Move{bb::E8, Square{62}, PT::None, false, false, CastleSide::KingSide});
       }
     }
-    if ((st.castlingRights & bb::Castling::BQ) &&
-        (board.getPieces(core::Color::Black, core::PieceType::Rook) & bb::sq_bb(bb::A8)) &&
-        !(occ & (bb::sq_bb(core::Square{59}) | bb::sq_bb(core::Square{58}) |
-                 bb::sq_bb(core::Square{57})))) {
-      if (!attackedBy(board, core::Square{60}, enemySide) &&
-          !attackedBy(board, core::Square{59}, enemySide) &&
-          !attackedBy(board, core::Square{58}, enemySide)) {
-        emit(Move{bb::E8, core::Square{58}, core::PieceType::None, false, false,
-                  CastleSide::QueenSide});
+    if ((st.castlingRights & bb::Castling::BQ) && (our.rooks & bb::sq_bb(bb::A8)) &&
+        !(occ & (bb::sq_bb(Square{59}) | bb::sq_bb(Square{58}) | bb::sq_bb(Square{57})))) {
+      if (!attackedBy(board, Square{60}, enemySide, occ) &&
+          !attackedBy(board, Square{59}, enemySide, occ) &&
+          !attackedBy(board, Square{58}, enemySide, occ)) {
+        emit(Move{bb::E8, Square{58}, PT::None, false, false, CastleSide::QueenSide});
       }
     }
   }
 }
 
-// Evasions-Generator mit Emit
+// ---------- Evasions-Generator (verbessert: Angreifer vom König aus) ----------
 template <class Emit>
-inline void generateEvasions_T(const Board& b, const GameState& st, Emit&& emit) {
-  using PT = core::PieceType;
-  const core::Color us = st.sideToMove;
-  const core::Color them = ~us;
+inline void generateEvasions_T(const Board& b, const GameState& st, Emit&& emit) noexcept {
+  const Color us = st.sideToMove;
+  const Color them = ~us;
+
   const bb::Bitboard kbb = b.getPieces(us, PT::King);
   if (!kbb) return;
-  const core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
+  const Square ksq = static_cast<Square>(bb::ctz64(kbb));
 
-  const auto occ = b.getAllPieces();
+  const bb::Bitboard occ = b.getAllPieces();
 
-  bb::Bitboard checkers = 0;
-  if (us == core::Color::White) {
-    checkers |= (bb::sw(bb::sq_bb(ksq)) | bb::se(bb::sq_bb(ksq))) &
-                b.getPieces(core::Color::Black, PT::Pawn);
+  // Ermittele Checkers über Strahlen/Pattern vom König
+  bb::Bitboard checkers = 0ULL;
+
+  // Pawn
+  if (us == Color::White) {
+    checkers |=
+        (bb::sw(bb::sq_bb(ksq)) | bb::se(bb::sq_bb(ksq))) & b.getPieces(Color::Black, PT::Pawn);
   } else {
-    checkers |= (bb::nw(bb::sq_bb(ksq)) | bb::ne(bb::sq_bb(ksq))) &
-                b.getPieces(core::Color::White, PT::Pawn);
+    checkers |=
+        (bb::nw(bb::sq_bb(ksq)) | bb::ne(bb::sq_bb(ksq))) & b.getPieces(Color::White, PT::Pawn);
   }
+
+  // Knight
   checkers |= bb::knight_attacks_from(ksq) & b.getPieces(them, PT::Knight);
-  for (bb::Bitboard s = b.getPieces(them, PT::Bishop) | b.getPieces(them, PT::Queen); s;) {
-    const core::Square sq = bb::pop_lsb(s);
-    if (magic::sliding_attacks(magic::Slider::Bishop, sq, occ) & bb::sq_bb(ksq))
-      checkers |= bb::sq_bb(sq);
+
+  // Bishop/Queen diagonal
+  {
+    const bb::Bitboard rays = magic::sliding_attacks(magic::Slider::Bishop, ksq, occ);
+    checkers |= rays & (b.getPieces(them, PT::Bishop) | b.getPieces(them, PT::Queen));
   }
-  for (bb::Bitboard s = b.getPieces(them, PT::Rook) | b.getPieces(them, PT::Queen); s;) {
-    const core::Square sq = bb::pop_lsb(s);
-    if (magic::sliding_attacks(magic::Slider::Rook, sq, occ) & bb::sq_bb(ksq))
-      checkers |= bb::sq_bb(sq);
+  // Rook/Queen orthogonal
+  {
+    const bb::Bitboard rays = magic::sliding_attacks(magic::Slider::Rook, ksq, occ);
+    checkers |= rays & (b.getPieces(them, PT::Rook) | b.getPieces(them, PT::Queen));
   }
 
   const int numCheckers = bb::popcount(checkers);
 
+  // Königszüge (nur in nicht angegriffene Felder)
   {
     const bb::Bitboard enemyK = b.getPieces(them, PT::King);
     const bb::Bitboard enemyNoK = b.getPieces(them) & ~enemyK;
     const bb::Bitboard atk = bb::king_attacks_from(ksq);
-    const bb::Bitboard all = b.getAllPieces();
 
     for (bb::Bitboard caps = atk & enemyNoK; caps;) {
-      const core::Square to = bb::pop_lsb(caps);
-      if (!attackedBy(b, to, them)) emit(Move{ksq, to, PT::None, true, false, CastleSide::None});
+      const Square to = bb::pop_lsb(caps);
+      if (!attackedBy(b, to, them, occ))
+        emit(Move{ksq, to, PT::None, true, false, CastleSide::None});
     }
-    for (bb::Bitboard quiet = atk & ~all; quiet;) {
-      const core::Square to = bb::pop_lsb(quiet);
-      if (!attackedBy(b, to, them)) emit(Move{ksq, to, PT::None, false, false, CastleSide::None});
+    for (bb::Bitboard quiet = atk & ~occ; quiet;) {
+      const Square to = bb::pop_lsb(quiet);
+      if (!attackedBy(b, to, them, occ))
+        emit(Move{ksq, to, PT::None, false, false, CastleSide::None});
     }
   }
-  if (numCheckers >= 2) return;
 
-  bb::Bitboard blockMask = 0;
+  if (numCheckers >= 2) return;  // nur Königszug erlaubt
+
+  // Blocken/Schlagen des einzelnen Checkers
+  bb::Bitboard blockMask = 0ULL;
   if (numCheckers == 1) {
-    const core::Square checkerSq = static_cast<core::Square>(bb::ctz64(checkers));
+    const Square checkerSq = static_cast<Square>(bb::ctz64(checkers));
     const bb::Bitboard checkerBB = bb::sq_bb(checkerSq);
-    if (checkerBB & (b.getPieces(them, PT::Bishop) | b.getPieces(them, PT::Queen)))
-      blockMask |= squares_between(ksq, checkerSq);
-    if (checkerBB & (b.getPieces(them, PT::Rook) | b.getPieces(them, PT::Queen)))
-      blockMask |= squares_between(ksq, checkerSq);
+    // Linie zwischen K und Checker (einmalig; Queen wird hier automatisch bedient)
+    blockMask = squares_between(ksq, checkerSq);
   }
   const bb::Bitboard evasionTargets = checkers | blockMask;
 
+  // Nur Nicht-Königszüge zulassen, die den Check beenden (oder EP als Spezialfall)
   auto sink = [&](const Move& m) {
     if (m.from == ksq) return;
     const bool isEP = m.isEnPassant;
-    const bool hits = (bb::sq_bb(m.to) & evasionTargets) != 0;
+    const bool hits = (bb::sq_bb(m.to) & evasionTargets) != 0ULL;
     if (hits || isEP) emit(m);
   };
 
-  genPawnMoves_T(b, st, us, sink);
-  genKnightMoves_T(b, us, sink);
-  genBishopMoves_T(b, us, sink);
-  genRookMoves_T(b, us, sink);
-  genQueenMoves_T(b, us, sink);
+  // Precomputation für reguläre Moves
+  const bb::Bitboard occ2 = occ;
+  const SideSets our = side_sets(b, us);
+  const SideSets opp = side_sets(b, them);
+
+  // Generiere alle Pseudolegalen (ohne König) und filtere via sink
+  genPawnMoves_T<core::Color::White>(b, st, occ2, our, opp, sink);  // Side wird im sink begrenzt
+  genKnightMoves_T(b, our, opp, occ2, sink);
+  genBishopMoves_T(our, opp, occ2, sink);
+  genRookMoves_T(our, opp, occ2, sink);
+  genQueenMoves_T(our, opp, occ2, sink);
+}
+
+// ---------------- Gemeinsamer Dispatcher mit Accept-Filter ----------------
+
+struct AcceptAny {
+  inline bool operator()(const Move&) const noexcept { return true; }
+};
+struct AcceptCaptures {
+  inline bool operator()(const Move& m) const noexcept {
+    return m.isCapture || m.promotion != PT::None;
+  }
+};
+
+template <class Emit, class Accept>
+inline void generate_all_regular(const Board& b, const GameState& st, Emit&& emit,
+                                 Accept&& accept) noexcept {
+  const Color side = st.sideToMove;
+  const Color them = ~side;
+
+  const bb::Bitboard occ = b.getAllPieces();
+  const SideSets our = side_sets(b, side);
+  const SideSets opp = side_sets(b, them);
+
+  // Pins vorbereiten
+  PinInfo pins;
+  compute_pins(b, side, occ, pins);
+
+  const bb::Bitboard kbb = our.king;
+  const Square ksq = kbb ? static_cast<Square>(bb::ctz64(kbb)) : core::NO_SQUARE;
+
+  auto gated_emit = [&](const Move& m) {
+    if (m.from != ksq && (pins.pinned & bb::sq_bb(m.from))) {
+      if (!(pins.allow_mask(m.from) & bb::sq_bb(m.to))) return;
+    }
+    if (!accept(m)) return;
+    emit(m);
+  };
+
+  if (side == Color::White)
+    genPawnMoves_T<Color::White>(b, st, occ, our, opp, gated_emit);
+  else
+    genPawnMoves_T<Color::Black>(b, st, occ, our, opp, gated_emit);
+
+  genKnightMoves_T(b, our, opp, occ, gated_emit);
+  genBishopMoves_T(our, opp, occ, gated_emit);
+  genRookMoves_T(our, opp, occ, gated_emit);
+  genQueenMoves_T(our, opp, occ, gated_emit);
+  genKingMoves_T(b, st, side, our, opp, occ, gated_emit);
 }
 
 }  // namespace
 
-// ---------------- Öffentliche APIs (mit Pin-Filter + EP-Check) ----------------
+// ---------------- Öffentliche APIs ----------------
 
 void MoveGenerator::generatePseudoLegalMoves(const Board& b, const GameState& st,
                                              std::vector<model::Move>& out) const {
   if (out.capacity() < 128) out.reserve(128);
   out.clear();
 
-  PinInfo pins;
-  compute_pins(b, st.sideToMove, pins);
-
-  const core::Color side = st.sideToMove;
-  const bb::Bitboard kbb = b.getPieces(side, core::PieceType::King);
-  const core::Square ksq = kbb ? static_cast<core::Square>(bb::ctz64(kbb)) : core::NO_SQUARE;
-
-  auto emitV = [&](const Move& m) {
-    // [PIN] König nie masken, alle anderen strikt filtern – jetzt auch EP
-    if (m.from != ksq && (pins.pinned & bb::sq_bb(m.from))) {
-      if ((pins.allow[(int)m.from] & bb::sq_bb(m.to)) == 0) return;
-    }
-    out.push_back(m);
-  };
-
-  genPawnMoves_T(b, st, side, emitV);
-  genKnightMoves_T(b, side, emitV);
-  genBishopMoves_T(b, side, emitV);
-  genRookMoves_T(b, side, emitV);
-  genQueenMoves_T(b, side, emitV);
-  genKingMoves_T(b, st, side, emitV);
+  auto sink = [&](const Move& m) { out.push_back(m); };
+  generate_all_regular(b, st, sink, AcceptAny{});
 }
 
 int MoveGenerator::generatePseudoLegalMoves(const Board& b, const GameState& st,
                                             engine::MoveBuffer& buf) {
-  PinInfo pins;
-  compute_pins(b, st.sideToMove, pins);
-
-  const core::Color side = st.sideToMove;
-  const bb::Bitboard kbb = b.getPieces(side, core::PieceType::King);
-  const core::Square ksq = kbb ? static_cast<core::Square>(bb::ctz64(kbb)) : core::NO_SQUARE;
-
-  auto emitB = [&](const Move& m) {
-    if (m.from != ksq && (pins.pinned & bb::sq_bb(m.from))) {
-      if ((pins.allow[(int)m.from] & bb::sq_bb(m.to)) == 0) return;
-    }
-    buf.push_unchecked(m);
-  };
-
-  genPawnMoves_T(b, st, side, emitB);
-  genKnightMoves_T(b, side, emitB);
-  genBishopMoves_T(b, side, emitB);
-  genRookMoves_T(b, side, emitB);
-  genQueenMoves_T(b, side, emitB);
-  genKingMoves_T(b, st, side, emitB);
+  auto sink = [&](const Move& m) { buf.push_unchecked(m); };
+  generate_all_regular(b, st, sink, AcceptAny{});
   return buf.n;
 }
 
@@ -557,52 +617,14 @@ void MoveGenerator::generateCapturesOnly(const Board& b, const GameState& st,
   if (out.capacity() < 64) out.reserve(64);
   out.clear();
 
-  PinInfo pins;
-  compute_pins(b, st.sideToMove, pins);
-
-  const core::Color side = st.sideToMove;
-  const bb::Bitboard kbb = b.getPieces(side, core::PieceType::King);
-  const core::Square ksq = kbb ? static_cast<core::Square>(bb::ctz64(kbb)) : core::NO_SQUARE;
-
-  auto emitV = [&](const Move& m) {
-    if (!m.isCapture && m.promotion == core::PieceType::None) return;
-    if (m.from != ksq && (pins.pinned & bb::sq_bb(m.from))) {
-      if ((pins.allow[(int)m.from] & bb::sq_bb(m.to)) == 0) return;
-    }
-    out.push_back(m);
-  };
-
-  genPawnMoves_T(b, st, side, emitV);
-  genKnightMoves_T(b, side, emitV);
-  genBishopMoves_T(b, side, emitV);
-  genRookMoves_T(b, side, emitV);
-  genQueenMoves_T(b, side, emitV);
-  genKingMoves_T(b, st, side, emitV);
+  auto sink = [&](const Move& m) { out.push_back(m); };
+  generate_all_regular(b, st, sink, AcceptCaptures{});
 }
 
 int MoveGenerator::generateCapturesOnly(const Board& b, const GameState& st,
                                         engine::MoveBuffer& buf) {
-  PinInfo pins;
-  compute_pins(b, st.sideToMove, pins);
-
-  const core::Color side = st.sideToMove;
-  const bb::Bitboard kbb = b.getPieces(side, core::PieceType::King);
-  const core::Square ksq = kbb ? static_cast<core::Square>(bb::ctz64(kbb)) : core::NO_SQUARE;
-
-  auto emitB = [&](const Move& m) {
-    if (!m.isCapture && m.promotion == core::PieceType::None) return;
-    if (m.from != ksq && (pins.pinned & bb::sq_bb(m.from))) {
-      if ((pins.allow[(int)m.from] & bb::sq_bb(m.to)) == 0) return;
-    }
-    buf.push_unchecked(m);
-  };
-
-  genPawnMoves_T(b, st, side, emitB);
-  genKnightMoves_T(b, side, emitB);
-  genBishopMoves_T(b, side, emitB);
-  genRookMoves_T(b, side, emitB);
-  genQueenMoves_T(b, side, emitB);
-  genKingMoves_T(b, st, side, emitB);
+  auto sink = [&](const Move& m) { buf.push_unchecked(m); };
+  generate_all_regular(b, st, sink, AcceptCaptures{});
   return buf.n;
 }
 
@@ -611,36 +633,43 @@ void MoveGenerator::generateEvasions(const Board& b, const GameState& st,
   if (out.capacity() < 48) out.reserve(48);
   out.clear();
 
-  PinInfo pins;
-  compute_pins(b, st.sideToMove, pins);
+  // Pins weiterhin respektieren (wie im Original): Wrap um Evasion-Emitter
+  const Color side = st.sideToMove;
+  const bb::Bitboard occ = b.getAllPieces();
 
-  const core::Color side = st.sideToMove;
-  const bb::Bitboard kbb = b.getPieces(side, core::PieceType::King);
-  const core::Square ksq = kbb ? static_cast<core::Square>(bb::ctz64(kbb)) : core::NO_SQUARE;
+  PinInfo pins;
+  compute_pins(b, side, occ, pins);
+
+  const bb::Bitboard kbb = b.getPieces(side, PT::King);
+  const Square ksq = kbb ? static_cast<Square>(bb::ctz64(kbb)) : core::NO_SQUARE;
 
   auto emitV = [&](const Move& m) {
     if (m.from != ksq && (pins.pinned & bb::sq_bb(m.from))) {
-      if ((pins.allow[(int)m.from] & bb::sq_bb(m.to)) == 0) return;
+      if (!(pins.allow_mask(m.from) & bb::sq_bb(m.to))) return;
     }
     out.push_back(m);
   };
+
   generateEvasions_T(b, st, emitV);
 }
 
 int MoveGenerator::generateEvasions(const Board& b, const GameState& st, engine::MoveBuffer& buf) {
-  PinInfo pins;
-  compute_pins(b, st.sideToMove, pins);
+  const Color side = st.sideToMove;
+  const bb::Bitboard occ = b.getAllPieces();
 
-  const core::Color side = st.sideToMove;
-  const bb::Bitboard kbb = b.getPieces(side, core::PieceType::King);
-  const core::Square ksq = kbb ? static_cast<core::Square>(bb::ctz64(kbb)) : core::NO_SQUARE;
+  PinInfo pins;
+  compute_pins(b, side, occ, pins);
+
+  const bb::Bitboard kbb = b.getPieces(side, PT::King);
+  const Square ksq = kbb ? static_cast<Square>(bb::ctz64(kbb)) : core::NO_SQUARE;
 
   auto emitB = [&](const Move& m) {
     if (m.from != ksq && (pins.pinned & bb::sq_bb(m.from))) {
-      if ((pins.allow[(int)m.from] & bb::sq_bb(m.to)) == 0) return;
+      if (!(pins.allow_mask(m.from) & bb::sq_bb(m.to))) return;
     }
     buf.push_unchecked(m);
   };
+
   generateEvasions_T(b, st, emitB);
   return buf.n;
 }

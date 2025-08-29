@@ -94,7 +94,7 @@ std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxD
       if (!tmp.doMove(m)) continue;  // illegal -> raus
 
       if (m.isCapture || m.promotion != core::PieceType::None) {
-        int sc = mvv_lva_score(pos, m);  // vorhandene Heuristik
+        int sc = mvv_lva_fast(pos, m);  // vorhandene Heuristik
         if (!bestCapPromo || sc > bestCapScore) {
           bestCapPromo = m;
           bestCapScore = sc;

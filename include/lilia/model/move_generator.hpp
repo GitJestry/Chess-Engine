@@ -27,17 +27,6 @@ class MoveGenerator {
   int generatePseudoLegalMoves(const Board&, const GameState&, engine::MoveBuffer& buf);
   int generateCapturesOnly(const Board&, const GameState&, engine::MoveBuffer& buf);
   int generateEvasions(const Board&, const GameState&, engine::MoveBuffer& buf);
-
- private:
-  // Standard-Teilgeneration (intern von generatePseudoLegalMoves benutzt)
-  void genPawnMoves(const Board& b, const GameState& st, core::Color side,
-                    std::vector<Move>& out) const;
-  void genKnightMoves(const Board& b, core::Color side, std::vector<Move>& out) const;
-  void genBishopMoves(const Board& b, core::Color side, std::vector<Move>& out) const;
-  void genRookMoves(const Board& b, core::Color side, std::vector<Move>& out) const;
-  void genQueenMoves(const Board& b, core::Color side, std::vector<Move>& out) const;
-  void genKingMoves(const Board& b, const GameState& st, core::Color side,
-                    std::vector<Move>& out) const;
 };
 
 }  // namespace lilia::model
