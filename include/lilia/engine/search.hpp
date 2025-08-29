@@ -111,9 +111,12 @@ class Search {
   // Voriger Zug pro Ply (für CounterMove)
   std::array<model::Move, MAX_PLY> prevMove{};
 
-  // Allokationsfreie Move-Listen pro Ply
-  std::array<std::vector<model::Move>, MAX_PLY> genBuf_;
-  std::array<std::vector<model::Move>, MAX_PLY> legalBuf_;
+  // Feste, flache Puffer pro Ply:
+  model::Move genArr_[MAX_PLY][lilia::engine::MAX_MOVES];
+  int genN_[MAX_PLY]{};
+
+  model::Move capArr_[MAX_PLY][lilia::engine::MAX_MOVES];
+  int capN_[MAX_PLY]{};
 
   // Stop/Stats
   std::shared_ptr<std::atomic<bool>> stopFlag;

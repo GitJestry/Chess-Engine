@@ -2,9 +2,9 @@
 
 #include <vector>
 
+#include "lilia/engine/move_buffer.hpp"
 #include "lilia/model/board.hpp"
 #include "lilia/model/game_state.hpp"
-
 
 namespace lilia::model {
 
@@ -21,6 +21,12 @@ class MoveGenerator {
   // Evasions bei Schach: sichere Königszüge plus (bei Single-Check) Checker schlagen / blocken
   // Pseudolegal – finale Legalität via doMove()
   void generateEvasions(const Board& b, const GameState& st, std::vector<Move>& out) const;
+
+  // NEU: schnelle Overloads in festen Buffer
+  // Return: Anzahl generierter Züge
+  int generatePseudoLegalMoves(const Board&, const GameState&, engine::MoveBuffer& buf);
+  int generateCapturesOnly(const Board&, const GameState&, engine::MoveBuffer& buf);
+  int generateEvasions(const Board&, const GameState&, engine::MoveBuffer& buf);
 
  private:
   // Standard-Teilgeneration (intern von generatePseudoLegalMoves benutzt)
