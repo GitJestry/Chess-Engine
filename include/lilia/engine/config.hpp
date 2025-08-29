@@ -3,16 +3,16 @@
 
 namespace lilia::engine {
 struct EngineConfig {
-  int maxDepth = 12;           // etwas tiefer, ID hilft Stabilität
-  std::size_t ttSizeMb = 512;  // mehr TT entspannt Aspiration/Transpositionen
-  bool useNullMove = true;     // gut für Mittelspiel, QS-Fixes mindern Risiken
-  bool useLMR = true;          // leichte Reduktionen sind ok
-  bool useAspiration = true;   // stabil mit Score-Normalisierung
-  int aspirationWindow = 40;   // nicht zu eng, sonst Re-Search-Flapping
-  int threads = 0;             // 0 => auto(HW); Engine begrenzt ohnehin
-  bool useLMP = true;          // Late Move Pruning (quiet, flach)
-  int lmpDepthMax = 3;         // nur für Tiefe <= 3
-  int lmpBase = 2;             // Schwelle ~ lmpBase + depth*depth
+  int maxDepth = 12;            // etwas tiefer, ID hilft Stabilität
+  std::size_t ttSizeMb = 1024;  // mehr TT entspannt Aspiration/Transpositionen
+  bool useNullMove = true;      // gut für Mittelspiel, QS-Fixes mindern Risiken
+  bool useLMR = true;           // leichte Reduktionen sind ok
+  bool useAspiration = true;    // stabil mit Score-Normalisierung
+  int aspirationWindow = 20;    // nicht zu eng, sonst Re-Search-Flapping
+  int threads = 0;              // 0 => auto(HW); Engine begrenzt ohnehin
+  bool useLMP = true;           // Late Move Pruning (quiet, flach)
+  int lmpDepthMax = 3;          // nur für Tiefe <= 3
+  int lmpBase = 2;              // Schwelle ~ lmpBase + depth*depth
 
   bool useFutility = true;  // Futility bei depth==1, quiet
   int futilityMargin = 125;

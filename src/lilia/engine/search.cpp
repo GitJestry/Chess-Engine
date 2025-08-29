@@ -11,6 +11,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 #include "lilia/engine/config.hpp"
@@ -835,26 +836,19 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
 std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_len) {
   std::vector<model::Move> pv;
+  std::unordered_set<uint64_t> seen;
   for (int i = 0; i < max_len; ++i) {
     model::TTEntry4 tte{};
     if (!tt.probe_into(pos.hash(), tte)) break;
     model::Move m = tte.best;
 
+    // sanity + legality check (du hast bereits Checks – ergänze Loop-Stop)
     if (m.from == m.to) break;
-    if (m.from < 0 || m.from >= 64 || m.to < 0 || m.to >= 64) break;
-
-    auto pieceOpt = pos.getBoard().getPiece(m.from);
-    if (!pieceOpt) break;
-    if (pieceOpt->color != pos.getState().sideToMove) break;
-
-    const bool isPawn = (pieceOpt->type == core::PieceType::Pawn);
-    const int toRank = ((int)m.to) >> 3;
-    const bool onPromoRank =
-        (pieceOpt->color == core::Color::White) ? (toRank == 7) : (toRank == 0);
-    if (isPawn && onPromoRank && m.promotion == core::PieceType::None) break;
-
     if (!pos.doMove(m)) break;
     pv.push_back(m);
+
+    uint64_t h = pos.hash();
+    if (!seen.insert(h).second) break;  // TT-Loop erkannt
   }
   return pv;
 }

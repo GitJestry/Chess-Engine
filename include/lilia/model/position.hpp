@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "../engine/eval_acc.hpp"
 #include "board.hpp"
 #include "core/bitboard.hpp"
 #include "game_state.hpp"
@@ -51,11 +52,15 @@ class Position {
   bool inCheck() const;
   bool see(const model::Move& m) const;
 
+  const engine::EvalAcc& getEvalAcc() const noexcept { return evalAcc_; }
+  void rebuildEvalAcc() { evalAcc_.build_from_board(m_board); }
+
  private:
   Board m_board;
   GameState m_state;
   std::vector<StateInfo> m_history;
   bb::Bitboard m_hash = 0;
+  engine::EvalAcc evalAcc_;
 
   struct NullState {
     bb::Bitboard zobristKey;

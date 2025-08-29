@@ -33,6 +33,7 @@
 
 # Ignore build directory
 build/
+build-msvc/
 
 # Ignore CMake files directory
 CMakeFiles/
