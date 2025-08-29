@@ -1,4 +1,8 @@
 #pragma once
+
+// -----------------------------------------------------------------------------
+// Branch-Prediction Hints
+// -----------------------------------------------------------------------------
 #if defined(__GNUC__) || defined(__clang__)
 #define LILIA_LIKELY(x) __builtin_expect(!!(x), 1)
 #define LILIA_UNLIKELY(x) __builtin_expect(!!(x), 0)
@@ -9,9 +13,11 @@
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "../model/move_generator.hpp"
@@ -22,61 +28,93 @@
 
 namespace lilia::engine {
 
-// Einheitliche, „kleine“ Mate-/Inf-Konstanten
-static constexpr int MAX_PLY = 128;
+// -----------------------------------------------------------------------------
+// Limits / constants
+// -----------------------------------------------------------------------------
+// Für History-Tabellen: Anzahl nicht-leerer Figurtypen (Pawn..King)
+static constexpr int PIECE_NB = 6;
+static constexpr int SQ_NB = 64;
 
+// -----------------------------------------------------------------------------
+// SearchStats – robustere Zähler (64-bit), schlanke Ausgabeinfos
+// -----------------------------------------------------------------------------
 struct SearchStats {
-  int nodes = 0;
+  std::uint64_t nodes = 0;  // 64-bit: vermeidet Overflow
   double nps = 0.0;
-  long long elapsedMs = 0;
+  std::uint64_t elapsedMs = 0;
   int bestScore = 0;
   std::optional<model::Move> bestMove;
   std::vector<std::pair<model::Move, int>> topMoves;
   std::vector<model::Move> bestPV;
 };
 
+// Vorwärtsdeklaration
 class Evaluator;
 
+// -----------------------------------------------------------------------------
+// Search – ein Instanz-pro-Thread (keine geteilten mutablen Daten)
+// -----------------------------------------------------------------------------
 class Search {
  public:
   Search(model::TT4& tt, std::shared_ptr<const Evaluator> eval, const EngineConfig& cfg);
   ~Search() = default;
 
+  // Non-copyable / non-movable – bewusst, um versehentliches Kopieren zu verhindern
+  Search(const Search&) = delete;
+  Search& operator=(const Search&) = delete;
+  Search(Search&&) = delete;
+  Search& operator=(Search&&) = delete;
+
+  // Root (iterative deepening, parallel auf Root-Children)
   int search_root_parallel(model::Position& pos, int depth, std::shared_ptr<std::atomic<bool>> stop,
                            int maxThreads = 0);
 
-  const SearchStats& getStats() const;
-  void clearSearchState();
+  [[nodiscard]] const SearchStats& getStats() const noexcept { return stats; }
+  void clearSearchState();  // Killers/History resetten
 
-  model::TT4& ttRef() { return tt; }
+  model::TT4& ttRef() noexcept { return tt; }
 
  private:
-  // Tiefe Suche
+  // Kernfunktionen
   int negamax(model::Position& pos, int depth, int alpha, int beta, int ply, model::Move& refBest);
-  // Quiet-Suche
   int quiescence(model::Position& pos, int alpha, int beta, int ply);
-  // PV aus TT
   std::vector<model::Move> build_pv_from_tt(model::Position pos, int max_len = 16);
-  // Eval (Signierung)
   int signed_eval(model::Position& pos);
 
-  // --- Daten
+  // ---------------------------------------------------------------------------
+  // Daten
+  // ---------------------------------------------------------------------------
   model::TT4& tt;
   model::MoveGenerator mg;
   const EngineConfig& cfg;
   std::shared_ptr<const Evaluator> eval_;
 
-  // Per-Ply-Killers: 2 Killer-Moves je Suchtiefe
-  std::array<std::array<model::Move, 2>, MAX_PLY> killers;
-  // Allokationsfreie Move-Listen (eine Instanz pro Search, also threadsicher)
+  // Killers: 2 je Ply
+  alignas(64) std::array<std::array<model::Move, 2>, MAX_PLY> killers{};
+
+  // Basishistory (von->nach), bewährt und billig
+  alignas(64) std::array<std::array<int16_t, SQ_NB>, SQ_NB> history{};
+
+  // Erweiterte Heuristiken (für bessere Move-Order/Cutoffs)
+  // Quiet-History: nach (moverPiece, to)
+  alignas(64) int16_t quietHist[PIECE_NB][SQ_NB] = {};
+
+  // Capture-History: nach (moverPiece, to, capturedPiece)
+  alignas(64) int16_t captureHist[PIECE_NB][SQ_NB][PIECE_NB] = {};
+
+  // Counter-Move: nach vorigem Zug (from,to) → typischer Antwortzug,
+  // plus Counter-History-Bonus für genau diesen Antwortzug
+  alignas(64) model::Move counterMove[SQ_NB][SQ_NB] = {};
+  alignas(64) int16_t counterHist[SQ_NB][SQ_NB] = {};
+
+  // Voriger Zug pro Ply (für CounterMove)
+  std::array<model::Move, MAX_PLY> prevMove{};
+
+  // Allokationsfreie Move-Listen pro Ply
   std::array<std::vector<model::Move>, MAX_PLY> genBuf_;
   std::array<std::vector<model::Move>, MAX_PLY> legalBuf_;
-  // Für Quiescence: einmalige wiederverwendete Buffers
-  std::vector<model::Move> qAllBuf_;
-  std::vector<model::Move> qMovesBuf_;
-  // History-Heuristik (einfach: von->nach)
-  std::array<std::array<int16_t, 64>, 64> history{};
 
+  // Stop/Stats
   std::shared_ptr<std::atomic<bool>> stopFlag;
   SearchStats stats;
 };

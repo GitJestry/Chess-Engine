@@ -250,7 +250,7 @@ void init_magics() {
 #endif
 }
 
-bb::Bitboard sliding_attacks(Slider s, core::Square sq, bb::Bitboard occ) {
+bb::Bitboard sliding_attacks(Slider s, core::Square sq, bb::Bitboard occ) noexcept {
   const int i = static_cast<int>(sq);
 
   if (s == Slider::Rook) {

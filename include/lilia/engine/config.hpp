@@ -18,8 +18,9 @@ struct EngineConfig {
   int futilityMargin = 125;
 
   bool useReverseFutility = true;  // flach: staticEval >> beta = Cut, nicht im Schach
-
-  bool useSEEPruning = true;  // schlechte Captures früh kappen (qsearch/low depth)
+  bool useSEEPruning = true;       // schlechte Captures früh kappen (qsearch/low depth)
+  bool useProbCut = true;
+  bool qsearchQuietChecks = true;
 
   // LMR-Feintuning
   int lmrBase = 1;            // Grundreduktion
@@ -27,6 +28,8 @@ struct EngineConfig {
   bool lmrUseHistory = true;  // gute History => weniger Reduktion
 };
 static const int base_value[6] = {100, 320, 330, 500, 900, 20000};
-constexpr int INF = 30000;
-constexpr int MATE = 32000;
+constexpr int INF = 32000;
+constexpr int MATE = 30000;
+constexpr int MAX_PLY = 128;
+constexpr int MATE_THR = MATE - 512;  // Mate threshold for detection/encoding
 }  // namespace lilia::engine

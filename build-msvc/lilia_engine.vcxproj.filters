@@ -1,0 +1,52 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\examples\main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\board.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\chess_game.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\magic.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\magic_serializer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\move_generator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\position.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\zobrist.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\engine\bot_engine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\engine\engine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\engine\eval.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\engine\search.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\uci\uci.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{10144DB5-6A41-3BAE-8DA1-1BEB76C2F22A}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

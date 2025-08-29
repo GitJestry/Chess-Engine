@@ -1,25 +1,37 @@
 #pragma once
+
 #include <vector>
 
-#include "board.hpp"
-#include "core/bitboard.hpp"
-#include "game_state.hpp"
-#include "move.hpp"
+#include "lilia/model/board.hpp"
+#include "lilia/model/game_state.hpp"
+
 
 namespace lilia::model {
 
+struct Move;
+
 class MoveGenerator {
  public:
-  
-  void generatePseudoLegalMoves(const Board& b, const GameState& st,
-                                std::vector<model::Move>& out) const;
+  // Volle Pseudolegal-Gen (Quiet + Captures + Promos + EP + evtl. Castle)
+  void generatePseudoLegalMoves(const Board& b, const GameState& st, std::vector<Move>& out) const;
 
-  void genPawnMoves(const Board&, const GameState&, core::Color, std::vector<Move>&) const;
-  void genKnightMoves(const Board&, core::Color, std::vector<Move>&) const;
-  void genBishopMoves(const Board&, core::Color, std::vector<Move>&) const;
-  void genRookMoves(const Board&, core::Color, std::vector<Move>&) const;
-  void genQueenMoves(const Board&, core::Color, std::vector<Move>&) const;
-  void genKingMoves(const Board&, const GameState&, core::Color, std::vector<Move>&) const;
+  // Nur Schläge + Promotions (inkl. EP und Quiet-Promos)
+  void generateCapturesOnly(const Board& b, const GameState& st, std::vector<Move>& out) const;
+
+  // Evasions bei Schach: sichere Königszüge plus (bei Single-Check) Checker schlagen / blocken
+  // Pseudolegal – finale Legalität via doMove()
+  void generateEvasions(const Board& b, const GameState& st, std::vector<Move>& out) const;
+
+ private:
+  // Standard-Teilgeneration (intern von generatePseudoLegalMoves benutzt)
+  void genPawnMoves(const Board& b, const GameState& st, core::Color side,
+                    std::vector<Move>& out) const;
+  void genKnightMoves(const Board& b, core::Color side, std::vector<Move>& out) const;
+  void genBishopMoves(const Board& b, core::Color side, std::vector<Move>& out) const;
+  void genRookMoves(const Board& b, core::Color side, std::vector<Move>& out) const;
+  void genQueenMoves(const Board& b, core::Color side, std::vector<Move>& out) const;
+  void genKingMoves(const Board& b, const GameState& st, core::Color side,
+                    std::vector<Move>& out) const;
 };
 
-}  
+}  // namespace lilia::model

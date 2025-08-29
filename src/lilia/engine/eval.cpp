@@ -3,11 +3,13 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <bit>
 #include <cassert>
 #include <cstdint>
 #include <limits>
 #include <mutex>
 
+#include "lilia/engine/config.hpp"
 #include "lilia/model/core/bitboard.hpp"
 #include "lilia/model/core/magic.hpp"
 #include "lilia/model/position.hpp"
@@ -18,53 +20,11 @@ using namespace lilia::model::bb;
 
 namespace lilia::engine {
 
-constexpr int INF = std::numeric_limits<int>::max() / 4;
-constexpr Bitboard CENTER_MASK =
-    sq_bb(Square(27)) | sq_bb(Square(28)) | sq_bb(Square(35)) | sq_bb(Square(36));
-
-// Materialwerte & Phase (konservativ)
-constexpr std::array<int, 6> PIECE_VALUE_MG = {100, 320, 330, 500, 900, 0};
-constexpr std::array<int, 6> PIECE_VALUE_EG = {100, 320, 330, 500, 900, 0};
-constexpr std::array<int, 6> PIECE_PHASE = {0, 1, 1, 2, 4, 0};
-
-// Heuristik-Konstanten
-constexpr int BISHOP_PAIR_BONUS = 44;
-constexpr int ROOK_OPEN_FILE_BONUS = 18;
-constexpr int ROOK_SEMI_OPEN_FILE_BONUS = 9;
-constexpr int ROOK_ON_SEVENTH_BONUS = 30;
-constexpr int KNIGHT_RIM_PENALTY = 15;
-constexpr int DEVELOPMENT_PENALTY = 20;
-constexpr int OUTPOST_KNIGHT_BONUS = 30;
-constexpr int CENTER_CONTROL_BONUS = 6;
-constexpr int CONNECTED_ROOKS_BONUS = 20;
-constexpr int TEMPO_BONUS = 12;
-
-constexpr int ISOLATED_PEN = 12;
-constexpr int DOUBLED_PEN = 16;
-constexpr int BACKWARD_PEN = 10;
-constexpr int PHALANX_BONUS = 8;
-
-constexpr int PASSED_RANK_BONUS[8] = {0, 10, 18, 30, 45, 70, 110, 0};
-constexpr int ROOK_BEHIND_PASSER = 18;
-
-constexpr int BAD_BISHOP_PER_PAWN = 2;
-
-constexpr int PAWN_THREAT_MINOR = 14;  // Bauer droht Springer/Läufer
-constexpr int PAWN_THREAT_ROOK = 20;   // ... Turm
-constexpr int PAWN_THREAT_QUEEN = 28;  // ... Dame
-constexpr int HANGING_MINOR_PEN = 12;
-constexpr int HANGING_ROOK_PEN = 18;
-constexpr int HANGING_QUEEN_PEN = 30;
-
-// ---------- Helpers ----------
+// =============================================================================
+// Utility
+// =============================================================================
 inline constexpr int mirror_sq_black(int sq) noexcept {
   return sq ^ 56;
-}  // rank flip
-inline int sq_file(int sq) noexcept {
-  return sq & 7;
-}
-inline int sq_rank(int sq) noexcept {
-  return sq >> 3;
 }
 inline int popcnt(Bitboard b) noexcept {
   return popcount(b);
@@ -72,191 +32,187 @@ inline int popcnt(Bitboard b) noexcept {
 inline int lsb_i(Bitboard b) noexcept {
   return b ? ctz64(b) : -1;
 }
+inline int msb_i(Bitboard b) noexcept {
+  return b ? 63 - clz64(b) : -1;
+}
+inline int clampi(int x, int lo, int hi) {
+  return x < lo ? lo : (x > hi ? hi : x);
+}
+inline int king_manhattan(int a, int b) {
+  if (a < 0 || b < 0) return 7;
+  return (std::abs((a & 7) - (b & 7)) + std::abs((a >> 3) - (b >> 3)));
+}
 
-// ===== PSTs (leicht „SF-ähnlich“, konservativ) =====
+// =============================================================================
+// Values & phase
+// =============================================================================
+constexpr std::array<int, 6> VAL_MG = {82, 337, 365, 477, 1025, 0};
+constexpr std::array<int, 6> VAL_EG = {94, 281, 297, 512, 936, 0};
+constexpr std::array<int, 6> PHASE_W = {0, 1, 1, 2, 4, 0};
+constexpr int MAX_PHASE = 24;  // sum both sides
 
-// Pawn
+constexpr int TEMPO_MG = 14;
+constexpr int TEMPO_EG = 6;
+
+// =============================================================================
+// PSTs (deine Tabellen)
+// =============================================================================
 static constexpr std::array<int, 64> PST_P_MG = {
-    0,  0,  0,  0,  0,  0,  0,  0,  5,  6,  2,  -6, -6, 2,  6,  5,  3,  -3, -4, 2,  2,  -4,
-    -3, 3,  5,  7,  10, 14, 14, 10, 7,  5,  9,  12, 16, 21, 21, 16, 12, 9,  13, 18, 22, 26,
-    26, 22, 18, 13, 18, 18, 18, 18, 18, 18, 18, 18, 0,  0,  0,  0,  0,  0,  0,  0};
+    0,  0,  0,  0,  0,  0,  0,  0,  6,  6,  2,  -6, -6, 2,  6,  6,  4,  -2, -3, 2,  2,  -3,
+    -2, 4,  6,  8,  12, 16, 16, 12, 8,  6,  8,  12, 18, 24, 24, 18, 12, 8,  12, 18, 24, 28,
+    28, 24, 18, 12, 12, 12, 12, 12, 12, 12, 12, 12, 0,  0,  0,  0,  0,  0,  0,  0};
 static constexpr std::array<int, 64> PST_P_EG = {
-    0,  0,  0,  0,  0,  0,  0,  0,  6,  8,  4,  -2, -2, 4,  8,  6,  5,  2,  0,  6,  6,  0,
-    2,  5,  8,  10, 13, 18, 18, 13, 10, 8,  13, 18, 22, 28, 28, 22, 18, 13, 18, 24, 30, 38,
-    38, 30, 24, 18, 22, 30, 38, 46, 46, 38, 30, 22, 0,  0,  0,  0,  0,  0,  0,  0};
-
-// Knight
+    0,  0,  0,  0,  0,  0,  0,  0,  6,  8,  4,  -2, -2, 4,  8,  6,  6,  2,  2,  6,  6,  2,
+    2,  6,  8,  12, 16, 20, 20, 16, 12, 8,  12, 18, 24, 30, 30, 24, 18, 12, 16, 24, 32, 40,
+    40, 32, 24, 16, 10, 14, 18, 22, 22, 18, 14, 10, 0,  0,  0,  0,  0,  0,  0,  0};
 static constexpr std::array<int, 64> PST_N_MG = {
-    -48, -38, -28, -24, -24, -28, -38, -48, -36, -18, -4,  0,   0,   -4,  -18, -36,
-    -26, -4,  10,  16,  16,  10,  -4,  -26, -22, 0,   16,  24,  24,  16,  0,   -22,
-    -22, 0,   16,  24,  24,  16,  0,   -22, -26, -4,  10,  16,  16,  10,  -4,  -26,
-    -36, -16, -2,  0,   0,   -2,  -16, -36, -48, -38, -30, -26, -26, -30, -38, -48};
+    -50, -38, -28, -22, -22, -28, -38, -50, -32, -16, -4,  2,   2,   -4,  -16, -32,
+    -24, -2,  12,  18,  18,  12,  -2,  -24, -20, 4,   18,  26,  26,  18,  4,   -20,
+    -20, 4,   18,  26,  26,  18,  4,   -20, -24, -2,  12,  18,  18,  12,  -2,  -24,
+    -34, -16, -4,  0,   0,   -4,  -16, -34, -46, -36, -28, -24, -24, -28, -36, -46};
 static constexpr std::array<int, 64> PST_N_EG = {
-    -38, -28, -20, -16, -16, -20, -28, -38, -28, -12, -2,  4,   4,   -2,  -12, -28,
-    -20, -2,  9,   14,  14,  9,   -2,  -20, -16, 4,   14,  22,  22,  14,  4,   -16,
-    -16, 4,   14,  22,  22,  14,  4,   -16, -20, -2,  9,   14,  14,  9,   -2,  -20,
-    -28, -12, -2,  4,   4,   -2,  -12, -28, -38, -28, -20, -16, -16, -20, -28, -38};
-
-// Bishop
+    -36, -26, -18, -14, -14, -18, -26, -36, -26, -12, -2,  6,   6,   -2,  -12, -26,
+    -18, -2,  10,  16,  16,  10,  -2,  -18, -14, 6,   16,  22,  22,  16,  6,   -14,
+    -14, 6,   16,  22,  22,  16,  6,   -14, -18, -2,  10,  16,  16,  10,  -2,  -18,
+    -26, -12, -2,  6,   6,   -2,  -12, -26, -36, -26, -18, -14, -14, -18, -26, -36};
 static constexpr std::array<int, 64> PST_B_MG = {
-    -28, -16, -12, -9, -9, -12, -16, -28, -14, -5,  2,   5,  5,  2,   -5,  -14,
-    -10, 2,   9,   13, 13, 9,   2,   -10, -7,  5,   13,  18, 18, 13,  5,   -7,
-    -7,  5,   13,  18, 18, 13,  5,   -7,  -10, 2,   9,   13, 13, 9,   2,   -10,
-    -14, -5,  2,   5,  5,  2,   -5,  -14, -26, -14, -10, -7, -7, -10, -14, -26};
+    -26, -14, -10, -8, -8, -10, -14, -26, -12, -4,  2,  6,  6,  2,  -4,  -12,
+    -8,  4,   10,  14, 14, 10,  4,   -8,  -6,  8,   14, 20, 20, 14, 8,   -6,
+    -6,  8,   14,  20, 20, 14,  8,   -6,  -8,  4,   10, 14, 14, 10, 4,   -8,
+    -12, -4,  2,   6,  6,  2,   -4,  -12, -24, -12, -8, -6, -6, -8, -12, -24};
 static constexpr std::array<int, 64> PST_B_EG = {
-    -20, -10, -6, -2, -2,  -6, -10, -20, -10, -2, 6,  9,   9,   6,  -2, -10, -6, 6,  12, 16, 16, 12,
-    6,   -6,  -2, 9,  16,  22, 22,  16,  9,   -2, -2, 9,   16,  22, 22, 16,  9,  -2, -6, 6,  12, 16,
-    16,  12,  6,  -6, -10, -2, 6,   9,   9,   6,  -2, -10, -18, -9, -5, -2,  -2, -5, -9, -18};
-
-// Rook
+    -18, -8, -4, -2, -2, -4, -8, -18, -8, 0,  8,  12, 12,  8,  0,  -8, -4, 8,  14, 20, 20, 14,
+    8,   -4, -2, 12, 20, 26, 26, 20,  12, -2, -2, 12, 20,  26, 26, 20, 12, -2, -4, 8,  14, 20,
+    20,  14, 8,  -4, -8, 0,  8,  12,  12, 8,  0,  -8, -16, -8, -4, -2, -2, -4, -8, -16};
 static constexpr std::array<int, 64> PST_R_MG = {
-    0,  2,  2,  4,  4, 2, 2, 0, -2, 0,  1,  3,  3, 1, 0, -2, -3, -1, 0,  2,  2, 0,
+    0,  2,  3,  4,  4, 3, 2, 0, -2, 0,  2,  4,  4, 2, 0, -2, -3, -1, 0,  2,  2, 0,
     -1, -3, -4, -1, 1, 2, 2, 1, -1, -4, -4, -1, 1, 2, 2, 1,  -1, -4, -3, -1, 0, 2,
     2,  0,  -1, -3, 4, 6, 6, 8, 8,  6,  6,  4,  2, 4, 4, 6,  6,  4,  4,  2};
 static constexpr std::array<int, 64> PST_R_EG = {
-    2, 3,  5,  7,  7, 5, 3, 2, 0, 2,  3,  5, 5, 3, 2, 0,  -1, 1,  2,  4, 4, 2,
+    2, 4,  6,  8,  8, 6, 4, 2, 0, 2,  4,  6, 6, 4, 2, 0,  -1, 1,  2,  4, 4, 2,
     1, -1, -1, 1,  2, 4, 4, 2, 1, -1, -1, 1, 2, 4, 4, 2,  1,  -1, -1, 1, 2, 4,
     4, 2,  1,  -1, 3, 5, 7, 9, 9, 7,  5,  3, 4, 6, 8, 10, 10, 8,  6,  4};
-
-// Queen
 static constexpr std::array<int, 64> PST_Q_MG = {
-    -22, -14, -10, -8, -8, -10, -14, -22, -14, -8,  -4,  -2, -2, -4,  -8,  -14,
-    -10, -4,  2,   4,  4,  2,   -4,  -10, -8,  -2,  4,   6,  6,  4,   -2,  -8,
-    -8,  -2,  4,   6,  6,  4,   -2,  -8,  -10, -4,  2,   4,  4,  2,   -4,  -10,
-    -14, -8,  -4,  -2, -2, -4,  -8,  -14, -22, -14, -10, -8, -8, -10, -14, -22};
+    -24, -16, -12, -8, -8, -12, -16, -24, -16, -8,  -4,  -2, -2, -4,  -8,  -16,
+    -12, -4,  2,   4,  4,  2,   -4,  -12, -8,  -2,  4,   6,  6,  4,   -2,  -8,
+    -8,  -2,  4,   6,  6,  4,   -2,  -8,  -12, -4,  2,   4,  4,  2,   -4,  -12,
+    -16, -8,  -4,  -2, -2, -4,  -8,  -16, -24, -16, -12, -8, -8, -12, -16, -24};
 static constexpr std::array<int, 64> PST_Q_EG = {
-    -10, -5, -2, 0,  0,  -2, -5, -10, -5, -2, 2,  4,  4,   2,  -2, -5, -2, 2,  5,  8,  8, 5,
-    2,   -2, 0,  4,  8,  11, 11, 8,   4,  0,  0,  4,  8,   11, 11, 8,  4,  0,  -2, 2,  5, 8,
-    8,   5,  2,  -2, -5, -2, 2,  4,   4,  2,  -2, -5, -10, -5, -2, 0,  0,  -2, -5, -10};
-
-// King
+    -10, -6, -2, 0,  0,  -2, -6, -10, -6, -2, 2,  4,  4,   2,  -2, -6, -2, 2,  6,  8,  8, 6,
+    2,   -2, 0,  4,  8,  12, 12, 8,   4,  0,  0,  4,  8,   12, 12, 8,  4,  0,  -2, 2,  6, 8,
+    8,   6,  2,  -2, -6, -2, 2,  4,   4,  2,  -2, -6, -10, -6, -2, 0,  0,  -2, -6, -10};
 static constexpr std::array<int, 64> PST_K_MG = {
-    -34, -44, -46, -52, -52, -46, -44, -34, -30, -38, -40, -48, -48, -40, -38, -30,
-    -26, -34, -36, -44, -44, -36, -34, -26, -14, -20, -24, -32, -32, -24, -20, -14,
-    -2,  -4,  -10, -18, -18, -10, -4,  -2,  8,   12,  -2,  -12, -12, -2,  12,  8,
-    18,  24,  12,  0,   0,   12,  24,  18,  26,  36,  26,  10,  10,  26,  36,  26};
+    -40, -48, -52, -56, -56, -52, -48, -40, -32, -40, -44, -50, -50, -44, -40, -32,
+    -24, -32, -36, -44, -44, -36, -32, -24, -12, -20, -28, -36, -36, -28, -20, -12,
+    0,   -8,  -18, -28, -28, -18, -8,  0,   10,  18,  4,   -10, -10, 4,   18,  10,
+    20,  28,  18,  6,   6,   18,  28,  20,  28,  38,  28,  12,  12,  28,  38,  28};
 static constexpr std::array<int, 64> PST_K_EG = {
     -8, -4, -4, -2, -2, -4, -4, -8, -4, 2,  4,  6,  6,  4,  2,  -4, -4, 4,  10, 12, 12, 10,
     4,  -4, -2, 6,  12, 18, 18, 12, 6,  -2, -2, 6,  12, 18, 18, 12, 6,  -2, -4, 4,  10, 12,
     12, 10, 4,  -4, -4, 2,  4,  6,  6,  4,  2,  -4, -8, -4, -4, -2, -2, -4, -4, -8};
 
-static inline int pst_eg_for(core::PieceType pt, int sq) noexcept {
+static inline int pst_mg(PieceType pt, int sq) {
   switch (pt) {
-    case core::PieceType::Pawn:
-      return PST_P_EG[sq];
-    case core::PieceType::Knight:
-      return PST_N_EG[sq];
-    case core::PieceType::Bishop:
-      return PST_B_EG[sq];
-    case core::PieceType::Rook:
-      return PST_R_EG[sq];
-    case core::PieceType::Queen:
-      return PST_Q_EG[sq];
-    case core::PieceType::King:
-      return PST_K_EG[sq];
-    default:
-      return 0;
-  }
-}
-static inline int pst_mg_for(core::PieceType pt, int sq) noexcept {
-  switch (pt) {
-    case core::PieceType::Pawn:
+    case PieceType::Pawn:
       return PST_P_MG[sq];
-    case core::PieceType::Knight:
+    case PieceType::Knight:
       return PST_N_MG[sq];
-    case core::PieceType::Bishop:
+    case PieceType::Bishop:
       return PST_B_MG[sq];
-    case core::PieceType::Rook:
+    case PieceType::Rook:
       return PST_R_MG[sq];
-    case core::PieceType::Queen:
+    case PieceType::Queen:
       return PST_Q_MG[sq];
-    case core::PieceType::King:
+    case PieceType::King:
       return PST_K_MG[sq];
     default:
       return 0;
   }
 }
+static inline int pst_eg(PieceType pt, int sq) {
+  switch (pt) {
+    case PieceType::Pawn:
+      return PST_P_EG[sq];
+    case PieceType::Knight:
+      return PST_N_EG[sq];
+    case PieceType::Bishop:
+      return PST_B_EG[sq];
+    case PieceType::Rook:
+      return PST_R_EG[sq];
+    case PieceType::Queen:
+      return PST_Q_EG[sq];
+    case PieceType::King:
+      return PST_K_EG[sq];
+    default:
+      return 0;
+  }
+}
 
-// ---------- Precomputed masks ----------
-struct PrecomputedMasks {
-  std::array<Bitboard, 64> passed_white;
-  std::array<Bitboard, 64> passed_black;
-  std::array<Bitboard, 64> file_mask;
-  std::array<Bitboard, 64> adjacent_files;
-  std::array<Bitboard, 64> pawn_front_white;
-  std::array<Bitboard, 64> pawn_front_black;
-
-  // NEU: King-Ring & Pawn-Shields
-  std::array<Bitboard, 64> king_ring;  // 5x5 um das Feld
-  std::array<Bitboard, 64> shield_w;   // zwei Reihen vor dem weißen König (3 Files breit)
-  std::array<Bitboard, 64> shield_b;   // zwei Reihen vor dem schwarzen König (3 Files breit)
+// =============================================================================
+// Masks
+// =============================================================================
+struct Masks {
+  std::array<Bitboard, 64> file{};
+  std::array<Bitboard, 64> adjFiles{};
+  std::array<Bitboard, 64> wPassed{}, bPassed{}, wFront{}, bFront{};
+  std::array<Bitboard, 64> kingRing{};
+  std::array<Bitboard, 64> wShield{}, bShield{};
+  std::array<Bitboard, 64> frontSpanW{}, frontSpanB{};
 };
-
-static PrecomputedMasks masks;
-static std::once_flag masks_once;
-
-static void init_masks_if_needed() {
-  std::call_once(masks_once, []() {
+static Masks M;
+static std::once_flag once_masks;
+static void init_masks() {
+  std::call_once(once_masks, [] {
     for (int sq = 0; sq < 64; ++sq) {
-      int f = sq_file(sq);
-      int r = sq_rank(sq);
-
-      // File masks
+      int f = file_of(sq), r = rank_of(sq);
       Bitboard fm = 0;
-      for (int rr = 0; rr < 8; ++rr) fm |= sq_bb(static_cast<core::Square>((rr << 3) | f));
-      masks.file_mask[sq] = fm;
-
-      // Adjacent files
+      for (int rr = 0; rr < 8; ++rr) fm |= sq_bb((Square)((rr << 3) | f));
+      M.file[sq] = fm;
       Bitboard adj = 0;
       if (f > 0)
-        for (int rr = 0; rr < 8; ++rr) adj |= sq_bb(static_cast<core::Square>((rr << 3) | (f - 1)));
+        for (int rr = 0; rr < 8; ++rr) adj |= sq_bb((Square)((rr << 3) | (f - 1)));
       if (f < 7)
-        for (int rr = 0; rr < 8; ++rr) adj |= sq_bb(static_cast<core::Square>((rr << 3) | (f + 1)));
-      masks.adjacent_files[sq] = adj;
+        for (int rr = 0; rr < 8; ++rr) adj |= sq_bb((Square)((rr << 3) | (f + 1)));
+      M.adjFiles[sq] = adj;
 
-      // Passed-pawn masks
-      Bitboard p_w = 0;
+      Bitboard pw = 0;
       for (int rr = r + 1; rr < 8; ++rr)
         for (int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ++ff)
-          p_w |= sq_bb(static_cast<core::Square>((rr << 3) | ff));
-      masks.passed_white[sq] = p_w;
-
-      Bitboard p_b = 0;
+          pw |= sq_bb((Square)((rr << 3) | ff));
+      Bitboard pb = 0;
       for (int rr = r - 1; rr >= 0; --rr)
         for (int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ++ff)
-          p_b |= sq_bb(static_cast<core::Square>((rr << 3) | ff));
-      masks.passed_black[sq] = p_b;
+          pb |= sq_bb((Square)((rr << 3) | ff));
+      M.wPassed[sq] = pw;
+      M.bPassed[sq] = pb;
 
-      // Pawn-front spans
-      Bitboard span_w = 0;
-      for (int rr = r + 1; rr < 8; ++rr) span_w |= sq_bb(static_cast<core::Square>((rr << 3) | f));
-      masks.pawn_front_white[sq] = span_w;
+      Bitboard wf = 0;
+      for (int rr = r + 1; rr < 8; ++rr) wf |= sq_bb((Square)((rr << 3) | f));
+      M.wFront[sq] = wf;
+      M.frontSpanW[sq] = wf;
 
-      Bitboard span_b = 0;
-      for (int rr = r - 1; rr >= 0; --rr) span_b |= sq_bb(static_cast<core::Square>((rr << 3) | f));
-      masks.pawn_front_black[sq] = span_b;
+      Bitboard bf = 0;
+      for (int rr = r - 1; rr >= 0; --rr) bf |= sq_bb((Square)((rr << 3) | f));
+      M.bFront[sq] = bf;
+      M.frontSpanB[sq] = bf;
 
-      // King ring (5x5 geclamped)
       Bitboard ring = 0;
       for (int dr = -2; dr <= 2; ++dr)
         for (int df = -2; df <= 2; ++df) {
           int nr = r + dr, nf = f + df;
-          if (nr >= 0 && nr < 8 && nf >= 0 && nf < 8)
-            ring |= sq_bb(static_cast<core::Square>((nr << 3) | nf));
+          if (0 <= nr && nr < 8 && 0 <= nf && nf < 8) ring |= sq_bb((Square)((nr << 3) | nf));
         }
-      masks.king_ring[sq] = ring;
+      M.kingRing[sq] = ring;
 
-      // Pawn-shields (2 Ränge, 3 Files breit)
-      auto mk_shield = [&](bool white) {
+      auto mkShield = [&](bool w) {
         Bitboard sh = 0;
-        if (white) {
+        if (w) {
           for (int dr = 1; dr <= 2; ++dr) {
             int nr = r + dr;
             if (nr >= 8) break;
             for (int df = -1; df <= 1; ++df) {
               int nf = f + df;
-              if (nf < 0 || nf > 7) continue;
-              sh |= sq_bb(static_cast<core::Square>((nr << 3) | nf));
+              if (0 <= nf && nf < 8) sh |= sq_bb((Square)((nr << 3) | nf));
             }
           }
         } else {
@@ -265,776 +221,1177 @@ static void init_masks_if_needed() {
             if (nr < 0) break;
             for (int df = -1; df <= 1; ++df) {
               int nf = f + df;
-              if (nf < 0 || nf > 7) continue;
-              sh |= sq_bb(static_cast<core::Square>((nr << 3) | nf));
+              if (0 <= nf && nf < 8) sh |= sq_bb((Square)((nr << 3) | nf));
             }
           }
         }
         return sh;
       };
-      masks.shield_w[sq] = mk_shield(true);
-      masks.shield_b[sq] = mk_shield(false);
+      M.wShield[sq] = mkShield(true);
+      M.bShield[sq] = mkShield(false);
     }
   });
 }
 
-// ---------- Material + PST + Phase ----------
-static void material_pst_phase(const std::array<Bitboard, 6>& wbbs,
-                               const std::array<Bitboard, 6>& bbbs, int& mg_out, int& eg_out,
-                               int& phase_out) {
-  mg_out = eg_out = 0;
-  phase_out = 0;
+// =============================================================================
+// Mobility profiles
+// =============================================================================
+static constexpr int KN_MOB_MG[9] = {-16, -8, -4, 0, 4, 8, 12, 16, 18};
+static constexpr int KN_MOB_EG[9] = {-12, -6, -2, 2, 6, 10, 12, 14, 16};
+static constexpr int BI_MOB_MG[14] = {-22, -12, -6, -2, 2, 6, 10, 14, 18, 22, 24, 26, 28, 30};
+static constexpr int BI_MOB_EG[14] = {-18, -10, -4, 0, 4, 8, 12, 16, 20, 24, 26, 28, 30, 32};
+static constexpr int RO_MOB_MG[15] = {-20, -12, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 32, 34, 36};
+static constexpr int RO_MOB_EG[15] = {-10, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 34, 36, 38, 40};
+static constexpr int QU_MOB_MG[28] = {-10, -8, -6, -4, -2, 0,  2,  4,  6,  8,  10, 12, 14, 16,
+                                      18,  20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44};
+static constexpr int QU_MOB_EG[28] = {-6, -4, -2, 0,  2,  4,  6,  8,  10, 12, 14, 16, 18, 20,
+                                      22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48};
 
-  // Weiß
-  for (int pt = 0; pt < 6; ++pt) {
-    auto piece = static_cast<PieceType>(pt);
-    Bitboard bb = wbbs[pt];
-    while (bb) {
-      int sq = lsb_i(bb);
-      bb &= bb - 1;
-      mg_out += PIECE_VALUE_MG[pt] + pst_mg_for(piece, sq);
-      eg_out += PIECE_VALUE_EG[pt] + pst_eg_for(piece, sq);
-      phase_out += PIECE_PHASE[pt];
-    }
-  }
-  // Schwarz (rank-mirror)
-  for (int pt = 0; pt < 6; ++pt) {
-    auto piece = static_cast<PieceType>(pt);
-    Bitboard bb = bbbs[pt];
-    while (bb) {
-      int sq = lsb_i(bb);
-      int msq = mirror_sq_black(sq);
-      bb &= bb - 1;
-      mg_out -= PIECE_VALUE_MG[pt] + pst_mg_for(piece, msq);
-      eg_out -= PIECE_VALUE_EG[pt] + pst_eg_for(piece, msq);
-      phase_out += PIECE_PHASE[pt];
-    }
-  }
-}
+// =============================================================================
+// Tunables – structure & style
+// =============================================================================
+constexpr Bitboard CENTER4 =
+    sq_bb(Square(27)) | sq_bb(Square(28)) | sq_bb(Square(35)) | sq_bb(Square(36));
 
-// ---------- Bauernstruktur ----------
-static int pawn_structure(Bitboard wp, Bitboard bp, Bitboard occ = 0) {
-  init_masks_if_needed();
-  if (!occ) occ = wp | bp;
-  int score = 0;
+// Pawns
+constexpr int ISO_P = 12;
+constexpr int DOUBLED_P = 16;
+constexpr int BACKWARD_P = 10;
+constexpr int PHALANX = 6;
+constexpr int CANDIDATE_P = 6;
+constexpr int CONNECTED_PASSERS = 12;
+constexpr int PASSED_MG[8] = {0, 8, 16, 26, 44, 70, 110, 0};
+constexpr int PASSED_EG[8] = {0, 12, 22, 36, 56, 85, 130, 0};
+constexpr int PASS_BLOCK = 8;
+constexpr int PASS_SUPP = 6;
+constexpr int PASS_FREE = 8;
+constexpr int PASS_KBOOST = 6;
+constexpr int PASS_KBLOCK = 6;
 
-  auto file_of = [&](int sq) { return masks.file_mask[sq]; };
-  auto adj_of = [&](int sq) { return masks.adjacent_files[sq]; };
+// King safety
+constexpr int KS_W_N = 18, KS_W_B = 18, KS_W_R = 10, KS_W_Q = 38;
+constexpr int KS_RING_BONUS = 2, KS_MISS_SHIELD = 7, KS_OPEN_FILE = 12, KS_RQ_LOS = 6,
+              KS_CLAMP = 220;
 
-  // Weiß
-  Bitboard tmp = wp;
-  Bitboard seenFiles = 0;
-  while (tmp) {
-    int sq = ctz64(tmp);
-    tmp &= tmp - 1;
-    int f = sq_file(sq);
-    Bitboard fmask = file_of(sq);
+// King pawn shelter / storm
+static constexpr int SHELTER[8] = {0, 0, 2, 6, 12, 18, 24, 28};
+static constexpr int STORM[8] = {0, 6, 10, 14, 18, 22, 26, 30};
 
-    // doubled
-    if (seenFiles & (1ULL << f)) score += -DOUBLED_PEN;
-    seenFiles |= (1ULL << f);
+// Pieces/style
+constexpr int BISHOP_PAIR = 38;
+constexpr int BAD_BISHOP_PER_PAWN = 2;
+constexpr int OUTPOST_KN = 24;
+constexpr int CENTER_CTRL = 6;
+constexpr int KNIGHT_RIM = 12;
+constexpr int ROOK_OPEN = 16;
+constexpr int ROOK_SEMI = 8;
+constexpr int ROOK_ON_7TH = 20;
+constexpr int CONNECTED_ROOKS = 18;
+constexpr int ROOK_BEHIND_PASSER = 18;
 
-    // isolated
-    if ((adj_of(sq) & wp) == 0) score += -ISOLATED_PEN;
+// Threats
+constexpr int THR_PAWN_MINOR = 12, THR_PAWN_ROOK = 18, THR_PAWN_QUEEN = 26;
+constexpr int HANG_MINOR = 14, HANG_ROOK = 20, HANG_QUEEN = 28;
+constexpr int MINOR_ON_QUEEN = 8;
 
-    // backward: kein eigener Vorstoß, gegnerische Bauern kontrollieren das Vorfeld
-    int front = sq + 8;
-    bool blocked = (front <= 63) && (occ & sq_bb((core::Square)front));
-    Bitboard coverByBp = black_pawn_attacks(bp);
-    bool frontControlled = (front <= 63) && (coverByBp & sq_bb((core::Square)front));
-    if (!blocked && frontControlled && ((adj_of(sq) & masks.pawn_front_white[sq] & wp) == 0))
-      score += -BACKWARD_PEN;
+// Space
+constexpr int SPACE_BASE = 2;
 
-    // phalanx (nebeneinander)
-    if (f > 0 && (wp & sq_bb((core::Square)(sq - 1)))) score += PHALANX_BONUS;
-    if (f < 7 && (wp & sq_bb((core::Square)(sq + 1)))) score += PHALANX_BONUS;
+// Endgame scaling
+constexpr int OPP_BISHOPS_SCALE = 192;  // /256
 
-    // passed: wie vorher, aber mit Rank-Bonus, Blocker-Check
-    bool passed = ((masks.passed_white[sq] & bp) == 0);
-    if (passed) {
-      int r = sq_rank(sq);
-      int bonus = PASSED_RANK_BONUS[r];
-      // Blocker direkt davor
-      int stop = sq + 8;
-      if (stop <= 63 && (occ & sq_bb((core::Square)stop))) bonus -= 12;
-      score += bonus;
-    }
-  }
-
-  // Schwarz
-  tmp = bp;
-  seenFiles = 0;
-  while (tmp) {
-    int sq = ctz64(tmp);
-    tmp &= tmp - 1;
-    int f = sq_file(sq);
-    Bitboard fmask = file_of(sq);
-
-    if (seenFiles & (1ULL << f)) score -= -DOUBLED_PEN;  // symmetrisch
-    seenFiles |= (1ULL << f);
-
-    if ((adj_of(sq) & bp) == 0) score -= -ISOLATED_PEN;
-
-    int front = sq - 8;
-    bool blocked = (front >= 0) && (occ & sq_bb((core::Square)front));
-    Bitboard coverByWp = white_pawn_attacks(wp);
-    bool frontControlled = (front >= 0) && (coverByWp & sq_bb((core::Square)front));
-    if (!blocked && frontControlled && ((adj_of(sq) & masks.pawn_front_black[sq] & bp) == 0))
-      score -= -BACKWARD_PEN;
-
-    if (f > 0 && (bp & sq_bb((core::Square)(sq - 1)))) score -= PHALANX_BONUS;
-    if (f < 7 && (bp & sq_bb((core::Square)(sq + 1)))) score -= PHALANX_BONUS;
-
-    bool passed = ((masks.passed_black[sq] & wp) == 0);
-    if (passed) {
-      int r = sq_rank(sq);
-      int bonus = PASSED_RANK_BONUS[7 - r];
-      int stop = sq - 8;
-      if (stop >= 0 && (occ & sq_bb((core::Square)stop))) bonus -= 12;
-      score -= bonus;
-    }
-  }
-
-  return score;
-}
-
-static int bishop_quality(const std::array<Bitboard, 6>& wbbs,
-                          const std::array<Bitboard, 6>& bbbs) {
-  // Farbmasken
-  Bitboard lightMask = 0x55AA55AA55AA55AAULL;  // A1 dark -> diese ist eine der beiden; ist ok
-  Bitboard darkMask = ~lightMask;
-
-  int sc = 0;
-
-  auto side = [&](const std::array<Bitboard, 6>& bb, bool white) -> int {
-    Bitboard pawns = bb[(int)PieceType::Pawn];
-    int light = popcount(pawns & lightMask);
-    int dark = popcount(pawns & darkMask);
-
-    Bitboard bishops = bb[(int)PieceType::Bishop];
-    // Jeder Läufer "leidet" an vielen Bauern auf seiner Farbe
-    while (bishops) {
-      int sq = ctz64(bishops);
-      bishops &= bishops - 1;
-      bool isLight = ((lightMask >> sq) & 1ULL) != 0;
-      int same = isLight ? light : dark;
-      if (same > 4) sc += -(same - 4) * BAD_BISHOP_PER_PAWN * (white ? +1 : -1);
-    }
-    return 0;
+// Material imbalance (leicht)
+struct MaterialCounts {
+  int P[2]{}, N[2]{}, B[2]{}, R[2]{}, Q[2]{};
+};
+static int material_imbalance(const MaterialCounts& mc) {
+  auto s = [&](int w, int b, int kw, int kb) {
+    return (kw * (w * (w - 1)) / 2) - (kb * (b * (b - 1)) / 2);
   };
-
-  side(wbbs, true);
-  side(bbbs, false);
+  int sc = 0;
+  sc += s(mc.N[0], mc.N[1], 3, 3);
+  sc += s(mc.B[0], mc.B[1], 4, 4);
+  sc += (mc.B[0] >= 2 ? +16 : 0) + (mc.B[1] >= 2 ? -16 : 0);
+  sc += (mc.R[0] * mc.N[0] * 2) - (mc.R[1] * mc.N[1] * 2);
+  sc += (mc.R[0] * mc.B[0] * 1) - (mc.R[1] * mc.B[1] * 1);
+  sc += (mc.Q[0] * mc.R[0] * (-2)) - (mc.Q[1] * mc.R[1] * (-2));
   return sc;
 }
 
-static int rook_behind_passed(const std::array<Bitboard, 6>& wbbs,
-                              const std::array<Bitboard, 6>& bbbs) {
+// =============================================================================
+// Space
+// =============================================================================
+static int space_term(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
+  Bitboard wocc = W[0] | W[1] | W[2] | W[3] | W[4] | W[5];
+  Bitboard bocc = B[0] | B[1] | B[2] | B[3] | B[4] | B[5];
+  Bitboard empty = ~(wocc | bocc);
+  Bitboard wp = W[(int)PieceType::Pawn], bp = B[(int)PieceType::Pawn];
+  Bitboard bPA = black_pawn_attacks(bp), wPA = white_pawn_attacks(wp);
+  Bitboard wArea = (RANK_4 | RANK_5 | RANK_6) & empty & ~bPA;
+  Bitboard bArea = (RANK_3 | RANK_4 | RANK_5) & empty & ~wPA;
+  int wSafe = popcnt(wArea), bSafe = popcnt(bArea);
+  int wMin = popcnt(W[(int)PieceType::Knight] | W[(int)PieceType::Bishop]);
+  int bMin = popcnt(B[(int)PieceType::Knight] | B[(int)PieceType::Bishop]);
+  int wScale = 2 + std::min(wMin, 4), bScale = 2 + std::min(bMin, 4);
+  return SPACE_BASE * (wSafe * wScale - bSafe * bScale);
+}
+
+// =============================================================================
+// Pawn structure (härter: backward/candidate/passers)
+// =============================================================================
+static int pawn_structure(Bitboard wp, Bitboard bp, int wK, int bK, Bitboard occ) {
+  init_masks();
   int sc = 0;
-  Bitboard wp = wbbs[(int)PieceType::Pawn], bp = bbbs[(int)PieceType::Pawn];
-  // grobe Passed-Erkennung (wie oben)
-  Bitboard wpasser = 0, bpasser = 0;
-  Bitboard tmp = wp;
-  while (tmp) {
-    int sq = ctz64(tmp);
-    tmp &= tmp - 1;
-    if ((masks.passed_white[sq] & bp) == 0) wpasser |= sq_bb((core::Square)sq);
-  }
-  tmp = bp;
-  while (tmp) {
-    int sq = ctz64(tmp);
-    tmp &= tmp - 1;
-    if ((masks.passed_black[sq] & wp) == 0) bpasser |= sq_bb((core::Square)sq);
+
+  // Isolani & doubled (file-wise)
+  for (int f = 0; f < 8; ++f) {
+    Bitboard F = M.file[f];
+    Bitboard ADJ = (f > 0 ? M.file[f - 1] : 0) | (f < 7 ? M.file[f + 1] : 0);
+    int wc = popcnt(wp & F), bc = popcnt(bp & F);
+    if (wc) {
+      if ((wp & ADJ) == 0) sc -= ISO_P * wc;
+      if (wc > 1) sc -= DOUBLED_P * (wc - 1);
+    }
+    if (bc) {
+      if ((bp & ADJ) == 0) sc += ISO_P * bc;
+      if (bc > 1) sc += DOUBLED_P * (bc - 1);
+    }
   }
 
-  Bitboard wr = wbbs[(int)PieceType::Rook];
-  Bitboard br = bbbs[(int)PieceType::Rook];
+  Bitboard wPA = white_pawn_attacks(wp), bPA = black_pawn_attacks(bp);
 
-  // Rook hinter Passer = gleicher File, Turm hinter dem Bauern (aus Sicht des Ziehers)
+  auto do_white = [&](int sq) {
+    int f = file_of(sq), r = rank_of(sq);
+    int front = sq + 8;
+    bool blocked = (front <= 63) && (occ & sq_bb((Square)front));
+    bool frontCtrl = (front <= 63) && (bPA & sq_bb((Square)front));
+    Bitboard ownAdjAhead = (M.wPassed[sq] & ~M.wFront[sq]) & wp;
+    if (!blocked && frontCtrl && ownAdjAhead == 0) sc -= BACKWARD_P;  // [FIX]
+    if (f > 0 && (wp & sq_bb((Square)(sq - 1)))) sc += PHALANX;
+    if (f < 7 && (wp & sq_bb((Square)(sq + 1)))) sc += PHALANX;
+    bool passed = (M.wPassed[sq] & bp) == 0;
+    bool candidate = !passed && ((M.wPassed[sq] & bp & ~M.wFront[sq]) == 0);
+    if (candidate) sc += CANDIDATE_P;
+
+    if (passed) {
+      int mgB = PASSED_MG[r], egB = PASSED_EG[r];
+      int stop = sq + 8;
+      if (stop <= 63 && (occ & sq_bb((Square)stop))) {
+        mgB -= PASS_BLOCK;
+        egB -= PASS_BLOCK;
+      }
+      if (wPA & sq_bb((Square)sq)) {
+        mgB += PASS_SUPP;
+        egB += PASS_SUPP;
+      }
+      if ((M.wFront[sq] & occ) == 0) {
+        mgB += PASS_FREE;
+        egB += PASS_FREE;
+      }
+      if (king_manhattan(wK, sq) <= 3) {
+        mgB += PASS_KBOOST;
+        egB += PASS_KBOOST;
+      }
+      if (bK >= 0 &&
+          (M.wFront[sq] | (stop <= 63 ? sq_bb((Square)stop) : 0ULL)) & sq_bb((Square)bK)) {
+        mgB -= PASS_KBLOCK;
+        egB -= PASS_KBLOCK;
+      }
+      sc += (mgB + egB) / 2;
+    }
+  };
+
+  auto do_black = [&](int sq) {
+    int f = file_of(sq), r = rank_of(sq);
+    int front = sq - 8;
+    bool blocked = (front >= 0) && (occ & sq_bb((Square)front));
+    bool frontCtrl = (front >= 0) && (wPA & sq_bb((Square)front));
+    Bitboard ownAdjAhead = (M.bPassed[sq] & ~M.bFront[sq]) & bp;
+    if (!blocked && frontCtrl && ownAdjAhead == 0) sc += BACKWARD_P;  // [FIX]
+    if (f > 0 && (bp & sq_bb((Square)(sq - 1)))) sc -= PHALANX;
+    if (f < 7 && (bp & sq_bb((Square)(sq + 1)))) sc -= PHALANX;
+    bool passed = (M.bPassed[sq] & wp) == 0;
+    bool candidate = !passed && ((M.bPassed[sq] & wp & ~M.bFront[sq]) == 0);
+    if (candidate) sc -= CANDIDATE_P;
+
+    if (passed) {
+      int mgB = PASSED_MG[7 - r], egB = PASSED_EG[7 - r];
+      int stop = sq - 8;
+      if (stop >= 0 && (occ & sq_bb((Square)stop))) {
+        mgB -= PASS_BLOCK;
+        egB -= PASS_BLOCK;
+      }
+      if (bPA & sq_bb((Square)sq)) {
+        mgB += PASS_SUPP;
+        egB += PASS_SUPP;
+      }
+      if ((M.bFront[sq] & occ) == 0) {
+        mgB += PASS_FREE;
+        egB += PASS_FREE;
+      }
+      if (king_manhattan(bK, sq) <= 3) {
+        mgB += PASS_KBOOST;
+        egB += PASS_KBOOST;
+      }
+      if (wK >= 0 &&
+          (M.bFront[sq] | (stop >= 0 ? sq_bb((Square)stop) : 0ULL)) & sq_bb((Square)wK)) {
+        mgB -= PASS_KBLOCK;
+        egB -= PASS_KBLOCK;
+      }
+      sc -= (mgB + egB) / 2;
+    }
+  };
+
+  Bitboard t = wp;
+  while (t) {
+    int s = lsb_i(t);
+    t &= t - 1;
+    do_white(s);
+  }
+  t = bp;
+  while (t) {
+    int s = lsb_i(t);
+    t &= t - 1;
+    do_black(s);
+  }
+
+  // connected passers
+  Bitboard wPass = 0, bPass = 0;
+  {
+    Bitboard t2 = wp;
+    while (t2) {
+      int s = lsb_i(t2);
+      t2 &= t2 - 1;
+      if ((M.wPassed[s] & bp) == 0) wPass |= sq_bb((Square)s);
+    }
+    t2 = bp;
+    while (t2) {
+      int s = lsb_i(t2);
+      t2 &= t2 - 1;
+      if ((M.bPassed[s] & wp) == 0) bPass |= sq_bb((Square)s);
+    }
+  }
+  Bitboard wConn = ((wPass << 1) & wPass) | ((wPass >> 1) & wPass);
+  if (wConn) sc += CONNECTED_PASSERS * popcnt(wConn);
+  Bitboard bConn = ((bPass << 1) & bPass) | ((bPass >> 1) & bPass);
+  if (bConn) sc -= CONNECTED_PASSERS * popcnt(bConn);
+  return sc;
+}
+
+// =============================================================================
+// Mobility & attacks (safe mobility)
+// =============================================================================
+struct AttInfo {
+  Bitboard wAll = 0, bAll = 0;
+  int mg = 0, eg = 0;
+};
+
+static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
+                        const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
+  AttInfo ai{};
+  Bitboard wPA = white_pawn_attacks(W[(int)PieceType::Pawn]);
+  Bitboard bPA = black_pawn_attacks(B[(int)PieceType::Pawn]);
+  auto safeW = [&](Bitboard a) { return a & ~wocc & ~bPA; };
+  auto safeB = [&](Bitboard a) { return a & ~bocc & ~wPA; };
+
+  // Knights
+  {
+    Bitboard bb = W[(int)PieceType::Knight];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      Bitboard a = knight_attacks_from((Square)s);
+      ai.wAll |= a;
+      int c = clampi(popcount(safeW(a)), 0, 8);
+      ai.mg += KN_MOB_MG[c];
+      ai.eg += KN_MOB_EG[c];
+    }
+  }
+  {
+    Bitboard bb = B[(int)PieceType::Knight];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      Bitboard a = knight_attacks_from((Square)s);
+      ai.bAll |= a;
+      int c = clampi(popcount(safeB(a)), 0, 8);
+      ai.mg -= KN_MOB_MG[c];
+      ai.eg -= KN_MOB_EG[c];
+    }
+  }
+
+  // Bishops
+  {
+    Bitboard bb = W[(int)PieceType::Bishop];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
+      ai.wAll |= a;
+      int c = clampi(popcount(safeW(a)), 0, 13);
+      ai.mg += BI_MOB_MG[c];
+      ai.eg += BI_MOB_EG[c];
+    }
+  }
+  {
+    Bitboard bb = B[(int)PieceType::Bishop];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
+      ai.bAll |= a;
+      int c = clampi(popcount(safeB(a)), 0, 13);
+      ai.mg -= BI_MOB_MG[c];
+      ai.eg -= BI_MOB_EG[c];
+    }
+  }
+
+  // Rooks
+  {
+    Bitboard bb = W[(int)PieceType::Rook];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ);
+      ai.wAll |= a;
+      int c = clampi(popcount(safeW(a)), 0, 14);
+      ai.mg += RO_MOB_MG[c];
+      ai.eg += RO_MOB_EG[c];
+    }
+  }
+  {
+    Bitboard bb = B[(int)PieceType::Rook];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ);
+      ai.bAll |= a;
+      int c = clampi(popcount(safeB(a)), 0, 14);
+      ai.mg -= RO_MOB_MG[c];
+      ai.eg -= RO_MOB_EG[c];
+    }
+  }
+
+  // Queens
+  {
+    Bitboard bb = W[(int)PieceType::Queen];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ) |
+                   magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
+      ai.wAll |= a;
+      int c = clampi(popcount(safeW(a)), 0, 27);
+      ai.mg += QU_MOB_MG[c];
+      ai.eg += QU_MOB_EG[c];
+    }
+  }
+  {
+    Bitboard bb = B[(int)PieceType::Queen];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ) |
+                   magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
+      ai.bAll |= a;
+      int c = clampi(popcount(safeB(a)), 0, 27);
+      ai.mg -= QU_MOB_MG[c];
+      ai.eg -= QU_MOB_EG[c];
+    }
+  }
+
+  ai.mg = clampi(ai.mg, -900, 900);
+  ai.eg = clampi(ai.eg, -900, 900);
+  return ai;
+}
+
+// =============================================================================
+// Threats & hanging  [REWORKED/FASTER/SAFER]
+// =============================================================================
+static int threats(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
+                   Bitboard wAll, Bitboard bAll, Bitboard occ) {
+  int sc = 0;
+
+  // Pawn threats
+  Bitboard wPA = white_pawn_attacks(W[(int)PieceType::Pawn]);
+  Bitboard bPA = black_pawn_attacks(B[(int)PieceType::Pawn]);
+
+  auto pawn_threat_score = [&](Bitboard pa, const std::array<Bitboard, 6>& side) {
+    int s = 0;
+    if (pa & side[(int)PieceType::Knight]) s += THR_PAWN_MINOR;
+    if (pa & side[(int)PieceType::Bishop]) s += THR_PAWN_MINOR;
+    if (pa & side[(int)PieceType::Rook]) s += THR_PAWN_ROOK;
+    if (pa & side[(int)PieceType::Queen]) s += THR_PAWN_QUEEN;
+    return s;
+  };
+
+  sc += pawn_threat_score(wPA, B);
+  sc -= pawn_threat_score(bPA, W);
+
+  // Hanging: attacked by enemy, not defended by own (own pieces + pawn + king)
+  int wKsq = lsb_i(W[5]), bKsq = lsb_i(B[5]);
+  Bitboard wKAtt = (wKsq >= 0 ? king_attacks_from((Square)wKsq) : 0);
+  Bitboard bKAtt = (bKsq >= 0 ? king_attacks_from((Square)bKsq) : 0);
+
+  Bitboard defW = wAll | wPA | wKAtt;
+  Bitboard defB = bAll | bPA | bKAtt;
+
+  Bitboard wocc = W[0] | W[1] | W[2] | W[3] | W[4] | W[5];
+  Bitboard bocc = B[0] | B[1] | B[2] | B[3] | B[4] | B[5];
+
+  Bitboard wHang = (bAll & wocc) & ~defW;
+  Bitboard bHang = (wAll & bocc) & ~defB;
+
+  auto hang_score = [&](Bitboard h, const std::array<Bitboard, 6>& side) {
+    int s = 0;
+    if (h & side[1]) s += HANG_MINOR;
+    if (h & side[2]) s += HANG_MINOR;
+    if (h & side[3]) s += HANG_ROOK;
+    if (h & side[4]) s += HANG_QUEEN;
+    return s;
+  };
+
+  sc += hang_score(bHang, B);
+  sc -= hang_score(wHang, W);
+
+  // echte Minor-Angriffe auf die Dame (mit occ-Rays)
+  Bitboard wMinorA = 0, bMinorA = 0;
+  {
+    Bitboard n = W[1];
+    while (n) {
+      int s = lsb_i(n);
+      n &= n - 1;
+      wMinorA |= knight_attacks_from((Square)s);
+    }
+    Bitboard bb = W[2];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      wMinorA |= magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
+    }
+  }
+  {
+    Bitboard n = B[1];
+    while (n) {
+      int s = lsb_i(n);
+      n &= n - 1;
+      bMinorA |= knight_attacks_from((Square)s);
+    }
+    Bitboard bb = B[2];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      bMinorA |= magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
+    }
+  }
+  if (wMinorA & B[4]) sc += MINOR_ON_QUEEN;
+  if (bMinorA & W[4]) sc -= MINOR_ON_QUEEN;
+
+  return sc;
+}
+
+// =============================================================================
+// King safety (ring-based; Feld-zählend; skaliert mit Queens)
+// =============================================================================
+static int king_safety_raw(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
+                           Bitboard occ) {
+  init_masks();
+  int wK = lsb_i(W[5]);
+  int bK = lsb_i(B[5]);
+  Bitboard wp = W[0], bp = B[0];
+  Bitboard wPA = white_pawn_attacks(wp), bPA = black_pawn_attacks(bp);
+
+  auto ring_attacks = [&](int ksq, const std::array<Bitboard, 6>& opp, bool kingIsWhite) {
+    if (ksq < 0) return 0;
+    Bitboard ring = M.kingRing[ksq];
+    Bitboard ringSafe = ring & ~(kingIsWhite ? bPA : wPA);  // von gegnerischen Bauern befreit
+
+    int power = 0;
+    int cnt = 0;
+    Bitboard cover = 0;
+
+    // Knights
+    {
+      Bitboard bb = opp[1];
+      while (bb) {
+        int s = lsb_i(bb);
+        bb &= bb - 1;
+        Bitboard a = knight_attacks_from((Square)s) & ringSafe;
+        int c = popcnt(a);
+        if (c) {
+          cnt += c;
+          power += c * (KS_W_N - 2);
+          cover |= a;
+        }
+      }
+    }
+    // Bishops
+    {
+      Bitboard bb = opp[2];
+      while (bb) {
+        int s = lsb_i(bb);
+        bb &= bb - 1;
+        Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ) & ringSafe;
+        int c = popcnt(a);
+        if (c) {
+          cnt += c;
+          power += c * (KS_W_B - 2);
+          cover |= a;
+        }
+      }
+    }
+    // Rooks
+    {
+      Bitboard bb = opp[3];
+      while (bb) {
+        int s = lsb_i(bb);
+        bb &= bb - 1;
+        Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ) & ringSafe;
+        int c = popcnt(a);
+        if (c) {
+          cnt += c;
+          power += c * KS_W_R;
+          cover |= a;
+        }
+      }
+    }
+    // Queens
+    {
+      Bitboard bb = opp[4];
+      while (bb) {
+        int s = lsb_i(bb);
+        bb &= bb - 1;
+        Bitboard a = (magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ) |
+                      magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ)) &
+                     ringSafe;
+        int c = popcnt(a);
+        if (c) {
+          cnt += c;
+          power += c * (KS_W_Q - 4);
+          cover |= a;
+        }
+      }
+    }
+
+    int score = popcnt(cover) * KS_RING_BONUS + (power * std::min(cnt, 12)) / 12;
+
+    // missing shield (eigene Bauern um den König)
+    Bitboard shield = kingIsWhite ? M.wShield[ksq] : M.bShield[ksq];
+    Bitboard ownP = kingIsWhite ? wp : bp;
+    int missing = 6 - std::min(6, popcnt(ownP & shield));
+    score += missing * KS_MISS_SHIELD;
+
+    // (Half-)open file unter dem König
+    Bitboard file = M.file[ksq];
+    Bitboard oppP = kingIsWhite ? bp : wp;
+    bool ownOn = (file & ownP), oppOn = (file & oppP);
+    if (!ownOn && !oppOn)
+      score += KS_OPEN_FILE;
+    else if (!ownOn && oppOn)
+      score += KS_OPEN_FILE / 2;
+
+    // direkte R/Q Linie auf König
+    Bitboard oppRQ = opp[3] | opp[4];
+    Bitboard ray = magic::sliding_attacks(magic::Slider::Rook, (Square)ksq, occ);
+    if (ray & oppRQ) score += KS_RQ_LOS;
+
+    return std::min(score, KS_CLAMP);
+  };
+
+  int sc = 0;
+  sc -= ring_attacks(wK, B, true);
+  sc += ring_attacks(bK, W, false);
+  return sc;
+}
+
+static int king_shelter_storm(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
+  int wK = lsb_i(W[5]), bK = lsb_i(B[5]);
+  if (wK < 0 || bK < 0) return 0;
+  Bitboard wp = W[0], bp = B[0];
+  auto fileShelter = [&](int ksq, bool white) {
+    int f = file_of(ksq);
+    int total = 0;
+    for (int df = -1; df <= 1; ++df) {
+      int ff = f + df;
+      if (ff < 0 || ff > 7) continue;
+      if (white) {
+        Bitboard mask = 0;
+        for (int r = rank_of(ksq) + 1; r < 8; ++r) mask |= sq_bb((Square)((r << 3) | ff));
+        int nearR = (msb_i(mask & wp) >= 0 ? (msb_i(mask & wp) >> 3) : 8);
+        int dist = clampi(nearR - rank_of(ksq), 0, 7);
+        total += SHELTER[dist];
+        Bitboard em = 0;
+        for (int r = rank_of(ksq) - 1; r >= 0; --r) em |= sq_bb((Square)((r << 3) | ff));
+        int nearER = (lsb_i(em & bp) >= 0 ? (lsb_i(em & bp) >> 3) : -1);
+        int edist = clampi(rank_of(ksq) - nearER, 0, 7);
+        total -= STORM[edist] / 2;
+      } else {
+        Bitboard mask = 0;
+        for (int r = rank_of(ksq) - 1; r >= 0; --r) mask |= sq_bb((Square)((r << 3) | ff));
+        int nearR = (lsb_i(mask & bp) >= 0 ? (lsb_i(mask & bp) >> 3) : -1);
+        int dist = clampi(rank_of(ksq) - nearR, 0, 7);
+        total += SHELTER[dist];
+        Bitboard em = 0;
+        for (int r = rank_of(ksq) + 1; r < 8; ++r) em |= sq_bb((Square)((r << 3) | ff));
+        int nearER = (msb_i(em & wp) >= 0 ? (msb_i(em & wp) >> 3) : 8);
+        int edist = clampi(nearER - rank_of(ksq), 0, 7);
+        total -= STORM[edist] / 2;
+      }
+    }
+    return total;
+  };
+  int sc = 0;
+  sc += fileShelter(bK, false);
+  sc -= fileShelter(wK, true);
+  return sc / 2;
+}
+
+// =============================================================================
+// Style terms
+// =============================================================================
+static int bishop_pair_term(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
+  int s = 0;
+  if (popcnt(W[2]) >= 2) s += BISHOP_PAIR;
+  if (popcnt(B[2]) >= 2) s -= BISHOP_PAIR;
+  return s;
+}
+
+static int bad_bishop(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
+  auto is_light = [&](int sq) { return ((file_of(sq) + rank_of(sq)) & 1) != 0; };
+  int sc = 0;
+  auto apply = [&](const std::array<Bitboard, 6>& bb, int sign) {
+    Bitboard paw = bb[0];
+    int light = 0, dark = 0;
+    Bitboard t = paw;
+    while (t) {
+      int s = lsb_i(t);
+      t &= t - 1;
+      (is_light(s) ? ++light : ++dark);
+    }
+    Bitboard bishops = bb[2];
+    while (bishops) {
+      int s = lsb_i(bishops);
+      bishops &= bishops - 1;
+      int same = is_light(s) ? light : dark;
+      if (same > 4) sc += -(same - 4) * BAD_BISHOP_PER_PAWN * sign;
+    }
+  };
+  apply(W, +1);
+  apply(B, -1);
+  return sc;
+}
+
+static int outposts_center(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
+  int s = 0;
+  Bitboard bPA = black_pawn_attacks(B[0]), wPA = white_pawn_attacks(W[0]);
+  auto outW = [&](int sq) { return !(bPA & sq_bb((Square)sq)); };
+  auto outB = [&](int sq) { return !(wPA & sq_bb((Square)sq)); };
+  Bitboard t = W[1];
+  while (t) {
+    int sq = lsb_i(t);
+    t &= t - 1;
+    int add = 0;
+    if (outW(sq)) add += OUTPOST_KN;
+    if (knight_attacks_from((Square)sq) & CENTER4) add += CENTER_CTRL;
+    if (sq_bb((Square)sq) & CENTER4) add += 6;
+    s += add;
+  }
+  t = B[1];
+  while (t) {
+    int sq = lsb_i(t);
+    t &= t - 1;
+    int add = 0;
+    if (outB(sq)) add += OUTPOST_KN;
+    if (knight_attacks_from((Square)sq) & CENTER4) add += CENTER_CTRL;
+    if (sq_bb((Square)sq) & CENTER4) add += 6;
+    s -= add;
+  }
+  return s;
+}
+
+static int rim_knights(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
+  init_masks();
+  Bitboard aF = M.file[0], hF = M.file[7];
+  int s = 0;
+  s -= popcnt(W[1] & (aF | hF)) * KNIGHT_RIM;
+  s += popcnt(B[1] & (aF | hF)) * KNIGHT_RIM;
+  return s;
+}
+
+static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
+                         Bitboard wp, Bitboard bp) {
+  init_masks();
+  int s = 0;
+  Bitboard wr = W[3], br = B[3];
+  auto rank = [&](int sq) { return rank_of(sq); };
+  auto openScore = [&](int sq, bool white) {
+    Bitboard f = M.file[sq];
+    bool own = white ? (f & wp) : (f & bp);
+    bool opp = white ? (f & bp) : (f & wp);
+    if (!own && !opp) return ROOK_OPEN;
+    if (!own && opp) return ROOK_SEMI;
+    return 0;
+  };
   Bitboard t = wr;
   while (t) {
-    int s = ctz64(t);
+    int sq = lsb_i(t);
     t &= t - 1;
-    int f = sq_file(s);
-    // gibt es auf diesem File einen weißen Passer und steht der Turm hinter ihm?
-    Bitboard file = masks.file_mask[s];
-    Bitboard onFile = wpasser & file;
-    if (onFile) {
-      int ps = ctz64(onFile);
-      if (sq_rank(s) < sq_rank(ps)) sc += ROOK_BEHIND_PASSER;
+    s += openScore(sq, true);
+    if (rank(sq) == 6) {
+      bool tgt = (B[5] & RANK_8) || (B[0] & RANK_7);
+      if (tgt) s += ROOK_ON_7TH;
     }
   }
   t = br;
   while (t) {
-    int s = ctz64(t);
-    t &= t - 1;
-    int f = sq_file(s);
-    Bitboard file = masks.file_mask[s];
-    Bitboard onFile = bpasser & file;
-    if (onFile) {
-      int ps = ctz64(onFile);
-      if (sq_rank(s) > sq_rank(ps)) sc -= ROOK_BEHIND_PASSER;
-    }
-  }
-  return sc;
-}
-
-static int threats_and_hanging(Bitboard occ, const std::array<Bitboard, 6>& wbbs,
-                               const std::array<Bitboard, 6>& bbbs, Bitboard attW_all,
-                               Bitboard attB_all) {
-  int sc = 0;
-
-  // Bauern-Drohungen
-  Bitboard wPA = white_pawn_attacks(wbbs[(int)PieceType::Pawn]);
-  Bitboard bPA = black_pawn_attacks(bbbs[(int)PieceType::Pawn]);
-
-  auto threat_score = [](Bitboard victims, const std::array<Bitboard, 6>& side) {
-    int s = 0;
-    if (victims & side[(int)PieceType::Knight]) s += PAWN_THREAT_MINOR;
-    if (victims & side[(int)PieceType::Bishop]) s += PAWN_THREAT_MINOR;
-    if (victims & side[(int)PieceType::Rook]) s += PAWN_THREAT_ROOK;
-    if (victims & side[(int)PieceType::Queen]) s += PAWN_THREAT_QUEEN;
-    return s;
-  };
-  sc += threat_score(wPA & (bbbs[(int)PieceType::Knight] | bbbs[(int)PieceType::Bishop] |
-                            bbbs[(int)PieceType::Rook] | bbbs[(int)PieceType::Queen]),
-                     bbbs);
-  sc -= threat_score(bPA & (wbbs[(int)PieceType::Knight] | wbbs[(int)PieceType::Bishop] |
-                            wbbs[(int)PieceType::Rook] | wbbs[(int)PieceType::Queen]),
-                     wbbs);
-
-  // Hängende Figuren: angegriffen, aber nicht verteidigt
-  Bitboard wocc = wbbs[0] | wbbs[1] | wbbs[2] | wbbs[3] | wbbs[4] | wbbs[5];
-  Bitboard bocc = bbbs[0] | bbbs[1] | bbbs[2] | bbbs[3] | bbbs[4] | bbbs[5];
-
-  Bitboard wHanging = (attB_all & wocc) & ~attW_all;
-  Bitboard bHanging = (attW_all & bocc) & ~attB_all;
-
-  auto penalize_hanging = [](Bitboard h, const std::array<Bitboard, 6>& side) -> int {
-    int s = 0;
-    if (h & side[(int)PieceType::Knight]) s -= HANGING_MINOR_PEN;
-    if (h & side[(int)PieceType::Bishop]) s -= HANGING_MINOR_PEN;
-    if (h & side[(int)PieceType::Rook]) s -= HANGING_ROOK_PEN;
-    if (h & side[(int)PieceType::Queen]) s -= HANGING_QUEEN_PEN;
-    return s;
-  };
-  sc += penalize_hanging(bHanging, bbbs);  // gut für Weiß
-  sc -= penalize_hanging(wHanging, wbbs);  // schlecht für Weiß
-
-  return sc;
-}
-
-static void mobility_terms(Bitboard occ, Bitboard wocc, Bitboard bocc,
-                           const std::array<Bitboard, 6>& wbbs, const std::array<Bitboard, 6>& bbbs,
-                           int& mg, int& eg, Bitboard& attW_all, Bitboard& attB_all) {
-  constexpr int MG_W_N = 4, MG_W_B = 3, MG_W_R = 2, MG_W_Q = 1;
-  constexpr int EG_W_N = 3, EG_W_B = 4, EG_W_R = 5, EG_W_Q = 2;
-
-  mg = eg = 0;
-  attW_all = attB_all = 0;
-
-  // Knights
-  {
-    Bitboard wn = wbbs[(int)PieceType::Knight];
-    while (wn) {
-      int sq = ctz64(wn);
-      wn &= wn - 1;
-      Bitboard a = knight_attacks_from((core::Square)sq);
-      attW_all |= a;
-      int c = popcount(a & ~wocc);
-      mg += c * MG_W_N;
-      eg += c * EG_W_N;
-    }
-    Bitboard bn = bbbs[(int)PieceType::Knight];
-    while (bn) {
-      int sq = ctz64(bn);
-      bn &= bn - 1;
-      Bitboard a = knight_attacks_from((core::Square)sq);
-      attB_all |= a;
-      int c = popcount(a & ~bocc);
-      mg -= c * MG_W_N;
-      eg -= c * EG_W_N;
-    }
-  }
-  // Bishops
-  {
-    Bitboard wb = wbbs[(int)PieceType::Bishop];
-    while (wb) {
-      int sq = ctz64(wb);
-      wb &= wb - 1;
-      Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, (core::Square)sq, occ);
-      attW_all |= a;
-      int c = popcount(a & ~wocc);
-      mg += c * MG_W_B;
-      eg += c * EG_W_B;
-    }
-    Bitboard bb = bbbs[(int)PieceType::Bishop];
-    while (bb) {
-      int sq = ctz64(bb);
-      bb &= bb - 1;
-      Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, (core::Square)sq, occ);
-      attB_all |= a;
-      int c = popcount(a & ~bocc);
-      mg -= c * MG_W_B;
-      eg -= c * EG_W_B;
-    }
-  }
-  // Rooks
-  {
-    Bitboard wr = wbbs[(int)PieceType::Rook];
-    while (wr) {
-      int sq = ctz64(wr);
-      wr &= wr - 1;
-      Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (core::Square)sq, occ);
-      attW_all |= a;
-      int c = popcount(a & ~wocc);
-      mg += c * MG_W_R;
-      eg += c * EG_W_R;
-    }
-    Bitboard br = bbbs[(int)PieceType::Rook];
-    while (br) {
-      int sq = ctz64(br);
-      br &= br - 1;
-      Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (core::Square)sq, occ);
-      attB_all |= a;
-      int c = popcount(a & ~bocc);
-      mg -= c * MG_W_R;
-      eg -= c * EG_W_R;
-    }
-  }
-  // Queens
-  {
-    Bitboard wq = wbbs[(int)PieceType::Queen];
-    while (wq) {
-      int sq = ctz64(wq);
-      wq &= wq - 1;
-      Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (core::Square)sq, occ) |
-                   magic::sliding_attacks(magic::Slider::Bishop, (core::Square)sq, occ);
-      attW_all |= a;
-      int c = popcount(a & ~wocc);
-      mg += c * MG_W_Q;
-      eg += c * EG_W_Q;
-    }
-    Bitboard bq = bbbs[(int)PieceType::Queen];
-    while (bq) {
-      int sq = ctz64(bq);
-      bq &= bq - 1;
-      Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (core::Square)sq, occ) |
-                   magic::sliding_attacks(magic::Slider::Bishop, (core::Square)sq, occ);
-      attB_all |= a;
-      int c = popcount(a & ~bocc);
-      mg -= c * MG_W_Q;
-      eg -= c * EG_W_Q;
-    }
-  }
-
-  mg = std::clamp(mg, -300, 300);
-  eg = std::clamp(eg, -300, 300);
-}
-
-// ---------- King-Safety (schnell via precomputed masks) ----------
-static int king_safety(const std::array<Bitboard, 6>& wbbs, const std::array<Bitboard, 6>& bbbs) {
-  int sc = 0;
-
-  const Bitboard wp = wbbs[(int)PieceType::Pawn];
-  const Bitboard bp = bbbs[(int)PieceType::Pawn];
-
-  const int wksq = lsb_i(wbbs[(int)PieceType::King]);
-  const int bksq = lsb_i(bbbs[(int)PieceType::King]);
-
-  // Pawn-Shield
-  if (wksq >= 0) sc += popcnt(wp & masks.shield_w[wksq]) * 10;
-  if (bksq >= 0) sc -= popcnt(bp & masks.shield_b[bksq]) * 10;
-
-  // Tropism via King-Ring
-  auto tropism = [&](int ksq, const std::array<Bitboard, 6>& enemy) -> int {
-    if (ksq < 0) return 0;
-    Bitboard area = masks.king_ring[ksq];
-    int sum = 0;
-    sum += popcnt(enemy[(int)PieceType::Knight] & area) * 25;
-    Bitboard heavy =
-        enemy[(int)PieceType::Queen] | enemy[(int)PieceType::Rook] | enemy[(int)PieceType::Bishop];
-    sum += popcnt(heavy & area) * 12;
-    return sum;
-  };
-  sc -= tropism(wksq, bbbs);
-  sc += tropism(bksq, wbbs);
-
-  // Fehlende Front-Bauern auf den 3 Files (leichte zusätzliche Strafe)
-  auto shield_files_penalty = [&](int ksq, const std::array<Bitboard, 6>& own,
-                                  bool whiteKing) -> int {
-    if (ksq < 0) return 0;
-    const int f = sq_file(ksq), r = sq_rank(ksq);
-    const int files[3] = {std::max(0, f - 1), f, std::min(7, f + 1)};
-    int miss = 0;
-    for (int i = 0; i < 3; ++i) {
-      const int ff = files[i];
-      Bitboard front = 0;
-      if (whiteKing) {
-        for (int rr = r + 1; rr < 8; ++rr)
-          front |= sq_bb(static_cast<core::Square>((rr << 3) | ff));
-      } else {
-        for (int rr = r - 1; rr >= 0; --rr)
-          front |= sq_bb(static_cast<core::Square>((rr << 3) | ff));
-      }
-      if ((own[(int)PieceType::Pawn] & front) == 0) ++miss;
-    }
-    return miss * 8;  // 0..24
-  };
-  if (wksq >= 0) sc -= shield_files_penalty(wksq, wbbs, true);
-  if (bksq >= 0) sc += shield_files_penalty(bksq, bbbs, false);
-
-  return sc;
-}
-
-// ---------- Läuferpaar ----------
-static int bishop_pair(const std::array<Bitboard, 6>& wbbs, const std::array<Bitboard, 6>& bbbs) {
-  int score = 0;
-  if (popcnt(wbbs[(int)PieceType::Bishop]) >= 2) score += BISHOP_PAIR_BONUS;
-  if (popcnt(bbbs[(int)PieceType::Bishop]) >= 2) score -= BISHOP_PAIR_BONUS;
-  return score;
-}
-
-// ---------- Entwicklung ----------
-static int development_score(const std::array<Bitboard, 6>& wbbs,
-                             const std::array<Bitboard, 6>& bbbs) {
-  Bitboard white_minors = wbbs[(int)PieceType::Knight] | wbbs[(int)PieceType::Bishop];
-  Bitboard black_minors = bbbs[(int)PieceType::Knight] | bbbs[(int)PieceType::Bishop];
-
-  Bitboard white_initial =
-      sq_bb(static_cast<core::Square>(1)) | sq_bb(static_cast<core::Square>(6)) |
-      sq_bb(static_cast<core::Square>(2)) | sq_bb(static_cast<core::Square>(5));
-  Bitboard black_initial =
-      sq_bb(static_cast<core::Square>(57)) | sq_bb(static_cast<core::Square>(62)) |
-      sq_bb(static_cast<core::Square>(58)) | sq_bb(static_cast<core::Square>(61));
-
-  int white_undeveloped = popcnt(white_minors & white_initial);
-  int black_undeveloped = popcnt(black_minors & black_initial);
-
-  return (black_undeveloped - white_undeveloped) * DEVELOPMENT_PENALTY;
-}
-
-// ---------- Springer am Rand ----------
-static int knight_rim(const std::array<Bitboard, 6>& wbbs, const std::array<Bitboard, 6>& bbbs) {
-  int score = 0;
-  Bitboard a_mask = masks.file_mask[0];
-  Bitboard h_mask = masks.file_mask[7];
-
-  Bitboard wn = wbbs[(int)PieceType::Knight];
-  Bitboard bn = bbbs[(int)PieceType::Knight];
-
-  score -= popcnt(wn & (a_mask | h_mask)) * KNIGHT_RIM_PENALTY;
-  score += popcnt(bn & (a_mask | h_mask)) * KNIGHT_RIM_PENALTY;
-
-  return score;
-}
-
-// ---------- Zentrum & „Outposts“ (billig, ohne zusätzliche Magics) ----------
-static int center_and_outposts(const std::array<Bitboard, 6>& wbbs,
-                               const std::array<Bitboard, 6>& bbbs) {
-  int score = 0;
-
-  const Bitboard wn = wbbs[(int)PieceType::Knight];
-  const Bitboard bn = bbbs[(int)PieceType::Knight];
-
-  // minimaler PSQT-Boost für zentrale Springer im MG
-  constexpr int KNIGHT_CENTER_PSQT = 6;  // sehr klein, Stackt kaum mit OUTPOST_KNIGHT_BONUS
-  score += popcnt(wn & CENTER_MASK) * (OUTPOST_KNIGHT_BONUS + KNIGHT_CENTER_PSQT);
-  score -= popcnt(bn & CENTER_MASK) * (OUTPOST_KNIGHT_BONUS + KNIGHT_CENTER_PSQT);
-
-  Bitboard t = wn;
-  while (t) {
     int sq = lsb_i(t);
     t &= t - 1;
-    if (knight_attacks_from(static_cast<core::Square>(sq)) & CENTER_MASK)
-      score += CENTER_CONTROL_BONUS;
+    s -= openScore(sq, false);
+    if (rank(sq) == 1) {
+      bool tgt = (W[5] & RANK_1) || (W[0] & RANK_2);
+      if (tgt) s -= ROOK_ON_7TH;
+    }
   }
-  t = bn;
+  auto connected = [&](Bitboard rooks, Bitboard occ) {
+    if (popcnt(rooks) != 2) return false;
+    int s1 = lsb_i(rooks);
+    Bitboard r2 = rooks & (rooks - 1);
+    int s2 = lsb_i(r2);
+    Bitboard occ2 = occ & ~sq_bb((Square)s2);
+    Bitboard ray = magic::sliding_attacks(magic::Slider::Rook, (Square)s1, occ2);
+    return (ray & sq_bb((Square)s2)) != 0;
+  };
+  Bitboard occAll =
+      W[0] | W[1] | W[2] | W[3] | W[4] | W[5] | B[0] | B[1] | B[2] | B[3] | B[4] | B[5];
+  if (connected(wr, occAll)) s += CONNECTED_ROOKS;
+  if (connected(br, occAll)) s -= CONNECTED_ROOKS;
+
+  auto behind = [&](int rSq, int pSq, bool pawnWhite, int full, int half) {
+    if (file_of(rSq) != file_of(pSq)) return 0;
+    Bitboard ray = magic::sliding_attacks(magic::Slider::Rook, (Square)rSq, occAll);
+    if (!(ray & sq_bb((Square)pSq))) return 0;
+    if (pawnWhite)
+      return (rank_of(rSq) < rank_of(pSq) ? full : half);
+    else
+      return (rank_of(rSq) > rank_of(pSq) ? full : half);
+  };
+  Bitboard wPass = 0, bPass = 0;
+  {
+    Bitboard t2 = wp;
+    while (t2) {
+      int ps = lsb_i(t2);
+      t2 &= t2 - 1;
+      if ((M.wPassed[ps] & bp) == 0) wPass |= sq_bb((Square)ps);
+    }
+    t2 = bp;
+    while (t2) {
+      int ps = lsb_i(t2);
+      t2 &= t2 - 1;
+      if ((M.bPassed[ps] & wp) == 0) bPass |= sq_bb((Square)ps);
+    }
+  }
+  t = wr;
   while (t) {
-    int sq = lsb_i(t);
+    int rs = lsb_i(t);
     t &= t - 1;
-    if (knight_attacks_from(static_cast<core::Square>(sq)) & CENTER_MASK)
-      score -= CENTER_CONTROL_BONUS;
-  }
-
-  return score;
-}
-
-// ---------- Turm-Aktivität ----------
-static int rook_activity(const std::array<Bitboard, 6>& wbbs, const std::array<Bitboard, 6>& bbbs,
-                         Bitboard wp, Bitboard bp) {
-  int score = 0;
-  Bitboard wr = wbbs[(int)PieceType::Rook];
-  Bitboard br = bbbs[(int)PieceType::Rook];
-
-  auto file_of_sq = [&](int sq) -> Bitboard { return masks.file_mask[sq]; };
-  auto rank_of_sq = [&](int sq) -> int { return sq_rank(sq); };
-
-  Bitboard tmp_wr = wr;
-  while (tmp_wr) {
-    int sq = lsb_i(tmp_wr);
-    tmp_wr &= tmp_wr - 1;
-    Bitboard file = file_of_sq(sq);
-    bool has_white_pawn = (file & wp) != 0;
-    bool has_black_pawn = (file & bp) != 0;
-    if (!has_white_pawn && !has_black_pawn)
-      score += ROOK_OPEN_FILE_BONUS;
-    else if (!has_white_pawn && has_black_pawn)
-      score += ROOK_SEMI_OPEN_FILE_BONUS;
-    if (rank_of_sq(sq) == 6) score += ROOK_ON_SEVENTH_BONUS;
-  }
-
-  Bitboard tmp_br = br;
-  while (tmp_br) {
-    int sq = lsb_i(tmp_br);
-    tmp_br &= tmp_br - 1;
-    Bitboard file = file_of_sq(sq);
-    bool has_white_pawn = (file & wp) != 0;
-    bool has_black_pawn = (file & bp) != 0;
-    if (!has_white_pawn && !has_black_pawn)
-      score -= ROOK_OPEN_FILE_BONUS;
-    else if (!has_black_pawn && has_white_pawn)
-      score -= ROOK_SEMI_OPEN_FILE_BONUS;
-    if (rank_of_sq(sq) == 1) score -= ROOK_ON_SEVENTH_BONUS;
-  }
-
-  // verbundene Türme auf offener/halboffener Linie
-  Bitboard wr_all = wr;
-  if (popcnt(wr_all) == 2) {
-    int sq1 = lsb_i(wr_all);
-    Bitboard tmp = wr_all & (wr_all - 1);
-    int sq2 = lsb_i(tmp);
-    if (sq1 >= 0 && sq2 >= 0) {
-      if (sq_file(sq1) == sq_file(sq2) || sq_rank(sq1) == sq_rank(sq2)) {
-        Bitboard f1 = file_of_sq(sq1), f2 = file_of_sq(sq2);
-        if (((f1 & wp) == 0) || ((f2 & wp) == 0)) score += CONNECTED_ROOKS_BONUS;
-      }
+    Bitboard f = M.file[rs] & wPass;
+    while (f) {
+      int ps = lsb_i(f);
+      f &= f - 1;
+      s += behind(rs, ps, true, ROOK_BEHIND_PASSER, ROOK_BEHIND_PASSER / 2);
+    }
+    f = M.file[rs] & bPass;
+    while (f) {
+      int ps = lsb_i(f);
+      f &= f - 1;
+      s += behind(rs, ps, false, ROOK_BEHIND_PASSER / 2, ROOK_BEHIND_PASSER / 3);
     }
   }
-
-  Bitboard br_all = br;
-  if (popcnt(br_all) == 2) {
-    int sq1 = lsb_i(br_all);
-    Bitboard tmp = br_all & (br_all - 1);
-    int sq2 = lsb_i(tmp);
-    if (sq1 >= 0 && sq2 >= 0) {
-      if (sq_file(sq1) == sq_file(sq2) || sq_rank(sq1) == sq_rank(sq2)) {
-        Bitboard f1 = file_of_sq(sq1), f2 = file_of_sq(sq2);
-        if (((f1 & bp) == 0) || ((f2 & bp) == 0)) score -= CONNECTED_ROOKS_BONUS;
-      }
+  t = br;
+  while (t) {
+    int rs = lsb_i(t);
+    t &= t - 1;
+    Bitboard f = M.file[rs] & bPass;
+    while (f) {
+      int ps = lsb_i(f);
+      f &= f - 1;
+      s -= behind(rs, ps, false, ROOK_BEHIND_PASSER, ROOK_BEHIND_PASSER / 2);
+    }
+    f = M.file[rs] & wPass;
+    while (f) {
+      int ps = lsb_i(f);
+      f &= f - 1;
+      s -= behind(rs, ps, true, ROOK_BEHIND_PASSER / 2, ROOK_BEHIND_PASSER / 3);
     }
   }
-
-  return score;
+  return s;
 }
 
-// ---------- Small eval caches (mit Seqlock) ----------
-constexpr size_t EVAL_CACHE_BITS = 14;
-constexpr size_t EVAL_CACHE_SIZE = 1ULL << EVAL_CACHE_BITS;
+// =============================================================================
+// King tropism
+// =============================================================================
+static int king_tropism(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
+  int wK = lsb_i(W[5]);
+  int bK = lsb_i(B[5]);
+  if (wK < 0 || bK < 0) return 0;
+  int sc = 0;
+  auto add = [&](Bitboard bb, int target, int sign, int base) {
+    Bitboard t = bb;
+    while (t) {
+      int s = lsb_i(t);
+      t &= t - 1;
+      int d = king_manhattan(s, target);
+      sc += sign * std::max(0, base - 2 * d);
+    }
+  };
+  add(W[1], bK, +1, 12);
+  add(W[2], bK, +1, 10);
+  add(W[3], bK, +1, 8);
+  add(W[4], bK, +1, 6);
+  add(B[1], wK, -1, 12);
+  add(B[2], wK, -1, 10);
+  add(B[3], wK, -1, 8);
+  add(B[4], wK, -1, 6);
+  return sc / 2;
+}
 
+// =============================================================================
+// Development & piece blocking
+// =============================================================================
+static int development(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
+  Bitboard wMin = W[1] | W[2];
+  Bitboard bMin = B[1] | B[2];
+  Bitboard wInit = sq_bb(Square(1)) | sq_bb(Square(6)) | sq_bb(Square(2)) | sq_bb(Square(5));
+  Bitboard bInit = sq_bb(Square(57)) | sq_bb(Square(62)) | sq_bb(Square(58)) | sq_bb(Square(61));
+  int dW = popcnt(wMin & wInit);
+  int dB = popcnt(bMin & bInit);
+  return (dB - dW) * 16;
+}
+
+static int piece_blocking(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
+  int s = 0;
+  Bitboard wc = (sq_bb(Square(2 << 3 | 2)) | sq_bb(Square(3 << 3 | 2)));
+  Bitboard wd = (sq_bb(Square(2 << 3 | 3)) | sq_bb(Square(3 << 3 | 3)));
+  if ((W[1] | W[2]) & (wc | wd)) s -= 6;
+  Bitboard bc = (sq_bb(Square(5 << 3 | 5)) | sq_bb(Square(4 << 3 | 5)));
+  Bitboard bd = (sq_bb(Square(5 << 3 | 4)) | sq_bb(Square(4 << 3 | 4)));
+  if ((B[1] | B[2]) & (bc | bd)) s += 6;
+  return s;
+}
+
+// =============================================================================
+// Endgame scalers
+// =============================================================================
+static int endgame_scale(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
+  bool onlyBishops =
+      ((W[1] | W[3] | W[4] | B[1] | B[3] | B[4]) == 0) && popcnt(W[2]) == 1 && popcnt(B[2]) == 1;
+  if (onlyBishops) {
+    int wBsq = lsb_i(W[2]);
+    int bBsq = lsb_i(B[2]);
+    bool wLight = ((file_of(wBsq) + rank_of(wBsq)) & 1) != 0;
+    bool bLight = ((file_of(bBsq) + rank_of(bBsq)) & 1) != 0;
+    if (wLight != bLight) return OPP_BISHOPS_SCALE;
+  }
+  return 256;
+}
+
+// =============================================================================
+// Extra: castles & center
+// =============================================================================
+static void castling_and_center(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
+                                int& mg_add, int& eg_add) {
+  init_masks();
+  int wK = lsb_i(W[5]);
+  int bK = lsb_i(B[5]);
+  bool queensOn = (W[4] | B[4]) != 0;
+  auto center_penalty = [&](int ksq, bool white) {
+    if (ksq < 0) return 0;
+    bool centerBack = (ksq == 4 || ksq == 3 || ksq == 5);
+    if (!centerBack) return 0;
+    Bitboard fileE = M.file[4], fileD = M.file[3];
+    Bitboard ownP = white ? W[0] : B[0];
+    Bitboard oppP = white ? B[0] : W[0];
+    int amp = 0;
+    auto openish = [&](Bitboard f) {
+      bool own = (f & ownP), opp = (f & oppP);
+      if (!own && !opp) return 2;
+      if (!own && opp) return 1;
+      return 0;
+    };
+    amp += openish(fileD) + openish(fileE);
+    int base = queensOn ? 36 : 12;
+    return base + amp * 8;
+  };
+  auto castle_bonus = [&](int ksq) { return (ksq == 6 || ksq == 2) ? 28 : 0; };
+  mg_add += castle_bonus(wK);
+  mg_add -= castle_bonus(mirror_sq_black(bK));
+  mg_add += center_penalty(bK, false);
+  mg_add -= center_penalty(wK, true);
+  eg_add += (castle_bonus(wK) / 2) - (castle_bonus(mirror_sq_black(bK)) / 2);
+}
+
+// =============================================================================
+// Eval caches
+// =============================================================================
+constexpr size_t EVAL_BITS = 14, EVAL_SIZE = 1ULL << EVAL_BITS;
+constexpr size_t PAWN_BITS = 12, PAWN_SIZE = 1ULL << PAWN_BITS;
 struct EvalEntry {
   std::atomic<uint64_t> key{0};
   std::atomic<int32_t> score{0};
   std::atomic<uint32_t> age{0};
-  std::atomic<uint32_t> seq{0};  // Seqlock: even=stabil, odd=writer
+  std::atomic<uint32_t> seq{0};
 };
-
-constexpr size_t PAWN_CACHE_BITS = 12;
-constexpr size_t PAWN_CACHE_SIZE = 1ULL << PAWN_CACHE_BITS;
-
 struct PawnEntry {
   std::atomic<uint64_t> key{0};
-  std::atomic<int32_t> pawn_score{0};
+  std::atomic<int32_t> pawn{0};
   std::atomic<uint32_t> age{0};
   std::atomic<uint32_t> seq{0};
 };
-
 struct Evaluator::Impl {
-  std::array<EvalEntry, EVAL_CACHE_SIZE> eval_cache;
-  std::array<PawnEntry, PAWN_CACHE_SIZE> pawn_cache;
-  std::atomic<uint32_t> global_age{1};
-  Impl() {}
-  inline void incr_age() {
-    uint32_t g = global_age.fetch_add(1, std::memory_order_relaxed) + 1;
-    if (g == 0) global_age.store(1, std::memory_order_relaxed);
-  }
+  std::array<EvalEntry, EVAL_SIZE> eval;
+  std::array<PawnEntry, PAWN_SIZE> pawn;
+  std::atomic<uint32_t> age{1};
 };
-
 Evaluator::Evaluator() noexcept {
   m_impl = new Impl();
 }
 Evaluator::~Evaluator() noexcept {
   delete m_impl;
 }
-
 void Evaluator::clearCaches() const noexcept {
   if (!m_impl) return;
-  for (auto& e : m_impl->eval_cache) {
-    e.key.store(0, std::memory_order_relaxed);
-    e.score.store(0, std::memory_order_relaxed);
-    e.age.store(0, std::memory_order_relaxed);
-    e.seq.store(0, std::memory_order_relaxed);
+  for (auto& e : m_impl->eval) {
+    e.key.store(0);
+    e.score.store(0);
+    e.age.store(0);
+    e.seq.store(0);
   }
-  for (auto& p : m_impl->pawn_cache) {
-    p.key.store(0, std::memory_order_relaxed);
-    p.pawn_score.store(0, std::memory_order_relaxed);
-    p.age.store(0, std::memory_order_relaxed);
-    p.seq.store(0, std::memory_order_relaxed);
+  for (auto& p : m_impl->pawn) {
+    p.key.store(0);
+    p.pawn.store(0);
+    p.age.store(0);
+    p.seq.store(0);
   }
-  m_impl->global_age.store(1, std::memory_order_relaxed);
+  m_impl->age.store(1);
+}
+static inline size_t idx_eval(uint64_t k) {
+  return (size_t)k & (EVAL_SIZE - 1);
+}
+static inline size_t idx_pawn(uint64_t k) {
+  return (size_t)k & (PAWN_SIZE - 1);
 }
 
-static inline size_t eval_index_from_key(Bitboard key) noexcept {
-  return static_cast<size_t>(key) & (EVAL_CACHE_SIZE - 1);
-}
-static inline size_t pawn_index_from_key(Bitboard key) noexcept {
-  return static_cast<size_t>(key) & (PAWN_CACHE_SIZE - 1);
+// =============================================================================
+// Material/PST/Phase gather + material counts
+// =============================================================================
+static void material_phase_counts(const std::array<Bitboard, 6>& W,
+                                  const std::array<Bitboard, 6>& B, int& mg, int& eg, int& phase,
+                                  MaterialCounts& mc) {
+  mg = eg = phase = 0;
+  mc = MaterialCounts{};
+  for (int pt = 0; pt < 6; ++pt) {
+    Bitboard bb = W[pt];
+    auto P = (PieceType)pt;
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      mg += VAL_MG[pt] + pst_mg(P, s);
+      eg += VAL_EG[pt] + pst_eg(P, s);
+      phase += PHASE_W[pt];
+      if (pt == 0)
+        mc.P[0]++;
+      else if (pt == 1)
+        mc.N[0]++;
+      else if (pt == 2)
+        mc.B[0]++;
+      else if (pt == 3)
+        mc.R[0]++;
+      else if (pt == 4)
+        mc.Q[0]++;
+    }
+  }
+  for (int pt = 0; pt < 6; ++pt) {
+    Bitboard bb = B[pt];
+    auto P = (PieceType)pt;
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      int ms = mirror_sq_black(s);
+      mg -= VAL_MG[pt] + pst_mg(P, ms);
+      eg -= VAL_EG[pt] + pst_eg(P, ms);
+      phase += PHASE_W[pt];
+      if (pt == 0)
+        mc.P[1]++;
+      else if (pt == 1)
+        mc.N[1]++;
+      else if (pt == 2)
+        mc.B[1]++;
+      else if (pt == 3)
+        mc.R[1]++;
+      else if (pt == 4)
+        mc.Q[1]++;
+    }
+  }
 }
 
-// ---------- Haupt-Eval ----------
+// =============================================================================
+// evaluate() – white POV
+// =============================================================================
 int Evaluator::evaluate(model::Position& pos) const {
-  init_masks_if_needed();
-
+  init_masks();
   const Board& b = pos.getBoard();
-  const uint64_t board_key = static_cast<uint64_t>(pos.hash());
-  const uint64_t pawn_key = static_cast<uint64_t>(pos.getState().pawnKey);
+  uint64_t key = (uint64_t)pos.hash();
+  uint64_t pKey = (uint64_t)pos.getState().pawnKey;
 
-  // Eval-Cache Probe (Seqlock)
+  // probe eval cache
   {
-    const size_t ei = eval_index_from_key(board_key);
-    const auto& slot = m_impl->eval_cache[ei];
-    for (int tries = 0; tries < 3; ++tries) {
-      const uint32_t s1 = slot.seq.load(std::memory_order_acquire);
-      if (s1 & 1u) continue;  // writer active
-      const uint64_t k = slot.key.load(std::memory_order_acquire);
-      const int32_t sc = slot.score.load(std::memory_order_acquire);
-      const uint32_t s2 = slot.seq.load(std::memory_order_acquire);
-      if (s1 == s2 && !(s2 & 1u) && k == board_key) return sc;
-      if (k != board_key) break;
+    auto& e = m_impl->eval[idx_eval(key)];
+    for (int i = 0; i < 2; ++i) {
+      uint32_t s1 = e.seq.load(std::memory_order_acquire);
+      if (s1 & 1u) continue;
+      uint64_t k = e.key.load(std::memory_order_acquire);
+      int32_t sc = e.score.load(std::memory_order_acquire);
+      uint32_t s2 = e.seq.load(std::memory_order_acquire);
+      if (s1 == s2 && !(s2 & 1u) && k == key) return sc;
+      if (k != key) break;
     }
   }
 
-  // Pawn-Cache Probe (Seqlock)
-  int pawn_score = std::numeric_limits<int>::min();
+  // bitboards
+  std::array<Bitboard, 6> W{}, B{};
+  for (int pt = 0; pt < 6; ++pt) {
+    W[pt] = b.getPieces(Color::White, (PieceType)pt);
+    B[pt] = b.getPieces(Color::Black, (PieceType)pt);
+  }
+  Bitboard occ = b.getAllPieces();
+  Bitboard wocc = b.getPieces(Color::White);
+  Bitboard bocc = b.getPieces(Color::Black);
+
+  // material & pst & phase & counts
+  MaterialCounts mc;
+  int mg = 0, eg = 0, phase = 0;
+  material_phase_counts(W, B, mg, eg, phase, mc);
+  int curPhase = clampi(phase, 0, MAX_PHASE);
+
+  // pawn cache
+  int pawnScore = std::numeric_limits<int>::min();
   {
-    const size_t pi = pawn_index_from_key(pawn_key);
-    const auto& ps = m_impl->pawn_cache[pi];
-    for (int tries = 0; tries < 3; ++tries) {
-      const uint32_t s1 = ps.seq.load(std::memory_order_acquire);
+    auto& ps = m_impl->pawn[idx_pawn(pKey)];
+    for (int i = 0; i < 2; ++i) {
+      uint32_t s1 = ps.seq.load(std::memory_order_acquire);
       if (s1 & 1u) continue;
-      const uint64_t k = ps.key.load(std::memory_order_acquire);
-      const int32_t sc = ps.pawn_score.load(std::memory_order_acquire);
-      const uint32_t s2 = ps.seq.load(std::memory_order_acquire);
-      if (s1 == s2 && !(s2 & 1u) && k == pawn_key) {
-        pawn_score = sc;
+      uint64_t k = ps.key.load(std::memory_order_acquire);
+      int32_t sc = ps.pawn.load(std::memory_order_acquire);
+      uint32_t s2 = ps.seq.load(std::memory_order_acquire);
+      if (s1 == s2 && !(s2 & 1u) && k == pKey) {
+        pawnScore = sc;
         break;
       }
-      if (k != pawn_key) break;
+      if (k != pKey) break;
     }
   }
-
-  // Bitboards
-  std::array<Bitboard, 6> wbbs{}, bbbs{};
-  for (int pt = 0; pt < 6; ++pt) {
-    wbbs[pt] = b.getPieces(Color::White, static_cast<PieceType>(pt));
-    bbbs[pt] = b.getPieces(Color::Black, static_cast<PieceType>(pt));
-  }
-  const Bitboard occ = b.getAllPieces();
-  const Bitboard wocc = b.getPieces(Color::White);
-  const Bitboard bocc = b.getPieces(Color::Black);
-
-  // Material + PST + Phase
-  int mg = 0, eg = 0, phase = 0;
-  material_pst_phase(wbbs, bbbs, mg, eg, phase);
-
-  // Pawn-Struktur (falls nicht im Cache)
-  if (pawn_score == std::numeric_limits<int>::min()) {
-    pawn_score = pawn_structure(wbbs[(int)PieceType::Pawn], bbbs[(int)PieceType::Pawn], occ);
+  int wK = lsb_i(W[5]), bK = lsb_i(B[5]);
+  if (pawnScore == std::numeric_limits<int>::min()) {
+    pawnScore = pawn_structure(W[0], B[0], wK, bK, occ);
+    auto& ps = m_impl->pawn[idx_pawn(pKey)];
+    uint32_t s0 = ps.seq.load(std::memory_order_relaxed);
+    ps.seq.store(s0 | 1u, std::memory_order_release);
+    ps.pawn.store(pawnScore, std::memory_order_relaxed);
+    ps.key.store(pKey, std::memory_order_release);
+    ps.age.store(m_impl->age.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
+    ps.seq.store((s0 | 1u) + 1u, std::memory_order_release);
   }
 
-  // Mobilität + Attackmaps
-  int mob_mg = 0, mob_eg = 0;
-  Bitboard attW = 0, attB = 0;
-  mobility_terms(occ, wocc, bocc, wbbs, bbbs, mob_mg, mob_eg, attW, attB);
+  // mobility & attacks
+  AttInfo att = mobility(occ, wocc, bocc, W, B);
 
-  // Threats & Hanging (MG deutlich, EG schwächer)
-  const int thr = threats_and_hanging(occ, wbbs, bbbs, attW, attB);
+  // threats
+  int thr = threats(W, B, att.wAll, att.bAll, occ);
 
-  // King-Safety
-  const int ks = king_safety(wbbs, bbbs);
+  // king safety
+  int ksRaw = king_safety_raw(W, B, occ);
+  int shelter = king_shelter_storm(W, B);
 
-  // Weitere Terme
-  const int bp = bishop_pair(wbbs, bbbs);
-  const int dev = development_score(wbbs, bbbs);
-  const int rim = knight_rim(wbbs, bbbs);
-  const int cent = center_and_outposts(wbbs, bbbs);
-  const int ract =
-      rook_activity(wbbs, bbbs, wbbs[(int)PieceType::Pawn], bbbs[(int)PieceType::Pawn]);
-  const int bbad = bishop_quality(wbbs, bbbs);
-  const int rpp = rook_behind_passed(wbbs, bbbs);
+  // style & structure
+  int bp = bishop_pair_term(W, B);
+  int badB = bad_bishop(W, B);
+  int outp = outposts_center(W, B);
+  int rim = rim_knights(W, B);
+  int ract = rook_activity(W, B, W[0], B[0]);
+  int spc = space_term(W, B);
+  int trop = king_tropism(W, B);
+  int dev = development(W, B);
+  int block = piece_blocking(W, B);
 
-  // MG/EG additiv (Threats/KS stärker in MG)
-  // MG/EG additive Terme (phase-tuned)
-  const int mg_add =
-      /*Pawns*/ pawn_score + /*Mobility*/ mob_mg + /*KingSafety*/ ks + /*Threats*/ thr +
-      /*BishopPair*/ bp + /*Develop*/ dev + /*Rim*/ rim + /*Center*/ cent + /*RookAct*/ ract +
-      /*BadBishop*/ bbad + /*RookBehind*/ (rpp / 3);  // nur leichter MG-Anteil
+  // material imbalance
+  int imb = material_imbalance(mc);
 
-  const int eg_add =
-      /*Pawns*/ (pawn_score / 2) + /*Mobility*/ mob_eg +
-      /*KingSafety*/ (ks / 6)                            // noch schwächer im EG
-      + /*Threats*/ (thr / 3)                            // Threats primär MG
-      + /*BishopPair*/ (bp / 2) + /*Develop*/ (dev / 8)  // Entwicklung im EG sehr schwach
-      + /*Center*/ (cent / 2) + /*RookAct*/ (ract / 3) + /*BadBishop*/ (bbad / 3) +
-      /*RookBehind*/ rpp;  // im EG voll gewichtet
+  // Queens present?
+  bool queensOn = (W[4] | B[4]) != 0;
+  int ksMG = ksRaw * (queensOn ? 120 : 55) / 100;  // [TIGHTER SCALE]
+  int ksEG = ksRaw / 8;
+  int shelterMG = shelter;
+  int shelterEG = shelter / 4;
+
+  // Mix into MG/EG buckets
+  int mg_add = 0, eg_add = 0;
+  mg_add += (pawnScore / 2);
+  eg_add += pawnScore;
+
+  mg_add += att.mg;
+  eg_add += att.eg;
+
+  mg_add += ksMG + shelterMG + ksMG / 3;
+  eg_add += ksEG + shelterEG;
+
+  mg_add += (thr * 3) / 2;
+  eg_add += thr / 2;
+
+  mg_add += bp + imb;
+  eg_add += bp / 2 + imb / 2;
+
+  mg_add += dev * std::min(curPhase, 12) / 12;
+  eg_add += dev / 8;
+
+  mg_add += rim + outp + ract + badB + spc + block + trop;
+  eg_add += (rim / 2) + (outp / 2) + (ract / 3) + (badB / 3) + (spc / 4) + (block / 2) + trop / 3;
+
+  // castles & center
+  castling_and_center(W, B, mg_add, eg_add);
 
   mg += mg_add;
   eg += eg_add;
 
-  // Phasenmischung
-  constexpr int MAX_PHASE = 24;
-  const int cur_phase = std::clamp(phase, 0, MAX_PHASE);
-  const int mg_w = (cur_phase * 256) / MAX_PHASE;
-  const int eg_w = 256 - mg_w;
+  // blend
+  int mg_w = (curPhase * 256) / MAX_PHASE;
+  int eg_w = 256 - mg_w;
+  int score = ((mg * mg_w) + (eg * eg_w)) >> 8;
 
-  int final_score = ((mg * mg_w) + (eg * eg_w)) >> 8;
+  // tempo
+  bool wtm = (pos.getState().sideToMove == Color::White);
+  int tempo = ((TEMPO_MG * mg_w) + (TEMPO_EG * eg_w)) >> 8;
+  score += (wtm ? +tempo : -tempo);
 
-  // Tempo
-  const int tempo = (pos.getState().sideToMove == Color::White ? +TEMPO_BONUS : -TEMPO_BONUS);
-  final_score += tempo;
+  // endgame scaling
+  int scale = endgame_scale(W, B);
+  score = (score * scale) / 256;
 
-  // Age
-  uint32_t age = m_impl->global_age.fetch_add(1, std::memory_order_relaxed) + 1;
-  if (age == 0) {
-    m_impl->global_age.store(1, std::memory_order_relaxed);
+  score = clampi(score, -MATE + 1, MATE - 1);
+
+  // store eval
+  uint32_t age = m_impl->age.fetch_add(1, std::memory_order_relaxed) + 1;
+  if (!age) {
+    m_impl->age.store(1);
     age = 1;
   }
-
-  // Pawn-Cache Store (Seqlock)
-  {
-    const size_t pi = pawn_index_from_key(pawn_key);
-    auto& pe = m_impl->pawn_cache[pi];
-    const uint32_t s0 = pe.seq.load(std::memory_order_relaxed);
-    pe.seq.store(s0 | 1u, std::memory_order_release);  // begin
-    pe.pawn_score.store(pawn_score, std::memory_order_relaxed);
-    pe.age.store(age, std::memory_order_relaxed);
-    pe.key.store(pawn_key, std::memory_order_release);        // publish key last
-    pe.seq.store((s0 | 1u) + 1u, std::memory_order_release);  // end
-  }
-
-  // Eval-Cache Store (Seqlock)
-  {
-    const size_t ei = eval_index_from_key(board_key);
-    auto& ee = m_impl->eval_cache[ei];
-    const uint32_t s0 = ee.seq.load(std::memory_order_relaxed);
-    ee.seq.store(s0 | 1u, std::memory_order_release);  // begin
-    ee.score.store(final_score, std::memory_order_relaxed);
-    ee.age.store(age, std::memory_order_relaxed);
-    ee.key.store(board_key, std::memory_order_release);       // publish key last
-    ee.seq.store((s0 | 1u) + 1u, std::memory_order_release);  // end
-  }
-
-  return final_score;
+  auto& e = m_impl->eval[idx_eval(key)];
+  uint32_t s0 = e.seq.load(std::memory_order_relaxed);
+  e.seq.store(s0 | 1u, std::memory_order_release);
+  e.score.store(score, std::memory_order_relaxed);
+  e.key.store(key, std::memory_order_release);
+  e.age.store(age, std::memory_order_relaxed);
+  e.seq.store((s0 | 1u) + 1u, std::memory_order_release);
+  return score;
 }
 
 }  // namespace lilia::engine

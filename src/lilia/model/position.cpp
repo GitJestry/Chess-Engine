@@ -157,148 +157,158 @@ bool Position::isSquareAttacked(core::Square sq, core::Color by) const {
   return false;
 }
 
-// ------- Schneller SEE (Static Exchange Evaluation) -------
-// Stabil & einfach: wir recomputen die Slider-Strahlen pro Tausch (Anzahl klein).
+// ------- Static Exchange Evaluation (SEE), robust & einfach -------
+// true  => der initiale Schlag m ist taktisch >= 0 (nicht schlechter Tausch)
+// false => klar -EV (negativer Tausch)
 bool Position::see(const model::Move& m) const {
   using core::Color;
   using core::PieceType;
+  using core::Square;
 
+  // Keine Materialänderung -> nicht negativ
   if (!m.isCapture && !m.isEnPassant) return true;
 
-  // Ausgangsdaten (defensiv)
-  auto attackerP = m_board.getPiece(m.from);
-  if (!attackerP) return true;
-  const Color us = attackerP->color;
-  const Color them = ~us;
-  const core::Square sq = m.to;
+  // Angreifer am From
+  auto ap = m_board.getPiece(m.from);
+  if (!ap) return true;  // defensiv
+  const Color us = ap->color;
+  const Color them = static_cast<Color>(~us);
+  const Square to = m.to;
 
-  // Lokale Kopien der Bitboards
+  // Laufende Belegung
   bb::Bitboard occ = m_board.getAllPieces();
-  std::array<bb::Bitboard, 6> W{}, B{};
-  for (int pt = 0; pt < 6; ++pt) {
-    W[pt] = m_board.getPieces(Color::White, static_cast<PieceType>(pt));
-    B[pt] = m_board.getPieces(Color::Black, static_cast<PieceType>(pt));
-  }
 
-  // Opfer entfernen & captured value bestimmen
-  int capturedVal = 0;
-  if (m.isEnPassant) {
-    const core::Square capSq = (us == Color::White) ? static_cast<core::Square>(sq - 8)
-                                                    : static_cast<core::Square>(sq + 8);
-    capturedVal = engine::base_value[(int)PieceType::Pawn];
-    occ &= ~bb::sq_bb(capSq);
-    if (us == Color::White)
-      B[(int)PieceType::Pawn] &= ~bb::sq_bb(capSq);
-    else
-      W[(int)PieceType::Pawn] &= ~bb::sq_bb(capSq);
-  } else {
-    if (auto cap = m_board.getPiece(sq))
-      capturedVal = engine::base_value[(int)cap->type];
-    else
-      return true;  // "Capture" ins Leere -> neutral
-    // Das Opfer wird durch occ-Update implizit entfernt, sobald wir den From-Angreifer ziehen
-  }
-
-  // Angreifer von 'from' entfernen, auf 'sq' stellen (Promo beachten)
-  occ &= ~bb::sq_bb(m.from);
-  if (us == Color::White)
-    W[(int)attackerP->type] &= ~bb::sq_bb(m.from);
-  else
-    B[(int)attackerP->type] &= ~bb::sq_bb(m.from);
-
-  PieceType curOccType = (m.promotion != PieceType::None) ? m.promotion : attackerP->type;
-  Color curOccSide = us;
-
-  occ |= bb::sq_bb(sq);
-  if (curOccSide == Color::White)
-    W[(int)curOccType] |= bb::sq_bb(sq);
-  else
-    B[(int)curOccType] |= bb::sq_bb(sq);
-
-  // Gain-Array
-  int gain[64];
-  int d = 0;
-  gain[d++] = capturedVal;
-
-  auto attackers_to_sq = [&](bb::Bitboard o, Color side) -> std::array<bb::Bitboard, 6> {
-    std::array<bb::Bitboard, 6> out{};
-    const bb::Bitboard pawns =
-        (side == Color::White) ? W[(int)PieceType::Pawn] : B[(int)PieceType::Pawn];
-    const bb::Bitboard knights =
-        (side == Color::White) ? W[(int)PieceType::Knight] : B[(int)PieceType::Knight];
-    const bb::Bitboard bishops =
-        (side == Color::White) ? W[(int)PieceType::Bishop] : B[(int)PieceType::Bishop];
-    const bb::Bitboard rooks =
-        (side == Color::White) ? W[(int)PieceType::Rook] : B[(int)PieceType::Rook];
-    const bb::Bitboard queens =
-        (side == Color::White) ? W[(int)PieceType::Queen] : B[(int)PieceType::Queen];
-    const bb::Bitboard king =
-        (side == Color::White) ? W[(int)PieceType::King] : B[(int)PieceType::King];
-
-    const bb::Bitboard diag = magic::sliding_attacks(magic::Slider::Bishop, sq, o);
-    const bb::Bitboard ortho = magic::sliding_attacks(magic::Slider::Rook, sq, o);
-
-    out[(int)PieceType::Pawn] = pawn_attackers_to(sq, side, pawns);
-    out[(int)PieceType::Knight] = bb::knight_attacks_from(sq) & knights;
-    out[(int)PieceType::Bishop] = diag & bishops;
-    out[(int)PieceType::Rook] = ortho & rooks;
-    out[(int)PieceType::Queen] = (diag | ortho) & queens;
-    out[(int)PieceType::King] = bb::king_attacks_from(sq) & king;
-    return out;
+  // "Lebende" Steine per occ maskieren (keine Kopien pflegen -> billig & sicher)
+  auto alive = [&](Color c, PieceType pt) -> bb::Bitboard {
+    return m_board.getPieces(c, pt) & occ;
   };
 
+  auto val = [&](PieceType pt) -> int { return engine::base_value[(int)pt]; };
+
+  // --- Opfer bestimmen & aus 'occ' entfernen ---
+  PieceType captured = PieceType::None;
+  if (m.isEnPassant) {
+    captured = PieceType::Pawn;
+    const Square capSq = (us == Color::White) ? static_cast<Square>(static_cast<int>(to) - 8)
+                                              : static_cast<Square>(static_cast<int>(to) + 8);
+    occ &= ~bb::sq_bb(capSq);  // der tatsächlich geschlagene Bauer
+  } else {
+    if (auto cap = m_board.getPiece(to))
+      captured = cap->type;
+    else
+      return true;          // "Capture" ins Leere -> nicht negativ
+    occ &= ~bb::sq_bb(to);  // Opfer vom Ziel herunternehmen
+  }
+
+  // Angreifer vom Ausgangsfeld wegnehmen
+  occ &= ~bb::sq_bb(m.from);
+
+  // Nach dem ersten Schlag steht der (ggf. beförderte) Angreifer auf 'to'
+  PieceType curOnTo = (m.promotion != PieceType::None) ? m.promotion : ap->type;
+  occ |= bb::sq_bb(to);
+
+  // Gewinnfolge (klassische swap-Liste)
+  int gain[32];
+  int d = 0;
+  gain[d++] = val(captured);
+
+  // Angreifer auf 'to' für Farbe c mit aktueller occ
+  auto pawn_attackers = [&](Color c) -> bb::Bitboard {
+    const bb::Bitboard tgt = bb::sq_bb(to);
+    if (c == Color::White) {
+      return (bb::sw(tgt) | bb::se(tgt)) & alive(Color::White, PieceType::Pawn);
+    } else {
+      return (bb::nw(tgt) | bb::ne(tgt)) & alive(Color::Black, PieceType::Pawn);
+    }
+  };
+  auto knight_attackers = [&](Color c) -> bb::Bitboard {
+    const bb::Bitboard mask = bb::knight_attacks_from(to);
+    return mask & alive(c, PieceType::Knight);
+  };
+  auto bishop_rays = [&](bb::Bitboard occNow) -> bb::Bitboard {
+    return magic::sliding_attacks(magic::Slider::Bishop, to, occNow);
+  };
+  auto rook_rays = [&](bb::Bitboard occNow) -> bb::Bitboard {
+    return magic::sliding_attacks(magic::Slider::Rook, to, occNow);
+  };
+  auto bishop_like = [&](Color c, bb::Bitboard occNow) -> bb::Bitboard {
+    const bb::Bitboard rays = bishop_rays(occNow);
+    return rays & (alive(c, PieceType::Bishop) | alive(c, PieceType::Queen));
+  };
+  auto rook_like = [&](Color c, bb::Bitboard occNow) -> bb::Bitboard {
+    const bb::Bitboard rays = rook_rays(occNow);
+    return rays & (alive(c, PieceType::Rook) | alive(c, PieceType::Queen));
+  };
+  auto king_attackers = [&](Color c) -> bb::Bitboard {
+    const bb::Bitboard mask = bb::king_attacks_from(to);
+    return mask & alive(c, PieceType::King);
+  };
+
+  auto pick_lva = [&](Color c, Square& fromSq, PieceType& pt) -> bool {
+    bb::Bitboard bbx;
+
+    // Reihenfolge: Bauer, Springer, Läufer, Turm, Dame, König
+    if ((bbx = pawn_attackers(c))) {
+      fromSq = bb::pop_lsb(bbx);
+      pt = PieceType::Pawn;
+      return true;
+    }
+    if ((bbx = knight_attackers(c))) {
+      fromSq = bb::pop_lsb(bbx);
+      pt = PieceType::Knight;
+      return true;
+    }
+    if ((bbx = bishop_like(c, occ) & alive(c, PieceType::Bishop))) {
+      fromSq = bb::pop_lsb(bbx);
+      pt = PieceType::Bishop;
+      return true;
+    }
+    if ((bbx = rook_like(c, occ) & alive(c, PieceType::Rook))) {
+      fromSq = bb::pop_lsb(bbx);
+      pt = PieceType::Rook;
+      return true;
+    }
+    if ((bbx = ((bishop_like(c, occ) | rook_like(c, occ)) & alive(c, PieceType::Queen)))) {
+      fromSq = bb::pop_lsb(bbx);
+      pt = PieceType::Queen;
+      return true;
+    }
+    if ((bbx = king_attackers(c))) {
+      fromSq = bb::pop_lsb(bbx);
+      pt = PieceType::King;
+      return true;
+    }
+    return false;
+  };
+
+  // Gegenseite am Zug: kann sie unseren Stein auf 'to' zurückschlagen?
   Color side = them;
 
   while (true) {
-    // aktuelle Angreifer beider Seiten: wir brauchen nur 'side'
-    auto A = attackers_to_sq(occ, side);
-    int chosenType = -1;
-    core::Square aSq = core::NO_SQUARE;
+    Square from2 = core::NO_SQUARE;
+    PieceType pt2 = PieceType::None;
+    if (!pick_lva(side, from2, pt2)) break;
 
-    // LVA-Order
-    for (int pt = (int)PieceType::Pawn; pt <= (int)PieceType::King; ++pt) {
-      if (A[pt]) {
-        chosenType = pt;
-        aSq = bb::pop_lsb(A[pt]);
-        break;
-      }
-    }
-    if (chosenType < 0) break;  // keiner kann (weiter) schlagen
-
-    // den bisherigen Besetzer vom Ziel entfernen
-    if (curOccSide == Color::White)
-      W[(int)curOccType] &= ~bb::sq_bb(sq);
-    else
-      B[(int)curOccType] &= ~bb::sq_bb(sq);
-
-    // Angreifer vom Ursprungsfeld entfernen
-    if (side == Color::White)
-      W[chosenType] &= ~bb::sq_bb(aSq);
-    else
-      B[chosenType] &= ~bb::sq_bb(aSq);
-    occ &= ~bb::sq_bb(aSq);
-
-    // Gewinn aufbauen: Wert des gerade geschlagenen Besetzers – bisheriger Gewinn
-    gain[d] = engine::base_value[(int)curOccType] - gain[d - 1];
+    // Gewinn der Rücknahme: wir verlieren 'curOnTo'
+    gain[d] = val(curOnTo) - gain[d - 1];
     ++d;
 
-    // Neuer Besetzer ist jetzt der eben ziehende Angreifer
-    curOccSide = side;
-    curOccType = static_cast<PieceType>(chosenType);
+    // Frühe Abbruchbedingung – schon klar -EV
+    if (gain[d - 1] < 0 && d > 1) break;
 
-    // gesetztes Ziel wieder mit neuem Besetzer belegen
-    occ |= bb::sq_bb(sq);
-    if (curOccSide == Color::White)
-      W[(int)curOccType] |= bb::sq_bb(sq);
-    else
-      B[(int)curOccType] |= bb::sq_bb(sq);
+    // Den Rücknehmer vom Ursprungsfeld wegnehmen (steht danach auf 'to')
+    occ &= ~bb::sq_bb(from2);
 
-    side = ~side;
-    if (d >= 63) break;  // Sicherheitsbremse
+    // X-Rays werden durch occ-Änderung automatisch berücksichtigt
+    curOnTo = pt2;  // neuer Besetzer von 'to'
+    side = static_cast<Color>(~side);
+
+    if (d >= 31) break;  // Sicherheitsbremse
   }
 
-  // Rückwärts-Maximierung
+  // Rückwärts maximieren (Seiten dürfen aufhören zu schlagen)
   while (--d) gain[d - 1] = std::max(-gain[d], gain[d - 1]);
+
   return gain[0] >= 0;
 }
 

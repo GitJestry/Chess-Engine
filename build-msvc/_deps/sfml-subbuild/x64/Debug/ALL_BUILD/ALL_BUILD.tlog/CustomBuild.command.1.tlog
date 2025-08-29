@@ -1,0 +1,10 @@
+^C:\USERS\JULIA\ONEDRIVE\DESKTOP\BIG 2025\CHESS-ENGINE\BUILD-MSVC\_DEPS\SFML-SUBBUILD\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SC:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild" "-BC:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild" --check-stamp-file "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

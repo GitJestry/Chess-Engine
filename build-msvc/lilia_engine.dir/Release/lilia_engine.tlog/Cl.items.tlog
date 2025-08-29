@@ -1,0 +1,13 @@
+C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\examples\main.cpp;C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\lilia_engine.dir\Release\main.obj
+C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\board.cpp;C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\lilia_engine.dir\Release\board.obj
+C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\chess_game.cpp;C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\lilia_engine.dir\Release\chess_game.obj
+C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\magic.cpp;C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\lilia_engine.dir\Release\magic.obj
+C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\magic_serializer.cpp;C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\lilia_engine.dir\Release\magic_serializer.obj
+C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\move_generator.cpp;C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\lilia_engine.dir\Release\move_generator.obj
+C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\position.cpp;C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\lilia_engine.dir\Release\position.obj
+C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\model\zobrist.cpp;C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\lilia_engine.dir\Release\zobrist.obj
+C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\engine\bot_engine.cpp;C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\lilia_engine.dir\Release\bot_engine.obj
+C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\engine\engine.cpp;C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\lilia_engine.dir\Release\engine.obj
+C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\engine\eval.cpp;C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\lilia_engine.dir\Release\eval.obj
+C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\engine\search.cpp;C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\lilia_engine.dir\Release\search.obj
+C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\src\lilia\uci\uci.cpp;C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\lilia_engine.dir\Release\uci.obj

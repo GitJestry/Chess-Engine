@@ -12,7 +12,7 @@ constexpr unsigned int CAPTURE_CIRCLE_PX_SIZE =
 
 constexpr unsigned int HOVER_PX_SIZE = SQUARE_PX_SIZE;
 
-constexpr float ANIM_SNAP_SPEED = .02f;
+constexpr float ANIM_SNAP_SPEED = .005f;
 constexpr float ANIM_MOVE_SPEED = .05f;
 
 const std::string STR_TEXTURE_WHITE = "white";

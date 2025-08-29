@@ -21,6 +21,10 @@ inline int ctz64(uint64_t x) noexcept {
   return static_cast<int>(std::countr_zero(x));
 }
 
+inline int clz64(uint64_t x) noexcept {
+  return x ? static_cast<int>(std::countl_zero(x)) : 64;
+}
+
 inline core::Square pop_lsb(Bitboard& b) {
   if (b == 0) return core::NO_SQUARE;
   int index = ctz64(b);

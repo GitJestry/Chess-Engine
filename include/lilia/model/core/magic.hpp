@@ -17,7 +17,7 @@ struct Magic {
 
 void init_magics();
 
-bb::Bitboard sliding_attacks(Slider s, core::Square sq, bb::Bitboard occ);
+bb::Bitboard sliding_attacks(Slider s, core::Square sq, bb::Bitboard occ) noexcept;
 
 const std::array<bb::Bitboard, 64>& rook_masks();
 const std::array<bb::Bitboard, 64>& bishop_masks();

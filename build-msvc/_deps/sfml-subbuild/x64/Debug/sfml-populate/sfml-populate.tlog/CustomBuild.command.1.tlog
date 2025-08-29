@@ -1,0 +1,150 @@
+^C:\USERS\JULIA\ONEDRIVE\DESKTOP\BIG 2025\CHESS-ENGINE\BUILD-MSVC\_DEPS\SFML-SUBBUILD\CMAKEFILES\1C76E8245EEE00445F85811A6D0B4AAB\SFML-POPULATE-MKDIR.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -Dcfgdir=/Debug -P "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/sfml-populate-prefix/tmp/sfml-populate-mkdirs.cmake"
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/sfml-populate-prefix/src/sfml-populate-stamp/Debug/sfml-populate-mkdir"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\JULIA\ONEDRIVE\DESKTOP\BIG 2025\CHESS-ENGINE\BUILD-MSVC\_DEPS\SFML-SUBBUILD\CMAKEFILES\1C76E8245EEE00445F85811A6D0B4AAB\SFML-POPULATE-DOWNLOAD.RULE
+setlocal
+cd "C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\_deps"
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/sfml-populate-prefix/tmp/sfml-populate-gitclone.cmake"
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/sfml-populate-prefix/src/sfml-populate-stamp/Debug/sfml-populate-download"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\JULIA\ONEDRIVE\DESKTOP\BIG 2025\CHESS-ENGINE\BUILD-MSVC\_DEPS\SFML-SUBBUILD\CMAKEFILES\1C76E8245EEE00445F85811A6D0B4AAB\SFML-POPULATE-UPDATE.RULE
+setlocal
+cd "C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\_deps\sfml-src"
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -Dcan_fetch=YES -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/sfml-populate-prefix/tmp/sfml-populate-gitupdate.cmake"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\JULIA\ONEDRIVE\DESKTOP\BIG 2025\CHESS-ENGINE\BUILD-MSVC\_DEPS\SFML-SUBBUILD\CMAKEFILES\1C76E8245EEE00445F85811A6D0B4AAB\SFML-POPULATE-PATCH.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/sfml-populate-prefix/src/sfml-populate-stamp/Debug/sfml-populate-patch"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\JULIA\ONEDRIVE\DESKTOP\BIG 2025\CHESS-ENGINE\BUILD-MSVC\_DEPS\SFML-SUBBUILD\CMAKEFILES\1C76E8245EEE00445F85811A6D0B4AAB\SFML-POPULATE-CONFIGURE.RULE
+setlocal
+cd "C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\_deps\sfml-build"
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/sfml-populate-prefix/src/sfml-populate-stamp/Debug/sfml-populate-configure"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\JULIA\ONEDRIVE\DESKTOP\BIG 2025\CHESS-ENGINE\BUILD-MSVC\_DEPS\SFML-SUBBUILD\CMAKEFILES\1C76E8245EEE00445F85811A6D0B4AAB\SFML-POPULATE-BUILD.RULE
+setlocal
+cd "C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\_deps\sfml-build"
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/sfml-populate-prefix/src/sfml-populate-stamp/Debug/sfml-populate-build"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\JULIA\ONEDRIVE\DESKTOP\BIG 2025\CHESS-ENGINE\BUILD-MSVC\_DEPS\SFML-SUBBUILD\CMAKEFILES\1C76E8245EEE00445F85811A6D0B4AAB\SFML-POPULATE-INSTALL.RULE
+setlocal
+cd "C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\_deps\sfml-build"
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/sfml-populate-prefix/src/sfml-populate-stamp/Debug/sfml-populate-install"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\JULIA\ONEDRIVE\DESKTOP\BIG 2025\CHESS-ENGINE\BUILD-MSVC\_DEPS\SFML-SUBBUILD\CMAKEFILES\1C76E8245EEE00445F85811A6D0B4AAB\SFML-POPULATE-TEST.RULE
+setlocal
+cd "C:\Users\julia\OneDrive\Desktop\big 2025\Chess-Engine\build-msvc\_deps\sfml-build"
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/sfml-populate-prefix/src/sfml-populate-stamp/Debug/sfml-populate-test"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\JULIA\ONEDRIVE\DESKTOP\BIG 2025\CHESS-ENGINE\BUILD-MSVC\_DEPS\SFML-SUBBUILD\CMAKEFILES\E1CE93308EE822D8AB186055D86908B4\SFML-POPULATE-COMPLETE.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E make_directory "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/CMakeFiles/Debug"
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/CMakeFiles/Debug/sfml-populate-complete"
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/sfml-populate-prefix/src/sfml-populate-stamp/Debug/sfml-populate-done"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\JULIA\ONEDRIVE\DESKTOP\BIG 2025\CHESS-ENGINE\BUILD-MSVC\_DEPS\SFML-SUBBUILD\CMAKEFILES\79A410B9C5B6AD60E3FE3A058540ACC6\SFML-POPULATE.RULE
+setlocal
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\JULIA\ONEDRIVE\DESKTOP\BIG 2025\CHESS-ENGINE\BUILD-MSVC\_DEPS\SFML-SUBBUILD\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SC:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild" "-BC:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild" --check-stamp-file "C:/Users/julia/OneDrive/Desktop/big 2025/Chess-Engine/build-msvc/_deps/sfml-subbuild/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
