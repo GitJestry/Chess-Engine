@@ -416,14 +416,14 @@ void Position::applyMove(const Move& m, StateInfo& st) {
     if (cap && cap->color == them) isCap = true;
   }
 
-  // ------- [ACC] Capture aus Acc entfernen (vor Board-Mutation)
+  // ------- Capture entfernen (vor Board-Mutation)
   if (isEP) {
     core::Square capSq = (us == core::Color::White) ? static_cast<core::Square>(m.to - 8)
                                                     : static_cast<core::Square>(m.to + 8);
     auto cap = m_board.getPiece(capSq);
     st.captured = cap.value_or(bb::Piece{core::PieceType::None, them});
     if (cap) {
-      evalAcc_.remove_piece(them, core::PieceType::Pawn, (int)capSq);  // [ACC]
+      evalAcc_.remove_piece(them, core::PieceType::Pawn, (int)capSq);
       hashXorPiece(them, core::PieceType::Pawn, capSq);
       m_board.removePiece(capSq);
     }
@@ -431,7 +431,7 @@ void Position::applyMove(const Move& m, StateInfo& st) {
     auto cap = m_board.getPiece(m.to);
     st.captured = cap.value_or(bb::Piece{core::PieceType::None, them});
     if (cap) {
-      evalAcc_.remove_piece(them, st.captured.type, (int)m.to);  // [ACC]
+      evalAcc_.remove_piece(them, st.captured.type, (int)m.to);
       hashXorPiece(them, st.captured.type, m.to);
       m_board.removePiece(m.to);
     }
@@ -439,63 +439,64 @@ void Position::applyMove(const Move& m, StateInfo& st) {
     st.captured = bb::Piece{core::PieceType::None, them};
   }
 
-  // ziehende Figur abtragen
+  // ------- Mover platzieren (Fast-Path für quiet moves)
   bb::Piece placed = *fromPiece;
-  hashXorPiece(us, placed.type, m.from);
-  m_board.removePiece(m.from);
 
-  // Promotion anwenden
-  if (m.promotion != core::PieceType::None) placed.type = m.promotion;
+  const bool fastQuiet = (!isCap && !isEP && !isCastleMove && m.promotion == core::PieceType::None);
 
-  // ------- [ACC] Mover updaten (Move / Promotion)
-  if (m.promotion != core::PieceType::None) {
-    evalAcc_.remove_piece(us, fromPiece->type, (int)m.from);  // [ACC]
-    evalAcc_.add_piece(us, placed.type, (int)m.to);           // [ACC]
+  if (fastQuiet) {
+    // EvalAcc & Hash
+    evalAcc_.move_piece(us, placed.type, (int)m.from, (int)m.to);
+    hashXorPiece(us, placed.type, m.from);
+    m_board.movePiece_noCapture(m.from, m.to);
+    hashXorPiece(us, placed.type, m.to);
   } else {
-    evalAcc_.move_piece(us, fromPiece->type, (int)m.from, (int)m.to);  // [ACC]
+    // alter (sicherer) Weg inkl. Promotion
+    hashXorPiece(us, placed.type, m.from);
+    m_board.removePiece(m.from);
+
+    if (m.promotion != core::PieceType::None) placed.type = m.promotion;
+
+    if (m.promotion != core::PieceType::None) {
+      evalAcc_.remove_piece(us, fromPiece->type, (int)m.from);
+      evalAcc_.add_piece(us, placed.type, (int)m.to);
+    } else {
+      evalAcc_.move_piece(us, fromPiece->type, (int)m.from, (int)m.to);
+    }
+
+    hashXorPiece(us, placed.type, m.to);
+    m_board.setPiece(m.to, placed);
   }
 
-  // Figur setzen
-  hashXorPiece(us, placed.type, m.to);
-  m_board.setPiece(m.to, placed);
-
-  // Rochade: Turm versetzen
+  // ------- Rochade: Turm versetzen (jetzt auch Fast-Path)
   if (isCastleMove) {
     if (us == core::Color::White) {
       if (m.to == static_cast<core::Square>(6) || m.castle == CastleSide::KingSide) {
         // H1 -> F1
-        evalAcc_.move_piece(us, core::PieceType::Rook, (int)bb::H1, 5);  // [ACC]
+        evalAcc_.move_piece(us, core::PieceType::Rook, (int)bb::H1, 5);
         hashXorPiece(core::Color::White, core::PieceType::Rook, bb::H1);
-        m_board.removePiece(bb::H1);
+        m_board.movePiece_noCapture(bb::H1, static_cast<core::Square>(5));
         hashXorPiece(core::Color::White, core::PieceType::Rook, static_cast<core::Square>(5));
-        m_board.setPiece(static_cast<core::Square>(5),
-                         bb::Piece{core::PieceType::Rook, core::Color::White});
       } else {
         // A1 -> D1
-        evalAcc_.move_piece(us, core::PieceType::Rook, (int)bb::A1, 3);  // [ACC]
+        evalAcc_.move_piece(us, core::PieceType::Rook, (int)bb::A1, 3);
         hashXorPiece(core::Color::White, core::PieceType::Rook, bb::A1);
-        m_board.removePiece(bb::A1);
+        m_board.movePiece_noCapture(bb::A1, static_cast<core::Square>(3));
         hashXorPiece(core::Color::White, core::PieceType::Rook, static_cast<core::Square>(3));
-        m_board.setPiece(static_cast<core::Square>(3),
-                         bb::Piece{core::PieceType::Rook, core::Color::White});
       }
     } else {
       if (m.to == static_cast<core::Square>(62) || m.castle == CastleSide::KingSide) {
         // H8 -> F8
-        evalAcc_.move_piece(us, core::PieceType::Rook, (int)bb::H8, 61);  // [ACC]
+        evalAcc_.move_piece(us, core::PieceType::Rook, (int)bb::H8, 61);
         hashXorPiece(core::Color::Black, core::PieceType::Rook, bb::H8);
-        m_board.removePiece(bb::H8);
+        m_board.movePiece_noCapture(bb::H8, static_cast<core::Square>(61));
         hashXorPiece(core::Color::Black, core::PieceType::Rook, static_cast<core::Square>(61));
-        m_board.setPiece(static_cast<core::Square>(61),
-                         bb::Piece{core::PieceType::Rook, core::Color::Black});
       } else {
         // A8 -> D8
-        evalAcc_.move_piece(us, core::PieceType::Rook, (int)bb::A8, 59);  // [ACC]
+        evalAcc_.move_piece(us, core::PieceType::Rook, (int)bb::A8, 59);
         hashXorPiece(core::Color::Black, core::PieceType::Rook, bb::A8);
-        m_board.removePiece(bb::A8);
+        m_board.movePiece_noCapture(bb::A8, static_cast<core::Square>(59));
         hashXorPiece(core::Color::Black, core::PieceType::Rook, static_cast<core::Square>(59));
-        m_board.setPiece(static_cast<core::Square>(59),
-                         bb::Piece{core::PieceType::Rook, core::Color::Black});
       }
     }
   }
@@ -514,17 +515,17 @@ void Position::applyMove(const Move& m, StateInfo& st) {
       m_state.enPassantSquare = static_cast<core::Square>(m.from - 8);
   }
 
-  // Castling-Rechte updaten (schnell über Tabellen)
+  // Castling-Rechte
   const std::uint8_t prevCR = m_state.castlingRights;
   m_state.castlingRights &= ~(CR_CLEAR_FROM[(int)m.from] | CR_CLEAR_TO[(int)m.to]);
   if (prevCR != m_state.castlingRights) hashSetCastling(prevCR, m_state.castlingRights);
 
-  // sideToMove flippen
+  // Seite flippen
   hashXorSide();
   m_state.sideToMove = them;
   if (them == core::Color::White) ++m_state.fullmoveNumber;
 
-  // neues EP ggf. in Hash
+  // EP in Hash
   xorEPRelevant();
 }
 
@@ -547,60 +548,65 @@ void Position::unapplyMove(const StateInfo& st) {
   // 50-Züge
   m_state.halfmoveClock = st.prevHalfmoveClock;
 
-  // Figuren zurück
   const Move& m = st.move;
-  core::Color us = m_state.sideToMove;  // mover's side
+  core::Color us = m_state.sideToMove;
   core::Color them = ~us;
 
-  // Rochade rückgängig (Turm zurück)
+  // Rochade rückgängig (Turm zurück) – Fast-Path
   if (m.castle != CastleSide::None) {
     if (us == core::Color::White) {
       if (m.castle == CastleSide::KingSide) {
         // F1 -> H1
-        evalAcc_.move_piece(us, core::PieceType::Rook, 5, (int)bb::H1);  // [ACC]
+        evalAcc_.move_piece(us, core::PieceType::Rook, 5, (int)bb::H1);
         hashXorPiece(core::Color::White, core::PieceType::Rook, static_cast<core::Square>(5));
-        m_board.removePiece(static_cast<core::Square>(5));
+        m_board.movePiece_noCapture(static_cast<core::Square>(5), bb::H1);
         hashXorPiece(core::Color::White, core::PieceType::Rook, bb::H1);
-        m_board.setPiece(bb::H1, bb::Piece{core::PieceType::Rook, core::Color::White});
       } else {
         // D1 -> A1
-        evalAcc_.move_piece(us, core::PieceType::Rook, 3, (int)bb::A1);  // [ACC]
+        evalAcc_.move_piece(us, core::PieceType::Rook, 3, (int)bb::A1);
         hashXorPiece(core::Color::White, core::PieceType::Rook, static_cast<core::Square>(3));
-        m_board.removePiece(static_cast<core::Square>(3));
+        m_board.movePiece_noCapture(static_cast<core::Square>(3), bb::A1);
         hashXorPiece(core::Color::White, core::PieceType::Rook, bb::A1);
-        m_board.setPiece(bb::A1, bb::Piece{core::PieceType::Rook, core::Color::White});
       }
     } else {
       if (m.castle == CastleSide::KingSide) {
         // F8 -> H8
-        evalAcc_.move_piece(us, core::PieceType::Rook, 61, (int)bb::H8);  // [ACC]
+        evalAcc_.move_piece(us, core::PieceType::Rook, 61, (int)bb::H8);
         hashXorPiece(core::Color::Black, core::PieceType::Rook, static_cast<core::Square>(61));
-        m_board.removePiece(static_cast<core::Square>(61));
+        m_board.movePiece_noCapture(static_cast<core::Square>(61), bb::H8);
         hashXorPiece(core::Color::Black, core::PieceType::Rook, bb::H8);
-        m_board.setPiece(bb::H8, bb::Piece{core::PieceType::Rook, core::Color::Black});
       } else {
         // D8 -> A8
-        evalAcc_.move_piece(us, core::PieceType::Rook, 59, (int)bb::A8);  // [ACC]
+        evalAcc_.move_piece(us, core::PieceType::Rook, 59, (int)bb::A8);
         hashXorPiece(core::Color::Black, core::PieceType::Rook, static_cast<core::Square>(59));
-        m_board.removePiece(static_cast<core::Square>(59));
+        m_board.movePiece_noCapture(static_cast<core::Square>(59), bb::A8);
         hashXorPiece(core::Color::Black, core::PieceType::Rook, bb::A8);
-        m_board.setPiece(bb::A8, bb::Piece{core::PieceType::Rook, core::Color::Black});
       }
     }
   }
 
-  // Zieher zurück auf from (Promo rückverwandeln)
+  // -------- Fast-Path: kein Capture & keine Promotion -> nur den Mover zurückschieben
+  if (m.promotion == core::PieceType::None && st.captured.type == core::PieceType::None) {
+    if (auto moving = m_board.getPiece(m.to)) {
+      evalAcc_.move_piece(us, moving->type, (int)m.to, (int)m.from);
+      hashXorPiece(us, moving->type, m.to);
+      m_board.movePiece_noCapture(m.to, m.from);
+      hashXorPiece(us, moving->type, m.from);
+    }
+    return;  // nichts weiter zu tun
+  }
+
+  // -------- Allgemeiner (alter) Weg für Promo/Captures
   if (auto moving = m_board.getPiece(m.to)) {
     m_board.removePiece(m.to);
     bb::Piece placed = *moving;
     if (m.promotion != core::PieceType::None) placed.type = core::PieceType::Pawn;
 
-    // ------- [ACC] Mover rückgängig
     if (m.promotion != core::PieceType::None) {
-      evalAcc_.remove_piece(us, moving->type, (int)m.to);          // [ACC]
-      evalAcc_.add_piece(us, core::PieceType::Pawn, (int)m.from);  // [ACC]
+      evalAcc_.remove_piece(us, moving->type, (int)m.to);
+      evalAcc_.add_piece(us, core::PieceType::Pawn, (int)m.from);
     } else {
-      evalAcc_.move_piece(us, moving->type, (int)m.to, (int)m.from);  // [ACC]
+      evalAcc_.move_piece(us, moving->type, (int)m.to, (int)m.from);
     }
 
     hashXorPiece(us, moving->type, m.to);
@@ -615,12 +621,12 @@ void Position::unapplyMove(const StateInfo& st) {
     core::Square capSq = (us == core::Color::White) ? static_cast<core::Square>(m.to - 8)
                                                     : static_cast<core::Square>(m.to + 8);
     if (st.captured.type != core::PieceType::None) {
-      evalAcc_.add_piece(them, st.captured.type, (int)capSq);  // [ACC]
+      evalAcc_.add_piece(them, st.captured.type, (int)capSq);
       hashXorPiece(~us, st.captured.type, capSq);
       m_board.setPiece(capSq, st.captured);
     }
   } else if (st.captured.type != core::PieceType::None) {
-    evalAcc_.add_piece(them, st.captured.type, (int)m.to);  // [ACC]
+    evalAcc_.add_piece(them, st.captured.type, (int)m.to);
     hashXorPiece(~us, st.captured.type, m.to);
     m_board.setPiece(m.to, st.captured);
   }
