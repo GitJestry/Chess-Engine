@@ -12,7 +12,7 @@ namespace lilia::engine {
 
 struct Engine::Impl {
   EngineConfig cfg;
-  model::TT4 tt;
+  model::TT5 tt;
 
   // Gemeinsame Evaluator-Instanz, von allen Searches/Threads genutzt
   std::shared_ptr<const Evaluator> eval;

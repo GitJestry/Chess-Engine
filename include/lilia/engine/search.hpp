@@ -22,7 +22,7 @@
 
 #include "../model/move_generator.hpp"
 #include "../model/position.hpp"
-#include "../model/tt4.hpp"
+#include "../model/tt5.hpp"
 #include "config.hpp"
 #include "eval.hpp"
 
@@ -57,7 +57,7 @@ class Evaluator;
 // -----------------------------------------------------------------------------
 class Search {
  public:
-  Search(model::TT4& tt, std::shared_ptr<const Evaluator> eval, const EngineConfig& cfg);
+  Search(model::TT5& tt, std::shared_ptr<const Evaluator> eval, const EngineConfig& cfg);
   ~Search() = default;
 
   // Non-copyable / non-movable – bewusst, um versehentliches Kopieren zu verhindern
@@ -73,7 +73,7 @@ class Search {
   [[nodiscard]] const SearchStats& getStats() const noexcept { return stats; }
   void clearSearchState();  // Killers/History resetten
 
-  model::TT4& ttRef() noexcept { return tt; }
+  model::TT5& ttRef() noexcept { return tt; }
 
  private:
   // Kernfunktionen
@@ -85,7 +85,7 @@ class Search {
   // ---------------------------------------------------------------------------
   // Daten
   // ---------------------------------------------------------------------------
-  model::TT4& tt;
+  model::TT5& tt;
   model::MoveGenerator mg;
   const EngineConfig& cfg;
   std::shared_ptr<const Evaluator> eval_;

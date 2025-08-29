@@ -198,7 +198,7 @@ static inline int gen_evasions(model::MoveGenerator& mg, model::Position& pos, m
 
 // ---------- Search ----------
 
-Search::Search(model::TT4& tt_, std::shared_ptr<const Evaluator> eval_, const EngineConfig& cfg_)
+Search::Search(model::TT5& tt_, std::shared_ptr<const Evaluator> eval_, const EngineConfig& cfg_)
     : tt(tt_), mg(), cfg(cfg_), eval_(std::move(eval_)) {
   for (auto& kk : killers) {
     kk[0] = model::Move{};
@@ -237,7 +237,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 
   // QTT probe (depth == 0)
   {
-    model::TTEntry4 tte{};
+    model::TTEntry5 tte{};
     if (tt.probe_into(pos.hash(), tte)) {
       const int ttVal = decode_tt_score(tte.value, kply);
       if (tte.depth == 0) {
@@ -461,7 +461,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   model::Move ttMove{};
   bool haveTT = false;
   int ttVal = 0;
-  if (model::TTEntry4 tte{}; tt.probe_into(pos.hash(), tte)) {
+  if (model::TTEntry5 tte{}; tt.probe_into(pos.hash(), tte)) {
     haveTT = true;
     ttMove = tte.best;
     ttVal = decode_tt_score(tte.value, cap_ply(ply));
@@ -764,7 +764,7 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
   std::vector<model::Move> pv;
   std::unordered_set<uint64_t> seen;
   for (int i = 0; i < max_len; ++i) {
-    model::TTEntry4 tte{};
+    model::TTEntry5 tte{};
     if (!tt.probe_into(pos.hash(), tte)) break;
     model::Move m = tte.best;
 
@@ -818,7 +818,7 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
   // Aspiration seed
   int lastScoreGuess = 0;
   if (cfg.useAspiration) {
-    model::TTEntry4 tte{};
+    model::TTEntry5 tte{};
     if (tt.probe_into(pos.hash(), tte)) lastScoreGuess = decode_tt_score(tte.value, 0);
   }
 
@@ -842,7 +842,7 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     // Re-Order Root-Moves
     model::Move rootTT{};
     bool haveRootTT = false;
-    if (model::TTEntry4 tte{}; tt.probe_into(pos.hash(), tte)) {
+    if (model::TTEntry5 tte{}; tt.probe_into(pos.hash(), tte)) {
       haveRootTT = true;
       rootTT = tte.best;
     }

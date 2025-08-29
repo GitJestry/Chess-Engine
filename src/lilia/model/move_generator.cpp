@@ -151,8 +151,9 @@ inline bool ep_is_legal_fast(const Board& b, Color side, Square from, Square to)
 
 inline bool attackedBy(const Board& b, Square sq, Color by, bb::Bitboard occ) noexcept {
   const bb::Bitboard target = bb::sq_bb(sq);
+  occ &= ~target;  // <— Ziel-Feld aus der Belegung maskieren
 
-  // Pawns
+  // Pawn
   const bb::Bitboard pawns = b.getPieces(by, PT::Pawn);
   const bb::Bitboard pawnAtkToSq =
       (by == Color::White) ? (bb::sw(target) | bb::se(target)) : (bb::nw(target) | bb::ne(target));
@@ -167,7 +168,6 @@ inline bool attackedBy(const Board& b, Square sq, Color by, bb::Bitboard occ) no
   if (ortho & (b.getPieces(by, PT::Rook) | b.getPieces(by, PT::Queen))) return true;
 
   if (bb::king_attacks_from(sq) & b.getPieces(by, PT::King)) return true;
-
   return false;
 }
 
@@ -403,14 +403,22 @@ inline void genKingMoves_T(const Board& board, const GameState& st, Color side, 
   const bb::Bitboard enemyNoK = opp.all & ~enemyK;
   const bb::Bitboard atk = bb::king_attacks_from(from);
 
+  const bb::Bitboard fromBB = bb::sq_bb(from);
+
+  // Captures
   for (bb::Bitboard caps = atk & enemyNoK; caps;) {
     Square to = bb::pop_lsb(caps);
-    if (!attackedBy(board, to, ~side, occ))
+    const bb::Bitboard toBB = bb::sq_bb(to);
+    const bb::Bitboard occ2 = (occ & ~fromBB & ~toBB);  // König weg, geschlagener weg
+    if (!attackedBy(board, to, ~side, occ2))
       emit(Move{from, to, PT::None, true, false, CastleSide::None});
   }
+
+  // Quiet
   for (bb::Bitboard quiet = atk & ~occ; quiet;) {
     Square to = bb::pop_lsb(quiet);
-    if (!attackedBy(board, to, ~side, occ))
+    const bb::Bitboard occ2 = (occ & ~fromBB);  // König weg
+    if (!attackedBy(board, to, ~side, occ2))
       emit(Move{from, to, PT::None, false, false, CastleSide::None});
   }
 
@@ -493,20 +501,28 @@ inline void generateEvasions_T(const Board& b, const GameState& st, Emit&& emit)
 
   const int numCheckers = bb::popcount(checkers);
 
-  // Königszüge (nur in nicht angegriffene Felder)
+  // Königszüge (nur in nicht angegriffene Felder) – mit korrekter Belegung
   {
     const bb::Bitboard enemyK = b.getPieces(them, PT::King);
     const bb::Bitboard enemyNoK = b.getPieces(them) & ~enemyK;
     const bb::Bitboard atk = bb::king_attacks_from(ksq);
 
+    const bb::Bitboard fromBB = bb::sq_bb(ksq);
+
+    // Captures
     for (bb::Bitboard caps = atk & enemyNoK; caps;) {
-      const Square to = bb::pop_lsb(caps);
-      if (!attackedBy(b, to, them, occ))
+      Square to = bb::pop_lsb(caps);
+      const bb::Bitboard toBB = bb::sq_bb(to);
+      const bb::Bitboard occ2 = (occ & ~fromBB & ~toBB);  // König weg, geschlagener weg
+      if (!attackedBy(b, to, them, occ2))
         emit(Move{ksq, to, PT::None, true, false, CastleSide::None});
     }
+
+    // Quiet
     for (bb::Bitboard quiet = atk & ~occ; quiet;) {
-      const Square to = bb::pop_lsb(quiet);
-      if (!attackedBy(b, to, them, occ))
+      Square to = bb::pop_lsb(quiet);
+      const bb::Bitboard occ2 = (occ & ~fromBB);  // König weg
+      if (!attackedBy(b, to, them, occ2))
         emit(Move{ksq, to, PT::None, false, false, CastleSide::None});
     }
   }
@@ -517,18 +533,30 @@ inline void generateEvasions_T(const Board& b, const GameState& st, Emit&& emit)
   bb::Bitboard blockMask = 0ULL;
   if (numCheckers == 1) {
     const Square checkerSq = static_cast<Square>(bb::ctz64(checkers));
-    const bb::Bitboard checkerBB = bb::sq_bb(checkerSq);
-    // Linie zwischen K und Checker (einmalig; Queen wird hier automatisch bedient)
+    // Linie zwischen K und Checker; für Springer/Bauer ergibt das 0
     blockMask = squares_between(ksq, checkerSq);
   }
   const bb::Bitboard evasionTargets = checkers | blockMask;
 
-  // Nur Nicht-Königszüge zulassen, die den Check beenden (oder EP als Spezialfall)
+  // Nur Nicht-Königszüge zulassen, die den Check beenden (EP extra prüfen)
   auto sink = [&](const Move& m) {
     if (m.from == ksq) return;
-    const bool isEP = m.isEnPassant;
+
+    if (m.isEnPassant) {
+      // Belegung nach EP simulieren
+      const bb::Bitboard fromBB = bb::sq_bb(m.from);
+      const bb::Bitboard toBB = bb::sq_bb(m.to);
+      const Square capSq = (us == Color::White) ? static_cast<Square>((int)m.to - 8)
+                                                : static_cast<Square>((int)m.to + 8);
+      const bb::Bitboard capBB = bb::sq_bb(capSq);
+      const bb::Bitboard occAfter = (occ & ~fromBB & ~capBB) | toBB;
+
+      if (!attackedBy(b, ksq, them, occAfter)) emit(m);  // EP beseitigt das Schach
+      return;
+    }
+
     const bool hits = (bb::sq_bb(m.to) & evasionTargets) != 0ULL;
-    if (hits || isEP) emit(m);
+    if (hits) emit(m);
   };
 
   // Precomputation für reguläre Moves
@@ -537,7 +565,10 @@ inline void generateEvasions_T(const Board& b, const GameState& st, Emit&& emit)
   const SideSets opp = side_sets(b, them);
 
   // Generiere alle Pseudolegalen (ohne König) und filtere via sink
-  genPawnMoves_T<core::Color::White>(b, st, occ2, our, opp, sink);  // Side wird im sink begrenzt
+  if (us == core::Color::White)
+    genPawnMoves_T<core::Color::White>(b, st, occ2, our, opp, sink);
+  else
+    genPawnMoves_T<core::Color::Black>(b, st, occ2, our, opp, sink);
   genKnightMoves_T(b, our, opp, occ2, sink);
   genBishopMoves_T(our, opp, occ2, sink);
   genRookMoves_T(our, opp, occ2, sink);
