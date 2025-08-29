@@ -91,10 +91,18 @@ class Position {
   // EP-Hash nur dann xoren, wenn EP in der aktuellen State-Kombination relevant ist.
   // Wichtig: Vor State-Änderungen aufrufen, um "alt" aus dem Hash zu entfernen,
   // und NACH allen State-Änderungen erneut, um "neu" zu addieren.
-  inline void xorEPRelevant() {
-    if (m_state.enPassantSquare != core::NO_SQUARE) {
-      m_hash ^= Zobrist::epHashIfRelevant(m_board, m_state);
-    }
+  void xorEPRelevant() {
+    const auto ep = m_state.enPassantSquare;
+    if (ep == core::NO_SQUARE) return;
+
+    const int epIdx = static_cast<int>(ep);
+    const int file = epIdx & 7;
+
+    // EP zählt nur, wenn die Seite am Zug das EP-Feld pseudo-legal schlagen kann
+    const int ci = bb::ci(m_state.sideToMove);
+    const bb::Bitboard pawns = m_board.getPieces(m_state.sideToMove, core::PieceType::Pawn);
+
+    if (pawns & Zobrist::epCaptureMask[ci][epIdx]) m_hash ^= Zobrist::epFile[file];
   }
 };
 

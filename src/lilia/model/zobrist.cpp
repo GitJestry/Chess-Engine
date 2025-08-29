@@ -10,6 +10,7 @@ bb::Bitboard Zobrist::piece[2][6][64];
 bb::Bitboard Zobrist::castling[16];
 bb::Bitboard Zobrist::epFile[8];
 bb::Bitboard Zobrist::side;
+bb::Bitboard Zobrist::epCaptureMask[2][64];
 
 namespace {
 // SplitMix64: schnell, gute Streuung, deterministisch
@@ -22,6 +23,18 @@ static inline std::uint64_t splitmix64(std::uint64_t& x) {
 
 // Thread-sichere Einmal-Init für Zobrist::init()
 std::once_flag g_once_init;
+
+// EP-Capture-Masken vorbereiten:
+// Für ein Ziel 't' (EP-Square) kommen Angreifer von:
+//  - Weiß: SW(t) | SE(t)
+//  - Schwarz: NW(t) | NE(t)
+static void build_ep_capture_masks() {
+  for (int s = 0; s < 64; ++s) {
+    const bb::Bitboard t = bb::sq_bb(static_cast<core::Square>(s));
+    Zobrist::epCaptureMask[bb::ci(core::Color::White)][s] = bb::sw(t) | bb::se(t);
+    Zobrist::epCaptureMask[bb::ci(core::Color::Black)][s] = bb::nw(t) | bb::ne(t);
+  }
+}
 }  // namespace
 
 void Zobrist::init(std::uint64_t seed) {
@@ -46,33 +59,14 @@ void Zobrist::init(std::uint64_t seed) {
   for (int f = 0; f < 8; ++f) epFile[f] = next();
 
   side = next();
+
+  // EP-Angriffsquellen vorbereiten (deterministisch, unabhängig vom Seed)
+  build_ep_capture_masks();
 }
 
 void Zobrist::init() {
   // Fester, reproduzierbarer Seed
   std::call_once(g_once_init, [] { Zobrist::init(0xC0FFEE123456789ULL); });
-}
-
-// EP nur dann hashen, wenn ein (pseudo-legaler) EP-Schlag existiert.
-// Das spart viele unnötige TT-Kollisionen und fixt Repetition-Bugs.
-bb::Bitboard Zobrist::epHashIfRelevant(const Board& b, const GameState& st) {
-  if (st.enPassantSquare == core::NO_SQUARE) return 0;
-
-  const core::Square ep = st.enPassantSquare;
-  const int file = static_cast<int>(ep) & 7;  // 0..7
-
-  // Gibt es eine Seite-zu-Zug Bauernfigur, die das EP-Feld angreifen kann?
-  const auto sideToMove = st.sideToMove;
-  bb::Bitboard pawns = b.getPieces(sideToMove, core::PieceType::Pawn);
-  if (!pawns) return 0;
-
-  const bb::Bitboard epBB = bb::sq_bb(ep);
-  const bb::Bitboard attacks = (sideToMove == core::Color::White) ? bb::white_pawn_attacks(pawns)
-                                                                  : bb::black_pawn_attacks(pawns);
-
-  // Pseudo-legal reicht (kein voller Legalitätscheck nötig)
-  if (attacks & epBB) return epFile[file];
-  return 0;
 }
 
 }  // namespace lilia::model
