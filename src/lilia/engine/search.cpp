@@ -147,7 +147,6 @@ inline int pidx(core::PieceType pt) {
 
 // Schnelles MVV/LVA (SEE-frei) fürs Ordering
 
-
 // --- kleine Int-Tools / History-Update ---
 
 static inline int ilog2_u32(unsigned v) {
@@ -192,6 +191,25 @@ static inline int gen_evasions(model::MoveGenerator& mg, model::Position& pos, m
                                int cap) {
   engine::MoveBuffer buf(out, cap);
   return mg.generateEvasions(pos.getBoard(), pos.getState(), buf);
+}
+
+static inline bool quiet_pawn_push_creates_attack(const model::Board& b, const model::Move& m,
+                                                  core::Color us) {
+  using PT = core::PieceType;
+  if (m.isCapture || m.promotion != PT::None) return false;
+
+  auto mover = b.getPiece(m.from);
+  if (!mover || mover->type != PT::Pawn) return false;
+
+  const model::bb::Bitboard toBB = model::bb::sq_bb(m.to);
+  const model::bb::Bitboard atk = (us == core::Color::White)
+                                      ? (model::bb::ne(toBB) | model::bb::nw(toBB))
+                                      : (model::bb::se(toBB) | model::bb::sw(toBB));
+
+  const model::bb::Bitboard targets = b.getPieces(~us, PT::Queen) | b.getPieces(~us, PT::Rook) |
+                                      b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Knight);
+
+  return (atk & targets) != 0ULL;
 }
 
 }  // namespace
@@ -540,6 +558,11 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (haveTT && m == ttMove) {
       s = TT_BONUS;
     } else if (m.isCapture || m.promotion != core::PieceType::None) {
+      const auto us = pos.getState().sideToMove;
+      if (quiet_pawn_push_creates_attack(board, m, us)) {
+        // moderater Bonus, damit früh kommt, aber TT/Killer weiterhin oben bleiben
+        s += 180'000;  // feinjustierbar (150–250k)
+      }
       auto moverOpt = board.getPiece(m.from);
       const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
       core::PieceType capPt = core::PieceType::Pawn;
@@ -562,6 +585,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       if (prevOk && m == cm) s += CM_BASE + (counterHist[prev.from][prev.to] >> 1);
     }
 
+    if (!m.isCapture && m.promotion == core::PieceType::None) {
+    }
+
     scores[i] = s;
     ordered[i] = m;
   }
@@ -575,6 +601,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     const model::Move m = ordered[idx];
     const bool isQuiet = !m.isCapture && (m.promotion == core::PieceType::None);
+    const auto us = pos.getState().sideToMove;
+    const bool tacticalQuiet = isQuiet && quiet_pawn_push_creates_attack(board, m, us);
 
     // pre info
     auto moverOpt = board.getPiece(m.from);
@@ -587,7 +615,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
 
     // LMP
-    if (!inCheck && !isPV && isQuiet && depth <= 3) {
+    if (!inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet) {
       int limit = depth * depth;  // 1,4,9
       int h = history[m.from][m.to] + (quietHist[pidx(moverPt)][m.to] >> 1);
       if (h < -8000) limit = std::max(1, limit - 1);
@@ -598,7 +626,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
 
     // Extended futility (depth<=3, quiets)
-    if (allowFutility && isQuiet && depth <= 3) {
+    if (allowFutility && isQuiet && depth <= 3 && !tacticalQuiet) {
       int fut = FUT_MARGIN[depth] + (history[m.from][m.to] < -8000 ? 32 : 0);
       if (staticEval + fut <= alpha) {
         ++moveCount;
@@ -607,7 +635,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
 
     // History pruning
-    if (!inCheck && !isPV && isQuiet && depth <= 2) {
+    if (!inCheck && !isPV && isQuiet && depth <= 2 && !tacticalQuiet) {
       int histScore = history[m.from][m.to] + (quietHist[pidx(moverPt)][m.to] >> 1);
       if (histScore < -11000 && m != killers[kply][0] && m != killers[kply][1] &&
           (!prevOk || m != cm)) {
@@ -617,7 +645,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
 
     // Futility (D1)
-    if (!inCheck && !isPV && isQuiet && depth == 1) {
+    if (!inCheck && !isPV && isQuiet && depth == 1 && !tacticalQuiet) {
       if (staticEval + 110 <= alpha) {
         ++moveCount;
         continue;
@@ -678,7 +706,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (moveCount == 0) {
       value = -negamax(pos, newDepth, -beta, -alpha, ply + 1, childBest);
     } else {
-      if (cfg.useLMR && isQuiet && !inCheck && !givesCheck && newDepth >= 2 && moveCount >= 3) {
+      if (cfg.useLMR && isQuiet && !tacticalQuiet && !inCheck && !givesCheck && newDepth >= 2 &&
+          moveCount >= 3) {
         const int ld = ilog2_u32((unsigned)depth);
         const int lm = ilog2_u32((unsigned)(moveCount + 1));
         int rBase = (ld * (lm + 1)) / 3;
