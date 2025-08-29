@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "lilia/model/core/magic.hpp"
+#include "lilia/model/move_helper.hpp"
 
 namespace lilia::model {
 
@@ -145,30 +146,6 @@ inline bool ep_is_legal_fast(const Board& b, Color side, Square from, Square to)
   const bb::Bitboard sliders = b.getPieces(~side, PT::Rook) | b.getPieces(~side, PT::Queen);
   const bb::Bitboard rays = magic::sliding_attacks(magic::Slider::Rook, ksq, occ);
   return (rays & sliders) == 0ULL;
-}
-
-// ---------------- Angriffsabfrage ----------------
-
-inline bool attackedBy(const Board& b, Square sq, Color by, bb::Bitboard occ) noexcept {
-  const bb::Bitboard target = bb::sq_bb(sq);
-  occ &= ~target;  // <— Ziel-Feld aus der Belegung maskieren
-
-  // Pawn
-  const bb::Bitboard pawns = b.getPieces(by, PT::Pawn);
-  const bb::Bitboard pawnAtkToSq =
-      (by == Color::White) ? (bb::sw(target) | bb::se(target)) : (bb::nw(target) | bb::ne(target));
-  if (pawnAtkToSq & pawns) return true;
-
-  if (bb::knight_attacks_from(sq) & b.getPieces(by, PT::Knight)) return true;
-
-  const bb::Bitboard diag = magic::sliding_attacks(magic::Slider::Bishop, sq, occ);
-  if (diag & (b.getPieces(by, PT::Bishop) | b.getPieces(by, PT::Queen))) return true;
-
-  const bb::Bitboard ortho = magic::sliding_attacks(magic::Slider::Rook, sq, occ);
-  if (ortho & (b.getPieces(by, PT::Rook) | b.getPieces(by, PT::Queen))) return true;
-
-  if (bb::king_attacks_from(sq) & b.getPieces(by, PT::King)) return true;
-  return false;
 }
 
 // ---------------- Template-Generatoren ----------------

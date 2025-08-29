@@ -8,37 +8,27 @@
 #include "lilia/engine/config.hpp"
 #include "lilia/model/core/magic.hpp"
 #include "lilia/model/move_generator.hpp"
+#include "lilia/model/move_helper.hpp"
 
 namespace lilia::model {
 
 namespace {
 // --------- Castling-Right Clear-Masken (FROM/TO) ----------
 static std::once_flag s_cr_once;
-static std::array<std::uint8_t, 64> CR_CLEAR_FROM{};
-static std::array<std::uint8_t, 64> CR_CLEAR_TO{};
+namespace {
+constexpr std::array<std::uint8_t, 64> CR_CLEAR_FROM = [] {
+  std::array<std::uint8_t, 64> a{};
+  a[bb::E1] |= bb::Castling::WK | bb::Castling::WQ;
+  a[bb::E8] |= bb::Castling::BK | bb::Castling::BQ;
+  a[bb::H1] |= bb::Castling::WK;
+  a[bb::A1] |= bb::Castling::WQ;
+  a[bb::H8] |= bb::Castling::BK;
+  a[bb::A8] |= bb::Castling::BQ;
+  return a;
+}();
 
-inline void init_cr_tables_once() {
-  std::call_once(s_cr_once, [] {
-    CR_CLEAR_FROM.fill(0);
-    CR_CLEAR_TO.fill(0);
-
-    // Könige bewegen / werden geschlagen
-    CR_CLEAR_FROM[bb::E1] |= bb::Castling::WK | bb::Castling::WQ;
-    CR_CLEAR_TO[bb::E1] |= bb::Castling::WK | bb::Castling::WQ;
-    CR_CLEAR_FROM[bb::E8] |= bb::Castling::BK | bb::Castling::BQ;
-    CR_CLEAR_TO[bb::E8] |= bb::Castling::BK | bb::Castling::BQ;
-
-    // Türme bewegen / werden geschlagen
-    CR_CLEAR_FROM[bb::H1] |= bb::Castling::WK;
-    CR_CLEAR_TO[bb::H1] |= bb::Castling::WK;
-    CR_CLEAR_FROM[bb::A1] |= bb::Castling::WQ;
-    CR_CLEAR_TO[bb::A1] |= bb::Castling::WQ;
-    CR_CLEAR_FROM[bb::H8] |= bb::Castling::BK;
-    CR_CLEAR_TO[bb::H8] |= bb::Castling::BK;
-    CR_CLEAR_FROM[bb::A8] |= bb::Castling::BQ;
-    CR_CLEAR_TO[bb::A8] |= bb::Castling::BQ;
-  });
-}
+constexpr std::array<std::uint8_t, 64> CR_CLEAR_TO = CR_CLEAR_FROM;  // identisch wie FROM
+}  // namespace
 
 // Schnelle Helper für SEE/Attack-Checks
 inline bb::Bitboard pawn_attackers_to(core::Square sq, core::Color by, bb::Bitboard pawns) {
@@ -117,26 +107,7 @@ bool Position::inCheck() const {
 }
 
 bool Position::isSquareAttacked(core::Square sq, core::Color by) const {
-  const bb::Bitboard occ = m_board.getAllPieces();
-  const bb::Bitboard pawns = m_board.getPieces(by, core::PieceType::Pawn);
-  const bb::Bitboard knights = m_board.getPieces(by, core::PieceType::Knight);
-  const bb::Bitboard bishops = m_board.getPieces(by, core::PieceType::Bishop);
-  const bb::Bitboard rooks = m_board.getPieces(by, core::PieceType::Rook);
-  const bb::Bitboard queens = m_board.getPieces(by, core::PieceType::Queen);
-  const bb::Bitboard king = m_board.getPieces(by, core::PieceType::King);
-  const bb::Bitboard target = bb::sq_bb(sq);
-
-  if (pawn_attackers_to(sq, by, pawns)) return true;
-  if (knights && (bb::knight_attacks_from(sq) & knights)) return true;
-  if ((bishops | queens) &&
-      (magic::sliding_attacks(magic::Slider::Bishop, sq, occ) & (bishops | queens)))
-    return true;
-  if ((rooks | queens) && (magic::sliding_attacks(magic::Slider::Rook, sq, occ) & (rooks | queens)))
-    return true;
-  if (king && (bb::king_attacks_from(sq) & king)) return true;
-
-  (void)target;
-  return false;
+  return attackedBy(m_board, sq, by, m_board.getAllPieces());
 }
 
 // ------- Static Exchange Evaluation (SEE), robust & einfach -------
@@ -258,6 +229,7 @@ bool Position::see(const model::Move& m) const {
     ++d;
 
     if (gain[d - 1] < 0 && d > 1) break;
+    if (d == 1 && gain[0] < 0) break;
 
     occ &= ~bb::sq_bb(from2);
 
@@ -376,8 +348,6 @@ void Position::undoNullMove() {
 }
 
 void Position::applyMove(const Move& m, StateInfo& st) {
-  init_cr_tables_once();
-
   core::Color us = m_state.sideToMove;
   core::Color them = ~us;
 
@@ -391,6 +361,12 @@ void Position::applyMove(const Move& m, StateInfo& st) {
 
   // Rochade?
   bool isCastleMove = (m.castle != CastleSide::None);
+  if (isCastleMove && st.move.castle == CastleSide::None) {
+    if (us == core::Color::White)
+      st.move.castle = (m.to == core::Square{6} ? CastleSide::KingSide : CastleSide::QueenSide);
+    else
+      st.move.castle = (m.to == core::Square{62} ? CastleSide::KingSide : CastleSide::QueenSide);
+  }
   if (!isCastleMove && fromPiece->type == core::PieceType::King) {
     if (us == core::Color::White && m.from == bb::E1 &&
         (m.to == core::Square{6} || m.to == core::Square{2}))
@@ -530,8 +506,6 @@ void Position::applyMove(const Move& m, StateInfo& st) {
 }
 
 void Position::unapplyMove(const StateInfo& st) {
-  init_cr_tables_once();
-
   // Seite zurück
   m_state.sideToMove = ~m_state.sideToMove;
   hashXorSide();
