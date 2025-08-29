@@ -134,6 +134,7 @@ void ChessGame::setPosition(const std::string& fen) {
   m_position.getState().fullmoveNumber = std::stoi(fullmoveNumber);
 
   m_position.buildHash();
+  m_position.rebuildEvalAcc();
 }
 
 void ChessGame::buildHash() {

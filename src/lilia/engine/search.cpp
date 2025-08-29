@@ -1,5 +1,7 @@
 #include "lilia/engine/search.hpp"
 
+#include <math.h>
+
 #include <algorithm>
 #include <atomic>
 #include <cassert>
@@ -47,6 +49,29 @@ inline int decode_tt_score(int s, int ply) {
   if (s >= MATE_THR) return s - ply;
   if (s <= -MATE_THR) return s + ply;
   return s;
+}
+
+// ---- LMR-Reduktionstabelle (Depth<=64, Move#<=64) ----
+static int LMR_RED[65][65];
+static std::once_flag LMR_once;
+
+static void init_LMR_table() {
+  std::call_once(LMR_once, [] {
+    for (int d = 0; d <= 64; ++d)
+      for (int m = 0; m <= 64; ++m) {
+        // sanfte, monotone Reduktion (SF-ähnlich, leicht konservativ)
+        double rd = (d <= 1 ? 0.0 : 0.33 + std::log((double)d) * std::log(2.0 + (double)m) / 3.6);
+        int r = (int)rd;
+        if (r < 0) r = 0;
+        if (r > d - 1) r = std::max(0, d - 1);
+        LMR_RED[d][m] = r;
+      }
+  });
+}
+
+// improving? (static eval vs parent)
+static inline bool improving(int staticEval, int parentEval) {
+  return staticEval > parentEval - 8;  // kleiner Puffer
 }
 
 // konservative Futility-Margen (idx = depth)
@@ -268,6 +293,8 @@ int Search::signed_eval(model::Position& pos) {
 
 // ---------- Quiescence + QTT ----------
 
+// ---------- Quiescence + QTT ----------
+
 int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   stats.nodes++;
   check_stop(stopFlag);
@@ -275,10 +302,10 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   if (ply >= MAX_PLY - 2) return signed_eval(pos);
 
   const int kply = cap_ply(ply);
-  const uint64_t parentKey = pos.hash();  // Parent-Key für TT
+  const uint64_t parentKey = pos.hash();
   const int alphaOrig = alpha, betaOrig = beta;
 
-  // QSearch-TT Probe (depth==0)
+  // QTT probe (depth == 0)
   {
     model::TTEntry4 tte{};
     if (tt.probe_into(pos.hash(), tte)) {
@@ -292,7 +319,6 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   }
 
   if (pos.inCheck()) {
-    // Evasions-only im Schach
     auto& pseudo = genBuf_[kply];
     if (!safeGenerateEvasions(mg, pos, pseudo)) return mated_in(ply);
 
@@ -342,7 +368,6 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       if (score > alpha) alpha = score;
     }
 
-    // Keine legalen Evasions -> matt
     if (!anyLegal) {
       const int ms = mated_in(ply);
       if (!(stopFlag && stopFlag->load()))
@@ -350,7 +375,6 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       return ms;
     }
 
-    // QTT Store (Exact/Upper/Lower)
     if (!(stopFlag && stopFlag->load())) {
       model::Bound b = model::Bound::Exact;
       if (best <= alphaOrig)
@@ -366,8 +390,8 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   if (stand >= beta) {
     if (!(stopFlag && stopFlag->load()))
       tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower, model::Move{});
-    return beta;
   }
+  if (stand >= beta) return beta;
   if (alpha < stand) alpha = stand;
 
   auto& qmoves = legalBuf_[kply];
@@ -381,13 +405,12 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     return mvv_lva_fast(pos, a) > mvv_lva_fast(pos, b);
   });
 
-  constexpr int DELTA_MARGIN = 96;  // konservativ
+  constexpr int DELTA_MARGIN = 96;
   int best = stand;
 
   for (auto& m : qmoves) {
     check_stop(stopFlag);
 
-    // Delta/SEE: SEE nur einmal, ordering ist SEE-frei
     if (m.isCapture && !pos.see(m) && m.promotion == core::PieceType::None) continue;
 
     const bool isQuietPromo = (m.promotion != core::PieceType::None) && !m.isCapture;
@@ -405,7 +428,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
           std::max(0, base_value[(int)m.promotion] - base_value[(int)core::PieceType::Pawn]);
 
     if (!isQuietPromo) {
-      if (stand + capVal + promoGain + DELTA_MARGIN <= alpha) continue;  // Delta Pruning
+      if (stand + capVal + promoGain + DELTA_MARGIN <= alpha) continue;
     }
 
     MoveUndoGuard g(pos);
@@ -447,7 +470,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   if (pos.checkInsufficientMaterial() || pos.checkMoveRule() || pos.checkRepetition()) return 0;
   if (depth <= 0) return quiescence(pos, alpha, beta, ply);
 
-  // Mate Distance Pruning
+  // Mate distance pruning
   alpha = std::max(alpha, mated_in(ply));
   beta = std::min(beta, mate_in(ply));
   if (alpha >= beta) return alpha;
@@ -459,8 +482,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   const bool inCheck = pos.inCheck();
   const int staticEval = inCheck ? 0 : signed_eval(pos);
 
-  // --- SNMP (Static Null-Move Pruning) für depth <= 3 (nicht PV, nicht in Check), nur im
-  // Mittelspiel ---
+  // Static null-move (middlegame-ish), depth<=3
   if (!inCheck && !isPV && depth <= 3) {
     const int nonP = [&] {
       using PT = core::PieceType;
@@ -472,12 +494,12 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       return countSide(core::Color::White) + countSide(core::Color::Black);
     }();
     if (nonP >= 6) {
-      static constexpr int margins[4] = {0, 140, 200, 260};  // idx==depth
+      static constexpr int margins[4] = {0, 140, 200, 260};
       if (staticEval - margins[depth] >= beta) return staticEval;
     }
   }
 
-  // --- SAFER RAZORING (nur Depth==1, nie im PV) ---
+  // Razoring at D1
   if (!inCheck && !isPV && depth == 1) {
     const int razorMargin = 220;
     if (staticEval + razorMargin <= alpha) {
@@ -486,21 +508,20 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
   }
 
-  // --- REVERSE FUTILITY (nur Depth==1, nie PV) ---
+  // Reverse futility at D1
   if (!inCheck && !isPV && depth == 1) {
     const int margin = 180;
-    if (staticEval - margin >= beta) return staticEval;  // fail-soft approx
+    if (staticEval - margin >= beta) return staticEval;
   }
 
   int best = -INF;
   model::Move bestLocal{};
 
-  // --- TT-Probe ---
+  // TT probe (no touch)
   model::Move ttMove{};
   bool haveTT = false;
   int ttVal = 0;
-  model::TTEntry4 tte{};
-  if (tt.probe_into(pos.hash(), tte)) {
+  if (model::TTEntry4 tte{}; tt.probe_into(pos.hash(), tte)) {
     haveTT = true;
     ttMove = tte.best;
     ttVal = decode_tt_score(tte.value, cap_ply(ply));
@@ -512,21 +533,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
   }
 
-  // IID (sanft, nicht im Check)
-  if (!haveTT && depth >= 5 && !inCheck) {
-    model::Move tmp{};
-    (void)negamax(pos, depth - 2, alpha, beta, ply, tmp);
-    model::TTEntry4 tte2{};
-    if (tt.probe_into(pos.hash(), tte2)) {
-      MoveUndoGuard g(pos);
-      if (g.doMove(tte2.best)) {
-        haveTT = true;
-        ttMove = tte2.best;
-      }
-    }
-  }
-
-  // --- NULL MOVE: adaptiver Trigger + optionale Verification ---
+  // Null move pruning (safe)
   auto nonPawnCount = [&](const model::Board& b) {
     using PT = core::PieceType;
     auto countSide = [&](core::Color c) {
@@ -539,7 +546,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   const bool prevWasCapture = (ply > 0 && prevMove[cap_ply(ply - 1)].isCapture);
 
   if (cfg.useNullMove && depth >= 3 && !inCheck && !isPV && !sparse && !prevWasCapture) {
-    const int margin = 50 + 20 * depth;  // adaptiv
+    const int margin = 50 + 20 * depth;
     if (staticEval >= beta + margin) {
       NullUndoGuard ng(pos);
       ng.doNull();
@@ -563,9 +570,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   gen.clear();
   if (inCheck) {
-    if (!safeGenerateEvasions(mg, pos, gen)) {
-      return mated_in(ply);
-    }
+    if (!safeGenerateEvasions(mg, pos, gen)) return mated_in(ply);
   } else if (!safeGenerateMoves(mg, pos, gen)) {
     if (inCheck) return mated_in(ply);
     return 0;
@@ -580,10 +585,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   const bool prevOk = (prev.from >= 0 && prev.to >= 0 && prev.from < 64 && prev.to < 64);
   const model::Move cm = prevOk ? counterMove[prev.from][prev.to] : model::Move{};
 
-  // Move Ordering direkt auf Pseudo-Moves (SEE-frei)
+  // Ordering
   constexpr int MAX_MOVES = 256;
   int n = (int)std::min<size_t>(gen.size(), MAX_MOVES);
-
   int scores[MAX_MOVES];
   model::Move ordered[MAX_MOVES];
 
@@ -629,7 +633,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   }
   sort_by_score_desc(scores, ordered, n);
 
-  // PVS + LMR + LMP + Futility + SEE-Pruning + ProbCut
   const bool allowFutility = !inCheck && !isPV;
   int moveCount = 0;
 
@@ -639,7 +642,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     const model::Move m = ordered[idx];
     const bool isQuiet = !m.isCapture && (m.promotion == core::PieceType::None);
 
-    // Parent-Infos (pre)
+    // pre info
     auto moverOpt = board.getPiece(m.from);
     const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
     core::PieceType capPt = core::PieceType::Pawn;
@@ -649,7 +652,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       if (auto cap = board.getPiece(m.to)) capPt = cap->type;
     }
 
-    // --- LMP konservativer ---
+    // LMP
     if (!inCheck && !isPV && isQuiet && depth <= 3) {
       int limit = depth * depth;  // 1,4,9
       int h = history[m.from][m.to] + (quietHist[pidx(moverPt)][m.to] >> 1);
@@ -660,7 +663,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
 
-    // --- Extended Futility (depth <= 3, nur quiets) ---
+    // Extended futility (depth<=3, quiets)
     if (allowFutility && isQuiet && depth <= 3) {
       int fut = FUT_MARGIN[depth] + (history[m.from][m.to] < -8000 ? 32 : 0);
       if (staticEval + fut <= alpha) {
@@ -669,7 +672,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
 
-    // --- HISTORY PRUNING (leicht schärfer) ---
+    // History pruning
     if (!inCheck && !isPV && isQuiet && depth <= 2) {
       int histScore = history[m.from][m.to] + (quietHist[pidx(moverPt)][m.to] >> 1);
       if (histScore < -11000 && m != killers[kply][0] && m != killers[kply][1] &&
@@ -679,7 +682,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
 
-    // --- FUTILITY (nur Depth==1, nie PV) ---
+    // Futility (D1)
     if (!inCheck && !isPV && isQuiet && depth == 1) {
       if (staticEval + 110 <= alpha) {
         ++moveCount;
@@ -687,7 +690,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
 
-    // SEE einmalig (erst nach LMP/Futility)
+    // SEE pruning (after futility)
     bool seeGood = true;
     if (!inCheck && ply > 0 && m.isCapture && depth <= 5) {
       if (!pos.see(m)) {
@@ -714,7 +717,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     model::Move childBest{};
     int newDepth = depth - 1;
 
-    // --- ProbCut: non-PV, gutes Capture, statEval nahe beta ---
+    // ProbCut (light)
     if (!isPV && !inCheck && depth >= 5 && m.isCapture && seeGood && mvvBefore >= 700) {
       int capVal = 0;
       if (m.isEnPassant)
@@ -729,34 +732,32 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
 
-    // Check-Extension (leicht)
+    // Check extension (light)
     const bool givesCheck = pos.inCheck();
     if (givesCheck && (isQuiet || seeGood)) newDepth += 1;
 
-    // Bad-Capture-Reduction (BCR)
+    // Bad capture reduction
     int reduction = 0;
     if (!seeGood && m.isCapture && newDepth >= 2) reduction = std::min(1, newDepth - 1);
 
+    // PVS / LMR
     if (moveCount == 0) {
-      // PVS Vollfenster
       value = -negamax(pos, newDepth, -beta, -alpha, ply + 1, childBest);
     } else {
-      // LMR (sanft, caps & checks nicht reduzieren); Cap bis 3
       if (cfg.useLMR && isQuiet && !inCheck && !givesCheck && newDepth >= 2 && moveCount >= 3) {
         const int ld = ilog2_u32((unsigned)depth);
         const int lm = ilog2_u32((unsigned)(moveCount + 1));
-        int rBase = (ld * (lm + 1)) / 3;  // sanftere Grundreduktion
+        int rBase = (ld * (lm + 1)) / 3;
 
         const int h = history[m.from][m.to] + (quietHist[pidx(moverPt)][m.to] >> 1);
-        if (h > 8000) rBase -= 1;   // gute Historie → weniger Reduktion
-        if (h < -8000) rBase += 1;  // schlechte Historie → mehr Reduktion
+        if (h > 8000) rBase -= 1;
+        if (h < -8000) rBase += 1;
 
         if (m == killers[kply][0] || m == killers[kply][1]) rBase -= 1;
         if (haveTT && m == ttMove) rBase -= 1;
-        if (prevOk && m == cm) rBase -= 1;
 
-        if (ply <= 2) rBase -= 1;           // nahe Root
-        if (beta - alpha <= 8) rBase -= 1;  // enge Fenster
+        if (ply <= 2) rBase -= 1;
+        if (beta - alpha <= 8) rBase -= 1;
 
         if (rBase < 0) rBase = 0;
         int rCap = (newDepth >= 5 ? 3 : 2);
@@ -772,13 +773,10 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     value = std::clamp(value, -MATE + 1, MATE - 1);
 
-    // History/Heuristik-Updates
-    if (isQuiet) {
-      if (value <= origAlpha) {
-        hist_update(history[m.from][m.to], -hist_bonus(depth) / 2);
-        auto moverOpt2 = board.getPiece(m.from);  // moverPt bereits vor Move erfasst
-        hist_update(quietHist[pidx(moverPt)][m.to], -hist_bonus(depth) / 2);
-      }
+    // History updates
+    if (isQuiet && value <= origAlpha) {
+      hist_update(history[m.from][m.to], -hist_bonus(depth) / 2);
+      hist_update(quietHist[pidx(moverPt)][m.to], -hist_bonus(depth) / 2);
     }
 
     if (value > best) {
@@ -793,7 +791,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         killers[kply][0] = m;
         hist_update(history[m.from][m.to], +hist_bonus(depth));
         hist_update(quietHist[pidx(moverPt)][m.to], +hist_bonus(depth));
-
         if (prevOk) {
           counterMove[prev.from][prev.to] = m;
           hist_update(counterHist[prev.from][prev.to], +hist_bonus(depth));
@@ -806,26 +803,21 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     ++moveCount;
   }
 
-  if (best == -INF) {  // kein legaler Zug
+  if (best == -INF) {
     if (inCheck) return mated_in(ply);
     return 0;
   }
 
-  // TT-Store
   if (!(stopFlag && stopFlag->load())) {
-    model::Bound bound;
+    model::Bound b;
     if (best <= origAlpha)
-      bound = model::Bound::Upper;
+      b = model::Bound::Upper;
     else if (best >= origBeta)
-      bound = model::Bound::Lower;
+      b = model::Bound::Lower;
     else
-      bound = model::Bound::Exact;
-
-    try {
-      tt.store(pos.hash(), encode_tt_score(best, cap_ply(ply)), static_cast<int16_t>(depth), bound,
-               bestLocal);
-    } catch (...) {
-    }
+      b = model::Bound::Exact;
+    tt.store(pos.hash(), encode_tt_score(best, cap_ply(ply)), static_cast<int16_t>(depth), b,
+             bestLocal);
   }
 
   refBest = bestLocal;

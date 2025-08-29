@@ -1,81 +1,154 @@
 #include "lilia/model/magic_serializer.hpp"
 
-#include <array>
+#include <cstdio>
 #include <fstream>
 #include <iomanip>
+#include <sstream>
+#include <string>
 #include <vector>
 
-#include "lilia/model/core/magic.hpp"
+#include "lilia/model/core/magic.hpp"  // für getters: rook_magics(), rook_tables(), ...
 
 namespace lilia::model::magic {
 
-bool serialize_magics_to_header(const std::string& outPath, const std::string& prefix) {
-  std::ofstream out(outPath);
-  if (!out) return false;
+// Kleine Helfer fürs Format
+static inline void write_u64_hex(std::ostream& os, std::uint64_t v) {
+  std::ios::fmtflags f(os.flags());
+  os << "0x" << std::hex << std::uppercase << v;
+  os.flags(f);
+}
 
-  out << "#pragma once\n\n";
-  out << "#define LILIA_MAGIC_HAVE_CONSTANTS 1\n";
-  out << "#include <array>\n";
-  out << "#include <vector>\n";
-  out << "#include \"lilia/model/core/magic.hpp\"\n\n";
-  out << "namespace lilia::model::magic::constants {\n";
+static inline void write_array_u32(std::ostream& os, const char* name,
+                                   const std::vector<std::uint32_t>& a, int per_line = 8) {
+  os << "const std::uint32_t " << name << "[" << a.size() << "] = {\n  ";
+  for (size_t i = 0; i < a.size(); ++i) {
+    os << a[i];
+    if (i + 1 != a.size()) os << ", ";
+    if (per_line > 0 && ((int)((i + 1) % per_line) == 0) && i + 1 != a.size()) os << "\n  ";
+  }
+  os << "\n};\n\n";
+}
 
+static inline void write_array_u16(std::ostream& os, const char* name,
+                                   const std::vector<std::uint16_t>& a, int per_line = 12) {
+  os << "const std::uint16_t " << name << "[" << a.size() << "] = {\n  ";
+  for (size_t i = 0; i < a.size(); ++i) {
+    os << a[i];
+    if (i + 1 != a.size()) os << ", ";
+    if (per_line > 0 && ((int)((i + 1) % per_line) == 0) && i + 1 != a.size()) os << "\n  ";
+  }
+  os << "\n};\n\n";
+}
+
+static inline void write_array_u64(std::ostream& os, const char* name,
+                                   const std::vector<std::uint64_t>& a, int per_line = 4) {
+  os << "const std::uint64_t " << name << "[" << a.size() << "] = {\n  ";
+  for (size_t i = 0; i < a.size(); ++i) {
+    write_u64_hex(os, a[i]);
+    if (i + 1 != a.size()) os << ", ";
+    if (per_line > 0 && ((int)((i + 1) % per_line) == 0) && i + 1 != a.size()) os << "\n  ";
+  }
+  os << "\n};\n\n";
+}
+
+static inline void write_magic_array(std::ostream& os, const char* name,
+                                     const std::array<Magic, 64>& mag) {
+  os << "const MagicPacked " << name << "[64] = {\n";
+  for (int i = 0; i < 64; ++i) {
+    os << "  { ";
+    write_u64_hex(os, mag[i].magic);
+    os << ", " << (unsigned)mag[i].shift << " }";
+    if (i != 63) os << ",";
+    os << "\n";
+  }
+  os << "};\n\n";
+}
+
+// packt vector-Tabellen in Arena + Offsets + Längen
+static inline void pack_flat(const std::array<std::vector<std::uint64_t>, 64>& src,
+                             std::vector<std::uint32_t>& off, std::vector<std::uint16_t>& len,
+                             std::vector<std::uint64_t>& arena) {
+  off.assign(64, 0);
+  len.assign(64, 0);
+  arena.clear();
+  arena.reserve(1 << 16);
+
+  std::uint32_t cur = 0;
+  for (int i = 0; i < 64; ++i) {
+    const auto& v = src[i];
+    off[i] = cur;
+    const std::uint16_t L =
+        static_cast<std::uint16_t>(v.empty() ? 1u : static_cast<unsigned>(v.size()));
+    len[i] = L;
+
+    if (v.empty()) {
+      arena.push_back(0ULL);
+      ++cur;
+    } else {
+      arena.insert(arena.end(), v.begin(), v.end());
+      cur += L;
+    }
+  }
+}
+
+void serialize_magics_to_header(const std::string& outPath) {
+  // Daten aus der aktuellen Runtime übernehmen
   const auto& rmag = rook_magics();
-  out << "inline constexpr std::array<Magic, 64> " << prefix << "rook_magic = {\n";
-  for (int i = 0; i < 64; ++i) {
-    const Magic& m = rmag[i];
-    out << "    Magic{0x" << std::hex << std::uppercase << m.magic << "ULL, " << std::dec
-        << static_cast<int>(m.shift) << "}";
-    if (i != 63) out << ",";
-    out << "\n";
-  }
-  out << "};\n\n";
-
   const auto& bmag = bishop_magics();
-  out << "inline constexpr std::array<Magic, 64> " << prefix << "bishop_magic = {\n";
-  for (int i = 0; i < 64; ++i) {
-    const Magic& m = bmag[i];
-    out << "    Magic{0x" << std::hex << std::uppercase << m.magic << "ULL, " << std::dec
-        << static_cast<int>(m.shift) << "}";
-    if (i != 63) out << ",";
-    out << "\n";
-  }
-  out << "};\n\n";
-
   const auto& rtab = rook_tables();
-  out << "inline const std::array<std::vector<bb::Bitboard>, 64> " << prefix << "rook_table = {\n";
-  for (int i = 0; i < 64; ++i) {
-    const auto& vec = rtab[i];
-    out << "    std::vector<bb::Bitboard>{";
-    for (size_t j = 0; j < vec.size(); ++j) {
-      out << "0x" << std::hex << std::uppercase << vec[j] << "ULL";
-      if (j + 1 < vec.size()) out << ", ";
-    }
-    out << "}";
-    if (i != 63) out << ",";
-    out << "\n";
-  }
-  out << "};\n\n";
-
   const auto& btab = bishop_tables();
-  out << "inline const std::array<std::vector<bb::Bitboard>, 64> " << prefix
-      << "bishop_table = {\n";
-  for (int i = 0; i < 64; ++i) {
-    const auto& vec = btab[i];
-    out << "    std::vector<bb::Bitboard>{";
-    for (size_t j = 0; j < vec.size(); ++j) {
-      out << "0x" << std::hex << std::uppercase << vec[j] << "ULL";
-      if (j + 1 < vec.size()) out << ", ";
-    }
-    out << "}";
-    if (i != 63) out << ",";
-    out << "\n";
+
+  // In flache Arenen packen
+  std::vector<std::uint32_t> r_off(64), b_off(64);
+  std::vector<std::uint16_t> r_len(64), b_len(64);
+  std::vector<std::uint64_t> r_arena, b_arena;
+
+  pack_flat(rtab, r_off, r_len, r_arena);
+  pack_flat(btab, b_off, b_len, b_arena);
+
+  // Header schreiben
+  std::ofstream os(outPath, std::ios::out | std::ios::trunc);
+  if (!os) {
+    // bewusst kein Throw/Log: Call-Site bleibt schlank
+    return;
   }
-  out << "};\n\n";
 
-  out << "} // namespace lilia::model::magic::constants\n";
+  os << R"(#pragma once
+// AUTO-GENERATED by Lilia magic_serializer.cpp
+// Contains flat-packed magic attack tables for rook & bishop.
+// This file can be checked into the repo for faster startup.
 
-  return true;
+#include <cstdint>
+#include <cstddef>
+
+#define LILIA_MAGIC_HAVE_CONSTANTS 1
+#define LILIA_MAGIC_FLAT_CONSTANTS 1
+
+namespace lilia::model::magic::constants {
+
+struct MagicPacked { std::uint64_t magic; std::uint8_t shift; };
+
+)";
+
+  write_magic_array(os, "srook_magic", rmag);
+  write_magic_array(os, "sbishop_magic", bmag);
+
+  // Offsets/Lengths
+  write_array_u32(os, "srook_off", r_off);
+  write_array_u16(os, "srook_len", r_len);
+  write_array_u32(os, "sbishop_off", b_off);
+  write_array_u16(os, "sbishop_len", b_len);
+
+  // Arena sizes
+  os << "inline constexpr std::size_t srook_arena_size = " << r_arena.size() << ";\n";
+  os << "inline constexpr std::size_t sbishop_arena_size = " << b_arena.size() << ";\n\n";
+
+  // Arenen
+  write_array_u64(os, "srook_arena", r_arena);
+  write_array_u64(os, "sbishop_arena", b_arena);
+
+  os << "} // namespace lilia::model::magic::constants\n";
+  os.flush();
 }
 
 }  // namespace lilia::model::magic
