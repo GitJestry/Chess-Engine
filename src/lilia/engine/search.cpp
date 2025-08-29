@@ -202,7 +202,6 @@ static inline void hist_update(T& h, int bonus) {
   h = (T)x;
 }
 
-// NEU: flache Generator-Wrapper (nutzen die neuen Overloads)
 static inline int gen_all(model::MoveGenerator& mg, model::Position& pos, model::Move* out,
                           int cap) {
   engine::MoveBuffer buf(out, cap);
