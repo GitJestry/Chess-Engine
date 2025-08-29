@@ -1,11 +1,10 @@
+// include/lilia/model/tt4.hpp  (oder wo deine TT4 steht)
 #pragma once
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <cassert>
-#include <climits>  // INT_MIN
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <optional>
 
@@ -22,6 +21,7 @@ struct TTEntry4 {
   Bound bound = Bound::Exact;
   Move best{};
   std::uint8_t age = 0;
+  int16_t staticEval = INT16_MIN;  // NEU: INT16_MIN == "nicht gesetzt"
 };
 
 // --------- Internals ---------
@@ -30,7 +30,8 @@ struct PackedEntry {
   std::atomic<std::uint64_t> key{0};      // publish-last on new writes
   std::atomic<std::uint64_t> payload{0};  // value/depth/bound/age
   std::atomic<std::uint32_t> mv{0};       // packed move
-  std::atomic<std::uint32_t> seq{0};      // seqlock: 0=never written, odd=writer, even=stable
+  std::atomic<std::uint32_t> aux{0};      // NEU: lower 16 bit = staticEval (signed)
+  std::atomic<std::uint32_t> seq{0};      // seqlock: even=stable, odd=writer
   PackedEntry() = default;
   PackedEntry(const PackedEntry&) = delete;
   PackedEntry& operator=(const PackedEntry&) = delete;
@@ -57,7 +58,6 @@ class TT4 {
  public:
   explicit TT4(std::size_t mb = 16) { resize(mb); }
 
-  // nicht parallel zum Suchen aufrufen
   void resize(std::size_t mb) {
     std::size_t bytes = mb * 1024ULL * 1024ULL;
     if (bytes < sizeof(Cluster)) bytes = sizeof(Cluster);
@@ -70,7 +70,6 @@ class TT4 {
     generation_.store(1, std::memory_order_relaxed);
   }
 
-  // nicht parallel zum Suchen aufrufen
   void clear() {
     const auto oldSlots = slots_;
     table_.reset();
@@ -78,8 +77,7 @@ class TT4 {
     generation_.store(1, std::memory_order_relaxed);
   }
 
-  // --------- Probe (hot path) ----------
-  // Liefert true auf Hit und füllt 'out'.
+  // --------- Probe ----------
   bool probe_into(std::uint64_t key, TTEntry4& out) const noexcept {
     const Cluster& c = table_[index(key)];
     LILIA_PREFETCH_L1(&c);
@@ -90,10 +88,11 @@ class TT4 {
 
       for (int tries = 0; tries < 3; ++tries) {
         const std::uint32_t s1 = ent.seq.load(std::memory_order_acquire);
-        if ((s1 & 1u) || s1 == 0u) continue;  // writer active or never-written
+        if (s1 & 1u) continue;
 
         const std::uint64_t pay = ent.payload.load(std::memory_order_relaxed);
         const std::uint32_t mv = ent.mv.load(std::memory_order_relaxed);
+        const std::uint32_t ax = ent.aux.load(std::memory_order_relaxed);
 
         const std::uint32_t s2 = ent.seq.load(std::memory_order_acquire);
         if ((s2 != s1) || (s2 & 1u)) continue;
@@ -101,53 +100,7 @@ class TT4 {
         out.key = key;
         unpack_payload(pay, out.value, out.depth, out.bound, out.age);
         out.best = unpack_move(mv);
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // Wie probe_into, aber "touch on hit": Age wird aktualisiert (billig & thread-safe).
-  bool probe_into_touch(std::uint64_t key, TTEntry4& out) noexcept {
-    Cluster& c = table_[index(key)];
-    LILIA_PREFETCH_L1(&c);
-
-    for (auto& ent : c.e) {
-      const std::uint64_t k1 = ent.key.load(std::memory_order_relaxed);
-      if (k1 != key) continue;
-
-      for (int tries = 0; tries < 3; ++tries) {
-        const std::uint32_t s1 = ent.seq.load(std::memory_order_acquire);
-        if ((s1 & 1u) || s1 == 0u) continue;
-
-        const std::uint64_t pay = ent.payload.load(std::memory_order_relaxed);
-        const std::uint32_t mv = ent.mv.load(std::memory_order_relaxed);
-
-        const std::uint32_t s2 = ent.seq.load(std::memory_order_acquire);
-        if ((s2 != s1) || (s2 & 1u)) continue;
-
-        // read-out
-        int32_t v;
-        int16_t d;
-        Bound b;
-        std::uint8_t a;
-        unpack_payload(pay, v, d, b, a);
-        out.key = key;
-        out.value = v;
-        out.depth = d;
-        out.bound = b;
-        out.age = a;
-        out.best = unpack_move(mv);
-
-        // touch: Age refresh only (Seqlock)
-        const std::uint8_t curAge =
-            static_cast<std::uint8_t>(generation_.load(std::memory_order_relaxed));
-        if (curAge != a) {
-          const std::uint32_t s0 = ent.seq.load(std::memory_order_relaxed);
-          ent.seq.store((s0 | 1u), std::memory_order_release);  // begin (odd)
-          ent.payload.store(pack_payload(v, d, b, curAge), std::memory_order_relaxed);
-          ent.seq.store(((s0 | 1u) + 1u), std::memory_order_release);  // end (even)
-        }
+        out.staticEval = static_cast<int16_t>(ax & 0xFFFFu);  // sign-preserving via cast
         return true;
       }
     }
@@ -160,41 +113,48 @@ class TT4 {
     return std::nullopt;
   }
 
-  // --------- Store (thread-safe, seqlock) ----------
-  void store(std::uint64_t key, int32_t value, int16_t depth, Bound bound,
-             const Move& best) noexcept {
+  // --------- Store ----------
+  void store(std::uint64_t key, int32_t value, int16_t depth, Bound bound, const Move& best,
+             int16_t staticEval = INT16_MIN) noexcept {
     Cluster& c = table_[index(key)];
     const std::uint8_t curAge =
         static_cast<std::uint8_t>(generation_.load(std::memory_order_relaxed));
 
-    // clamp depth defensiv
     if (depth < INT16_C(-32768)) depth = INT16_C(-32768);
     if (depth > INT16_C(32767)) depth = INT16_C(32767);
 
-    const auto write_newkey = [&](PackedEntry& ent, int32_t v, int16_t d, Bound b,
-                                  const Move& m) noexcept {
-      const std::uint32_t s0 = ent.seq.load(std::memory_order_relaxed);
-      ent.seq.store((s0 | 1u), std::memory_order_release);  // begin (odd)
-
-      ent.mv.store(pack_move(m), std::memory_order_relaxed);
-      ent.payload.store(pack_payload(v, d, b, curAge), std::memory_order_relaxed);
-
-      ent.key.store(key, std::memory_order_release);               // publish key last
-      ent.seq.store(((s0 | 1u) + 1u), std::memory_order_release);  // end (even, !=0)
+    const auto packPay = [&](int32_t v, int16_t d, Bound b, std::uint8_t a) {
+      return pack_payload(v, d, b, a);
     };
 
-    const auto write_update = [&](PackedEntry& ent, int32_t v, int16_t d, Bound b,
-                                  const Move& m) noexcept {
+    const auto write_newkey = [&](PackedEntry& ent, int32_t v, int16_t d, Bound b, const Move& m,
+                                  int16_t se) noexcept {
       const std::uint32_t s0 = ent.seq.load(std::memory_order_relaxed);
-      ent.seq.store((s0 | 1u), std::memory_order_release);  // begin (odd)
+      ent.seq.store(s0 | 1u, std::memory_order_release);
 
       ent.mv.store(pack_move(m), std::memory_order_relaxed);
-      ent.payload.store(pack_payload(v, d, b, curAge), std::memory_order_relaxed);
+      ent.payload.store(packPay(v, d, b, curAge), std::memory_order_relaxed);
+      ent.aux.store(static_cast<std::uint32_t>(static_cast<std::uint16_t>(se)),
+                    std::memory_order_relaxed);
 
-      ent.seq.store(((s0 | 1u) + 1u), std::memory_order_release);  // end (even)
+      ent.key.store(key, std::memory_order_release);
+      ent.seq.store((s0 | 1u) + 1u, std::memory_order_release);
     };
 
-    // 1) Update gleicher Key (Write-Throttling)
+    const auto write_update = [&](PackedEntry& ent, int32_t v, int16_t d, Bound b, const Move& m,
+                                  int16_t se) noexcept {
+      const std::uint32_t s0 = ent.seq.load(std::memory_order_relaxed);
+      ent.seq.store(s0 | 1u, std::memory_order_release);
+
+      ent.mv.store(pack_move(m), std::memory_order_relaxed);
+      ent.payload.store(packPay(v, d, b, curAge), std::memory_order_relaxed);
+      ent.aux.store(static_cast<std::uint32_t>(static_cast<std::uint16_t>(se)),
+                    std::memory_order_relaxed);
+
+      ent.seq.store((s0 | 1u) + 1u, std::memory_order_release);
+    };
+
+    // 1) Update existierender Key
     for (auto& ent : c.e) {
       if (ent.key.load(std::memory_order_relaxed) == key) {
         int32_t ov = 0;
@@ -204,7 +164,7 @@ class TT4 {
         bool have_old = false;
         for (int tries = 0; tries < 3; ++tries) {
           const std::uint32_t s1 = ent.seq.load(std::memory_order_acquire);
-          if ((s1 & 1u) || s1 == 0u) continue;
+          if (s1 & 1u) continue;
           const std::uint64_t pay = ent.payload.load(std::memory_order_relaxed);
           const std::uint32_t s2 = ent.seq.load(std::memory_order_acquire);
           if (s1 == s2 && !(s2 & 1u)) {
@@ -216,33 +176,27 @@ class TT4 {
 
         bool replace = true;
         if (have_old) {
-          // Exact bleibt, außer neuer ist Exact ODER deutlich tiefer (z.B. +4 ply)
-          if (ob == Bound::Exact && bound != Bound::Exact && depth < od + 4) replace = false;
-
-          // Upper ersetzt Depth-stärkere Lower/Exact normalerweise nicht
           if (bound == Bound::Upper && (ob == Bound::Exact || ob == Bound::Lower) && od > depth)
             replace = false;
-
-          // Bei non-Exact gegen non-Upper: akzeptiere nur, wenn nicht viel flacher
-          if (bound != Bound::Exact && ob != Bound::Upper) {
-            if (depth + 1 < od) replace = false;
+          else if (bound != Bound::Exact) {
+            if (depth + 1 < od && ob != Bound::Upper) replace = false;
           }
         }
 
-        if (replace) write_update(ent, value, depth, bound, best);
+        if (replace) write_update(ent, value, depth, bound, best, staticEval);
         return;
       }
     }
 
-    // 2) Leer-Slot (seq==0 → nie beschrieben)
+    // 2) Leer-Slot
     for (auto& ent : c.e) {
-      if (ent.seq.load(std::memory_order_relaxed) == 0u) {
-        write_newkey(ent, value, depth, bound, best);
+      if (ent.key.load(std::memory_order_relaxed) == 0ULL) {
+        write_newkey(ent, value, depth, bound, best, staticEval);
         return;
       }
     }
 
-    // 3) Replacement: wähle Opfer nach „Depth >> Bound >> (jünger)“
+    // 3) Replacement
     int victim = 0;
     int scoreV = replacement_score(c.e[0], curAge);
     for (int i = 1; i < 4; ++i) {
@@ -252,10 +206,9 @@ class TT4 {
         victim = i;
       }
     }
-    write_newkey(c.e[victim], value, depth, bound, best);
+    write_newkey(c.e[victim], value, depth, bound, best, staticEval);
   }
 
-  // Eine Generation weiter (z.B. 1x pro Root-Iteration)
   void new_generation() noexcept {
     auto g = generation_.fetch_add(1, std::memory_order_relaxed) + 1;
     if (g == 0) generation_.store(1, std::memory_order_relaxed);
@@ -312,31 +265,27 @@ class TT4 {
     return m;
   }
 
-  // Replacement score: größere Werte = „behalten“. Opfer = Minimum.
   static inline int replacement_score(const PackedEntry& ent, std::uint8_t curAge) noexcept {
-    const std::uint32_t s = ent.seq.load(std::memory_order_relaxed);
-    if (s == 0u) return INT_MIN;  // nie beschrieben → perfektes Opfer
+    const std::uint64_t k = ent.key.load(std::memory_order_relaxed);
+    if (k == 0ULL) return INT_MIN;
 
     const std::uint64_t pay = ent.payload.load(std::memory_order_relaxed);
 
     int32_t v;
-    (void)v;
     int16_t d;
     Bound b;
     std::uint8_t a;
     unpack_payload(pay, v, d, b, a);
 
     const int boundBias = (b == Bound::Exact ? 6 : (b == Bound::Lower ? 3 : 0));
-    const int ageDelta = static_cast<std::uint8_t>(curAge - a);  // 8-bit wrap
+    const int ageDelta = static_cast<std::uint8_t>(curAge - a);
 
-    // Tiefer besser, Exact besser, jünger besser
     return static_cast<int>(d) * 256 + boundBias - ageDelta;
   }
 
   inline std::size_t index(std::uint64_t key) const noexcept {
     assert((slots_ & (slots_ - 1)) == 0 && slots_ != 0);
-    const std::uint64_t mix = key ^ (key >> 32);  // besserer Mix als nur low bits
-    return static_cast<std::size_t>(mix) & (slots_ - 1);
+    return static_cast<std::size_t>(key) & (slots_ - 1);
   }
 
   static std::size_t highest_power_of_two(std::size_t x) noexcept {

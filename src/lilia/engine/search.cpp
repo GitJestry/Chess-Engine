@@ -53,6 +53,7 @@ inline int decode_tt_score(int s, int ply) {
 
 // ---- LMR-Reduktionstabelle (Depth<=64, Move#<=64) ----
 static int LMR_RED[65][65];
+
 static std::once_flag LMR_once;
 
 static void init_LMR_table() {
@@ -281,6 +282,9 @@ Search::Search(model::TT4& tt_, std::shared_ptr<const Evaluator> eval_, const En
   for (auto& v : genBuf_) v.reserve(96);
   for (auto& v : legalBuf_) v.reserve(96);
 
+  // NEU
+  std::fill(&contHist[0][0][0], &contHist[0][0][0] + PIECE_NB * SQ_NB * SQ_NB, 0);
+
   stopFlag.reset();
   stats = SearchStats{};
 }
@@ -290,8 +294,6 @@ int Search::signed_eval(model::Position& pos) {
   if (pos.getState().sideToMove == core::Color::Black) v = -v;
   return std::clamp(v, -MATE + 1, MATE - 1);
 }
-
-// ---------- Quiescence + QTT ----------
 
 // ---------- Quiescence + QTT ----------
 
@@ -389,7 +391,8 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   int stand = signed_eval(pos);
   if (stand >= beta) {
     if (!(stopFlag && stopFlag->load()))
-      tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower, model::Move{});
+      tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower, model::Move{},
+               (int16_t)stand);  // NEU: staticEval
   }
   if (stand >= beta) return beta;
   if (alpha < stand) alpha = stand;
@@ -397,7 +400,8 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   auto& qmoves = legalBuf_[kply];
   if (!safeGenerateCaptures(mg, pos, qmoves)) {
     if (!(stopFlag && stopFlag->load()))
-      tt.store(parentKey, encode_tt_score(stand, kply), 0, model::Bound::Exact, model::Move{});
+      tt.store(parentKey, encode_tt_score(stand, kply), 0, model::Bound::Exact, model::Move{},
+               (int16_t)stand);  // NEU: staticEval
     return stand;
   }
 
@@ -441,7 +445,8 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 
     if (score >= beta) {
       if (!(stopFlag && stopFlag->load()))
-        tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower, model::Move{});
+        tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower, model::Move{},
+                 (int16_t)stand);  // NEU: staticEval
       return beta;
     }
     if (score > alpha) alpha = score;
@@ -454,7 +459,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       b = model::Bound::Upper;
     else if (best >= betaOrig)
       b = model::Bound::Lower;
-    tt.store(parentKey, encode_tt_score(best, kply), 0, b, model::Move{});
+    tt.store(parentKey, encode_tt_score(best, kply), 0, b, model::Move{}, (int16_t)stand);  // NEU
   }
   return best;
 }
@@ -479,8 +484,33 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   const int origBeta = beta;
   const bool isPV = (beta - alpha > 1);
 
+  // TT probe (vor statEval; wir wollen evtl. tte.staticEval nutzen)
+  model::TTEntry4 tte{};
+  model::Move ttMove{};
+  bool haveTT = tt.probe_into(pos.hash(), tte);
+  int ttVal = 0;
+  if (haveTT) {
+    ttMove = tte.best;
+    ttVal = decode_tt_score(tte.value, cap_ply(ply));
+    if (tte.depth >= depth) {
+      if (tte.bound == model::Bound::Exact) return std::clamp(ttVal, -MATE + 1, MATE - 1);
+      if (tte.bound == model::Bound::Lower) alpha = std::max(alpha, ttVal);
+      if (tte.bound == model::Bound::Upper) beta = std::min(beta, ttVal);
+      if (alpha >= beta) return std::clamp(ttVal, -MATE + 1, MATE - 1);
+    }
+  }
+
   const bool inCheck = pos.inCheck();
-  const int staticEval = inCheck ? 0 : signed_eval(pos);
+
+  // NEU: staticEval aus TT, wenn vorhanden und sinnvoll
+  int staticEval = 0;
+  if (inCheck) {
+    staticEval = 0;
+  } else if (haveTT && tte.staticEval != std::numeric_limits<int16_t>::min()) {
+    staticEval = tte.staticEval;
+  } else {
+    staticEval = signed_eval(pos);
+  }
 
   // Static null-move (middlegame-ish), depth<=3
   if (!inCheck && !isPV && depth <= 3) {
@@ -516,22 +546,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   int best = -INF;
   model::Move bestLocal{};
-
-  // TT probe (no touch)
-  model::Move ttMove{};
-  bool haveTT = false;
-  int ttVal = 0;
-  if (model::TTEntry4 tte{}; tt.probe_into(pos.hash(), tte)) {
-    haveTT = true;
-    ttMove = tte.best;
-    ttVal = decode_tt_score(tte.value, cap_ply(ply));
-    if (tte.depth >= depth) {
-      if (tte.bound == model::Bound::Exact) return std::clamp(ttVal, -MATE + 1, MATE - 1);
-      if (tte.bound == model::Bound::Lower) alpha = std::max(alpha, ttVal);
-      if (tte.bound == model::Bound::Upper) beta = std::min(beta, ttVal);
-      if (alpha >= beta) return std::clamp(ttVal, -MATE + 1, MATE - 1);
-    }
-  }
 
   // Null move pruning (safe)
   auto nonPawnCount = [&](const model::Board& b) {
@@ -585,6 +599,17 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   const bool prevOk = (prev.from >= 0 && prev.to >= 0 && prev.from < 64 && prev.to < 64);
   const model::Move cm = prevOk ? counterMove[prev.from][prev.to] : model::Move{};
 
+  // NEU: Prev-Piece für Continuation-History
+  const auto& board = pos.getBoard();
+  core::PieceType prevPieceType = core::PieceType::Pawn;
+  bool havePrevPiece = false;
+  if (prevOk) {
+    if (auto pp = board.getPiece(prev.to)) {
+      prevPieceType = pp->type;
+      havePrevPiece = true;
+    }
+  }
+
   // Ordering
   constexpr int MAX_MOVES = 256;
   int n = (int)std::min<size_t>(gen.size(), MAX_MOVES);
@@ -596,8 +621,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   constexpr int PROMO_BASE = 160'000;
   constexpr int KILLER_BASE = 120'000;
   constexpr int CM_BASE = 140'000;
-
-  const auto& board = pos.getBoard();
 
   for (int i = 0; i < n; ++i) {
     const auto& m = gen[i];
@@ -624,6 +647,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       auto moverOpt = board.getPiece(m.from);
       const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
       s = history[m.from][m.to] + (quietHist[pidx(moverPt)][m.to] >> 1);
+      if (havePrevPiece) s += (contHist[pidx(prevPieceType)][prev.to][m.to] >> 1);  // NEU
+
       if (m == killers[kply][0] || m == killers[kply][1]) s += KILLER_BASE;
       if (prevOk && m == cm) s += CM_BASE + (counterHist[prev.from][prev.to] >> 1);
     }
@@ -656,6 +681,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (!inCheck && !isPV && isQuiet && depth <= 3) {
       int limit = depth * depth;  // 1,4,9
       int h = history[m.from][m.to] + (quietHist[pidx(moverPt)][m.to] >> 1);
+      if (havePrevPiece) h += (contHist[pidx(prevPieceType)][prev.to][m.to] >> 1);  // NEU
       if (h < -8000) limit = std::max(1, limit - 1);
       if (staticEval + FUT_MARGIN[depth] <= alpha + 32 && moveCount >= limit) {
         ++moveCount;
@@ -675,6 +701,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     // History pruning
     if (!inCheck && !isPV && isQuiet && depth <= 2) {
       int histScore = history[m.from][m.to] + (quietHist[pidx(moverPt)][m.to] >> 1);
+      if (havePrevPiece) histScore += (contHist[pidx(prevPieceType)][prev.to][m.to] >> 1);  // NEU
       if (histScore < -11000 && m != killers[kply][0] && m != killers[kply][1] &&
           (!prevOk || m != cm)) {
         ++moveCount;
@@ -773,10 +800,13 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     value = std::clamp(value, -MATE + 1, MATE - 1);
 
-    // History updates
+    // History updates (Flop)
     if (isQuiet && value <= origAlpha) {
       hist_update(history[m.from][m.to], -hist_bonus(depth) / 2);
       hist_update(quietHist[pidx(moverPt)][m.to], -hist_bonus(depth) / 2);
+      if (prevOk && havePrevPiece) {
+        hist_update(contHist[pidx(prevPieceType)][prev.to][m.to], -(hist_bonus(depth) / 2));  // NEU
+      }
     }
 
     if (value > best) {
@@ -794,6 +824,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         if (prevOk) {
           counterMove[prev.from][prev.to] = m;
           hist_update(counterHist[prev.from][prev.to], +hist_bonus(depth));
+        }
+        if (prevOk && havePrevPiece) {
+          hist_update(contHist[pidx(prevPieceType)][prev.to][m.to], +hist_bonus(depth));  // NEU
         }
       } else {
         hist_update(captureHist[pidx(moverPt)][m.to][pidx(capPt)], +hist_bonus(depth));
@@ -817,7 +850,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     else
       b = model::Bound::Exact;
     tt.store(pos.hash(), encode_tt_score(best, cap_ply(ply)), static_cast<int16_t>(depth), b,
-             bestLocal);
+             bestLocal,
+             inCheck ? std::numeric_limits<int16_t>::min()
+                     : (int16_t)std::clamp(staticEval, -32768, 32767));  // NEU: staticEval
   }
 
   refBest = bestLocal;
@@ -1136,6 +1171,8 @@ void Search::clearSearchState() {
   for (auto& row : counterMove)
     for (auto& m : row) m = model::Move{};
   for (auto& pm : prevMove) pm = model::Move{};
+  // NEU
+  std::fill(&contHist[0][0][0], &contHist[0][0][0] + PIECE_NB * SQ_NB * SQ_NB, 0);
   stats = SearchStats{};
 }
 

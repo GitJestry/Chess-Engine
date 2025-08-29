@@ -34,6 +34,7 @@ namespace lilia::engine {
 // Für History-Tabellen: Anzahl nicht-leerer Figurtypen (Pawn..King)
 static constexpr int PIECE_NB = 6;
 static constexpr int SQ_NB = 64;
+static int16_t contHist[PIECE_NB][SQ_NB][SQ_NB];  // prevPiece x prevTo x curTo
 
 // -----------------------------------------------------------------------------
 // SearchStats – robustere Zähler (64-bit), schlanke Ausgabeinfos
