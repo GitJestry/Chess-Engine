@@ -1,9 +1,13 @@
 #include "lilia/view/eval_bar.hpp"
 
 #include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/Text.hpp>
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
+#include <sstream>
 
+#include "lilia/engine/config.hpp"
 #include "lilia/model/position.hpp"
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
@@ -20,6 +24,10 @@ EvalBar::EvalBar() : EvalBar::Entity() {
   m_white_fill_eval.setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
   m_black_background.setOriginToCenter();
   m_white_fill_eval.setOriginToCenter();
+  m_font.loadFromFile(constant::STR_FILE_PATH_FONT);
+  m_score_text.setFont(m_font);
+  m_score_text.setCharacterSize(18);
+  m_score_text.setFillColor(sf::Color::White);
 }
 
 void EvalBar::setPosition(const Entity::Position& pos) {
@@ -32,21 +40,39 @@ void EvalBar::render(sf::RenderWindow& window) {
   draw(window);
   m_black_background.draw(window);
   m_white_fill_eval.draw(window);
+  window.draw(m_score_text);
 }
 void EvalBar::update(int eval) {
-  scaleToEval(eval);
+  m_target_eval = static_cast<float>(eval);
+  m_display_eval += (m_target_eval - m_display_eval) * 0.1f;
+  scaleToEval(m_display_eval);
+
+  int absEval = std::abs(eval);
+  if (absEval >= engine::MATE_THR) {
+    int moves = (engine::MATE - absEval) / 2;
+    std::string prefix = eval > 0 ? "M" : "-M";
+    m_score_text.setString(prefix + std::to_string(moves));
+  } else {
+    double val = m_display_eval / 100.0;
+    std::ostringstream ss;
+    ss.setf(std::ios::fixed); ss<< std::showpos << std::setprecision(1) << val;
+    m_score_text.setString(ss.str());
+  }
+  auto b = m_score_text.getLocalBounds();
+  m_score_text.setOrigin(b.width/2.f, b.height/2.f);
+  m_score_text.setPosition(getPosition());
 }
 
-static float evalToWhitePct(int cp) {
-  constexpr float k = 300.0f;              // chess.com-ähnliche Sättigung
+static float evalToWhitePct(float cp) {
+  constexpr float k = 1000.0f;             // langsamere Sättigung
   return 0.5f + 0.5f * std::tanh(cp / k);  // 0.5 = ausgeglichen
 }
 
-void EvalBar::scaleToEval(int e) {
+void EvalBar::scaleToEval(float e) {
   const float H = static_cast<float>(constant::EVAL_BAR_HEIGHT);
   const float W = static_cast<float>(constant::EVAL_BAR_WIDTH);
 
-  const float pctWhite = evalToWhitePct(static_cast<float>(e));
+  const float pctWhite = evalToWhitePct(e);
   const float whitePx = std::clamp(pctWhite * H, 0.0f, H);
 
   // Sicherstellen, dass wir die Original-Texturgröße kennen

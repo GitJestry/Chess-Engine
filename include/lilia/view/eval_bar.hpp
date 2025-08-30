@@ -1,5 +1,6 @@
 #pragma once
 #include "entity.hpp"
+#include <SFML/Graphics/Text.hpp>
 
 namespace sf {
 class RenderWindow;
@@ -16,9 +17,13 @@ class EvalBar : Entity {
   void update(int eval);
 
  private:
-  void scaleToEval(int e);
+  void scaleToEval(float e);
   Entity m_black_background;
   Entity m_white_fill_eval;
+  sf::Font m_font;
+  sf::Text m_score_text;
+  float m_display_eval{0.f};
+  float m_target_eval{0.f};
 };
 
 }  // namespace lilia::view
