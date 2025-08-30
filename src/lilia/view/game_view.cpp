@@ -12,7 +12,9 @@ GameView::GameView(sf::RenderWindow& window)
       m_board_view(),
       m_piece_manager(m_board_view),
       m_highlight_manager(m_board_view),
-      m_chess_animator(m_board_view, m_piece_manager) {
+      m_chess_animator(m_board_view, m_piece_manager),
+      m_eval_bar(),
+      m_evaluator() {
   m_cursor_default.loadFromSystem(sf::Cursor::Arrow);
 
   sf::Image openImg;
@@ -37,7 +39,14 @@ void GameView::update(float dt) {
   m_chess_animator.updateAnimations(dt);
 }
 
+void GameView::updateEvaluation(model::Position& pos) {
+  int eval = m_evaluator.evaluate(pos);
+  if (pos.getState().sideToMove == core::Color::Black) eval = -eval;
+  m_eval_bar.setEval(eval);
+}
+
 void GameView::render() {
+  m_eval_bar.draw(m_window);
   m_board_view.renderBoard(m_window);
   m_highlight_manager.renderSelect(m_window);
   m_chess_animator.renderHighlightLevel(m_window);
@@ -184,8 +193,10 @@ core::MousePos GameView::clampPosToWindowSize(core::MousePos mousePos) const noe
 }
 
 [[nodiscard]] core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
-  int file = clampPosToWindowSize(mousePos).x / constant::SQUARE_PX_SIZE;
-  int rankSFML = clampPosToWindowSize(mousePos).y / constant::SQUARE_PX_SIZE;
+  const auto clamped = clampPosToWindowSize(mousePos);
+  int file = (static_cast<int>(clamped.x) - static_cast<int>(constant::BOARD_OFFSET_X)) /
+             static_cast<int>(constant::SQUARE_PX_SIZE);
+  int rankSFML = clamped.y / constant::SQUARE_PX_SIZE;
 
   int rankFromWhite = 7 - rankSFML;
 

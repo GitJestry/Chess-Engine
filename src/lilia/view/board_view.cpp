@@ -4,7 +4,9 @@
 
 namespace lilia::view {
 
-BoardView::BoardView() : m_board({constant::WINDOW_PX_SIZE / 2, constant::WINDOW_PX_SIZE / 2}) {}
+BoardView::BoardView()
+    : m_board({constant::BOARD_OFFSET_X + constant::BOARD_PX_SIZE / 2,
+               constant::BOARD_PX_SIZE / 2}) {}
 
 void BoardView::init() {
   m_board.init(TextureTable::getInstance().get(constant::STR_TEXTURE_WHITE),

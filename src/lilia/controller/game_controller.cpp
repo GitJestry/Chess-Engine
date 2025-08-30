@@ -190,6 +190,7 @@ void GameController::update(float dt) {
 
   m_game_view.update(dt);
   if (m_game_manager) m_game_manager->update(dt);
+  m_game_view.updateEvaluation(m_chess_game.getPositionRefForBot());
 }
 
 void GameController::highlightLastMove() {

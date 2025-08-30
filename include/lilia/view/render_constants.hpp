@@ -3,8 +3,17 @@
 
 namespace lilia::view::constant {
 constexpr unsigned int BOARD_SIZE = 8;
-constexpr unsigned int WINDOW_PX_SIZE = 800;
-constexpr unsigned int SQUARE_PX_SIZE = WINDOW_PX_SIZE / BOARD_SIZE;
+
+// Board and window dimensions are now decoupled so the board can keep a
+// fixed size while the window grows to host additional UI elements such as an
+// evaluation bar, clocks or player names.
+constexpr unsigned int BOARD_PX_SIZE = 800;
+constexpr unsigned int SIDEBAR_PX_SIZE = 200;  // space for evaluation bar & future UI
+constexpr unsigned int EVAL_BAR_PX_WIDTH = 80;
+constexpr unsigned int WINDOW_PX_WIDTH = BOARD_PX_SIZE + SIDEBAR_PX_SIZE;
+constexpr unsigned int WINDOW_PX_HEIGHT = BOARD_PX_SIZE;
+constexpr unsigned int BOARD_OFFSET_X = SIDEBAR_PX_SIZE;
+constexpr unsigned int SQUARE_PX_SIZE = BOARD_PX_SIZE / BOARD_SIZE;
 constexpr unsigned int ATTACK_DOT_PX_SIZE =
     static_cast<unsigned int>(static_cast<float>(SQUARE_PX_SIZE) * 0.45f + 0.5f);
 constexpr unsigned int CAPTURE_CIRCLE_PX_SIZE =

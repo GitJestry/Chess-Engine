@@ -9,11 +9,11 @@ Board::Board(Entity::Position pos) : Entity(pos) {}
 void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlack,
                  const sf::Texture &textureBoard) {
   setTexture(textureBoard);
-  setScale(constant::WINDOW_PX_SIZE, constant::WINDOW_PX_SIZE);
+  setScale(constant::BOARD_PX_SIZE, constant::BOARD_PX_SIZE);
 
   sf::Vector2f board_offset(
-      getPosition().x - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2,
-      getPosition().y - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2);
+      getPosition().x - constant::BOARD_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2,
+      getPosition().y - constant::BOARD_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2);
 
   for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {
     for (int file = 0; file < constant::BOARD_SIZE; ++file) {
@@ -49,8 +49,8 @@ void Board::draw(sf::RenderWindow &window) {
 void Board::setPosition(const Entity::Position &pos) {
   Entity::setPosition(pos);
   Entity::Position board_offset(
-      getPosition().x - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2,
-      getPosition().y - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2);
+      getPosition().x - constant::BOARD_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2,
+      getPosition().y - constant::BOARD_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2);
 
   for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {
     for (int file = 0; file < constant::BOARD_SIZE; ++file) {
