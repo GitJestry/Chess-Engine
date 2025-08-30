@@ -8,6 +8,7 @@
 #include "../controller/mousepos.hpp"
 #include "animation/chess_animator.hpp"
 #include "board_view.hpp"
+#include "entity.hpp"
 #include "eval_bar.hpp"
 #include "move_list_view.hpp"
 #include "highlight_manager.hpp"
@@ -73,6 +74,9 @@ class GameView {
   void setDefaultCursor();
   void setHandOpenCursor();
   void setHandClosedCursor();
+
+  void toggleBoardOrientation();
+  [[nodiscard]] bool isOnFlipIcon(core::MousePos mousePos) const;
 
  private:
   core::MousePos clampPosToBoard(core::MousePos mousePos) const noexcept;
