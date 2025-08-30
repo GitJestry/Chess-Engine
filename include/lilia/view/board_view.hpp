@@ -14,6 +14,9 @@ class BoardView {
   void renderBoard(sf::RenderWindow& window);
   [[nodiscard]] Entity::Position getSquareScreenPos(core::Square sq) const;
 
+  void setPosition(const Entity::Position& pos);
+  [[nodiscard]] Entity::Position getPosition() const;
+
  private:
   Board m_board;
 };

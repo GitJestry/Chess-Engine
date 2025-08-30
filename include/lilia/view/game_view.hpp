@@ -9,6 +9,7 @@
 #include "animation/chess_animator.hpp"
 #include "board_view.hpp"
 #include "eval_bar.hpp"
+#include "move_list_view.hpp"
 #include "highlight_manager.hpp"
 #include "piece_manager.hpp"
 #include "promotion_manager.hpp"
@@ -28,6 +29,10 @@ class GameView {
   void updateEval(int eval);
 
   void render();
+
+  void addMove(const std::string& move);
+  void onResize(unsigned int width, unsigned int height);
+  void scrollMoveList(float delta);
 
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
   void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
@@ -70,6 +75,7 @@ class GameView {
 
  private:
   core::MousePos clampPosToWindowSize(core::MousePos mousePos) const noexcept;
+  void layout(unsigned int width, unsigned int height);
 
   sf::RenderWindow& m_window;
   BoardView m_board_view;
@@ -81,6 +87,7 @@ class GameView {
   sf::Cursor m_cursor_hand_open;
   sf::Cursor m_cursor_hand_closed;
   EvalBar m_eval_bar;
+  MoveListView m_move_list;
 };
 
 }  // namespace lilia::view
