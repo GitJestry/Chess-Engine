@@ -106,6 +106,7 @@ class GameController {
 
   std::vector<std::string> m_fen_history;
   std::size_t m_fen_index{0};
+  std::vector<std::pair<core::Square, core::Square>> m_move_history;
 };
 
 }  // namespace lilia::controller

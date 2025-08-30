@@ -55,11 +55,15 @@ void PieceManager::initFromFen(const std::string& fen) {
 
 [[nodiscard]] Entity::ID_type PieceManager::getPieceID(core::Square pos) const {
   if (pos == core::NO_SQUARE) return 0;
-  return m_pieces.find(pos)->second.getId();
+  auto it = m_pieces.find(pos);
+  return it != m_pieces.end() ? it->second.getId() : 0;
 }
 
 [[nodiscard]] bool PieceManager::isSameColor(core::Square sq1, core::Square sq2) const {
-  return (m_pieces.find(sq1)->second.getColor() == m_pieces.find(sq2)->second.getColor());
+  auto it1 = m_pieces.find(sq1);
+  auto it2 = m_pieces.find(sq2);
+  if (it1 == m_pieces.end() || it2 == m_pieces.end()) return false;
+  return it1->second.getColor() == it2->second.getColor();
 }
 
 Entity::Position PieceManager::createPiecePositon(core::Square pos) {
@@ -116,14 +120,23 @@ Entity::Position PieceManager::getPieceSize(core::Square pos) const {
 }
 
 void PieceManager::setPieceToSquareScreenPos(core::Square from, core::Square to) {
-  m_pieces[from].setPosition(createPiecePositon(to));
+  auto it = m_pieces.find(from);
+  if (it != m_pieces.end()) {
+    it->second.setPosition(createPiecePositon(to));
+  }
 }
 
 void PieceManager::setPieceToScreenPos(core::Square pos, core::MousePos mousePos) {
-  m_pieces[pos].setPosition(mouseToEntityPos(mousePos));
+  auto it = m_pieces.find(pos);
+  if (it != m_pieces.end()) {
+    it->second.setPosition(mouseToEntityPos(mousePos));
+  }
 }
 void PieceManager::setPieceToScreenPos(core::Square pos, Entity::Position entityPos) {
-  m_pieces[pos].setPosition(entityPos);
+  auto it = m_pieces.find(pos);
+  if (it != m_pieces.end()) {
+    it->second.setPosition(entityPos);
+  }
 }
 
 void PieceManager::renderPieces(sf::RenderWindow& window,
@@ -139,7 +152,10 @@ void PieceManager::renderPieces(sf::RenderWindow& window,
 }
 
 void PieceManager::renderPiece(core::Square pos, sf::RenderWindow& window) {
-  m_pieces.find(pos)->second.draw(window);
+  auto it = m_pieces.find(pos);
+  if (it != m_pieces.end()) {
+    it->second.draw(window);
+  }
 }
 
 }  // namespace lilia::view
