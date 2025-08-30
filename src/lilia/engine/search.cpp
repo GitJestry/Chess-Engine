@@ -101,9 +101,9 @@ struct NullUndoGuard {
   model::Position& pos;
   bool applied = false;
   explicit NullUndoGuard(model::Position& p) : pos(p) {}
-  void doNull() {
+  bool doNull() {
     applied = pos.doNullMove();
-    applied = true;
+    return applied;
   }
   void rollback() {
     if (applied) {
@@ -507,8 +507,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     const int margin = 50 + 20 * depth;
     if (staticEval >= beta + margin) {
       NullUndoGuard ng(pos);
-      ng.doNull();
-      if (ng.applied) {
+      if (ng.doNull()) {
         int R = (depth >= 7 ? 3 : 2);
         int nullScore = -negamax(pos, depth - 1 - R, -beta, -beta + 1, ply + 1, refBest);
         if (nullScore >= beta) {

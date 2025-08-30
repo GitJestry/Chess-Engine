@@ -103,13 +103,8 @@ bool Position::inCheck() const {
   const bb::Bitboard kbb = m_board.getPieces(m_state.sideToMove, core::PieceType::King);
   if (!kbb) return false;
   const core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
-  return isSquareAttacked(ksq, ~m_state.sideToMove);
+  return attackedBy(m_board, ksq, ~m_state.sideToMove, m_board.getAllPieces());
 }
-
-bool Position::isSquareAttacked(core::Square sq, core::Color by) const {
-  return attackedBy(m_board, sq, by, m_board.getAllPieces());
-}
-
 // ------- Static Exchange Evaluation (SEE), robust & einfach -------
 bool Position::see(const model::Move& m) const {
   using core::Color;
@@ -287,7 +282,7 @@ bool Position::doMove(const Move& m) {
     return false;
   }
   core::Square ksqAfter = static_cast<core::Square>(bb::ctz64(kbbAfter));
-  if (isSquareAttacked(ksqAfter, m_state.sideToMove)) {
+  if (attackedBy(m_board, ksqAfter, m_state.sideToMove, m_board.getAllPieces())) {
     unapplyMove(st);
     m_hash = st.zobristKey;
     m_state.pawnKey = st.prevPawnKey;
@@ -482,7 +477,7 @@ void Position::applyMove(const Move& m, StateInfo& st) {
   std::uint8_t gc = 0;
   if (kThem) {
     const core::Square ksqThem = static_cast<core::Square>(bb::ctz64(kThem));
-    if (isSquareAttacked(ksqThem, us)) gc = 1;
+    if (attackedBy(m_board, ksqThem, us, m_board.getAllPieces())) gc = 1;
   }
   st.gaveCheck = gc;
 

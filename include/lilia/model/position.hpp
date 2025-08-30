@@ -53,7 +53,6 @@ class Position {
   void undoNullMove();
 
   // Statusabfragen
-  bool isSquareAttacked(core::Square sq, core::Color by) const;
   bool checkInsufficientMaterial();
   bool checkMoveRule();
   bool checkRepetition();
@@ -70,14 +69,6 @@ class Position {
   std::vector<StateInfo> m_history;
   bb::Bitboard m_hash = 0;
   engine::EvalAcc evalAcc_;
-
-  struct NullState {
-    bb::Bitboard zobristKey;
-    std::uint8_t prevCastlingRights;
-    core::Square prevEnPassantSquare;
-    int prevHalfmoveClock;
-    int prevFullmoveNumber;
-  };
   std::vector<NullState> m_null_history;
 
   // interne Helfer
