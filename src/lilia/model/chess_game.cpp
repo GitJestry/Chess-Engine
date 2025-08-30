@@ -3,6 +3,8 @@
 #include <optional>
 #include <sstream>
 
+#include "lilia/model/move_helper.hpp"
+
 namespace lilia::model {
 
 core::Square stringToSquare(const std::string& strSquare) {
@@ -212,7 +214,7 @@ void ChessGame::doMove(core::Square from, core::Square to, core::PieceType promo
 bool ChessGame::isKingInCheck(core::Color from) const {
   bb::Bitboard kbb = m_position.getBoard().getPieces(from, core::PieceType::King);
   core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
-  return m_position.isSquareAttacked(ksq, ~from);
+  return attackedBy(m_position.getBoard(), ksq, ~from, m_position.getBoard().getAllPieces());
 }
 
 Position& ChessGame::getPositionRefForBot() {
