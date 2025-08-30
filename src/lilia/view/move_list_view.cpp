@@ -57,25 +57,26 @@ void MoveListView::render(sf::RenderWindow& window) const {
                               static_cast<float>(m_height)));
   window.setView(view);
 
-  const float top = 0.f;
-  const float bottom = static_cast<float>(m_height);
+  const float top = m_position.y;
+  const float bottom = m_position.y + static_cast<float>(m_height);
 
   // Zeichne nur sichtbare Zeilen
   for (std::size_t i = 0; i < m_lines.size(); ++i) {
-    const float y = kPaddingY + (static_cast<float>(i) * kLineHeight) - m_scroll_offset;
+    const float y = m_position.y + kPaddingY +
+                    (static_cast<float>(i) * kLineHeight) - m_scroll_offset;
     if (y + kLineHeight < top || y > bottom) continue;
 
     if (m_selected_move != static_cast<std::size_t>(-1) &&
         i == m_selected_move / 2) {
       sf::RectangleShape hl({static_cast<float>(m_width), kLineHeight});
-      hl.setPosition(0.f, y);
+      hl.setPosition(m_position.x, y);
       hl.setFillColor(sf::Color(80, 80, 80));
       window.draw(hl);
     }
 
     sf::Text text(m_lines[i], m_font, kFontSize);
     text.setFillColor(sf::Color::White);
-    text.setPosition(kPaddingX, y);
+    text.setPosition(m_position.x + kPaddingX, y);
     window.draw(text);
   }
 

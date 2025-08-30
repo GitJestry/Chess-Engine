@@ -100,6 +100,7 @@ void GameController::handleEvent(const sf::Event& event) {
           m_game_view.selectMove(static_cast<std::size_t>(-1));
         else
           m_game_view.selectMove(m_fen_index - 1);
+        m_sound_manager.playPlayerMove();
       }
       return;
     } else if (event.key.code == sf::Keyboard::Right) {
@@ -107,6 +108,7 @@ void GameController::handleEvent(const sf::Event& event) {
         ++m_fen_index;
         m_game_view.setBoardFen(m_fen_history[m_fen_index]);
         m_game_view.selectMove(m_fen_index - 1);
+        m_sound_manager.playPlayerMove();
       }
       return;
     }
