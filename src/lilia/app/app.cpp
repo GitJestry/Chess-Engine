@@ -29,13 +29,14 @@ std::string App::toLower(const std::string& s) {
   return out;
 }
 
-bool App::parseYesNoDefaultTrue(const std::string& s) {
-  if (s.empty()) return true;
+bool App::parseYesNo(const std::string& s, bool defaultVal) {
+  if (s.empty()) return defaultVal;
   std::string normalized = toLower(trim(s));
-  if (normalized == "n" || normalized == "no" || normalized == "nah" || normalized == "0" ||
-      normalized == "false")
+  if (normalized == "y" || normalized == "yes" || normalized == "1" || normalized == "true")
+    return true;
+  if (normalized == "n" || normalized == "no" || normalized == "0" || normalized == "false")
     return false;
-  return true;
+  return defaultVal;
 }
 
 int App::parseIntInRange(const std::string& s, int defaultVal, int minVal, int maxVal) {
@@ -48,17 +49,15 @@ int App::parseIntInRange(const std::string& s, int defaultVal, int minVal, int m
 }
 
 void App::promptStartOptions() {
-  std::cout << "Player color (white / black) [Standard: white]: ";
-  std::string playerColorInput;
-  std::getline(std::cin, playerColorInput);
-  std::string normalizedColor = toLower(trim(playerColorInput));
-  m_player_color = (normalizedColor == "black" || normalizedColor == "b") ? core::Color::Black
-                                                                          : core::Color::White;
+  std::cout << "Is white a bot? (yes / no) [Standard: no]: ";
+  std::string whiteBotInput;
+  std::getline(std::cin, whiteBotInput);
+  m_white_is_bot = parseYesNo(whiteBotInput, false);
 
-  std::cout << "Enemy is bot? (yes / no) [Standard: yes]: ";
-  std::string botInput;
-  std::getline(std::cin, botInput);
-  m_vs_bot = parseYesNoDefaultTrue(botInput);
+  std::cout << "Is black a bot? (yes / no) [Standard: yes]: ";
+  std::string blackBotInput;
+  std::getline(std::cin, blackBotInput);
+  m_black_is_bot = parseYesNo(blackBotInput, true);
 
   std::cout << "Startposition as FEN [empty = Standard-Start]: ";
   std::string fenInput;
@@ -107,7 +106,7 @@ int App::run() {
   sf::RenderWindow window(
       sf::VideoMode(lilia::view::constant::WINDOW_TOTAL_WIDTH,
                     lilia::view::constant::WINDOW_TOTAL_HEIGHT),
-      "Lilia", sf::Style::Titlebar | sf::Style::Resize | sf::Style::Close);
+      "Lilia", sf::Style::Titlebar | sf::Style::Close);
 
   {
     lilia::model::ChessGame chessGame;
@@ -115,7 +114,8 @@ int App::run() {
     lilia::controller::GameController gameController(gameView, chessGame);
 
     // start the game using GameController wrapper that delegates to GameManager
-    gameController.startGame(m_player_color, m_start_fen, m_vs_bot, m_thinkTimeMs, m_searchDepth);
+    gameController.startGame(m_start_fen, m_white_is_bot, m_black_is_bot, m_thinkTimeMs,
+                            m_searchDepth);
 
     sf::Clock clock;
     while (window.isOpen()) {

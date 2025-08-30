@@ -12,7 +12,7 @@ constexpr unsigned int CAPTURE_CIRCLE_PX_SIZE =
 
 constexpr unsigned int EVAL_BAR_HEIGHT = WINDOW_PX_SIZE;
 constexpr unsigned int EVAL_BAR_WIDTH =
-    static_cast<unsigned int>(static_cast<float>(WINDOW_PX_SIZE) * 0.1);
+    static_cast<unsigned int>(static_cast<float>(WINDOW_PX_SIZE) * 0.05f);
 
 // Breite des Bereichs für die Zugliste rechts neben dem Brett
 constexpr unsigned int MOVE_LIST_WIDTH =

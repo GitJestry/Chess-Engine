@@ -63,12 +63,11 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
 
 GameController::~GameController() = default;
 
-void GameController::startGame(core::Color playerColor, const std::string& fen, bool vsBot,
+void GameController::startGame(const std::string& fen, bool whiteIsBot, bool blackIsBot,
                                int think_time_ms, int depth) {
   m_sound_manager.playGameBegins();
   m_game_view.init(fen);
-  m_game_manager->startGame(playerColor, fen, vsBot, think_time_ms, depth);
-  m_player_color = playerColor;
+  m_game_manager->startGame(fen, whiteIsBot, blackIsBot, think_time_ms, depth);
 
   m_fen_history.clear();
   m_fen_history.push_back(fen);
@@ -372,7 +371,7 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 }
 
 void GameController::showAttacks(std::vector<core::Square> att) {
-  if (m_chess_game.getGameState().sideToMove != m_player_color) return;
+  if (!m_game_manager || !m_game_manager->isHumanTurn()) return;
   for (auto sq : att) {
     if (m_game_view.hasPieceOnSquare(sq))
       m_game_view.highlightCaptureSquare(sq);
@@ -396,8 +395,9 @@ void GameController::onClick(core::MousePos mousePos) {
   // Bereits etwas selektiert? -> erst Zug versuchen (hat Vorrang)
   if (m_selected_sq != core::NO_SQUARE) {
     const auto st = m_chess_game.getGameState();
-    const bool ownTurnAndPiece = (st.sideToMove == m_player_color) &&
-                                 (m_chess_game.getPiece(m_selected_sq).color == m_player_color);
+    const bool ownTurnAndPiece =
+        (st.sideToMove == m_chess_game.getPiece(m_selected_sq).color) &&
+        (!m_game_manager || m_game_manager->isHuman(st.sideToMove));
 
     if (ownTurnAndPiece && tryMove(m_selected_sq, sq)) {
       if (m_game_manager) {
@@ -476,8 +476,9 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
   if (!accepted) {
     // Fehlversuch -> zurückschnappen
     if (m_chess_game.isKingInCheck(m_chess_game.getGameState().sideToMove) &&
-        m_chess_game.getGameState().sideToMove == m_player_color && from != to &&
-        m_game_view.hasPieceOnSquare(from) && m_chess_game.getPiece(from).color == m_player_color) {
+        m_game_manager && m_game_manager->isHuman(m_chess_game.getGameState().sideToMove) &&
+        from != to && m_game_view.hasPieceOnSquare(from) &&
+        m_chess_game.getPiece(from).color == m_chess_game.getGameState().sideToMove) {
       m_game_view.warningKingSquareAnim(
           m_chess_game.getKingSquare(m_chess_game.getGameState().sideToMove));
       m_sound_manager.playWarning();

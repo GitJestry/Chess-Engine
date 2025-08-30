@@ -75,7 +75,7 @@ class GameView {
   void setHandClosedCursor();
 
  private:
-  core::MousePos clampPosToWindowSize(core::MousePos mousePos) const noexcept;
+  core::MousePos clampPosToBoard(core::MousePos mousePos) const noexcept;
   void layout(unsigned int width, unsigned int height);
 
   sf::RenderWindow& m_window;
