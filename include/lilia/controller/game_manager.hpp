@@ -29,8 +29,9 @@ class GameManager {
   explicit GameManager(model::ChessGame& model);
   ~GameManager();
 
-  void startGame(core::Color playerColor, const std::string& fen = core::START_FEN,
-                 bool vsBot = true, int thinkTimeMs = 1000, int depth = 5);
+  void startGame(const std::string& fen = core::START_FEN,
+                 bool whiteIsBot = false, bool blackIsBot = true,
+                 int thinkTimeMs = 1000, int depth = 5);
   void stopGame();
 
   void update(float dt);
@@ -45,10 +46,11 @@ class GameManager {
 
   void setBotForColor(core::Color color, std::unique_ptr<IPlayer> bot);
 
+  [[nodiscard]] bool isHuman(core::Color color) const;
+  [[nodiscard]] bool isHumanTurn() const;
+
  private:
   model::ChessGame& m_game;
-  core::Color m_player_color = core::Color::White;
-
   // Players: nullptr bedeutet menschlicher Spieler
   std::unique_ptr<IPlayer> m_white_player;
   std::unique_ptr<IPlayer> m_black_player;
