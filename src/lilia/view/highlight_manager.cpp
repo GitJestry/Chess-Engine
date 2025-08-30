@@ -38,18 +38,15 @@ void HighlightManager::highlightSquare(core::Square pos) {
 }
 void HighlightManager::highlightAttackSquare(core::Square pos) {
   Entity newAttackHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_ATTACKHLIGHT));
-  newAttackHlight.setScale(constant::ATTACK_DOT_PX_SIZE, constant::ATTACK_DOT_PX_SIZE);
   m_hl_attack_squares[pos] = std::move(newAttackHlight);
 }
 void HighlightManager::highlightCaptureSquare(core::Square pos) {
   Entity newCaptureHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_CAPTUREHLIGHT));
-  newCaptureHlight.setScale(constant::CAPTURE_CIRCLE_PX_SIZE, constant::CAPTURE_CIRCLE_PX_SIZE);
   m_hl_attack_squares[pos] = std::move(newCaptureHlight);
 }
 
 void HighlightManager::highlightHoverSquare(core::Square pos) {
   Entity newHoverHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_HOVERHLIGHT));
-  newHoverHlight.setScale(constant::HOVER_PX_SIZE, constant::HOVER_PX_SIZE);
   m_hl_hover_squares[pos] = std::move(newHoverHlight);
 }
 void HighlightManager::clearAllHighlights() {
