@@ -27,10 +27,14 @@ class Board : public Entity {
   void draw(sf::RenderWindow &window) override;
   void setPosition(const Entity::Position &pos) override;
 
+  void setFlipped(bool flipped);
+  [[nodiscard]] bool isFlipped() const;
+
  private:
   std::array<Entity, constant::BOARD_SIZE * constant::BOARD_SIZE> m_squares;
   std::array<Entity, constant::BOARD_SIZE> m_file_labels;
   std::array<Entity, constant::BOARD_SIZE> m_rank_labels;
+  bool m_flipped{false};
 };
 
 }  // namespace lilia::view
