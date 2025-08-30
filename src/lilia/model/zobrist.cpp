@@ -28,7 +28,7 @@ std::once_flag g_once_init;
 // Für ein Ziel 't' (EP-Square) kommen Angreifer von:
 //  - Weiß: SW(t) | SE(t)
 //  - Schwarz: NW(t) | NE(t)
-static void build_ep_capture_masks() {
+static constexpr void build_ep_capture_masks() {
   for (int s = 0; s < 64; ++s) {
     const bb::Bitboard t = bb::sq_bb(static_cast<core::Square>(s));
     Zobrist::epCaptureMask[bb::ci(core::Color::White)][s] = bb::sw(t) | bb::se(t);

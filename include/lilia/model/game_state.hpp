@@ -11,19 +11,23 @@ struct GameState {
   std::uint8_t castlingRights =
       bb::Castling::WK | bb::Castling::WQ | bb::Castling::BK | bb::Castling::BQ;
   core::Square enPassantSquare = core::NO_SQUARE;
-  int halfmoveClock = 0;
-  int fullmoveNumber = 1;
-  bb::Bitboard pawnKey;
+  std::uint16_t halfmoveClock = 0;   // 0..100 fits in u16
+  std::uint32_t fullmoveNumber = 1;  // 1..2^32-1 is plenty
+  bb::Bitboard pawnKey = 0;          // IMPORTANT: initialize
 };
 
 struct StateInfo {
-  Move move{};
-  bb::Piece captured{};
-  std::uint8_t prevCastlingRights{};
+  Move move{};           // unchanged
+  bb::Piece captured{};  // unchanged
+
+  std::uint8_t prevCastlingRights{};  // unchanged
   core::Square prevEnPassantSquare{core::NO_SQUARE};
-  int prevHalfmoveClock{};
+  std::uint16_t prevHalfmoveClock{};
+
   bb::Bitboard zobristKey{};
-  bb::Bitboard prevPawnKey;
+  bb::Bitboard prevPawnKey{};
+
+  std::uint8_t gaveCheck{0};
 };
 
 }  // namespace lilia::model

@@ -265,8 +265,8 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       }
     }
   }
-
-  if (pos.inCheck()) {
+  const bool inCheck = (ply == 0) ? pos.inCheck() : pos.lastMoveGaveCheck();
+  if (inCheck) {
     // nur Evasions generieren
     int n = gen_evasions(mg, pos, genArr_[kply], engine::MAX_MOVES);
     if (n <= 0) return mated_in(ply);
@@ -437,7 +437,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   const int origBeta = beta;
   const bool isPV = (beta - alpha > 1);
 
-  const bool inCheck = pos.inCheck();
+  const bool inCheck = (ply == 0) ? pos.inCheck() : pos.lastMoveGaveCheck();
   const int staticEval = inCheck ? 0 : signed_eval(pos);
 
   // SNMP
@@ -695,7 +695,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
 
     // Check extension (light)
-    const bool givesCheck = pos.inCheck();
+    const bool givesCheck = pos.lastMoveGaveCheck();
     if (givesCheck && (isQuiet || seeGood)) newDepth += 1;
 
     // Bad capture reduction

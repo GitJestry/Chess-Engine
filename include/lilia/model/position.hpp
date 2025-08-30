@@ -20,22 +20,31 @@ class Position {
   const GameState& getState() const { return m_state; }
 
   // Vollständigen Hash und pawnKey aus der aktuellen Stellung neu berechnen
+  // header: typsicher & nützlich
+  [[nodiscard]] inline std::uint64_t hash() const noexcept {
+    return static_cast<std::uint64_t>(m_hash);
+  }
+  [[nodiscard]] inline bool lastMoveGaveCheck() const noexcept {
+    return !m_history.empty() && m_history.back().gaveCheck != 0;
+  }
+
+  // buildHash(): schneller & ohne Square-Loop
   void buildHash() {
+    // Vollhash (inkl. EP-Relevanz!) – ACHTUNG: Zobrist::compute(*this) muss die gleiche EP-Logik
+    // benutzen
     m_hash = Zobrist::compute(*this);
 
+    // pawnKey neu aufbauen
     bb::Bitboard pk = 0;
-    for (core::Square sq = 0; sq < 64; ++sq) {
-      auto opt = m_board.getPiece(static_cast<core::Square>(sq));
-      if (!opt.has_value()) continue;
-      const bb::Piece p = *opt;
-      if (p.type == core::PieceType::Pawn) {
-        pk ^= Zobrist::piece[bb::ci(p.color)][static_cast<int>(core::PieceType::Pawn)][sq];
+    for (auto c : {core::Color::White, core::Color::Black}) {
+      bb::Bitboard pawns = m_board.getPieces(c, core::PieceType::Pawn);
+      while (pawns) {
+        core::Square s = bb::pop_lsb(pawns);
+        pk ^= Zobrist::piece[bb::ci(c)][static_cast<int>(core::PieceType::Pawn)][s];
       }
     }
     m_state.pawnKey = pk;
   }
-
-  bb::Bitboard hash() const { return m_hash; }
 
   // Make/Unmake
   bool doMove(const Move& m);
@@ -95,14 +104,15 @@ class Position {
     const auto ep = m_state.enPassantSquare;
     if (ep == core::NO_SQUARE) return;
 
+    const auto stm = m_state.sideToMove;
+    const bb::Bitboard pawnsSTM = m_board.getPieces(stm, core::PieceType::Pawn);
+    if (!pawnsSTM) return;  // nichts zu tun
+
     const int epIdx = static_cast<int>(ep);
     const int file = epIdx & 7;
+    const int ci = bb::ci(stm);
 
-    // EP zählt nur, wenn die Seite am Zug das EP-Feld pseudo-legal schlagen kann
-    const int ci = bb::ci(m_state.sideToMove);
-    const bb::Bitboard pawns = m_board.getPieces(m_state.sideToMove, core::PieceType::Pawn);
-
-    if (pawns & Zobrist::epCaptureMask[ci][epIdx]) m_hash ^= Zobrist::epFile[file];
+    if (pawnsSTM & Zobrist::epCaptureMask[ci][epIdx]) m_hash ^= Zobrist::epFile[file];
   }
 };
 

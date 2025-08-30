@@ -477,6 +477,15 @@ void Position::applyMove(const Move& m, StateInfo& st) {
     }
   }
 
+  // --- NEW: compute gaveCheck BEFORE flipping sideToMove ---
+  const bb::Bitboard kThem = m_board.getPieces(them, core::PieceType::King);
+  std::uint8_t gc = 0;
+  if (kThem) {
+    const core::Square ksqThem = static_cast<core::Square>(bb::ctz64(kThem));
+    if (isSquareAttacked(ksqThem, us)) gc = 1;
+  }
+  st.gaveCheck = gc;
+
   // 50-Züge-Regel
   if (placed.type == core::PieceType::Pawn || st.captured.type != core::PieceType::None)
     m_state.halfmoveClock = 0;
