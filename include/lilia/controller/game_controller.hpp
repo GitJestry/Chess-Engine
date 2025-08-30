@@ -41,15 +41,15 @@ class GameController {
   // game_controller.hpp (in public:)
   /**
    * @brief Startet ein Spiel über den internen GameManager.
-   * @param playerColor Farbe des menschlichen Spielers (default: White).
    * @param fen Start-FEN (default: START_FEN).
-   * @param vsBot true = Gegner ist Bot, false = menschlicher Gegner.
+   * @param whiteIsBot true, falls der weiße Spieler ein Bot ist.
+   * @param blackIsBot true, falls der schwarze Spieler ein Bot ist.
    * @param thinkTimeMs Zeit in Millisekunden, die der Bot maximal denken darf.
    * @param depth Suchtiefe für den Bot.
    */
 
-  void startGame(core::Color playerColor, const std::string& fen = core::START_FEN,
-                 bool vsBot = true, int thinkTimeMs = 1000, int depth = 5);
+  void startGame(const std::string& fen = core::START_FEN, bool whiteIsBot = false,
+                 bool blackIsBot = true, int thinkTimeMs = 1000, int depth = 5);
 
  private:
   void onMouseMove(core::MousePos pos);
@@ -83,7 +83,6 @@ class GameController {
   InputManager m_input_manager;               ///< Handles raw input processing.
   view::sound::SoundManager m_sound_manager;  ///< Handles sfx and music
 
-  core::Color m_player_color = core::Color::White;
   core::Square m_promotion_square = core::NO_SQUARE;
 
   bool m_dragging = false;

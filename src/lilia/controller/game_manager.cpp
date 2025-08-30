@@ -14,27 +14,22 @@ GameManager::~GameManager() {
   stopGame();
 }
 
-void GameManager::startGame(core::Color playerColor, const std::string& fen, bool vsBot,
+void GameManager::startGame(const std::string& fen, bool whiteIsBot, bool blackIsBot,
                             int thinkTimeMs, int depth) {
   std::lock_guard lock(m_mutex);
-  m_player_color = playerColor;
   m_game.setPosition(fen);
   m_cancel_bot.store(false);
   m_waiting_promotion = false;
 
-  // default: human for player color, bot for opponent (if vsBot)
-  if (vsBot) {
-    if (playerColor == core::Color::White) {
-      m_white_player.reset();  // human
-      m_black_player = std::make_unique<BotPlayer>(thinkTimeMs, depth);
-    } else {
-      m_black_player.reset();
-      m_white_player = std::make_unique<BotPlayer>(thinkTimeMs, depth);
-    }
-  } else {
+  if (whiteIsBot)
+    m_white_player = std::make_unique<BotPlayer>(thinkTimeMs, depth);
+  else
     m_white_player.reset();
+
+  if (blackIsBot)
+    m_black_player = std::make_unique<BotPlayer>(thinkTimeMs, depth);
+  else
     m_black_player.reset();
-  }
 
   startBotIfNeeded();
 }
@@ -63,7 +58,7 @@ void GameManager::update([[maybe_unused]] float dt) {
 bool GameManager::requestUserMove(core::Square from, core::Square to, bool onClick) {
   std::lock_guard lock(m_mutex);
   if (m_waiting_promotion) return false;  // waiting on previous promotion
-  if (m_game.getGameState().sideToMove != m_player_color) return false;
+  if (!isHuman(m_game.getGameState().sideToMove)) return false;
 
   const auto& moves = m_game.generateLegalMoves();
   for (const auto& m : moves) {
@@ -105,10 +100,10 @@ void GameManager::completePendingPromotion(core::PieceType promotion) {
 }
 
 void GameManager::applyMoveAndNotify(const model::Move& mv, bool onClick) {
+  const core::Color mover = m_game.getGameState().sideToMove;
   m_game.doMove(mv.from, mv.to, mv.promotion);
 
-  // Determine if that move was executed by the player.
-  bool wasPlayerMove = (m_game.getGameState().sideToMove != m_player_color);
+  bool wasPlayerMove = isHuman(mover);
 
   if (onMoveExecuted_) onMoveExecuted_(mv, wasPlayerMove, onClick);
 
@@ -145,6 +140,15 @@ void GameManager::setBotForColor(core::Color color, std::unique_ptr<IPlayer> bot
     m_white_player = std::move(bot);
   else
     m_black_player = std::move(bot);
+}
+
+bool GameManager::isHuman(core::Color color) const {
+  const IPlayer* p = (color == core::Color::White) ? m_white_player.get() : m_black_player.get();
+  return !p || p->isHuman();
+}
+
+bool GameManager::isHumanTurn() const {
+  return isHuman(m_game.getGameState().sideToMove);
 }
 
 }  // namespace lilia::controller
