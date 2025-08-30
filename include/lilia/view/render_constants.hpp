@@ -5,14 +5,16 @@ namespace lilia::view::constant {
 constexpr unsigned int BOARD_SIZE = 8;
 constexpr unsigned int WINDOW_PX_SIZE = 800;
 constexpr unsigned int SQUARE_PX_SIZE = WINDOW_PX_SIZE / BOARD_SIZE;
-constexpr unsigned int ATTACK_DOT_PX_SIZE =
-    static_cast<unsigned int>(static_cast<float>(SQUARE_PX_SIZE) * 0.45f + 0.5f);
-constexpr unsigned int CAPTURE_CIRCLE_PX_SIZE =
-    static_cast<unsigned int>(static_cast<float>(SQUARE_PX_SIZE) * 1.02f + 0.5f);
+constexpr unsigned int ATTACK_DOT_PX_SIZE = static_cast<unsigned int>(
+    static_cast<float>(SQUARE_PX_SIZE) * 0.45f + 0.5f);
+constexpr unsigned int CAPTURE_CIRCLE_PX_SIZE = static_cast<unsigned int>(
+    static_cast<float>(SQUARE_PX_SIZE) * 1.02f + 0.5f);
 
 constexpr unsigned int EVAL_BAR_HEIGHT = WINDOW_PX_SIZE;
 constexpr unsigned int EVAL_BAR_WIDTH =
     static_cast<unsigned int>(static_cast<float>(WINDOW_PX_SIZE) * 0.05f);
+// Fontgröße für die Anzeige des Bewertungs-Textes
+constexpr unsigned int EVAL_BAR_FONT_SIZE = 14;
 
 // Breite des Bereichs für die Zugliste rechts neben dem Brett
 constexpr unsigned int MOVE_LIST_WIDTH =
@@ -23,9 +25,9 @@ constexpr unsigned int SIDE_MARGIN =
     static_cast<unsigned int>(static_cast<float>(SQUARE_PX_SIZE) * 0.5f);
 
 // Gesamtabmessungen des Fensters (Breite + Höhe)
-constexpr unsigned int WINDOW_TOTAL_WIDTH =
-    EVAL_BAR_WIDTH + SIDE_MARGIN + WINDOW_PX_SIZE + SIDE_MARGIN + MOVE_LIST_WIDTH +
-    SIDE_MARGIN;
+constexpr unsigned int WINDOW_TOTAL_WIDTH = EVAL_BAR_WIDTH + SIDE_MARGIN +
+                                            WINDOW_PX_SIZE + SIDE_MARGIN +
+                                            MOVE_LIST_WIDTH + SIDE_MARGIN;
 constexpr unsigned int WINDOW_TOTAL_HEIGHT = WINDOW_PX_SIZE + SIDE_MARGIN * 2;
 
 constexpr unsigned int HOVER_PX_SIZE = SQUARE_PX_SIZE;
@@ -47,9 +49,12 @@ const std::string STR_TEXTURE_ATTACKHLIGHT = "attackHighlight";
 const std::string STR_TEXTURE_CAPTUREHLIGHT = "captureHighlight";
 const std::string STR_TEXTURE_HOVERHLIGHT = "hoverHighlight";
 const std::string STR_TEXTURE_WARNINGHLIGHT = "warningHighlight";
+const std::string STR_TEXTURE_HISTORY_OVERLAY = "historyOverlay";
 
-const std::string STR_FILE_PATH_HAND_OPEN = "assets/textures/cursor_hand_open.png";
-const std::string STR_FILE_PATH_HAND_CLOSED = "assets/textures/cursor_hand_closed.png";
+const std::string STR_FILE_PATH_HAND_OPEN =
+    "assets/textures/cursor_hand_open.png";
+const std::string STR_FILE_PATH_HAND_CLOSED =
+    "assets/textures/cursor_hand_closed.png";
 const std::string STR_FILE_PATH_FONT = "assets/font/OpenSans-Regular.ttf";
 
 const std::string ASSET_PIECES_FILE_PATH = "assets/textures";
@@ -66,4 +71,4 @@ const std::string SFX_PROMOTION_NAME = "promotion";
 const std::string SFX_GAME_BEGINS_NAME = "game_begins";
 const std::string SFX_GAME_ENDS_NAME = "game_ends";
 
-}  // namespace lilia::view::constant
+} // namespace lilia::view::constant

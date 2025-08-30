@@ -35,6 +35,7 @@ class GameView {
   void selectMove(std::size_t moveIndex);
   void setBoardFen(const std::string& fen);
   void scrollMoveList(float delta);
+  void setHistoryOverlay(bool active);
 
   void setPlayerNames(const std::string& whiteName, const std::string& blackName);
 
@@ -91,6 +92,8 @@ class GameView {
   MoveListView m_move_list;
   CursorManager m_cursor_manager;
   PlayerInfoView m_player_info;
+  Entity m_history_overlay;
+  bool m_show_history_overlay{false};
 };
 
 }  // namespace lilia::view

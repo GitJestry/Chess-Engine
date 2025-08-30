@@ -5,6 +5,8 @@
 #include <iostream>
 #include <limits>
 
+#include "lilia/view/texture_table.hpp"
+
 namespace lilia::view {
 
 GameView::GameView(sf::RenderWindow& window)
@@ -18,6 +20,11 @@ GameView::GameView(sf::RenderWindow& window)
       m_cursor_manager(window),
       m_player_info() {
   m_cursor_manager.setDefault();
+      m_history_overlay(),
+      m_show_history_overlay(false) {
+  m_history_overlay.setTexture(
+      TextureTable::getInstance().get(constant::STR_TEXTURE_HISTORY_OVERLAY));
+  m_history_overlay.setScale(constant::WINDOW_PX_SIZE, constant::WINDOW_PX_SIZE);
   layout(m_window.getSize().x, m_window.getSize().y);
 }
 
@@ -43,6 +50,7 @@ void GameView::render() {
   m_piece_manager.renderPieces(m_window, m_chess_animator);
   m_highlight_manager.renderAttack(m_window);
   m_chess_animator.render(m_window);
+  if (m_show_history_overlay) m_history_overlay.draw(m_window);
   m_move_list.render(m_window);
   m_player_info.render(m_window);
 }
@@ -81,6 +89,7 @@ void GameView::layout(unsigned int width, unsigned int height) {
   float boardCenterY = vMargin + static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
 
   m_board_view.setPosition({boardCenterX, boardCenterY});
+  m_history_overlay.setPosition(m_board_view.getPosition());
 
   float evalCenterX =
       hMargin +
@@ -167,6 +176,13 @@ void GameView::clearHighlightHoverSquare(core::Square pos) {
 
 void GameView::clearAllHighlights() {
   m_highlight_manager.clearAllHighlights();
+}
+
+void GameView::setHistoryOverlay(bool active) {
+  m_show_history_overlay = active;
+  if (active) {
+    m_history_overlay.setPosition(m_board_view.getPosition());
+  }
 }
 
 bool GameView::isInPromotionSelection() {

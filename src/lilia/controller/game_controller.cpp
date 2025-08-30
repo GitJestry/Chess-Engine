@@ -46,8 +46,11 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
     this->m_chess_game.checkGameResult();
     this->m_game_view.addMove(move_to_uci(mv));
     this->m_fen_history.push_back(this->m_chess_game.getFen());
+    this->m_move_history.emplace_back(mv.from, mv.to);
     this->m_fen_index = this->m_fen_history.size() - 1;
     this->m_game_view.setBoardFen(this->m_fen_history.back());
+    this->highlightLastMove();
+    this->m_game_view.setHistoryOverlay(false);
     this->m_game_view.selectMove(this->m_fen_index ? this->m_fen_index - 1
                                                  : static_cast<std::size_t>(-1));
   });
@@ -76,6 +79,7 @@ void GameController::startGame(const std::string& fen, bool whiteIsBot, bool bla
   m_fen_history.clear();
   m_fen_history.push_back(fen);
   m_fen_index = 0;
+  m_move_history.clear();
   m_game_view.selectMove(static_cast<std::size_t>(-1));
 
   // UI-State
@@ -90,6 +94,7 @@ void GameController::startGame(const std::string& fen, bool whiteIsBot, bool bla
   m_last_move_squares = {core::NO_SQUARE, core::NO_SQUARE};
 
   m_game_view.setDefaultCursor();
+  m_game_view.setHistoryOverlay(false);
 }
 
 void GameController::handleEvent(const sf::Event& event) {
@@ -100,11 +105,21 @@ void GameController::handleEvent(const sf::Event& event) {
       if (m_fen_index > 0) {
         --m_fen_index;
         m_game_view.setBoardFen(m_fen_history[m_fen_index]);
-        if (m_fen_index == 0)
+        if (m_fen_index == 0) {
           m_game_view.selectMove(static_cast<std::size_t>(-1));
-        else
+          m_last_move_squares = {core::NO_SQUARE, core::NO_SQUARE};
+        } else {
           m_game_view.selectMove(m_fen_index - 1);
-        m_sound_manager.playPlayerMove();
+          m_last_move_squares = m_move_history[m_fen_index - 1];
+        }
+        m_game_view.clearAllHighlights();
+        highlightLastMove();
+        m_game_view.setHistoryOverlay(m_fen_index != m_fen_history.size() - 1);
+        bool whiteMoved = (m_fen_index % 2 == 1);
+        if (whiteMoved)
+          m_sound_manager.playPlayerMove();
+        else
+          m_sound_manager.playEnemyMove();
       }
       return;
     } else if (event.key.code == sf::Keyboard::Right) {
@@ -112,7 +127,15 @@ void GameController::handleEvent(const sf::Event& event) {
         ++m_fen_index;
         m_game_view.setBoardFen(m_fen_history[m_fen_index]);
         m_game_view.selectMove(m_fen_index - 1);
-        m_sound_manager.playPlayerMove();
+        m_last_move_squares = m_move_history[m_fen_index - 1];
+        m_game_view.clearAllHighlights();
+        highlightLastMove();
+        m_game_view.setHistoryOverlay(m_fen_index != m_fen_history.size() - 1);
+        bool whiteMoved = (m_fen_index % 2 == 1);
+        if (whiteMoved)
+          m_sound_manager.playPlayerMove();
+        else
+          m_sound_manager.playEnemyMove();
       }
       return;
     }
