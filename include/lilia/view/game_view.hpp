@@ -10,19 +10,19 @@
 #include "board_view.hpp"
 #include "entity.hpp"
 #include "eval_bar.hpp"
-#include "move_list_view.hpp"
 #include "highlight_manager.hpp"
+#include "move_list_view.hpp"
 #include "piece_manager.hpp"
 #include "promotion_manager.hpp"
 
 namespace lilia::view {
 
 class GameView {
- public:
-  GameView(sf::RenderWindow& window);
+public:
+  GameView(sf::RenderWindow &window);
   ~GameView() = default;
 
-  void init(const std::string& fen = core::START_FEN);
+  void init(const std::string &fen = core::START_FEN);
 
   void resetBoard();
 
@@ -31,11 +31,13 @@ class GameView {
 
   void render();
 
-  void addMove(const std::string& move);
+  void addMove(const std::string &move);
   void selectMove(std::size_t moveIndex);
-  void setBoardFen(const std::string& fen);
+  void setBoardFen(const std::string &fen);
   void scrollMoveList(float delta);
   void setHistoryOverlay(bool active);
+
+  [[nodiscard]] std::size_t getMoveIndexAt(core::MousePos mousePos) const;
 
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
   void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
@@ -79,11 +81,11 @@ class GameView {
   void toggleBoardOrientation();
   [[nodiscard]] bool isOnFlipIcon(core::MousePos mousePos) const;
 
- private:
+private:
   core::MousePos clampPosToBoard(core::MousePos mousePos) const noexcept;
   void layout(unsigned int width, unsigned int height);
 
-  sf::RenderWindow& m_window;
+  sf::RenderWindow &m_window;
   BoardView m_board_view;
   PieceManager m_piece_manager;
   HighlightManager m_highlight_manager;
@@ -98,4 +100,4 @@ class GameView {
   bool m_show_history_overlay{false};
 };
 
-}  // namespace lilia::view
+} // namespace lilia::view
