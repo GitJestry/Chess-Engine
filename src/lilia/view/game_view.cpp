@@ -59,29 +59,35 @@ void GameView::render() {
 
 void GameView::addMove(const std::string& move) { m_move_list.addMove(move); }
 
-void GameView::onResize(unsigned int width, unsigned int height) {
-  layout(width, height);
-}
-
 void GameView::scrollMoveList(float delta) { m_move_list.scroll(delta); }
 
 void GameView::layout(unsigned int width, unsigned int height) {
-  float vMargin = std::max(0.f, (static_cast<float>(height) -
-                                 static_cast<float>(constant::WINDOW_PX_SIZE)) /
-                                    2.f);
+  float vMargin =
+      std::max(0.f, (static_cast<float>(height) -
+                     static_cast<float>(constant::WINDOW_PX_SIZE)) /
+                        2.f);
+  float hMargin =
+      std::max(0.f, (static_cast<float>(width) -
+                     static_cast<float>(constant::WINDOW_TOTAL_WIDTH)) /
+                        2.f);
 
-  float areaWidth = static_cast<float>(width) -
-                    static_cast<float>(constant::EVAL_BAR_WIDTH) -
-                    static_cast<float>(constant::MOVE_LIST_WIDTH);
-  float boardCenterX = static_cast<float>(constant::EVAL_BAR_WIDTH) + areaWidth / 2.f;
+  float boardCenterX = hMargin +
+                       static_cast<float>(constant::EVAL_BAR_WIDTH +
+                                         constant::SIDE_MARGIN) +
+                       static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
   float boardCenterY = vMargin + static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
 
   m_board_view.setPosition({boardCenterX, boardCenterY});
-  m_eval_bar.setPosition({static_cast<float>(constant::EVAL_BAR_WIDTH) / 2.f, boardCenterY});
 
-  float moveListX = static_cast<float>(width) -
-                    static_cast<float>(constant::MOVE_LIST_WIDTH) -
-                    static_cast<float>(constant::SIDE_MARGIN);
+  float evalCenterX =
+      hMargin +
+      static_cast<float>(constant::EVAL_BAR_WIDTH + constant::SIDE_MARGIN) / 2.f;
+  m_eval_bar.setPosition({evalCenterX, boardCenterY});
+
+  float moveListX = hMargin + static_cast<float>(constant::EVAL_BAR_WIDTH +
+                                                 constant::SIDE_MARGIN +
+                                                 constant::WINDOW_PX_SIZE +
+                                                 constant::SIDE_MARGIN);
   m_move_list.setPosition({moveListX, vMargin});
   m_move_list.setSize(constant::MOVE_LIST_WIDTH, constant::WINDOW_PX_SIZE);
 }
@@ -203,27 +209,28 @@ constexpr int clampInt(int v, int lo, int hi) noexcept {
   return (v < lo) ? lo : (v > hi ? hi : v);
 }
 
-core::MousePos GameView::clampPosToWindowSize(core::MousePos mousePos) const noexcept {
+core::MousePos GameView::clampPosToBoard(core::MousePos mousePos) const noexcept {
   // 1) Unsigned -> Signed normalisieren (gegen negative Mauswerte außerhalb des Fensters)
   const int sx = normalizeUnsignedToSigned(mousePos.x);
   const int sy = normalizeUnsignedToSigned(mousePos.y);
 
-  // 2) Reale Fenstergröße holen (Methode MUSS const sein!)
-  const auto window = getWindowSize();
+  // 2) Brettgrenzen bestimmen
+  auto boardCenter = m_board_view.getPosition();
+  const int left = static_cast<int>(boardCenter.x - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f);
+  const int top = static_cast<int>(boardCenter.y - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f);
+  const int right = left + static_cast<int>(constant::WINDOW_PX_SIZE) - 1;
+  const int bottom = top + static_cast<int>(constant::WINDOW_PX_SIZE) - 1;
 
-  // inklusiver Pixelbereich: 0 .. width-1 / height-1
-  const int maxX = std::max(0, static_cast<int>(window.x) - 1);
-  const int maxY = std::max(0, static_cast<int>(window.y) - 1);
+  // 3) Clamp innerhalb der Brettgrenzen
+  const int cx = clampInt(sx, left, right);
+  const int cy = clampInt(sy, top, bottom);
 
-  const int cx = clampInt(sx, 0, maxX);
-  const int cy = clampInt(sy, 0, maxY);
-
-  // 3) Nach Clamp garantiert >= 0 -> sicher auf unsigned
+  // 4) Nach Clamp garantiert innerhalb -> sicher auf unsigned
   return {static_cast<unsigned>(cx), static_cast<unsigned>(cy)};
 }
 
 [[nodiscard]] core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
-  auto clamped = clampPosToWindowSize(mousePos);
+  auto clamped = clampPosToBoard(mousePos);
   auto boardCenter = m_board_view.getPosition();
   float originX = boardCenter.x - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
   float originY = boardCenter.y - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
@@ -242,7 +249,7 @@ core::MousePos GameView::clampPosToWindowSize(core::MousePos mousePos) const noe
 }
 
 void GameView::setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos) {
-  m_piece_manager.setPieceToScreenPos(pos, clampPosToWindowSize(mousePos));
+  m_piece_manager.setPieceToScreenPos(pos, clampPosToBoard(mousePos));
 }
 void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
   m_piece_manager.setPieceToSquareScreenPos(from, to);
