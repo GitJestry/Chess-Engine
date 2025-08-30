@@ -12,11 +12,9 @@
 namespace lilia::controller {
 
 BotPlayer::EvalCallback BotPlayer::s_eval_callback = nullptr;
-
 void BotPlayer::setEvalCallback(EvalCallback cb) {
   s_eval_callback = std::move(cb);
 }
-
 std::future<model::Move> BotPlayer::requestMove(model::ChessGame& gameState,
                                                 std::atomic<bool>& cancelToken) {
   int requestedDepth = m_depth;
@@ -34,7 +32,6 @@ std::future<model::Move> BotPlayer::requestMove(model::ChessGame& gameState,
                         if (gameState.getGameState().sideToMove == core::Color::Black) eval = -eval;
                         BotPlayer::s_eval_callback(eval);
                       }
-
                       if (cancelToken.load()) {
                         return model::Move{};
                       }
@@ -60,5 +57,4 @@ std::future<model::Move> BotPlayer::requestMove(model::ChessGame& gameState,
                       return res.bestMove.value_or(model::Move{});
                     });
 }
-
 }  // namespace lilia::controller
