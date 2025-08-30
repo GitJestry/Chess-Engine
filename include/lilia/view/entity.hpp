@@ -30,6 +30,7 @@ class Entity {
   [[nodiscard]] Position getCurrentSize() const;
 
   void setOriginToCenter();
+  void setOrigin(Entity::Position org);
 
   virtual void draw(sf::RenderWindow &window);
 

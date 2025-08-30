@@ -9,6 +9,38 @@ namespace lilia::view {
 
 Board::Board(Entity::Position pos) : Entity(pos), m_flipped(false) {}
 
+void Board::positionLabels(Entity::Position board_offset) {
+  // FILE-Labels wieder unten rechts im Feld der Grundreihe
+  for (int file = 0; file < constant::BOARD_SIZE; ++file) {
+    auto &label = m_file_labels[m_flipped ? constant::BOARD_SIZE - 1 - file : file];
+    auto size = label.getOriginalSize();
+    float scale = (constant::SQUARE_PX_SIZE * 0.25f) / size.x;
+    float w = size.x * scale;
+    float h = size.y * scale;
+
+    float cx = board_offset.x + file * constant::SQUARE_PX_SIZE;
+    float cy = board_offset.y + (constant::BOARD_SIZE - 1 - 0) * constant::SQUARE_PX_SIZE;
+
+    label.setPosition(
+        {cx + constant::SQUARE_PX_SIZE * 0.5f - w, cy + constant::SQUARE_PX_SIZE * 0.45f - h});
+  }
+
+  // RANK-Labels wieder oben links im linken Randfeld
+  for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {
+    auto &label = m_rank_labels[m_flipped ? constant::BOARD_SIZE - 1 - rank : rank];
+    auto size = label.getOriginalSize();
+    float scale = (constant::SQUARE_PX_SIZE * 0.25f) / size.x;
+    (void)size;
+    (void)scale;  // nur falls ungenutzt-Warnungen auftreten
+
+    float cx = board_offset.x;  // file 0
+    float cy = board_offset.y + (constant::BOARD_SIZE - 1 - rank) * constant::SQUARE_PX_SIZE;
+
+    label.setPosition(
+        {cx - constant::SQUARE_PX_SIZE * 0.5f, cy - constant::SQUARE_PX_SIZE * 0.45f});
+  }
+}
+
 void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlack,
                  const sf::Texture &textureBoard) {
   setTexture(textureBoard);
@@ -36,9 +68,6 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
     }
   }
 
-  // kleines Padding, damit Labels nicht am Rand kleben
-  const float pad = constant::SQUARE_PX_SIZE * 0.04f;
-
   // FILE-Labels (a–h)
   for (int file = 0; file < constant::BOARD_SIZE; ++file) {
     std::string name = constant::ASSET_PIECES_FILE_PATH + "/" +
@@ -48,40 +77,16 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
     float scale = (constant::SQUARE_PX_SIZE * 0.25f) / size.x;
     m_file_labels[file].setScale(scale, scale);
   }
-  for (int file = 0; file < constant::BOARD_SIZE; ++file) {
-    float cx = board_offset.x + file * constant::SQUARE_PX_SIZE;
-    float cy = board_offset.y + (constant::BOARD_SIZE - 1 - 0) * constant::SQUARE_PX_SIZE;
-
-    auto &label =
-        m_file_labels[m_flipped ? constant::BOARD_SIZE - 1 - file : file];
-    auto size = label.getOriginalSize();
-    float scale = (constant::SQUARE_PX_SIZE * 0.25f) / size.x;
-    float w = size.x * scale;
-    float h = size.y * scale;
-
-    label.setPosition({cx + constant::SQUARE_PX_SIZE * 0.5f - pad - w,
-                       cy + constant::SQUARE_PX_SIZE * 0.5f - pad - h});
-  }
-
   // RANK-Labels (1–8)
   for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {
-    std::string name = constant::ASSET_PIECES_FILE_PATH + "/" +
-                       std::to_string(rank + 1) + ".png";
+    std::string name = constant::ASSET_PIECES_FILE_PATH + "/" + std::to_string(rank + 1) + ".png";
     m_rank_labels[rank].setTexture(TextureTable::getInstance().get(name));
     auto size = m_rank_labels[rank].getOriginalSize();
     float scale = (constant::SQUARE_PX_SIZE * 0.25f) / size.x;
     m_rank_labels[rank].setScale(scale, scale);
   }
-  for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {
-    float cx = board_offset.x;  // linkes Feld (file 0)
-    float cy = board_offset.y +
-               (constant::BOARD_SIZE - 1 - rank) * constant::SQUARE_PX_SIZE;
 
-    auto &label =
-        m_rank_labels[m_flipped ? constant::BOARD_SIZE - 1 - rank : rank];
-    label.setPosition({cx - constant::SQUARE_PX_SIZE * 0.5f + pad,
-                       cy - constant::SQUARE_PX_SIZE * 0.5f + pad});
-  }
+  positionLabels(board_offset);
 }
 
 [[nodiscard]] Entity::Position Board::getPosOfSquare(core::Square sq) const {
@@ -119,41 +124,7 @@ void Board::setPosition(const Entity::Position &pos) {
       m_squares[index].setPosition({x, y});
     }
   }
-
-  const float pad = constant::SQUARE_PX_SIZE * 0.08f;
-
-  // FILE-Labels wieder unten rechts im Feld der Grundreihe
-  for (int file = 0; file < constant::BOARD_SIZE; ++file) {
-    auto &label =
-        m_file_labels[m_flipped ? constant::BOARD_SIZE - 1 - file : file];
-    auto size = label.getOriginalSize();
-    float scale = (constant::SQUARE_PX_SIZE * 0.3f) / size.x;
-    float w = size.x * scale;
-    float h = size.y * scale;
-
-    float cx = board_offset.x + file * constant::SQUARE_PX_SIZE;
-    float cy = board_offset.y + (constant::BOARD_SIZE - 1 - 0) * constant::SQUARE_PX_SIZE;
-
-    label.setPosition({cx + constant::SQUARE_PX_SIZE * 0.5f - pad - w,
-                       cy + constant::SQUARE_PX_SIZE * 0.5f - pad - h});
-  }
-
-  // RANK-Labels wieder oben links im linken Randfeld
-  for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {
-    auto &label =
-        m_rank_labels[m_flipped ? constant::BOARD_SIZE - 1 - rank : rank];
-    auto size = label.getOriginalSize();
-    float scale = (constant::SQUARE_PX_SIZE * 0.3f) / size.x;
-    (void)size;
-    (void)scale;  // nur falls ungenutzt-Warnungen auftreten
-
-    float cx = board_offset.x;  // file 0
-    float cy = board_offset.y +
-               (constant::BOARD_SIZE - 1 - rank) * constant::SQUARE_PX_SIZE;
-
-    label.setPosition({cx - constant::SQUARE_PX_SIZE * 0.5f + pad,
-                       cy - constant::SQUARE_PX_SIZE * 0.5f + pad});
-  }
+  positionLabels(board_offset);
 }
 
 void Board::setFlipped(bool flipped) {
@@ -161,6 +132,8 @@ void Board::setFlipped(bool flipped) {
   setPosition(getPosition());
 }
 
-bool Board::isFlipped() const { return m_flipped; }
+bool Board::isFlipped() const {
+  return m_flipped;
+}
 
 }  // namespace lilia::view

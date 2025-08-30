@@ -31,6 +31,7 @@ class Board : public Entity {
   [[nodiscard]] bool isFlipped() const;
 
  private:
+  void positionLabels(Entity::Position offset);
   std::array<Entity, constant::BOARD_SIZE * constant::BOARD_SIZE> m_squares;
   std::array<Entity, constant::BOARD_SIZE> m_file_labels;
   std::array<Entity, constant::BOARD_SIZE> m_rank_labels;

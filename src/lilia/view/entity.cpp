@@ -30,6 +30,10 @@ void Entity::setOriginToCenter() {
   m_sprite.setOrigin(bounds.x / 2.f, bounds.y / 2.f);
 }
 
+void Entity::setOrigin(Entity::Position org) {
+  m_sprite.setOrigin(org);
+}
+
 Entity::Entity(const sf::Texture &texture) : m_id(generateId()), m_sprite(texture) {
   setOriginToCenter();
 }
