@@ -34,6 +34,7 @@ class GameView {
   void selectMove(std::size_t moveIndex);
   void setBoardFen(const std::string& fen);
   void scrollMoveList(float delta);
+  void setHistoryOverlay(bool active);
 
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
   void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
@@ -89,6 +90,8 @@ class GameView {
   sf::Cursor m_cursor_hand_closed;
   EvalBar m_eval_bar;
   MoveListView m_move_list;
+  Entity m_history_overlay;
+  bool m_show_history_overlay{false};
 };
 
 }  // namespace lilia::view
