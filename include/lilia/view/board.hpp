@@ -29,6 +29,8 @@ class Board : public Entity {
 
  private:
   std::array<Entity, constant::BOARD_SIZE * constant::BOARD_SIZE> m_squares;
+  std::array<Entity, constant::BOARD_SIZE> m_file_labels;
+  std::array<Entity, constant::BOARD_SIZE> m_rank_labels;
 };
 
 }  // namespace lilia::view
