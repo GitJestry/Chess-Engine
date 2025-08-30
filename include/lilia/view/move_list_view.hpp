@@ -1,0 +1,36 @@
+#pragma once
+
+#include <SFML/Graphics/Font.hpp>
+#include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/Text.hpp>
+#include <string>
+#include <vector>
+
+#include "render_constants.hpp"
+
+namespace lilia::view {
+
+class MoveListView {
+ public:
+  MoveListView();
+
+  void setPosition(const sf::Vector2f &pos);
+  void setSize(unsigned int width, unsigned int height);
+
+  void addMove(const std::string &uciMove);
+  void render(sf::RenderWindow &window) const;
+  void scroll(float delta);
+  void clear();
+
+ private:
+  sf::Font m_font;
+  std::vector<std::string> m_lines;
+  sf::Vector2f m_position{};  // Top-left position
+  unsigned int m_width{constant::MOVE_LIST_WIDTH};
+  unsigned int m_height{constant::WINDOW_PX_SIZE};
+  float m_scroll_offset{0.f};
+  std::size_t m_move_count{0};
+};
+
+}  // namespace lilia::view
+

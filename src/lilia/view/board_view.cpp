@@ -19,4 +19,8 @@ void BoardView::renderBoard(sf::RenderWindow& window) {
   return m_board.getPosOfSquare(sq);
 }
 
+void BoardView::setPosition(const Entity::Position& pos) { m_board.setPosition(pos); }
+
+[[nodiscard]] Entity::Position BoardView::getPosition() const { return m_board.getPosition(); }
+
 }  // namespace lilia::view

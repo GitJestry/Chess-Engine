@@ -13,6 +13,7 @@
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/move.hpp"
 #include "lilia/view/render_constants.hpp"
+#include "lilia/uci/uci_helper.hpp"
 
 namespace lilia::controller {
 
@@ -41,6 +42,7 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
   m_game_manager->setOnMoveExecuted([this](const model::Move& mv, bool isPlayerMove, bool onClick) {
     this->movePieceAndClear(mv, isPlayerMove, onClick);
     this->m_chess_game.checkGameResult();
+    this->m_game_view.addMove(uci::move_to_uci(mv));
   });
 
   m_game_manager->setOnPromotionRequested([this](core::Square sq) {
@@ -90,6 +92,12 @@ void GameController::handleEvent(const sf::Event& event) {
     case sf::Event::MouseButtonReleased:
       if (event.mouseButton.button == sf::Mouse::Left)
         onMouseReleased(core::MousePos(event.mouseButton.x, event.mouseButton.y));
+      break;
+    case sf::Event::MouseWheelScrolled:
+      m_game_view.scrollMoveList(event.mouseWheelScroll.delta);
+      break;
+    case sf::Event::Resized:
+      m_game_view.onResize(event.size.width, event.size.height);
       break;
     default:
       break;

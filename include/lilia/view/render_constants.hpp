@@ -14,6 +14,20 @@ constexpr unsigned int EVAL_BAR_HEIGHT = WINDOW_PX_SIZE;
 constexpr unsigned int EVAL_BAR_WIDTH =
     static_cast<unsigned int>(static_cast<float>(WINDOW_PX_SIZE) * 0.1);
 
+// Breite des Bereichs für die Zugliste rechts neben dem Brett
+constexpr unsigned int MOVE_LIST_WIDTH =
+    static_cast<unsigned int>(static_cast<float>(WINDOW_PX_SIZE) * 0.25f);
+
+// Allgemeiner Abstand zwischen den Elementen (Eval-Bar, Brett, Zugliste)
+constexpr unsigned int SIDE_MARGIN =
+    static_cast<unsigned int>(static_cast<float>(SQUARE_PX_SIZE) * 0.5f);
+
+// Gesamtabmessungen des Fensters (Breite + Höhe)
+constexpr unsigned int WINDOW_TOTAL_WIDTH =
+    EVAL_BAR_WIDTH + SIDE_MARGIN + WINDOW_PX_SIZE + SIDE_MARGIN + MOVE_LIST_WIDTH +
+    SIDE_MARGIN;
+constexpr unsigned int WINDOW_TOTAL_HEIGHT = WINDOW_PX_SIZE + SIDE_MARGIN * 2;
+
 constexpr unsigned int HOVER_PX_SIZE = SQUARE_PX_SIZE;
 
 constexpr float ANIM_SNAP_SPEED = .005f;

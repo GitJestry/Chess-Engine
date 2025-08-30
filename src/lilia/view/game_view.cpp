@@ -2,6 +2,7 @@
 
 #include <SFML/Graphics/Image.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
+#include <algorithm>
 #include <iostream>
 #include <limits>
 
@@ -13,7 +14,8 @@ GameView::GameView(sf::RenderWindow& window)
       m_piece_manager(m_board_view),
       m_highlight_manager(m_board_view),
       m_chess_animator(m_board_view, m_piece_manager),
-      m_eval_bar() {
+      m_eval_bar(),
+      m_move_list() {
   m_cursor_default.loadFromSystem(sf::Cursor::Arrow);
 
   sf::Image openImg;
@@ -27,7 +29,7 @@ GameView::GameView(sf::RenderWindow& window)
                                         {openImg.getSize().x / 2, openImg.getSize().y / 2});
   }
   m_window.setMouseCursor(m_cursor_default);
-  m_eval_bar.setPosition(Entity::Position{0, constant::WINDOW_PX_SIZE / 2});
+  layout(m_window.getSize().x, m_window.getSize().y);
 }
 
 void GameView::init(const std::string& fen) {
@@ -44,14 +46,44 @@ void GameView::updateEval(int eval) {
 }
 
 void GameView::render() {
+  m_eval_bar.render(m_window);
   m_board_view.renderBoard(m_window);
   m_highlight_manager.renderSelect(m_window);
   m_chess_animator.renderHighlightLevel(m_window);
   m_highlight_manager.renderHover(m_window);
   m_piece_manager.renderPieces(m_window, m_chess_animator);
   m_highlight_manager.renderAttack(m_window);
-  m_eval_bar.render(m_window);
   m_chess_animator.render(m_window);
+  m_move_list.render(m_window);
+}
+
+void GameView::addMove(const std::string& move) { m_move_list.addMove(move); }
+
+void GameView::onResize(unsigned int width, unsigned int height) {
+  layout(width, height);
+}
+
+void GameView::scrollMoveList(float delta) { m_move_list.scroll(delta); }
+
+void GameView::layout(unsigned int width, unsigned int height) {
+  float vMargin = std::max(0.f, (static_cast<float>(height) -
+                                 static_cast<float>(constant::WINDOW_PX_SIZE)) /
+                                    2.f);
+
+  float areaWidth = static_cast<float>(width) -
+                    static_cast<float>(constant::EVAL_BAR_WIDTH) -
+                    static_cast<float>(constant::MOVE_LIST_WIDTH);
+  float boardCenterX = static_cast<float>(constant::EVAL_BAR_WIDTH) + areaWidth / 2.f;
+  float boardCenterY = vMargin + static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
+
+  m_board_view.setPosition({boardCenterX, boardCenterY});
+  m_eval_bar.setPosition({static_cast<float>(constant::EVAL_BAR_WIDTH) / 2.f, boardCenterY});
+
+  float moveListX = static_cast<float>(width) -
+                    static_cast<float>(constant::MOVE_LIST_WIDTH) -
+                    static_cast<float>(constant::SIDE_MARGIN);
+  m_move_list.setPosition({moveListX, vMargin});
+  m_move_list.setSize(constant::MOVE_LIST_WIDTH, constant::WINDOW_PX_SIZE);
 }
 
 void GameView::resetBoard() {
@@ -191,8 +223,13 @@ core::MousePos GameView::clampPosToWindowSize(core::MousePos mousePos) const noe
 }
 
 [[nodiscard]] core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
-  int file = clampPosToWindowSize(mousePos).x / constant::SQUARE_PX_SIZE;
-  int rankSFML = clampPosToWindowSize(mousePos).y / constant::SQUARE_PX_SIZE;
+  auto clamped = clampPosToWindowSize(mousePos);
+  auto boardCenter = m_board_view.getPosition();
+  float originX = boardCenter.x - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
+  float originY = boardCenter.y - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
+
+  int file = static_cast<int>((clamped.x - originX) / constant::SQUARE_PX_SIZE);
+  int rankSFML = static_cast<int>((clamped.y - originY) / constant::SQUARE_PX_SIZE);
 
   int rankFromWhite = 7 - rankSFML;
 
