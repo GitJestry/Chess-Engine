@@ -107,7 +107,7 @@ int App::run() {
   sf::RenderWindow window(
       sf::VideoMode(lilia::view::constant::WINDOW_TOTAL_WIDTH,
                     lilia::view::constant::WINDOW_TOTAL_HEIGHT),
-      "Lilia", sf::Style::Titlebar | sf::Style::Resize | sf::Style::Close);
+      "Lilia", sf::Style::Titlebar | sf::Style::Close);
 
   {
     lilia::model::ChessGame chessGame;

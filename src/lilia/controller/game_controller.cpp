@@ -96,9 +96,6 @@ void GameController::handleEvent(const sf::Event& event) {
     case sf::Event::MouseWheelScrolled:
       m_game_view.scrollMoveList(event.mouseWheelScroll.delta);
       break;
-    case sf::Event::Resized:
-      m_game_view.onResize(event.size.width, event.size.height);
-      break;
     default:
       break;
   }
