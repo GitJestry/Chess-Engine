@@ -52,10 +52,10 @@ void EvalBar::update(int eval) {
   int absEval = std::abs(eval);
   if (absEval >= engine::MATE_THR) {
     int moves = (engine::MATE - absEval) / 2;
-    std::string prefix = eval > 0 ? "M" : "-M";
+    std::string prefix = "M";
     m_score_text.setString(prefix + std::to_string(moves));
   } else {
-    double val = m_display_eval / 100.0;
+    double val = std::abs(m_display_eval / 100.0);
     std::ostringstream ss;
     ss.setf(std::ios::fixed);
     ss << std::showpos << std::setprecision(1) << val;
@@ -69,15 +69,14 @@ void EvalBar::update(int eval) {
   // If the evaluation favors White (>= 0), position the text at the bottom
   // (white side) and draw it in black for contrast. Otherwise, position it
   // at the top (black side) and draw it in white.
-  const float offset = 15.f;  // small margin from the edge of the bar
-  const float plusAndMinusOffset = 2.f;
+  const float offset = 12.f;  // small margin from the edge of the bar
   const float barHalfHeight = static_cast<float>(constant::EVAL_BAR_HEIGHT) / 2.f;
 
-  float xPos = getPosition().x - plusAndMinusOffset;
+  float xPos = getPosition().x;
   float yPos = getPosition().y;
   if (m_display_eval >= 0.f) {
     m_score_text.setFillColor(sf::Color(64, 61, 57));
-    yPos += barHalfHeight - offset;
+    yPos += barHalfHeight - offset * 1.5;  // *1.5 because of font origin position
   } else {
     m_score_text.setFillColor(sf::Color::White);
     yPos -= barHalfHeight - offset;
