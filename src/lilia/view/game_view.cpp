@@ -181,7 +181,12 @@ void GameView::clearAllHighlights() {
   m_highlight_manager.clearAllHighlights();
 }
 
-void GameView::setHistoryOverlay(bool active) { m_show_history_overlay = active; }
+void GameView::setHistoryOverlay(bool active) {
+  m_show_history_overlay = active;
+  if (active) {
+    m_history_overlay.setPosition(m_board_view.getPosition());
+  }
+}
 
 bool GameView::isInPromotionSelection() {
   return m_promotion_manager.hasOptions();

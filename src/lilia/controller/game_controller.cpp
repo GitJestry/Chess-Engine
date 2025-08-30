@@ -108,9 +108,14 @@ void GameController::handleEvent(const sf::Event& event) {
           m_game_view.selectMove(m_fen_index - 1);
           m_last_move_squares = m_move_history[m_fen_index - 1];
         }
+        m_game_view.clearAllHighlights();
         highlightLastMove();
         m_game_view.setHistoryOverlay(m_fen_index != m_fen_history.size() - 1);
-        m_sound_manager.playPlayerMove();
+        bool whiteMoved = (m_fen_index % 2 == 1);
+        if (whiteMoved)
+          m_sound_manager.playPlayerMove();
+        else
+          m_sound_manager.playEnemyMove();
       }
       return;
     } else if (event.key.code == sf::Keyboard::Right) {
@@ -119,9 +124,14 @@ void GameController::handleEvent(const sf::Event& event) {
         m_game_view.setBoardFen(m_fen_history[m_fen_index]);
         m_game_view.selectMove(m_fen_index - 1);
         m_last_move_squares = m_move_history[m_fen_index - 1];
+        m_game_view.clearAllHighlights();
         highlightLastMove();
         m_game_view.setHistoryOverlay(m_fen_index != m_fen_history.size() - 1);
-        m_sound_manager.playPlayerMove();
+        bool whiteMoved = (m_fen_index % 2 == 1);
+        if (whiteMoved)
+          m_sound_manager.playPlayerMove();
+        else
+          m_sound_manager.playEnemyMove();
       }
       return;
     }
