@@ -19,6 +19,7 @@ class MoveListView {
   void setSize(unsigned int width, unsigned int height);
 
   void addMove(const std::string &uciMove);
+  void setCurrentMove(std::size_t moveIndex);
   void render(sf::RenderWindow &window) const;
   void scroll(float delta);
   void clear();
@@ -31,6 +32,7 @@ class MoveListView {
   unsigned int m_height{constant::WINDOW_PX_SIZE};
   float m_scroll_offset{0.f};
   std::size_t m_move_count{0};
+  std::size_t m_selected_move{static_cast<std::size_t>(-1)};
 };
 
 }  // namespace lilia::view

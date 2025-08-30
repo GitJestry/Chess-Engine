@@ -3,6 +3,8 @@
 #include <atomic>
 #include <memory>
 #include <utility>
+#include <string>
+#include <vector>
 
 // Forward declaration to avoid heavy SFML header
 namespace sf {
@@ -102,6 +104,9 @@ class GameController {
   // ---------------- New: GameManager ----------------
   std::unique_ptr<GameManager> m_game_manager;
   std::atomic<int> m_eval_cp{0};
+
+  std::vector<std::string> m_fen_history;
+  std::size_t m_fen_index{0};
 };
 
 }  // namespace lilia::controller

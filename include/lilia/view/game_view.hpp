@@ -31,7 +31,8 @@ class GameView {
   void render();
 
   void addMove(const std::string& move);
-  void onResize(unsigned int width, unsigned int height);
+  void selectMove(std::size_t moveIndex);
+  void setBoardFen(const std::string& fen);
   void scrollMoveList(float delta);
 
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;

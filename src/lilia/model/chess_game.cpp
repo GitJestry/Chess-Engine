@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <sstream>
+#include <cctype>
 
 #include "lilia/model/move_helper.hpp"
 
@@ -220,4 +221,75 @@ bool ChessGame::isKingInCheck(core::Color from) const {
 Position& ChessGame::getPositionRefForBot() {
   return m_position;
 }
+
+std::string ChessGame::getFen() const {
+  std::ostringstream oss;
+  const auto& board = m_position.getBoard();
+  for (int rank = 7; rank >= 0; --rank) {
+    int empty = 0;
+    for (int file = 0; file < 8; ++file) {
+      core::Square sq = static_cast<core::Square>(rank * 8 + file);
+      auto piece = board.getPiece(sq);
+      if (piece.has_value()) {
+        if (empty > 0) {
+          oss << empty;
+          empty = 0;
+        }
+        char ch;
+        switch (piece->type) {
+          case core::PieceType::King:
+            ch = 'k';
+            break;
+          case core::PieceType::Queen:
+            ch = 'q';
+            break;
+          case core::PieceType::Rook:
+            ch = 'r';
+            break;
+          case core::PieceType::Bishop:
+            ch = 'b';
+            break;
+          case core::PieceType::Knight:
+            ch = 'n';
+            break;
+          case core::PieceType::Pawn:
+            ch = 'p';
+            break;
+          default:
+            ch = '?';
+            break;
+        }
+        if (piece->color == core::Color::White) ch = static_cast<char>(std::toupper(ch));
+        oss << ch;
+      } else {
+        ++empty;
+      }
+    }
+    if (empty > 0) oss << empty;
+    if (rank > 0) oss << '/';
+  }
+
+  const auto& st = m_position.getState();
+  oss << ' ' << (st.sideToMove == core::Color::White ? 'w' : 'b') << ' ';
+
+  std::string castling;
+  if (st.castlingRights & bb::Castling::WK) castling += 'K';
+  if (st.castlingRights & bb::Castling::WQ) castling += 'Q';
+  if (st.castlingRights & bb::Castling::BK) castling += 'k';
+  if (st.castlingRights & bb::Castling::BQ) castling += 'q';
+  if (castling.empty()) castling = "-";
+  oss << castling << ' ';
+
+  if (st.enPassantSquare == core::NO_SQUARE) {
+    oss << '-';
+  } else {
+    char file = 'a' + (static_cast<int>(st.enPassantSquare) & 7);
+    char rank = '1' + (static_cast<int>(st.enPassantSquare) >> 3);
+    oss << file << rank;
+  }
+  oss << ' ' << st.halfmoveClock << ' ' << st.fullmoveNumber;
+
+  return oss.str();
+}
+
 }  // namespace lilia::model

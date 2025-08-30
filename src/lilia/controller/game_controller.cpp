@@ -4,6 +4,7 @@
 #include <SFML/System/Time.hpp>
 #include <SFML/Window/Event.hpp>
 #include <SFML/Window/Mouse.hpp>
+#include <SFML/Window/Keyboard.hpp>
 #include <algorithm>
 #include <iostream>
 #include <string>
@@ -43,6 +44,11 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
     this->movePieceAndClear(mv, isPlayerMove, onClick);
     this->m_chess_game.checkGameResult();
     this->m_game_view.addMove(move_to_uci(mv));
+    this->m_fen_history.push_back(this->m_chess_game.getFen());
+    this->m_fen_index = this->m_fen_history.size() - 1;
+    this->m_game_view.setBoardFen(this->m_fen_history.back());
+    this->m_game_view.selectMove(this->m_fen_index ? this->m_fen_index - 1
+                                                 : static_cast<std::size_t>(-1));
   });
 
   m_game_manager->setOnPromotionRequested([this](core::Square sq) {
@@ -64,6 +70,11 @@ void GameController::startGame(core::Color playerColor, const std::string& fen, 
   m_game_manager->startGame(playerColor, fen, vsBot, think_time_ms, depth);
   m_player_color = playerColor;
 
+  m_fen_history.clear();
+  m_fen_history.push_back(fen);
+  m_fen_index = 0;
+  m_game_view.selectMove(static_cast<std::size_t>(-1));
+
   // UI-State
   m_mouse_down = false;
   m_dragging = false;
@@ -81,6 +92,33 @@ void GameController::startGame(core::Color playerColor, const std::string& fen, 
 void GameController::handleEvent(const sf::Event& event) {
   if (m_chess_game.getResult() != core::GameResult::ONGOING) return;
 
+  if (event.type == sf::Event::KeyPressed) {
+    if (event.key.code == sf::Keyboard::Left) {
+      if (m_fen_index > 0) {
+        --m_fen_index;
+        m_game_view.setBoardFen(m_fen_history[m_fen_index]);
+        if (m_fen_index == 0)
+          m_game_view.selectMove(static_cast<std::size_t>(-1));
+        else
+          m_game_view.selectMove(m_fen_index - 1);
+      }
+      return;
+    } else if (event.key.code == sf::Keyboard::Right) {
+      if (m_fen_index + 1 < m_fen_history.size()) {
+        ++m_fen_index;
+        m_game_view.setBoardFen(m_fen_history[m_fen_index]);
+        m_game_view.selectMove(m_fen_index - 1);
+      }
+      return;
+    }
+  }
+
+  if (m_fen_index != m_fen_history.size() - 1) {
+    if (event.type == sf::Event::MouseWheelScrolled)
+      m_game_view.scrollMoveList(event.mouseWheelScroll.delta);
+    return;
+  }
+
   switch (event.type) {
     case sf::Event::MouseMoved:
       onMouseMove(core::MousePos(event.mouseMove.x, event.mouseMove.y));
@@ -95,9 +133,6 @@ void GameController::handleEvent(const sf::Event& event) {
       break;
     case sf::Event::MouseWheelScrolled:
       m_game_view.scrollMoveList(event.mouseWheelScroll.delta);
-      break;
-    case sf::Event::Resized:
-      m_game_view.onResize(event.size.width, event.size.height);
       break;
     default:
       break;

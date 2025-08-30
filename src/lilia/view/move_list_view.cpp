@@ -1,6 +1,7 @@
 #include "lilia/view/move_list_view.hpp"
 
 #include <SFML/Graphics/RectangleShape.hpp>
+#include <SFML/Graphics/View.hpp>
 #include <algorithm>
 
 #include "lilia/view/render_constants.hpp"
@@ -36,6 +37,7 @@ void MoveListView::addMove(const std::string& uciMove) {
     if (!m_lines.empty()) m_lines.back() += " " + uciMove;
   }
   ++m_move_count;
+  m_selected_move = m_move_count ? m_move_count - 1 : m_selected_move;
 
   // Optional: automatisch nach unten scrollen, wenn neue Zeile dazu kommt
   const float content = static_cast<float>(m_lines.size()) * kLineHeight;
@@ -50,20 +52,34 @@ void MoveListView::render(sf::RenderWindow& window) const {
   bg.setFillColor(sf::Color(30, 30, 30));
   window.draw(bg);
 
-  const float top = m_position.y;
-  const float bottom = m_position.y + static_cast<float>(m_height);
+  const sf::View oldView = window.getView();
+  sf::View view(sf::FloatRect(m_position.x, m_position.y, static_cast<float>(m_width),
+                              static_cast<float>(m_height)));
+  window.setView(view);
+
+  const float top = 0.f;
+  const float bottom = static_cast<float>(m_height);
 
   // Zeichne nur sichtbare Zeilen
   for (std::size_t i = 0; i < m_lines.size(); ++i) {
-    const float y =
-        m_position.y + kPaddingY + (static_cast<float>(i) * kLineHeight) - m_scroll_offset;
+    const float y = kPaddingY + (static_cast<float>(i) * kLineHeight) - m_scroll_offset;
     if (y + kLineHeight < top || y > bottom) continue;
+
+    if (m_selected_move != static_cast<std::size_t>(-1) &&
+        i == m_selected_move / 2) {
+      sf::RectangleShape hl({static_cast<float>(m_width), kLineHeight});
+      hl.setPosition(0.f, y);
+      hl.setFillColor(sf::Color(80, 80, 80));
+      window.draw(hl);
+    }
 
     sf::Text text(m_lines[i], m_font, kFontSize);
     text.setFillColor(sf::Color::White);
-    text.setPosition(m_position.x + kPaddingX, y);
+    text.setPosition(kPaddingX, y);
     window.draw(text);
   }
+
+  window.setView(oldView);
 }
 
 void MoveListView::scroll(float delta) {
@@ -77,6 +93,25 @@ void MoveListView::clear() {
   m_lines.clear();
   m_move_count = 0;
   m_scroll_offset = 0.f;
+  m_selected_move = static_cast<std::size_t>(-1);
+}
+
+void MoveListView::setCurrentMove(std::size_t moveIndex) {
+  m_selected_move = moveIndex;
+  if (moveIndex == static_cast<std::size_t>(-1)) return;
+
+  const std::size_t lineIndex = moveIndex / 2;
+  const float lineY = lineIndex * kLineHeight;
+
+  if (lineY < m_scroll_offset) {
+    m_scroll_offset = lineY;
+  } else if (lineY + kLineHeight > m_scroll_offset + static_cast<float>(m_height)) {
+    m_scroll_offset = lineY + kLineHeight - static_cast<float>(m_height);
+  }
+
+  const float content = static_cast<float>(m_lines.size()) * kLineHeight;
+  const float maxOff = std::max(0.f, content - static_cast<float>(m_height));
+  m_scroll_offset = std::clamp(m_scroll_offset, 0.f, maxOff);
 }
 
 }  // namespace lilia::view

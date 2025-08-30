@@ -59,8 +59,12 @@ void GameView::render() {
 
 void GameView::addMove(const std::string& move) { m_move_list.addMove(move); }
 
-void GameView::onResize(unsigned int width, unsigned int height) {
-  layout(width, height);
+void GameView::selectMove(std::size_t moveIndex) { m_move_list.setCurrentMove(moveIndex); }
+
+void GameView::setBoardFen(const std::string& fen) {
+  m_piece_manager.removeAll();
+  m_piece_manager.initFromFen(fen);
+  m_highlight_manager.clearAllHighlights();
 }
 
 void GameView::scrollMoveList(float delta) { m_move_list.scroll(delta); }
