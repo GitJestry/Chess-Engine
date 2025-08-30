@@ -26,10 +26,10 @@ EvalBar::EvalBar() : EvalBar::Entity() {
   m_white_fill_eval.setOriginToCenter();
   m_font.loadFromFile(constant::STR_FILE_PATH_FONT);
   m_score_text.setFont(m_font);
-  m_score_text.setCharacterSize(18);
+  m_score_text.setCharacterSize(14);
   // Default evaluation is 0.0 (balanced), which appears on the white side,
   // so draw the text in black for better visibility.
-  m_score_text.setFillColor(sf::Color::Black);
+  m_score_text.setFillColor(sf::Color(64, 61, 57));
 }
 
 void EvalBar::setPosition(const Entity::Position& pos) {
@@ -57,7 +57,8 @@ void EvalBar::update(int eval) {
   } else {
     double val = m_display_eval / 100.0;
     std::ostringstream ss;
-    ss.setf(std::ios::fixed); ss<< std::showpos << std::setprecision(1) << val;
+    ss.setf(std::ios::fixed);
+    ss << std::showpos << std::setprecision(1) << val;
     m_score_text.setString(ss.str());
   }
   // Recompute origin after updating the text string
@@ -68,14 +69,14 @@ void EvalBar::update(int eval) {
   // If the evaluation favors White (>= 0), position the text at the bottom
   // (white side) and draw it in black for contrast. Otherwise, position it
   // at the top (black side) and draw it in white.
-  const float offset = 10.f;  // small margin from the edge of the bar
-  const float barHalfHeight =
-      static_cast<float>(constant::EVAL_BAR_HEIGHT) / 2.f;
+  const float offset = 15.f;  // small margin from the edge of the bar
+  const float plusAndMinusOffset = 2.f;
+  const float barHalfHeight = static_cast<float>(constant::EVAL_BAR_HEIGHT) / 2.f;
 
-  float xPos = getPosition().x;
+  float xPos = getPosition().x - plusAndMinusOffset;
   float yPos = getPosition().y;
   if (m_display_eval >= 0.f) {
-    m_score_text.setFillColor(sf::Color::Black);
+    m_score_text.setFillColor(sf::Color(64, 61, 57));
     yPos += barHalfHeight - offset;
   } else {
     m_score_text.setFillColor(sf::Color::White);
