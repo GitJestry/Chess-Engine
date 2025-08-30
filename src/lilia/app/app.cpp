@@ -126,7 +126,7 @@ int App::run() {
         gameController.handleEvent(event);
       }
       gameController.update(deltaSeconds);
-      window.clear(sf::Color::Blue);
+      window.clear(sf::Color{48,46,43});
       gameController.render();
       window.display();
     }

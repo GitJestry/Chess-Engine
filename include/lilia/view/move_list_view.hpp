@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "entity.hpp"
 #include "render_constants.hpp"
 
 namespace lilia::view {
@@ -14,7 +15,7 @@ class MoveListView {
  public:
   MoveListView();
 
-  void setPosition(const sf::Vector2f &pos);
+  void setPosition(const Entity::Position &pos);
   void setSize(unsigned int width, unsigned int height);
 
   void addMove(const std::string &uciMove);
@@ -25,7 +26,7 @@ class MoveListView {
  private:
   sf::Font m_font;
   std::vector<std::string> m_lines;
-  sf::Vector2f m_position{};  // Top-left position
+  Entity::Position m_position{};  // Top-left position
   unsigned int m_width{constant::MOVE_LIST_WIDTH};
   unsigned int m_height{constant::WINDOW_PX_SIZE};
   float m_scroll_offset{0.f};
@@ -33,4 +34,3 @@ class MoveListView {
 };
 
 }  // namespace lilia::view
-

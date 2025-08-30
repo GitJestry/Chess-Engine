@@ -290,4 +290,4 @@ int UCI::run() {
   return 0;
 }
 
-}  // namespace lilia
+}  // namespace lilia::uci

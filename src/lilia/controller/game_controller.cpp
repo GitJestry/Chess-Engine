@@ -42,7 +42,7 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
   m_game_manager->setOnMoveExecuted([this](const model::Move& mv, bool isPlayerMove, bool onClick) {
     this->movePieceAndClear(mv, isPlayerMove, onClick);
     this->m_chess_game.checkGameResult();
-    this->m_game_view.addMove(uci::move_to_uci(mv));
+    this->m_game_view.addMove(move_to_uci(mv));
   });
 
   m_game_manager->setOnPromotionRequested([this](core::Square sq) {

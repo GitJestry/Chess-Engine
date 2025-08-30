@@ -47,4 +47,4 @@ inline std::string move_to_uci(const model::Move& m) {
   return uci;
 }
 
-}  // namespace lilia
+}  // namespace lilia::uci
