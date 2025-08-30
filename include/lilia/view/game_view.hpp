@@ -27,7 +27,9 @@ class GameView {
   void update(float dt);
   void updateEval(int eval);
 
-  void render();
+    void render();
+
+    void resize(const sf::Vector2u& windowSize);
 
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
   void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
@@ -66,7 +68,7 @@ class GameView {
 
   void setDefaultCursor();
   void setHandOpenCursor();
-  void setHandClosedCursor();
+    void setHandClosedCursor();
 
  private:
   core::MousePos clampPosToWindowSize(core::MousePos mousePos) const noexcept;

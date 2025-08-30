@@ -12,12 +12,13 @@ namespace lilia::view {
 
 EvalBar::EvalBar() : EvalBar::Entity() {
   setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_TRANSPARENT));
-  setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
+  m_black_background.setTexture(
+      TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_WHITE));
+  m_white_fill_eval.setTexture(
+      TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_BLACK));
+  setScale(static_cast<float>(constant::EVAL_BAR_WIDTH),
+           static_cast<float>(constant::EVAL_BAR_HEIGHT));
   setOriginToCenter();
-  m_black_background.setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_WHITE));
-  m_white_fill_eval.setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_BLACK));
-  m_black_background.setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
-  m_white_fill_eval.setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
   m_black_background.setOriginToCenter();
   m_white_fill_eval.setOriginToCenter();
 }
@@ -26,6 +27,12 @@ void EvalBar::setPosition(const Entity::Position& pos) {
   Entity::setPosition(pos);
   m_black_background.setPosition(getPosition());
   m_white_fill_eval.setPosition(getPosition());
+}
+
+void EvalBar::setScale(float width, float height) {
+  Entity::setScale(width, height);
+  m_black_background.setScale(width, height);
+  m_white_fill_eval.setScale(width, height);
 }
 
 void EvalBar::render(sf::RenderWindow& window) {

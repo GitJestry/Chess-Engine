@@ -20,8 +20,10 @@ class HighlightManager {
   void clearHighlightHoverSquare(core::Square pos);
 
   void renderAttack(sf::RenderWindow& window);
-  void renderHover(sf::RenderWindow& window);
-  void renderSelect(sf::RenderWindow& window);
+    void renderHover(sf::RenderWindow& window);
+    void renderSelect(sf::RenderWindow& window);
+
+    void resize();
 
  private:
   void renderEntitiesToBoard(std::unordered_map<core::Square, Entity>& map,

@@ -32,8 +32,10 @@ class PieceManager {
   void setPieceToScreenPos(core::Square pos, core::MousePos mousePos);
   void setPieceToScreenPos(core::Square pos, Entity::Position entityPos);
 
-  void renderPieces(sf::RenderWindow& window, const animation::ChessAnimator& chessAnimRef);
-  void renderPiece(core::Square pos, sf::RenderWindow& window);
+    void renderPieces(sf::RenderWindow& window, const animation::ChessAnimator& chessAnimRef);
+    void renderPiece(core::Square pos, sf::RenderWindow& window);
+
+    void resizePieces();
 
  private:
   Entity::Position createPiecePositon(core::Square pos);

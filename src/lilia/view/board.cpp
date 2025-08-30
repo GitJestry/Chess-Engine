@@ -9,6 +9,7 @@ Board::Board(Entity::Position pos) : Entity(pos) {}
 void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlack,
                  const sf::Texture &textureBoard) {
   setTexture(textureBoard);
+  setOriginToCenter();
   setScale(constant::WINDOW_PX_SIZE, constant::WINDOW_PX_SIZE);
 
   sf::Vector2f board_offset(

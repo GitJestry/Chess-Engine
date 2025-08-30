@@ -7,11 +7,12 @@ class RenderWindow;
 
 namespace lilia::view {
 
-class EvalBar : Entity {
+class EvalBar : public Entity {
  public:
   EvalBar();
 
   virtual void setPosition(const Entity::Position &pos) override;
+  void setScale(float width, float height);
   void render(sf::RenderWindow &window);
   void update(int eval);
 

@@ -7,13 +7,13 @@
 
 namespace lilia::view {
 
-GameView::GameView(sf::RenderWindow& window)
-    : m_window(window),
-      m_board_view(),
-      m_piece_manager(m_board_view),
-      m_highlight_manager(m_board_view),
-      m_chess_animator(m_board_view, m_piece_manager),
-      m_eval_bar() {
+  GameView::GameView(sf::RenderWindow& window)
+      : m_window(window),
+        m_board_view(),
+        m_piece_manager(m_board_view),
+        m_highlight_manager(m_board_view),
+        m_chess_animator(m_board_view, m_piece_manager),
+        m_eval_bar() {
   m_cursor_default.loadFromSystem(sf::Cursor::Arrow);
 
   sf::Image openImg;
@@ -27,7 +27,10 @@ GameView::GameView(sf::RenderWindow& window)
                                         {openImg.getSize().x / 2, openImg.getSize().y / 2});
   }
   m_window.setMouseCursor(m_cursor_default);
-  m_eval_bar.setPosition(Entity::Position{0, constant::WINDOW_PX_SIZE / 2});
+  m_eval_bar.setPosition(
+      Entity::Position{static_cast<float>(constant::EVAL_BAR_WIDTH) / 2.0f,
+                        static_cast<float>(constant::BOARD_OFFSET_Y) +
+                            constant::WINDOW_PX_SIZE / 2.0f});
 }
 
 void GameView::init(const std::string& fen) {
@@ -43,7 +46,7 @@ void GameView::updateEval(int eval) {
   m_eval_bar.update(eval);
 }
 
-void GameView::render() {
+  void GameView::render() {
   m_board_view.renderBoard(m_window);
   m_highlight_manager.renderSelect(m_window);
   m_chess_animator.renderHighlightLevel(m_window);
@@ -160,6 +163,18 @@ void GameView::showGameOver(core::GameResult res, core::Color sideToMove) {
   std::cout << std::endl;
 }
 
+void GameView::resize(const sf::Vector2u& windowSize) {
+  m_board_view.resize(windowSize);
+  m_piece_manager.resizePieces();
+  m_highlight_manager.resize();
+  m_eval_bar.setScale(static_cast<float>(constant::EVAL_BAR_WIDTH),
+                      static_cast<float>(constant::EVAL_BAR_HEIGHT));
+  m_eval_bar.setPosition(
+      Entity::Position{static_cast<float>(constant::EVAL_BAR_WIDTH) / 2.0f,
+                        static_cast<float>(constant::BOARD_OFFSET_Y) +
+                            constant::WINDOW_PX_SIZE / 2.0f});
+}
+
 static inline int normalizeUnsignedToSigned(unsigned int u) {
   // Mappe 0..INT_MAX -> 0..INT_MAX, und (INT_MAX+1 .. UINT_MAX) -> negative Werte
   if (u <= static_cast<unsigned int>(std::numeric_limits<int>::max())) return static_cast<int>(u);
@@ -191,8 +206,11 @@ core::MousePos GameView::clampPosToWindowSize(core::MousePos mousePos) const noe
 }
 
 [[nodiscard]] core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
-  int file = clampPosToWindowSize(mousePos).x / constant::SQUARE_PX_SIZE;
-  int rankSFML = clampPosToWindowSize(mousePos).y / constant::SQUARE_PX_SIZE;
+    const auto clamped = clampPosToWindowSize(mousePos);
+    int file = (static_cast<int>(clamped.x) - static_cast<int>(constant::BOARD_OFFSET_X)) /
+               static_cast<int>(constant::SQUARE_PX_SIZE);
+    int rankSFML = (static_cast<int>(clamped.y) - static_cast<int>(constant::BOARD_OFFSET_Y)) /
+                   static_cast<int>(constant::SQUARE_PX_SIZE);
 
   int rankFromWhite = 7 - rankSFML;
 
