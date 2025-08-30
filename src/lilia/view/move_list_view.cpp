@@ -13,14 +13,15 @@ constexpr float kPaddingX = 5.f;
 constexpr float kPaddingY = 5.f;
 constexpr float kLineHeight = 20.f;
 constexpr unsigned kFontSize = 16;
-}  // namespace
+} // namespace
 
 MoveListView::MoveListView() {
-  if (!m_font.loadFromFile(constant::STR_FILE_PATH_FONT)) { /* Fehlerbehandlung */
+  if (!m_font.loadFromFile(
+          constant::STR_FILE_PATH_FONT)) { /* Fehlerbehandlung */
   }
 }
 
-void MoveListView::setPosition(const Entity::Position& pos) {
+void MoveListView::setPosition(const Entity::Position &pos) {
   m_position = pos;
 }
 
@@ -29,23 +30,46 @@ void MoveListView::setSize(unsigned int width, unsigned int height) {
   m_height = height;
 }
 
-void MoveListView::addMove(const std::string& uciMove) {
-  if ((m_move_count % 2) == 0) {
-    const unsigned turn = (m_move_count / 2) + 1;
-    m_lines.push_back(std::to_string(turn) + ". " + uciMove);
+void MoveListView::addMove(const std::string &uciMove) {
+  const std::size_t moveIndex = m_move_count;
+  const std::size_t lineIndex = moveIndex / 2;
+  const bool whiteMove = (moveIndex % 2) == 0;
+
+  if (whiteMove) {
+    const unsigned turn = static_cast<unsigned>(lineIndex + 1);
+    std::string prefix = std::to_string(turn) + ". ";
+    m_lines.push_back(prefix + uciMove);
+
+    sf::Text pre(prefix, m_font, kFontSize);
+    sf::Text moveTxt(uciMove, m_font, kFontSize);
+    float x = kPaddingX + pre.getLocalBounds().width;
+    float y = kPaddingY + static_cast<float>(lineIndex) * kLineHeight;
+    float w = moveTxt.getLocalBounds().width;
+    m_move_bounds.emplace_back(x, y, w, kLineHeight);
   } else {
-    if (!m_lines.empty()) m_lines.back() += " " + uciMove;
+    if (!m_lines.empty()) {
+      std::string prefix = m_lines.back();
+      sf::Text prefixTxt(prefix, m_font, kFontSize);
+      sf::Text space(" ", m_font, kFontSize);
+      float x = kPaddingX + prefixTxt.getLocalBounds().width +
+                space.getLocalBounds().width;
+      float y = kPaddingY + static_cast<float>(lineIndex) * kLineHeight;
+      sf::Text moveTxt(uciMove, m_font, kFontSize);
+      float w = moveTxt.getLocalBounds().width;
+      m_move_bounds.emplace_back(x, y, w, kLineHeight);
+      m_lines.back() += " " + uciMove;
+    }
   }
+
   ++m_move_count;
   m_selected_move = m_move_count ? m_move_count - 1 : m_selected_move;
 
-  // Optional: automatisch nach unten scrollen, wenn neue Zeile dazu kommt
   const float content = static_cast<float>(m_lines.size()) * kLineHeight;
   const float maxOff = std::max(0.f, content - static_cast<float>(m_height));
   m_scroll_offset = std::clamp(maxOff, 0.f, maxOff);
 }
 
-void MoveListView::render(sf::RenderWindow& window) const {
+void MoveListView::render(sf::RenderWindow &window) const {
   sf::RectangleShape bg;
   bg.setPosition(m_position);
   bg.setSize({static_cast<float>(m_width), static_cast<float>(m_height)});
@@ -66,17 +90,24 @@ void MoveListView::render(sf::RenderWindow& window) const {
   const float top = 0.f;
   const float bottom = static_cast<float>(m_height);
 
-  // Zeichne nur sichtbare Zeilen
-  for (std::size_t i = 0; i < m_lines.size(); ++i) {
-    const float y = kPaddingY + (static_cast<float>(i) * kLineHeight) - m_scroll_offset;
-    if (y + kLineHeight < top || y > bottom) continue;
-
-    if (m_selected_move != static_cast<std::size_t>(-1) && i == m_selected_move / 2) {
-      sf::RectangleShape hl({static_cast<float>(m_width), kLineHeight});
-      hl.setPosition(0.f, y);
+  if (m_selected_move != static_cast<std::size_t>(-1) &&
+      m_selected_move < m_move_bounds.size()) {
+    const auto &rect = m_move_bounds[m_selected_move];
+    float y = rect.top - m_scroll_offset;
+    if (y + rect.height >= top && y <= bottom) {
+      sf::RectangleShape hl({rect.width, rect.height});
+      hl.setPosition(rect.left, y);
       hl.setFillColor(sf::Color(80, 80, 80));
       window.draw(hl);
     }
+  }
+
+  // Zeichne nur sichtbare Zeilen
+  for (std::size_t i = 0; i < m_lines.size(); ++i) {
+    const float y =
+        kPaddingY + (static_cast<float>(i) * kLineHeight) - m_scroll_offset;
+    if (y + kLineHeight < top || y > bottom)
+      continue;
 
     sf::Text text(m_lines[i], m_font, kFontSize);
     text.setFillColor(sf::Color::White);
@@ -99,18 +130,21 @@ void MoveListView::clear() {
   m_move_count = 0;
   m_scroll_offset = 0.f;
   m_selected_move = static_cast<std::size_t>(-1);
+  m_move_bounds.clear();
 }
 
 void MoveListView::setCurrentMove(std::size_t moveIndex) {
   m_selected_move = moveIndex;
-  if (moveIndex == static_cast<std::size_t>(-1)) return;
+  if (moveIndex == static_cast<std::size_t>(-1))
+    return;
 
   const std::size_t lineIndex = moveIndex / 2;
   const float lineY = lineIndex * kLineHeight;
 
   if (lineY < m_scroll_offset) {
     m_scroll_offset = lineY;
-  } else if (lineY + kLineHeight > m_scroll_offset + static_cast<float>(m_height)) {
+  } else if (lineY + kLineHeight >
+             m_scroll_offset + static_cast<float>(m_height)) {
     m_scroll_offset = lineY + kLineHeight - static_cast<float>(m_height);
   }
 
@@ -119,4 +153,17 @@ void MoveListView::setCurrentMove(std::size_t moveIndex) {
   m_scroll_offset = std::clamp(m_scroll_offset, 0.f, maxOff);
 }
 
-}  // namespace lilia::view
+std::size_t MoveListView::getMoveIndexAt(const Entity::Position &pos) const {
+  const float localX = pos.x - m_position.x;
+  const float localY = pos.y - m_position.y + m_scroll_offset;
+  if (localX < 0.f || localY < 0.f || localX > static_cast<float>(m_width))
+    return static_cast<std::size_t>(-1);
+
+  for (std::size_t i = 0; i < m_move_bounds.size(); ++i) {
+    if (m_move_bounds[i].contains(localX, localY))
+      return i;
+  }
+  return static_cast<std::size_t>(-1);
+}
+
+} // namespace lilia::view
