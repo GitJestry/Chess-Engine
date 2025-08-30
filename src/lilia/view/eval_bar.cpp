@@ -14,8 +14,8 @@ EvalBar::EvalBar() : EvalBar::Entity() {
   setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_TRANSPARENT));
   setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
   setOriginToCenter();
-  m_black_background.setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_WHITE));
-  m_white_fill_eval.setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_BLACK));
+  m_black_background.setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_BLACK));
+  m_white_fill_eval.setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_WHITE));
   m_black_background.setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
   m_white_fill_eval.setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
   m_black_background.setOriginToCenter();
