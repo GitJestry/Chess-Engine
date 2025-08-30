@@ -23,6 +23,7 @@ namespace {
 inline bool isValid(core::Square sq) {
   return sq != core::NO_SQUARE;
 }
+constexpr int kDefaultBotRating = 2400;
 }  // namespace
 
 GameController::GameController(view::GameView& gView, model::ChessGame& game)
@@ -67,6 +68,9 @@ void GameController::startGame(const std::string& fen, bool whiteIsBot, bool bla
                                int think_time_ms, int depth) {
   m_sound_manager.playGameBegins();
   m_game_view.init(fen);
+  std::string whiteName = whiteIsBot ? "Lilia (" + std::to_string(kDefaultBotRating) + ")" : "Challenger";
+  std::string blackName = blackIsBot ? "Lilia (" + std::to_string(kDefaultBotRating) + ")" : "Challenger";
+  m_game_view.setPlayerNames(whiteName, blackName);
   m_game_manager->startGame(fen, whiteIsBot, blackIsBot, think_time_ms, depth);
 
   m_fen_history.clear();

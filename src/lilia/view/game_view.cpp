@@ -1,6 +1,5 @@
 #include "lilia/view/game_view.hpp"
 
-#include <SFML/Graphics/Image.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <algorithm>
 #include <iostream>
@@ -15,20 +14,10 @@ GameView::GameView(sf::RenderWindow& window)
       m_highlight_manager(m_board_view),
       m_chess_animator(m_board_view, m_piece_manager),
       m_eval_bar(),
-      m_move_list() {
-  m_cursor_default.loadFromSystem(sf::Cursor::Arrow);
-
-  sf::Image openImg;
-  if (openImg.loadFromFile(constant::STR_FILE_PATH_HAND_OPEN)) {
-    m_cursor_hand_open.loadFromPixels(openImg.getPixelsPtr(), openImg.getSize(),
-                                      {openImg.getSize().x / 2, openImg.getSize().y / 2});
-  }
-  sf::Image closedImg;
-  if (closedImg.loadFromFile(constant::STR_FILE_PATH_HAND_CLOSED)) {
-    m_cursor_hand_closed.loadFromPixels(closedImg.getPixelsPtr(), closedImg.getSize(),
-                                        {openImg.getSize().x / 2, openImg.getSize().y / 2});
-  }
-  m_window.setMouseCursor(m_cursor_default);
+      m_move_list(),
+      m_cursor_manager(window),
+      m_player_info() {
+  m_cursor_manager.setDefault();
   layout(m_window.getSize().x, m_window.getSize().y);
 }
 
@@ -55,6 +44,7 @@ void GameView::render() {
   m_highlight_manager.renderAttack(m_window);
   m_chess_animator.render(m_window);
   m_move_list.render(m_window);
+  m_player_info.render(m_window);
 }
 
 void GameView::addMove(const std::string& move) { m_move_list.addMove(move); }
@@ -68,6 +58,11 @@ void GameView::setBoardFen(const std::string& fen) {
 }
 
 void GameView::scrollMoveList(float delta) { m_move_list.scroll(delta); }
+
+void GameView::setPlayerNames(const std::string& whiteName, const std::string& blackName) {
+  m_player_info.setNames(whiteName, blackName);
+  layout(m_window.getSize().x, m_window.getSize().y);
+}
 
 void GameView::layout(unsigned int width, unsigned int height) {
   float vMargin =
@@ -98,6 +93,9 @@ void GameView::layout(unsigned int width, unsigned int height) {
                                                  constant::SIDE_MARGIN);
   m_move_list.setPosition({moveListX, vMargin});
   m_move_list.setSize(constant::MOVE_LIST_WIDTH, constant::WINDOW_PX_SIZE);
+
+  float boardHalf = static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
+  m_player_info.layout(boardCenterX, boardCenterY, boardHalf);
 }
 
 void GameView::resetBoard() {
@@ -262,15 +260,9 @@ void GameView::setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePo
 void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
   m_piece_manager.setPieceToSquareScreenPos(from, to);
 }
-void GameView::setDefaultCursor() {
-  m_window.setMouseCursor(m_cursor_default);
-}
-void GameView::setHandOpenCursor() {
-  m_window.setMouseCursor(m_cursor_hand_open);
-}
-void GameView::setHandClosedCursor() {
-  m_window.setMouseCursor(m_cursor_hand_closed);
-}
+void GameView::setDefaultCursor() { m_cursor_manager.setDefault(); }
+void GameView::setHandOpenCursor() { m_cursor_manager.setHandOpen(); }
+void GameView::setHandClosedCursor() { m_cursor_manager.setHandClosed(); }
 
 sf::Vector2u GameView::getWindowSize() const {
   return m_window.getSize();

@@ -2,7 +2,6 @@
 
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/System/Vector2.hpp>
-#include <SFML/Window/Cursor.hpp>
 
 #include "../constants.hpp"
 #include "../controller/mousepos.hpp"
@@ -13,6 +12,8 @@
 #include "highlight_manager.hpp"
 #include "piece_manager.hpp"
 #include "promotion_manager.hpp"
+#include "cursor_manager.hpp"
+#include "player_info_view.hpp"
 
 namespace lilia::view {
 
@@ -34,6 +35,8 @@ class GameView {
   void selectMove(std::size_t moveIndex);
   void setBoardFen(const std::string& fen);
   void scrollMoveList(float delta);
+
+  void setPlayerNames(const std::string& whiteName, const std::string& blackName);
 
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
   void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
@@ -84,11 +87,10 @@ class GameView {
   HighlightManager m_highlight_manager;
   animation::ChessAnimator m_chess_animator;
   PromotionManager m_promotion_manager;
-  sf::Cursor m_cursor_default;
-  sf::Cursor m_cursor_hand_open;
-  sf::Cursor m_cursor_hand_closed;
   EvalBar m_eval_bar;
   MoveListView m_move_list;
+  CursorManager m_cursor_manager;
+  PlayerInfoView m_player_info;
 };
 
 }  // namespace lilia::view
