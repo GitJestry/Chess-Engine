@@ -8,6 +8,7 @@
 #include <iostream>
 #include <string>
 
+#include "lilia/controller/bot_player.hpp"
 #include "lilia/controller/game_manager.hpp"
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/move.hpp"
@@ -34,6 +35,7 @@ GameController::GameController(view::GameView& gView, model::ChessGame& game)
 
   // GameManager
   m_game_manager = std::make_unique<GameManager>(game);
+  BotPlayer::setEvalCallback([this](int eval) { m_eval_cp.store(eval); });
 
   // Move-Callback – alles GUI/Animationen laufen über diese eine Stelle.
   m_game_manager->setOnMoveExecuted([this](const model::Move& mv, bool isPlayerMove, bool onClick) {
@@ -189,6 +191,7 @@ void GameController::update(float dt) {
   if (m_chess_game.getResult() != core::GameResult::ONGOING) return;
 
   m_game_view.update(dt);
+  m_game_view.updateEval(m_eval_cp.load());
   if (m_game_manager) m_game_manager->update(dt);
 }
 

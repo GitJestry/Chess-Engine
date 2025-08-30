@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <utility>
 
@@ -100,6 +101,7 @@ class GameController {
 
   // ---------------- New: GameManager ----------------
   std::unique_ptr<GameManager> m_game_manager;
+  std::atomic<int> m_eval_cp{0};
 };
 
 }  // namespace lilia::controller
