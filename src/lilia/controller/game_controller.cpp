@@ -406,6 +406,10 @@ void GameController::showAttacks(std::vector<core::Square> att) {
 }
 
 void GameController::onClick(core::MousePos mousePos) {
+  if (m_game_view.isOnFlipIcon(mousePos)) {
+    m_game_view.toggleBoardOrientation();
+    return;
+  }
   const core::Square sq = m_game_view.mousePosToSquare(mousePos);
 
   // Promotion-Auswahl?

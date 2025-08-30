@@ -36,7 +36,6 @@ GameView::GameView(sf::RenderWindow& window)
   m_history_overlay.setTexture(
       TextureTable::getInstance().get(constant::STR_TEXTURE_HISTORY_OVERLAY));
   m_history_overlay.setScale(constant::WINDOW_PX_SIZE, constant::WINDOW_PX_SIZE);
-
   layout(m_window.getSize().x, m_window.getSize().y);
 }
 
@@ -255,22 +254,31 @@ core::MousePos GameView::clampPosToBoard(core::MousePos mousePos) const noexcept
 }
 
 [[nodiscard]] core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
-  auto clamped = clampPosToBoard(mousePos);
   auto boardCenter = m_board_view.getPosition();
   float originX = boardCenter.x - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
   float originY = boardCenter.y - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
+  float right = originX + static_cast<float>(constant::WINDOW_PX_SIZE);
+  float bottom = originY + static_cast<float>(constant::WINDOW_PX_SIZE);
 
-  int file = static_cast<int>((clamped.x - originX) / constant::SQUARE_PX_SIZE);
-  int rankSFML = static_cast<int>((clamped.y - originY) / constant::SQUARE_PX_SIZE);
+  if (mousePos.x < originX || mousePos.x >= right || mousePos.y < originY ||
+      mousePos.y >= bottom) {
+    return core::NO_SQUARE;
+  }
 
-  int rankFromWhite = 7 - rankSFML;
+  int fileSFML = static_cast<int>((mousePos.x - originX) / constant::SQUARE_PX_SIZE);
+  int rankSFML = static_cast<int>((mousePos.y - originY) / constant::SQUARE_PX_SIZE);
 
-  if (file < 0) file = 0;
-  if (file > 7) file = 7;
-  if (rankFromWhite < 0) rankFromWhite = 0;
-  if (rankFromWhite > 7) rankFromWhite = 7;
+  int fileFromWhite;
+  int rankFromWhite;
+  if (m_board_view.isFlipped()) {
+    fileFromWhite = 7 - fileSFML;
+    rankFromWhite = rankSFML;
+  } else {
+    fileFromWhite = fileSFML;
+    rankFromWhite = 7 - rankSFML;
+  }
 
-  return static_cast<core::Square>(rankFromWhite * 8 + file);
+  return static_cast<core::Square>(rankFromWhite * 8 + fileFromWhite);
 }
 
 void GameView::setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos) {
@@ -295,6 +303,12 @@ sf::Vector2u GameView::getWindowSize() const {
 
 Entity::Position GameView::getPieceSize(core::Square pos) const {
   return m_piece_manager.getPieceSize(pos);
+}
+
+void GameView::toggleBoardOrientation() { m_board_view.toggleFlipped(); }
+
+[[nodiscard]] bool GameView::isOnFlipIcon(core::MousePos mousePos) const {
+  return m_board_view.isOnFlipIcon(mousePos);
 }
 
 }  // namespace lilia::view
