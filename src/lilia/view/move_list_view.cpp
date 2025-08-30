@@ -13,11 +13,10 @@ constexpr float kPaddingX = 5.f;
 constexpr float kPaddingY = 5.f;
 constexpr float kLineHeight = 20.f;
 constexpr unsigned kFontSize = 16;
-} // namespace
+}  // namespace
 
 MoveListView::MoveListView() {
-  if (!m_font.loadFromFile(
-          constant::STR_FILE_PATH_FONT)) { /* Fehlerbehandlung */
+  if (!m_font.loadFromFile(constant::STR_FILE_PATH_FONT)) { /* Fehlerbehandlung */
   }
 }
 
@@ -51,8 +50,7 @@ void MoveListView::addMove(const std::string &uciMove) {
       std::string prefix = m_lines.back();
       sf::Text prefixTxt(prefix, m_font, kFontSize);
       sf::Text space(" ", m_font, kFontSize);
-      float x = kPaddingX + prefixTxt.getLocalBounds().width +
-                space.getLocalBounds().width;
+      float x = kPaddingX + prefixTxt.getLocalBounds().width + space.getLocalBounds().width;
       float y = kPaddingY + static_cast<float>(lineIndex) * kLineHeight;
       sf::Text moveTxt(uciMove, m_font, kFontSize);
       float w = moveTxt.getLocalBounds().width;
@@ -73,25 +71,23 @@ void MoveListView::render(sf::RenderWindow &window) const {
   sf::RectangleShape bg;
   bg.setPosition(m_position);
   bg.setSize({static_cast<float>(m_width), static_cast<float>(m_height)});
-  bg.setFillColor(sf::Color(30, 30, 30));
+  bg.setFillColor(sf::Color(38, 37, 34));
   window.draw(bg);
 
   const sf::View oldView = window.getView();
 
-  sf::View view(sf::FloatRect(0.f, 0.f, static_cast<float>(m_width),
-                              static_cast<float>(m_height)));
-  view.setViewport(sf::FloatRect(
-      m_position.x / static_cast<float>(window.getSize().x),
-      m_position.y / static_cast<float>(window.getSize().y),
-      static_cast<float>(m_width) / static_cast<float>(window.getSize().x),
-      static_cast<float>(m_height) / static_cast<float>(window.getSize().y)));
+  sf::View view(sf::FloatRect(0.f, 0.f, static_cast<float>(m_width), static_cast<float>(m_height)));
+  view.setViewport(
+      sf::FloatRect(m_position.x / static_cast<float>(window.getSize().x),
+                    m_position.y / static_cast<float>(window.getSize().y),
+                    static_cast<float>(m_width) / static_cast<float>(window.getSize().x),
+                    static_cast<float>(m_height) / static_cast<float>(window.getSize().y)));
   window.setView(view);
 
   const float top = 0.f;
   const float bottom = static_cast<float>(m_height);
 
-  if (m_selected_move != static_cast<std::size_t>(-1) &&
-      m_selected_move < m_move_bounds.size()) {
+  if (m_selected_move != static_cast<std::size_t>(-1) && m_selected_move < m_move_bounds.size()) {
     const auto &rect = m_move_bounds[m_selected_move];
     float y = rect.top - m_scroll_offset;
     if (y + rect.height >= top && y <= bottom) {
@@ -104,10 +100,8 @@ void MoveListView::render(sf::RenderWindow &window) const {
 
   // Zeichne nur sichtbare Zeilen
   for (std::size_t i = 0; i < m_lines.size(); ++i) {
-    const float y =
-        kPaddingY + (static_cast<float>(i) * kLineHeight) - m_scroll_offset;
-    if (y + kLineHeight < top || y > bottom)
-      continue;
+    const float y = kPaddingY + (static_cast<float>(i) * kLineHeight) - m_scroll_offset;
+    if (y + kLineHeight < top || y > bottom) continue;
 
     sf::Text text(m_lines[i], m_font, kFontSize);
     text.setFillColor(sf::Color::White);
@@ -135,16 +129,14 @@ void MoveListView::clear() {
 
 void MoveListView::setCurrentMove(std::size_t moveIndex) {
   m_selected_move = moveIndex;
-  if (moveIndex == static_cast<std::size_t>(-1))
-    return;
+  if (moveIndex == static_cast<std::size_t>(-1)) return;
 
   const std::size_t lineIndex = moveIndex / 2;
   const float lineY = lineIndex * kLineHeight;
 
   if (lineY < m_scroll_offset) {
     m_scroll_offset = lineY;
-  } else if (lineY + kLineHeight >
-             m_scroll_offset + static_cast<float>(m_height)) {
+  } else if (lineY + kLineHeight > m_scroll_offset + static_cast<float>(m_height)) {
     m_scroll_offset = lineY + kLineHeight - static_cast<float>(m_height);
   }
 
@@ -160,10 +152,9 @@ std::size_t MoveListView::getMoveIndexAt(const Entity::Position &pos) const {
     return static_cast<std::size_t>(-1);
 
   for (std::size_t i = 0; i < m_move_bounds.size(); ++i) {
-    if (m_move_bounds[i].contains(localX, localY))
-      return i;
+    if (m_move_bounds[i].contains(localX, localY)) return i;
   }
   return static_cast<std::size_t>(-1);
 }
 
-} // namespace lilia::view
+}  // namespace lilia::view

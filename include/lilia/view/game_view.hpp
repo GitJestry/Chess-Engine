@@ -18,7 +18,7 @@
 namespace lilia::view {
 
 class GameView {
-public:
+ public:
   GameView(sf::RenderWindow &window);
   ~GameView() = default;
 
@@ -35,7 +35,6 @@ public:
   void selectMove(std::size_t moveIndex);
   void setBoardFen(const std::string &fen);
   void scrollMoveList(float delta);
-  void setHistoryOverlay(bool active);
 
   [[nodiscard]] std::size_t getMoveIndexAt(core::MousePos mousePos) const;
 
@@ -81,7 +80,7 @@ public:
   void toggleBoardOrientation();
   [[nodiscard]] bool isOnFlipIcon(core::MousePos mousePos) const;
 
-private:
+ private:
   core::MousePos clampPosToBoard(core::MousePos mousePos) const noexcept;
   void layout(unsigned int width, unsigned int height);
 
@@ -96,8 +95,6 @@ private:
   sf::Cursor m_cursor_hand_closed;
   EvalBar m_eval_bar;
   MoveListView m_move_list;
-  Entity m_history_overlay;
-  bool m_show_history_overlay{false};
 };
 
-} // namespace lilia::view
+}  // namespace lilia::view
