@@ -32,6 +32,8 @@ class ChessGame {
   core::GameResult getResult();
   Position& getPositionRefForBot();
 
+  std::string getFen() const;  ///< Aktuelle Stellung als FEN-String
+
   void checkGameResult();
 
  private:
