@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <SFML/System/Vector2.hpp>
 
 #include "board.hpp"
 
@@ -10,9 +11,10 @@ class BoardView {
  public:
   BoardView();
 
-  void init();
-  void renderBoard(sf::RenderWindow& window);
-  [[nodiscard]] Entity::Position getSquareScreenPos(core::Square sq) const;
+    void init();
+    void resize(const sf::Vector2u& windowSize);
+    void renderBoard(sf::RenderWindow& window);
+    [[nodiscard]] Entity::Position getSquareScreenPos(core::Square sq) const;
 
  private:
   Board m_board;

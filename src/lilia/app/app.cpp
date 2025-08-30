@@ -104,9 +104,12 @@ int App::run() {
   engine::Engine::init();
   lilia::view::TextureTable::getInstance().preLoad();
 
-  sf::RenderWindow window(
-      sf::VideoMode(lilia::view::constant::WINDOW_PX_SIZE, lilia::view::constant::WINDOW_PX_SIZE),
-      "Lilia", sf::Style::Titlebar | sf::Style::Close);
+    sf::RenderWindow window(
+        sf::VideoMode(lilia::view::constant::WINDOW_WIDTH,
+                      lilia::view::constant::WINDOW_HEIGHT),
+        "Lilia", sf::Style::Titlebar | sf::Style::Close | sf::Style::Resize);
+
+    lilia::view::constant::updateWindowDimensions(window.getSize().x, window.getSize().y);
 
   {
     lilia::model::ChessGame chessGame;
@@ -120,10 +123,15 @@ int App::run() {
     while (window.isOpen()) {
       float deltaSeconds = clock.restart().asSeconds();
       sf::Event event;
-      while (window.pollEvent(event)) {
-        if (event.type == sf::Event::Closed) window.close();
-        gameController.handleEvent(event);
-      }
+        while (window.pollEvent(event)) {
+          if (event.type == sf::Event::Closed) window.close();
+          if (event.type == sf::Event::Resized) {
+            lilia::view::constant::updateWindowDimensions(event.size.width,
+                                                          event.size.height);
+            gameView.resize(window.getSize());
+          }
+          gameController.handleEvent(event);
+        }
       gameController.update(deltaSeconds);
       window.clear(sf::Color::Blue);
       gameController.render();

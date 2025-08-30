@@ -77,7 +77,9 @@ void PieceManager::addPiece(core::PieceType type, core::Color color, core::Squar
   const sf::Texture& texture = TextureTable::getInstance().get(filename);
 
   Piece newpiece(color, type, texture);
-  newpiece.setScale(constant::ASSET_PIECE_SCALE, constant::ASSET_PIECE_SCALE);
+    float scale = constant::ASSET_PIECE_SCALE *
+                  (static_cast<float>(constant::SQUARE_PX_SIZE) / 100.f);
+    newpiece.setScale(scale, scale);
   m_pieces[pos] = std::move(newpiece);
   m_pieces[pos].setPosition(createPiecePositon(pos));
 }
@@ -140,6 +142,15 @@ void PieceManager::renderPieces(sf::RenderWindow& window,
 
 void PieceManager::renderPiece(core::Square pos, sf::RenderWindow& window) {
   m_pieces.find(pos)->second.draw(window);
+}
+
+void PieceManager::resizePieces() {
+  float scale = constant::ASSET_PIECE_SCALE *
+                (static_cast<float>(constant::SQUARE_PX_SIZE) / 100.f);
+  for (auto& pair : m_pieces) {
+    pair.second.setScale(scale, scale);
+    pair.second.setPosition(createPiecePositon(pair.first));
+  }
 }
 
 }  // namespace lilia::view

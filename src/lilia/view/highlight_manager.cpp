@@ -61,4 +61,15 @@ void HighlightManager::clearHighlightHoverSquare(core::Square pos) {
   m_hl_hover_squares.erase(pos);
 }
 
+void HighlightManager::resize() {
+  auto rescale = [](auto& map) {
+    for (auto& pair : map) {
+      pair.second.setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
+    }
+  };
+  rescale(m_hl_attack_squares);
+  rescale(m_hl_select_squares);
+  rescale(m_hl_hover_squares);
+}
+
 }  // namespace lilia::view
