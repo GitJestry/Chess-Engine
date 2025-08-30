@@ -34,9 +34,15 @@ void BoardView::renderBoard(sf::RenderWindow& window) {
   return m_board.getPosOfSquare(sq);
 }
 
-void BoardView::toggleFlipped() { m_flipped = !m_flipped; }
+void BoardView::toggleFlipped() {
+  m_flipped = !m_flipped;
+  m_board.setFlipped(m_flipped);
+}
 
-void BoardView::setFlipped(bool flipped) { m_flipped = flipped; }
+void BoardView::setFlipped(bool flipped) {
+  m_flipped = flipped;
+  m_board.setFlipped(m_flipped);
+}
 
 [[nodiscard]] bool BoardView::isFlipped() const { return m_flipped; }
 
@@ -44,7 +50,7 @@ void BoardView::setPosition(const Entity::Position& pos) {
   m_board.setPosition(pos);
   float iconOffset = constant::SQUARE_PX_SIZE * 0.5f;
   m_flip_icon.setPosition({pos.x + constant::WINDOW_PX_SIZE / 2.f - iconOffset,
-                           pos.y - constant::WINDOW_PX_SIZE / 2.f + iconOffset});
+                           pos.y + constant::WINDOW_PX_SIZE / 2.f + iconOffset});
 }
 
 [[nodiscard]] Entity::Position BoardView::getPosition() const {
