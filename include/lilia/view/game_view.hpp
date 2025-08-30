@@ -8,6 +8,7 @@
 #include "../controller/mousepos.hpp"
 #include "animation/chess_animator.hpp"
 #include "board_view.hpp"
+#include "eval_bar.hpp"
 #include "highlight_manager.hpp"
 #include "piece_manager.hpp"
 #include "promotion_manager.hpp"
@@ -24,6 +25,7 @@ class GameView {
   void resetBoard();
 
   void update(float dt);
+  void updateEval(int eval);
 
   void render();
 
@@ -78,6 +80,7 @@ class GameView {
   sf::Cursor m_cursor_default;
   sf::Cursor m_cursor_hand_open;
   sf::Cursor m_cursor_hand_closed;
+  EvalBar m_eval_bar;
 };
 
 }  // namespace lilia::view

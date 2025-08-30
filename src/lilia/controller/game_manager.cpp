@@ -55,7 +55,6 @@ void GameManager::update([[maybe_unused]] float dt) {
       if (!(mv.from == core::NO_SQUARE && mv.to == core::NO_SQUARE)) {
         applyMoveAndNotify(mv, false);
       }
-
       startBotIfNeeded();
     }
   }

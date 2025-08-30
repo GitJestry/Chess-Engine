@@ -12,7 +12,8 @@ GameView::GameView(sf::RenderWindow& window)
       m_board_view(),
       m_piece_manager(m_board_view),
       m_highlight_manager(m_board_view),
-      m_chess_animator(m_board_view, m_piece_manager) {
+      m_chess_animator(m_board_view, m_piece_manager),
+      m_eval_bar() {
   m_cursor_default.loadFromSystem(sf::Cursor::Arrow);
 
   sf::Image openImg;
@@ -26,6 +27,7 @@ GameView::GameView(sf::RenderWindow& window)
                                         {openImg.getSize().x / 2, openImg.getSize().y / 2});
   }
   m_window.setMouseCursor(m_cursor_default);
+  m_eval_bar.setPosition(Entity::Position{0, constant::WINDOW_PX_SIZE / 2});
 }
 
 void GameView::init(const std::string& fen) {
@@ -37,6 +39,10 @@ void GameView::update(float dt) {
   m_chess_animator.updateAnimations(dt);
 }
 
+void GameView::updateEval(int eval) {
+  m_eval_bar.update(eval);
+}
+
 void GameView::render() {
   m_board_view.renderBoard(m_window);
   m_highlight_manager.renderSelect(m_window);
@@ -44,6 +50,7 @@ void GameView::render() {
   m_highlight_manager.renderHover(m_window);
   m_piece_manager.renderPieces(m_window, m_chess_animator);
   m_highlight_manager.renderAttack(m_window);
+  m_eval_bar.render(m_window);
   m_chess_animator.render(m_window);
 }
 

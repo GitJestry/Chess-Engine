@@ -10,6 +10,10 @@ constexpr unsigned int ATTACK_DOT_PX_SIZE =
 constexpr unsigned int CAPTURE_CIRCLE_PX_SIZE =
     static_cast<unsigned int>(static_cast<float>(SQUARE_PX_SIZE) * 1.02f + 0.5f);
 
+constexpr unsigned int EVAL_BAR_HEIGHT = WINDOW_PX_SIZE;
+constexpr unsigned int EVAL_BAR_WIDTH =
+    static_cast<unsigned int>(static_cast<float>(WINDOW_PX_SIZE) * 0.1);
+
 constexpr unsigned int HOVER_PX_SIZE = SQUARE_PX_SIZE;
 
 constexpr float ANIM_SNAP_SPEED = .005f;
@@ -17,6 +21,8 @@ constexpr float ANIM_MOVE_SPEED = .05f;
 
 const std::string STR_TEXTURE_WHITE = "white";
 const std::string STR_TEXTURE_BLACK = "black";
+const std::string STR_TEXTURE_EVAL_WHITE = "evalwhite";
+const std::string STR_TEXTURE_EVAL_BLACK = "evalblack";
 
 const std::string STR_TEXTURE_PROMOTION = "promotion";
 const std::string STR_TEXTURE_PROMOTION_SHADOW = "promotionShadow";

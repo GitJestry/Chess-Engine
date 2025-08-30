@@ -412,6 +412,9 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
 }
 
 void TextureTable::preLoad() {
+  load(constant::STR_TEXTURE_EVAL_WHITE, sf::Color(255, 255, 255));
+  load(constant::STR_TEXTURE_EVAL_BLACK, sf::Color(0, 0, 0));
+
   load(constant::STR_TEXTURE_WHITE, sf::Color(240, 240, 210));
   load(constant::STR_TEXTURE_BLACK, sf::Color(120, 150, 86));
   load(constant::STR_TEXTURE_SELECTHLIGHT, sf::Color(240, 240, 50, 160));
