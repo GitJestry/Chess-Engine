@@ -26,6 +26,7 @@ int App::run() {
     auto cfg = startScreen.run();
     m_white_is_bot = cfg.whiteIsBot;
     m_black_is_bot = cfg.blackIsBot;
+    m_start_fen = cfg.fen;
 
     lilia::controller::GameController::NextAction action =
         lilia::controller::GameController::NextAction::None;
