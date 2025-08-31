@@ -96,6 +96,8 @@ void PlayerInfoView::setPosition(const Entity::Position& pos) {
   auto nameBounds = m_name.getLocalBounds();
   const float eloX = textLeft + nameBounds.width + 6.f;
   m_elo.setPosition(snap({eloX, baselineY}));
+
+  layoutCaptured();
 }
 
 void PlayerInfoView::setPositionClamped(const Entity::Position& pos,
@@ -119,6 +121,44 @@ void PlayerInfoView::render(sf::RenderWindow& window) {
   m_icon.draw(window);
   window.draw(m_name);
   window.draw(m_elo);
+  for (auto& piece : m_capturedPieces) {
+    piece.draw(window);
+  }
+}
+
+void PlayerInfoView::addCapturedPiece(core::PieceType type, core::Color color) {
+  std::uint8_t numTypes = 6;
+  std::string filename = constant::ASSET_PIECES_FILE_PATH + "/piece_" +
+                         std::to_string(static_cast<std::uint8_t>(type) +
+                                        numTypes * static_cast<std::uint8_t>(color)) +
+                         ".png";
+  const sf::Texture& texture = TextureTable::getInstance().get(filename);
+  Entity piece(texture);
+  piece.setScale(constant::ASSET_PIECE_SCALE * 0.6f,
+                 constant::ASSET_PIECE_SCALE * 0.6f);
+  m_capturedPieces.push_back(std::move(piece));
+  layoutCaptured();
+}
+
+void PlayerInfoView::removeCapturedPiece() {
+  if (!m_capturedPieces.empty()) {
+    m_capturedPieces.pop_back();
+    layoutCaptured();
+  }
+}
+
+void PlayerInfoView::clearCapturedPieces() {
+  m_capturedPieces.clear();
+}
+
+void PlayerInfoView::layoutCaptured() {
+  float x = m_position.x;
+  float y = m_position.y + m_frame.getSize().y + 6.f;
+  const float gap = 4.f;
+  for (auto& piece : m_capturedPieces) {
+    piece.setPosition(snap({x, y}));
+    x += piece.getCurrentSize().x + gap;
+  }
 }
 
 }  // namespace lilia::view

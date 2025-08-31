@@ -281,6 +281,23 @@ void GameView::removePiece(core::Square pos) {
   m_piece_manager.removePiece(pos);
 }
 
+void GameView::addCapturedPiece(core::Color capturer, core::PieceType type) {
+  PlayerInfoView& view = (capturer == core::Color::White) ? m_bottom_player
+                                                         : m_top_player;
+  view.addCapturedPiece(type, ~capturer);
+}
+
+void GameView::removeCapturedPiece(core::Color capturer) {
+  PlayerInfoView& view = (capturer == core::Color::White) ? m_bottom_player
+                                                         : m_top_player;
+  view.removeCapturedPiece();
+}
+
+void GameView::clearCapturedPieces() {
+  m_top_player.clearCapturedPieces();
+  m_bottom_player.clearCapturedPieces();
+}
+
 void GameView::highlightSquare(core::Square pos) {
   m_highlight_manager.highlightSquare(pos);
 }

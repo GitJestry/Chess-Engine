@@ -60,6 +60,7 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
             this->m_last_move_squares = {info.move.from, info.move.to};
             this->highlightLastMove();
           }
+          this->syncCapturedPieces();
         }
 
         this->movePieceAndClear(mv, isPlayerMove, onClick);
@@ -108,6 +109,7 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
   m_game_view.selectMove(static_cast<std::size_t>(-1));
   m_eval_cp.store(m_eval_history[0]);
   m_game_view.updateEval(m_eval_history[0]);
+  m_game_view.clearCapturedPieces();
 
   // UI-State
   m_mouse_down = false;
@@ -198,6 +200,7 @@ void GameController::handleEvent(const sf::Event &event) {
       m_sound_manager.playEffect(info.sound);
       m_eval_cp.store(m_eval_history[m_fen_index]);
       m_game_view.updateEval(m_eval_history[m_fen_index]);
+      syncCapturedPieces();
       return;
     }
   }
@@ -493,6 +496,9 @@ void GameController::movePieceAndClear(const model::Move &move,
   }
 
   m_sound_manager.playEffect(effect);
+  if (move.isCapture) {
+    m_game_view.addCapturedPiece(moverColorBefore, capturedType);
+  }
   m_move_history.push_back({move, moverColorBefore, capturedType, effect,
                             m_eval_cp.load()});
 
@@ -857,6 +863,16 @@ void GameController::showGameOver(core::GameResult res,
   m_game_view.setGameOver(true);
 }
 
+void GameController::syncCapturedPieces() {
+  m_game_view.clearCapturedPieces();
+  for (std::size_t i = 0; i < m_fen_index; ++i) {
+    const MoveView& mv = m_move_history[i];
+    if (mv.move.isCapture) {
+      m_game_view.addCapturedPiece(mv.moverColor, mv.capturedType);
+    }
+  }
+}
+
 void GameController::stepBackward() {
   if (m_fen_index > 0) {
     m_game_view.setBoardFen(m_fen_history[m_fen_index]);
@@ -900,6 +916,7 @@ void GameController::stepBackward() {
     m_eval_cp.store(m_eval_history[m_fen_index]);
     m_game_view.updateEval(m_eval_history[m_fen_index]);
     m_game_view.updateFen(m_fen_history[m_fen_index]);
+    syncCapturedPieces();
   }
 }
 
@@ -937,6 +954,7 @@ void GameController::stepForward() {
     m_eval_cp.store(m_eval_history[m_fen_index]);
     m_game_view.updateEval(m_eval_history[m_fen_index]);
     m_game_view.updateFen(m_fen_history[m_fen_index]);
+    syncCapturedPieces();
   }
 }
 
