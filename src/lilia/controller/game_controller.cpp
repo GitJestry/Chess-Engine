@@ -363,6 +363,13 @@ void GameController::deselectSquare() {
   m_selected_sq = core::NO_SQUARE;
 }
 
+void GameController::clearLastMoveHighlight() {
+  if (isValid(m_last_move_squares.first))
+    m_game_view.clearHighlightSquare(m_last_move_squares.first);
+  if (isValid(m_last_move_squares.second))
+    m_game_view.clearHighlightSquare(m_last_move_squares.second);
+}
+
 void GameController::hoverSquare(core::Square sq) {
   m_hover_sq = sq;
   m_game_view.highlightHoverSquare(m_hover_sq);
@@ -438,9 +445,11 @@ void GameController::movePieceAndClear(const model::Move &move,
   }
 
   // 6) Visuals / Sounds
+  clearLastMoveHighlight();
   m_last_move_squares = {from, to};
-  deselectSquare();
   highlightLastMove();
+  if (isValid(m_selected_sq))
+    m_game_view.highlightSquare(m_selected_sq);
 
   const core::Color sideToMoveNow = m_chess_game.getGameState().sideToMove;
 

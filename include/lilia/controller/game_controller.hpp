@@ -86,6 +86,7 @@ private:
 
   void snapAndReturn(core::Square sq, core::MousePos cur);
   void highlightLastMove();
+  void clearLastMoveHighlight();
 
   [[nodiscard]] std::vector<core::Square>
   getAttackSquares(core::Square pieceSQ) const;
