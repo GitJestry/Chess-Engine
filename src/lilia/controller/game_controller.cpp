@@ -70,7 +70,6 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
 
   m_game_manager->setOnGameEnd([this](core::GameResult res) {
     this->showGameOver(res, m_chess_game.getGameState().sideToMove);
-    this->m_sound_manager.playEffect(view::sound::Effect::GameEnds);
   });
 }
 
@@ -744,6 +743,7 @@ bool GameController::hasCurrentLegalMove(core::Square from, core::Square to) con
 }
 
 void GameController::showGameOver(core::GameResult res, core::Color sideToMove) {
+  m_sound_manager.playEffect(view::sound::Effect::GameEnds);
   std::string resultStr;
   switch (res) {
     case core::GameResult::CHECKMATE:
