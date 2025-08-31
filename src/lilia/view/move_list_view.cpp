@@ -104,6 +104,13 @@ void MoveListView::render(sf::RenderWindow &window) const {
   const float top = contentTop;
   const float bottom = static_cast<float>(m_height);
 
+  // Gesamthintergrund für Play-Bots-Header und Zugliste
+  sf::RectangleShape bg({static_cast<float>(m_width),
+                         static_cast<float>(m_height)});
+  bg.setPosition(0.f, 0.f);
+  bg.setFillColor(sf::Color(30, 30, 30));
+  window.draw(bg);
+
   // Hintergrundsegmente
   sf::RectangleShape headerBg(
       {static_cast<float>(m_width),
@@ -112,9 +119,9 @@ void MoveListView::render(sf::RenderWindow &window) const {
   headerBg.setFillColor(sf::Color(40, 40, 40));
   window.draw(headerBg);
 
-  float movesBgY = listTop + static_cast<float>(kSubHeaderFontSize);
-  sf::RectangleShape movesBg(
-      {static_cast<float>(m_width), static_cast<float>(m_height) - movesBgY});
+  float movesBgY = contentTop;
+  sf::RectangleShape movesBg({static_cast<float>(m_width),
+                              static_cast<float>(m_height) - movesBgY});
   movesBg.setPosition(0.f, movesBgY);
   movesBg.setFillColor(sf::Color(60, 60, 60));
   window.draw(movesBg);
@@ -126,7 +133,7 @@ void MoveListView::render(sf::RenderWindow &window) const {
     constexpr float pad = 4.f;
     float y = rect.top - m_scroll_offset - pad;
     float h = rect.height + 2.f * pad;
-    if (y + h >= top && y <= bottom) {
+    if (y >= top && y + h <= bottom) {
       sf::RectangleShape hl({rect.width + 2.f * pad, h});
       hl.setPosition(rect.left - pad, y);
       hl.setFillColor(sf::Color(80, 80, 80));
@@ -148,15 +155,15 @@ void MoveListView::render(sf::RenderWindow &window) const {
   subHeader.setStyle(sf::Text::Bold);
   subHeader.setFillColor(sf::Color::White);
   auto sb = subHeader.getLocalBounds();
-  subHeader.setPosition(
-      (static_cast<float>(m_width) - sb.width) / 2.f - sb.left, listTop);
+  subHeader.setPosition((static_cast<float>(m_width) - sb.width) / 2.f - sb.left,
+                        listTop - 2.f);
   window.draw(subHeader);
 
   // Zeichne nur sichtbare Zeilen
   for (std::size_t i = 0; i < m_lines.size(); ++i) {
     const float y =
         contentTop + (static_cast<float>(i) * kLineHeight) - m_scroll_offset;
-    if (y + kLineHeight < top || y > bottom)
+    if (y < top || y + kLineHeight > bottom)
       continue;
 
     std::string line = m_lines[i];
