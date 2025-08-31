@@ -5,28 +5,36 @@
 
 namespace lilia::view {
 
-void ParticleSystem::emitConfetti(const sf::Vector2f &center, float boardSize,
-                                  std::size_t count) {
-  std::mt19937 rng(std::random_device{}());
+void ParticleSystem::emitConfetti(const sf::Vector2f &center, float boardSize, std::size_t count) {
+  // Seed once per thread instead of every call
+  static thread_local std::mt19937 rng{std::random_device{}()};
+
   std::uniform_real_distribution<float> xDist(center.x - boardSize / 2.f,
                                               center.x + boardSize / 2.f);
   std::uniform_real_distribution<float> vxDist(-50.f, 50.f);
   std::uniform_real_distribution<float> vyDist(-250.f, -150.f);
-  std::uniform_real_distribution<float> radiusDist(2.f, 4.f);
-  std::uniform_int_distribution<int> colorDist(0, 255);
+
+  // Wider spread of sizes for more noticeable variation
+  std::uniform_real_distribution<float> radiusDist(1.5f, 6.0f);
 
   float startY = center.y + boardSize / 2.f;
+
+  // Avoid repeated reallocations if you’re emitting a bunch
+  if (m_particles.capacity() < m_particles.size() + count) {
+    m_particles.reserve(m_particles.size() + count);
+  }
+
   for (std::size_t i = 0; i < count; ++i) {
     float x = xDist(rng);
     float radius = radiusDist(rng);
+
     sf::CircleShape shape(radius);
-    shape.setFillColor(
-        sf::Color(colorDist(rng), colorDist(rng), colorDist(rng)));
+    shape.setFillColor(sf::Color::White);  // <-- pure white
     shape.setOrigin(radius, radius);
     shape.setPosition({x, startY});
+
     sf::Vector2f velocity{vxDist(rng), vyDist(rng)};
-    Particle p{shape, velocity, 2.f};
-    m_particles.push_back(p);
+    m_particles.push_back(Particle{shape, velocity, 2.f});
   }
 }
 
@@ -48,8 +56,12 @@ void ParticleSystem::render(sf::RenderWindow &window) {
   }
 }
 
-void ParticleSystem::clear() { m_particles.clear(); }
+void ParticleSystem::clear() {
+  m_particles.clear();
+}
 
-bool ParticleSystem::empty() const { return m_particles.empty(); }
+bool ParticleSystem::empty() const {
+  return m_particles.empty();
+}
 
-} // namespace lilia::view
+}  // namespace lilia::view
