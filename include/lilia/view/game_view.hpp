@@ -1,6 +1,8 @@
 #pragma once
 
 #include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/RectangleShape.hpp>
+#include <SFML/Graphics/Text.hpp>
 #include <SFML/System/Vector2.hpp>
 #include <SFML/Window/Cursor.hpp>
 
@@ -35,12 +37,27 @@ public:
   void render();
 
   void addMove(const std::string &move);
+  void addResult(const std::string &result);
   void selectMove(std::size_t moveIndex);
   void setBoardFen(const std::string &fen);
   void scrollMoveList(float delta);
   void setBotMode(bool anyBot);
 
   [[nodiscard]] std::size_t getMoveIndexAt(core::MousePos mousePos) const;
+  [[nodiscard]] MoveListView::Option getOptionAt(core::MousePos mousePos) const;
+  void setGameOver(bool over);
+
+  void showResignPopup();
+  void hideResignPopup();
+  [[nodiscard]] bool isResignPopupOpen() const;
+  [[nodiscard]] bool isOnResignYes(core::MousePos mousePos) const;
+  [[nodiscard]] bool isOnResignNo(core::MousePos mousePos) const;
+
+  void showGameOverPopup(const std::string &msg);
+  void hideGameOverPopup();
+  [[nodiscard]] bool isGameOverPopupOpen() const;
+  [[nodiscard]] bool isOnNewBot(core::MousePos mousePos) const;
+  [[nodiscard]] bool isOnRematch(core::MousePos mousePos) const;
 
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
   void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
@@ -105,6 +122,22 @@ private:
   MoveListView m_move_list;
   PlayerInfoView m_top_player;
   PlayerInfoView m_bottom_player;
+
+  // popups
+  sf::Font m_font;
+  bool m_show_resign{false};
+  bool m_show_game_over{false};
+  sf::RectangleShape m_popup_bg;
+  sf::Text m_popup_msg;
+  sf::Text m_popup_yes;
+  sf::Text m_popup_no;
+  sf::FloatRect m_yes_bounds;
+  sf::FloatRect m_no_bounds;
+  sf::Text m_go_msg;
+  sf::Text m_go_new_bot;
+  sf::Text m_go_rematch;
+  sf::FloatRect m_nb_bounds;
+  sf::FloatRect m_rm_bounds;
 };
 
 } // namespace lilia::view

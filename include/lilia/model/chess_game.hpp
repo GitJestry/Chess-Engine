@@ -30,6 +30,7 @@ class ChessGame {
   core::Square getRookSquareFromCastleside(CastleSide castleSide, core::Color side);
   core::Square getKingSquare(core::Color color);
   core::GameResult getResult();
+  void setResult(core::GameResult res);
   Position& getPositionRefForBot();
 
   std::string getFen() const;  ///< Aktuelle Stellung als FEN-String

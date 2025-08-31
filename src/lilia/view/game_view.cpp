@@ -1,7 +1,9 @@
 #include "lilia/view/game_view.hpp"
 
 #include <SFML/Graphics/Image.hpp>
+#include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/Text.hpp>
 #include <algorithm>
 
 #include "lilia/bot/bot_info.hpp"
@@ -50,6 +52,30 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
   m_bottom_player.setInfo(bottomInfo);
 
   layout(m_window.getSize().x, m_window.getSize().y);
+
+  m_font.loadFromFile(constant::STR_FILE_PATH_FONT);
+  m_popup_bg.setFillColor(sf::Color(40, 40, 40, 220));
+  m_popup_bg.setSize({300.f, 150.f});
+  m_popup_bg.setOrigin(m_popup_bg.getSize().x / 2.f,
+                        m_popup_bg.getSize().y / 2.f);
+  m_popup_msg.setFont(m_font);
+  m_popup_msg.setCharacterSize(20);
+  m_popup_msg.setFillColor(sf::Color::White);
+  m_popup_yes.setFont(m_font);
+  m_popup_yes.setCharacterSize(18);
+  m_popup_yes.setFillColor(sf::Color::White);
+  m_popup_no.setFont(m_font);
+  m_popup_no.setCharacterSize(18);
+  m_popup_no.setFillColor(sf::Color::White);
+  m_go_msg.setFont(m_font);
+  m_go_msg.setCharacterSize(20);
+  m_go_msg.setFillColor(sf::Color::White);
+  m_go_new_bot.setFont(m_font);
+  m_go_new_bot.setCharacterSize(18);
+  m_go_new_bot.setFillColor(sf::Color::White);
+  m_go_rematch.setFont(m_font);
+  m_go_rematch.setCharacterSize(18);
+  m_go_rematch.setFillColor(sf::Color::White);
 }
 
 void GameView::init(const std::string &fen) {
@@ -73,9 +99,31 @@ void GameView::render() {
   m_highlight_manager.renderAttack(m_window);
   m_chess_animator.render(m_window);
   m_move_list.render(m_window);
+
+  if (m_show_resign || m_show_game_over) {
+    sf::RectangleShape overlay(
+        {static_cast<float>(m_window.getSize().x),
+         static_cast<float>(m_window.getSize().y)});
+    overlay.setFillColor(sf::Color(0, 0, 0, 100));
+    m_window.draw(overlay);
+    m_window.draw(m_popup_bg);
+    if (m_show_resign) {
+      m_window.draw(m_popup_msg);
+      m_window.draw(m_popup_yes);
+      m_window.draw(m_popup_no);
+    } else if (m_show_game_over) {
+      m_window.draw(m_go_msg);
+      m_window.draw(m_go_new_bot);
+      m_window.draw(m_go_rematch);
+    }
+  }
 }
 
 void GameView::addMove(const std::string &move) { m_move_list.addMove(move); }
+
+void GameView::addResult(const std::string &result) {
+  m_move_list.addResult(result);
+}
 
 void GameView::selectMove(std::size_t moveIndex) {
   m_move_list.setCurrentMove(moveIndex);
@@ -95,6 +143,87 @@ void GameView::setBotMode(bool anyBot) { m_move_list.setBotMode(anyBot); }
 std::size_t GameView::getMoveIndexAt(core::MousePos mousePos) const {
   return m_move_list.getMoveIndexAt(Entity::Position{
       static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)});
+}
+
+MoveListView::Option GameView::getOptionAt(core::MousePos mousePos) const {
+  return m_move_list.getOptionAt(Entity::Position{
+      static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)});
+}
+
+void GameView::setGameOver(bool over) { m_move_list.setGameOver(over); }
+
+void GameView::showResignPopup() {
+  m_show_resign = true;
+  m_popup_bg.setPosition(static_cast<float>(m_window.getSize().x) / 2.f,
+                         static_cast<float>(m_window.getSize().y) / 2.f);
+  m_popup_msg.setString("Do you really want to resign?");
+  auto b = m_popup_msg.getLocalBounds();
+  m_popup_msg.setOrigin(b.left + b.width / 2.f, b.top + b.height / 2.f);
+  m_popup_msg.setPosition(m_popup_bg.getPosition().x,
+                           m_popup_bg.getPosition().y - 20.f);
+  m_popup_yes.setString("Yes");
+  m_popup_no.setString("No");
+  auto yb = m_popup_yes.getLocalBounds();
+  auto nb = m_popup_no.getLocalBounds();
+  m_popup_yes.setOrigin(yb.left + yb.width / 2.f, yb.top + yb.height / 2.f);
+  m_popup_no.setOrigin(nb.left + nb.width / 2.f, nb.top + nb.height / 2.f);
+  float cx = m_popup_bg.getPosition().x;
+  float cy = m_popup_bg.getPosition().y + 30.f;
+  m_popup_yes.setPosition(cx - 40.f, cy);
+  m_popup_no.setPosition(cx + 40.f, cy);
+  m_yes_bounds = m_popup_yes.getGlobalBounds();
+  m_no_bounds = m_popup_no.getGlobalBounds();
+}
+
+void GameView::hideResignPopup() { m_show_resign = false; }
+
+bool GameView::isResignPopupOpen() const { return m_show_resign; }
+
+bool GameView::isOnResignYes(core::MousePos mousePos) const {
+  return m_yes_bounds.contains(static_cast<float>(mousePos.x),
+                               static_cast<float>(mousePos.y));
+}
+
+bool GameView::isOnResignNo(core::MousePos mousePos) const {
+  return m_no_bounds.contains(static_cast<float>(mousePos.x),
+                              static_cast<float>(mousePos.y));
+}
+
+void GameView::showGameOverPopup(const std::string &msg) {
+  m_show_game_over = true;
+  m_popup_bg.setPosition(static_cast<float>(m_window.getSize().x) / 2.f,
+                         static_cast<float>(m_window.getSize().y) / 2.f);
+  m_go_msg.setString(msg);
+  auto b = m_go_msg.getLocalBounds();
+  m_go_msg.setOrigin(b.left + b.width / 2.f, b.top + b.height / 2.f);
+  m_go_msg.setPosition(m_popup_bg.getPosition().x,
+                       m_popup_bg.getPosition().y - 20.f);
+  m_go_new_bot.setString("New Bot");
+  m_go_rematch.setString("Rematch");
+  auto nb = m_go_new_bot.getLocalBounds();
+  auto rb = m_go_rematch.getLocalBounds();
+  m_go_new_bot.setOrigin(nb.left + nb.width / 2.f, nb.top + nb.height / 2.f);
+  m_go_rematch.setOrigin(rb.left + rb.width / 2.f, rb.top + rb.height / 2.f);
+  float cx = m_popup_bg.getPosition().x;
+  float cy = m_popup_bg.getPosition().y + 30.f;
+  m_go_new_bot.setPosition(cx - 60.f, cy);
+  m_go_rematch.setPosition(cx + 60.f, cy);
+  m_nb_bounds = m_go_new_bot.getGlobalBounds();
+  m_rm_bounds = m_go_rematch.getGlobalBounds();
+}
+
+void GameView::hideGameOverPopup() { m_show_game_over = false; }
+
+bool GameView::isGameOverPopupOpen() const { return m_show_game_over; }
+
+bool GameView::isOnNewBot(core::MousePos mousePos) const {
+  return m_nb_bounds.contains(static_cast<float>(mousePos.x),
+                              static_cast<float>(mousePos.y));
+}
+
+bool GameView::isOnRematch(core::MousePos mousePos) const {
+  return m_rm_bounds.contains(static_cast<float>(mousePos.x),
+                              static_cast<float>(mousePos.y));
 }
 
 void GameView::layout(unsigned int width, unsigned int height) {
