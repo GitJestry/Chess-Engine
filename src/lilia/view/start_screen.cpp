@@ -1,26 +1,18 @@
 #include "lilia/view/start_screen.hpp"
 
-#include "lilia/view/render_constants.hpp"
 #include <SFML/Window/Event.hpp>
+
+#include "lilia/view/render_constants.hpp"
 
 namespace lilia::view {
 
 StartScreen::StartScreen(sf::RenderWindow &window) : m_window(window) {
   m_font.loadFromFile(constant::STR_FILE_PATH_FONT);
-  m_logoTex.loadFromFile(constant::STR_FILE_PATH_ICON_LILIA);
+  m_logoTex.loadFromFile(constant::STR_FILE_PATH_ICON_LILIA_START_SCREEN);
   m_logo.setTexture(m_logoTex);
-  m_logo.setOrigin(m_logo.getLocalBounds().width / 2.f,
-                   m_logo.getLocalBounds().height / 2.f);
-  m_logo.setPosition(static_cast<float>(m_window.getSize().x) / 2.f, 80.f);
-
-  m_title.setFont(m_font);
-  m_title.setString("Lilia Engine");
-  m_title.setCharacterSize(24);
-  m_title.setFillColor(sf::Color::White);
-  m_title.setOrigin(m_title.getLocalBounds().width / 2.f,
-                    m_title.getLocalBounds().height / 2.f);
-  m_title.setPosition(static_cast<float>(m_window.getSize().x) / 2.f, 140.f);
-
+  m_logo.setOrigin(m_logo.getLocalBounds().width / 2.f, m_logo.getLocalBounds().height / 2.f);
+  m_logo.setPosition(static_cast<float>(m_window.getSize().x) / 2.f,
+                     static_cast<float>(m_window.getSize().y) / 2.);
   setupUI();
 }
 
@@ -66,8 +58,7 @@ void StartScreen::setupUI() {
   m_blackBotText.setPosition(rightX + 20.f, baseY + 82.f);
 
   // prepare bot list
-  std::vector<std::pair<BotType, PlayerInfo>> bots = {
-      {BotType::Lilia, getBotInfo(BotType::Lilia)}};
+  std::vector<std::pair<BotType, PlayerInfo>> bots = {{BotType::Lilia, getBotInfo(BotType::Lilia)}};
 
   float listYOffset = baseY + 140.f;
   for (std::size_t i = 0; i < bots.size(); ++i) {
@@ -147,28 +138,25 @@ StartConfig StartScreen::run() {
     m_whitePlayerBtn.setFillColor(cfg.whiteIsBot ? sf::Color(100, 100, 100)
                                                  : sf::Color(200, 200, 200));
     m_whiteBotBtn.setFillColor(cfg.whiteIsBot ? sf::Color(200, 200, 200)
-                                             : sf::Color(100, 100, 100));
+                                              : sf::Color(100, 100, 100));
     m_blackPlayerBtn.setFillColor(cfg.blackIsBot ? sf::Color(100, 100, 100)
                                                  : sf::Color(200, 200, 200));
     m_blackBotBtn.setFillColor(cfg.blackIsBot ? sf::Color(200, 200, 200)
-                                             : sf::Color(100, 100, 100));
+                                              : sf::Color(100, 100, 100));
 
     for (std::size_t i = 0; i < m_whiteBotOptions.size(); ++i) {
       m_whiteBotOptions[i].second.setFillColor(
-          (cfg.whiteIsBot && i == m_whiteBotSelection) ? sf::Color::Yellow
-                                                       : sf::Color::White);
+          (cfg.whiteIsBot && i == m_whiteBotSelection) ? sf::Color::Yellow : sf::Color::White);
     }
     for (std::size_t i = 0; i < m_blackBotOptions.size(); ++i) {
       m_blackBotOptions[i].second.setFillColor(
-          (cfg.blackIsBot && i == m_blackBotSelection) ? sf::Color::Yellow
-                                                        : sf::Color::White);
+          (cfg.blackIsBot && i == m_blackBotSelection) ? sf::Color::Yellow : sf::Color::White);
     }
 
     m_startBtn.setFillColor(sf::Color(200, 200, 200));
 
     m_window.clear(sf::Color::Black);
     m_window.draw(m_logo);
-    m_window.draw(m_title);
 
     m_window.draw(m_whitePlayerBtn);
     m_window.draw(m_whiteBotBtn);
@@ -196,4 +184,3 @@ StartConfig StartScreen::run() {
 }
 
 }  // namespace lilia::view
-

@@ -24,7 +24,6 @@ class StartScreen {
   sf::Font m_font;
   sf::Texture m_logoTex;
   sf::Sprite m_logo;
-  sf::Text m_title;
 
   sf::RectangleShape m_whitePlayerBtn;
   sf::RectangleShape m_whiteBotBtn;
@@ -48,4 +47,3 @@ class StartScreen {
 };
 
 }  // namespace lilia::view
-
