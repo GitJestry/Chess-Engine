@@ -1,10 +1,10 @@
 #pragma once
 
-#include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
-#include <SFML/Graphics/Text.hpp>
 #include <SFML/System/Vector2.hpp>
 #include <SFML/Window/Cursor.hpp>
+#include <functional>
+#include <vector>
 
 #include "../constants.hpp"
 #include "../controller/mousepos.hpp"
@@ -13,29 +13,25 @@
 #include "entity.hpp"
 #include "eval_bar.hpp"
 #include "highlight_manager.hpp"
+#include "modal_view.hpp"
 #include "move_list_view.hpp"
+#include "particle_system.hpp"
 #include "piece_manager.hpp"
 #include "player_info_view.hpp"
 #include "promotion_manager.hpp"
 
-#include <functional>
-#include <vector>
-#include "particle_system.hpp"
-
 namespace lilia::view {
 
 class GameView {
-public:
+ public:
   GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot);
   ~GameView() = default;
 
   void init(const std::string &fen = core::START_FEN);
-
   void resetBoard();
 
   void update(float dt);
   void updateEval(int eval);
-
   void render();
 
   void addMove(const std::string &move);
@@ -49,6 +45,7 @@ public:
   [[nodiscard]] MoveListView::Option getOptionAt(core::MousePos mousePos) const;
   void setGameOver(bool over);
 
+  // Modals (API unchanged; now delegated to ModalView)
   void showResignPopup();
   void hideResignPopup();
   [[nodiscard]] bool isResignPopupOpen() const;
@@ -63,8 +60,7 @@ public:
 
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
   [[nodiscard]] core::MousePos clampPosToBoard(core::MousePos mousePos,
-                                               Entity::Position pieceSize = {
-                                                   0.f, 0.f}) const;
+                                               Entity::Position pieceSize = {0.f, 0.f}) const;
   void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
   void setPieceToSquareScreenPos(core::Square from, core::Square to);
 
@@ -111,40 +107,31 @@ public:
   void toggleBoardOrientation();
   [[nodiscard]] bool isOnFlipIcon(core::MousePos mousePos) const;
 
-private:
+ private:
   void layout(unsigned int width, unsigned int height);
 
   sf::RenderWindow &m_window;
+
   BoardView m_board_view;
   PieceManager m_piece_manager;
   HighlightManager m_highlight_manager;
   animation::ChessAnimator m_chess_animator;
   PromotionManager m_promotion_manager;
+
+  // cursors
   sf::Cursor m_cursor_default;
   sf::Cursor m_cursor_hand_open;
   sf::Cursor m_cursor_hand_closed;
+
+  // UI components
   EvalBar m_eval_bar;
   MoveListView m_move_list;
   PlayerInfoView m_top_player;
   PlayerInfoView m_bottom_player;
+  ModalView m_modal;  // ← replaces ad-hoc popup fields
 
-  // popups
-  sf::Font m_font;
-  bool m_show_resign{false};
-  bool m_show_game_over{false};
-  sf::RectangleShape m_popup_bg;
-  sf::Text m_popup_msg;
-  sf::Text m_popup_yes;
-  sf::Text m_popup_no;
-  sf::FloatRect m_yes_bounds;
-  sf::FloatRect m_no_bounds;
-  sf::Text m_go_msg;
-  sf::Text m_go_new_bot;
-  sf::Text m_go_rematch;
-  sf::FloatRect m_nb_bounds;
-  sf::FloatRect m_rm_bounds;
-
+  // FX
   ParticleSystem m_particles;
 };
 
-} // namespace lilia::view
+}  // namespace lilia::view

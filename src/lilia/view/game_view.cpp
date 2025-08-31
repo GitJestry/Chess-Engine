@@ -2,7 +2,6 @@
 
 #include <SFML/Graphics/Image.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
-#include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Text.hpp>
 #include <algorithm>
 
@@ -22,6 +21,7 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
       m_move_list(),
       m_top_player(),
       m_bottom_player() {
+  // cursors
   m_cursor_default.loadFromSystem(sf::Cursor::Arrow);
 
   sf::Image openImg;
@@ -36,49 +36,25 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
   }
   m_window.setMouseCursor(m_cursor_default);
 
-  PlayerInfo topInfo;
-  if (topIsBot) {
-    topInfo = getBotInfo(BotType::Lilia);
-  } else {
-    topInfo = {"Challenger", 0, constant::STR_FILE_PATH_ICON_CHALLENGER};
-  }
-  m_top_player.setInfo(topInfo);
+  // players
+  PlayerInfo topInfo = topIsBot
+                           ? getBotConfig(BotType::Lilia).info
+                           : PlayerInfo{"Challenger", 0, constant::STR_FILE_PATH_ICON_CHALLENGER};
+  PlayerInfo bottomInfo =
+      bottomIsBot ? getBotConfig(BotType::Lilia).info
+                  : PlayerInfo{"Challenger", 0, constant::STR_FILE_PATH_ICON_CHALLENGER};
 
-  PlayerInfo bottomInfo;
-  if (bottomIsBot) {
-    bottomInfo = getBotInfo(BotType::Lilia);
-  } else {
-    bottomInfo = {"Challenger", 0, constant::STR_FILE_PATH_ICON_CHALLENGER};
-  }
+  m_top_player.setInfo(topInfo);
   m_bottom_player.setInfo(bottomInfo);
 
-  // If black is a player but white is not, start with the board flipped.
+  // board orientation
   m_board_view.setFlipped(bottomIsBot && !topIsBot);
 
+  // initial layout
   layout(m_window.getSize().x, m_window.getSize().y);
 
-  m_font.loadFromFile(constant::STR_FILE_PATH_FONT);
-  m_popup_bg.setFillColor(sf::Color(40, 40, 40, 220));
-  m_popup_bg.setSize({300.f, 150.f});
-  m_popup_bg.setOrigin(m_popup_bg.getSize().x / 2.f, m_popup_bg.getSize().y / 2.f);
-  m_popup_msg.setFont(m_font);
-  m_popup_msg.setCharacterSize(20);
-  m_popup_msg.setFillColor(sf::Color::White);
-  m_popup_yes.setFont(m_font);
-  m_popup_yes.setCharacterSize(18);
-  m_popup_yes.setFillColor(sf::Color::White);
-  m_popup_no.setFont(m_font);
-  m_popup_no.setCharacterSize(18);
-  m_popup_no.setFillColor(sf::Color::White);
-  m_go_msg.setFont(m_font);
-  m_go_msg.setCharacterSize(20);
-  m_go_msg.setFillColor(sf::Color::White);
-  m_go_new_bot.setFont(m_font);
-  m_go_new_bot.setCharacterSize(18);
-  m_go_new_bot.setFillColor(sf::Color::White);
-  m_go_rematch.setFont(m_font);
-  m_go_rematch.setCharacterSize(18);
-  m_go_rematch.setFillColor(sf::Color::White);
+  // theme font for modals (same face as the rest of UI)
+  m_modal.loadFont(constant::STR_FILE_PATH_FONT);
 }
 
 void GameView::init(const std::string &fen) {
@@ -98,7 +74,10 @@ void GameView::updateEval(int eval) {
 }
 
 void GameView::render() {
+  // left stack
   m_eval_bar.render(m_window);
+
+  // board + pieces + overlays
   m_board_view.renderBoard(m_window);
   m_top_player.render(m_window);
   m_bottom_player.render(m_window);
@@ -108,24 +87,17 @@ void GameView::render() {
   m_piece_manager.renderPieces(m_window, m_chess_animator);
   m_highlight_manager.renderAttack(m_window);
   m_chess_animator.render(m_window);
+
+  // right stack
   m_move_list.render(m_window);
 
-  if (m_show_resign || m_show_game_over) {
-    sf::RectangleShape overlay(
-        {static_cast<float>(m_window.getSize().x), static_cast<float>(m_window.getSize().y)});
-    overlay.setFillColor(sf::Color(0, 0, 0, 80));
-    m_window.draw(overlay);
-    if (m_show_game_over) m_particles.render(m_window);
-    m_window.draw(m_popup_bg);
-    if (m_show_resign) {
-      m_window.draw(m_popup_msg);
-      m_window.draw(m_popup_yes);
-      m_window.draw(m_popup_no);
-    } else if (m_show_game_over) {
-      m_window.draw(m_go_msg);
-      m_window.draw(m_go_new_bot);
-      m_window.draw(m_go_rematch);
+  // modals (overlay → confetti → panel)
+  if (m_modal.isResignOpen() || m_modal.isGameOverOpen()) {
+    m_modal.drawOverlay(m_window);
+    if (m_modal.isGameOverOpen()) {
+      m_particles.render(m_window);
     }
+    m_modal.drawPanel(m_window);
   }
 }
 
@@ -147,6 +119,21 @@ void GameView::setBoardFen(const std::string &fen) {
   m_piece_manager.removeAll();
   m_piece_manager.initFromFen(fen);
   m_highlight_manager.clearAllHighlights();
+}
+
+void GameView::resetBoard() {
+  m_piece_manager.removeAll();
+  init();
+}
+
+bool GameView::isInPromotionSelection() {
+  return m_promotion_manager.hasOptions();
+}
+core::PieceType GameView::getSelectedPromotion(core::MousePos mousePos) {
+  return m_promotion_manager.clickedOnType(static_cast<Entity::Position>(mousePos));
+}
+void GameView::removePromotionSelection() {
+  m_promotion_manager.removeOptions();
 }
 
 void GameView::scrollMoveList(float delta) {
@@ -171,169 +158,114 @@ void GameView::setGameOver(bool over) {
   m_move_list.setGameOver(over);
 }
 
+// ---------- Modals (delegated to ModalView) ----------
 void GameView::showResignPopup() {
-  m_show_resign = true;
-  m_popup_bg.setPosition(static_cast<float>(m_window.getSize().x) / 2.f,
-                         static_cast<float>(m_window.getSize().y) / 2.f);
-  m_popup_msg.setString("Do you really want to resign?");
-  auto b = m_popup_msg.getLocalBounds();
-  m_popup_msg.setOrigin(b.left + b.width / 2.f, b.top + b.height / 2.f);
-  m_popup_msg.setPosition(m_popup_bg.getPosition().x, m_popup_bg.getPosition().y - 20.f);
-  m_popup_yes.setString("Yes");
-  m_popup_no.setString("No");
-  auto yb = m_popup_yes.getLocalBounds();
-  auto nb = m_popup_no.getLocalBounds();
-  m_popup_yes.setOrigin(yb.left + yb.width / 2.f, yb.top + yb.height / 2.f);
-  m_popup_no.setOrigin(nb.left + nb.width / 2.f, nb.top + nb.height / 2.f);
-  float cx = m_popup_bg.getPosition().x;
-  float cy = m_popup_bg.getPosition().y + 30.f;
-  m_popup_yes.setPosition(cx - 40.f, cy);
-  m_popup_no.setPosition(cx + 40.f, cy);
-  m_yes_bounds = m_popup_yes.getGlobalBounds();
-  m_no_bounds = m_popup_no.getGlobalBounds();
+  auto center = m_board_view.getPosition();
+  m_modal.showResign(m_window.getSize(), {center.x, center.y});
 }
 
 void GameView::hideResignPopup() {
-  m_show_resign = false;
+  m_modal.hideResign();
 }
 
 bool GameView::isResignPopupOpen() const {
-  return m_show_resign;
+  return m_modal.isResignOpen();
 }
 
 bool GameView::isOnResignYes(core::MousePos mousePos) const {
-  return m_yes_bounds.contains(static_cast<float>(mousePos.x), static_cast<float>(mousePos.y));
+  return m_modal.hitResignYes({static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)});
 }
 
 bool GameView::isOnResignNo(core::MousePos mousePos) const {
-  return m_no_bounds.contains(static_cast<float>(mousePos.x), static_cast<float>(mousePos.y));
+  return m_modal.hitResignNo({static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)});
 }
 
 void GameView::showGameOverPopup(const std::string &msg) {
-  m_show_game_over = true;
   auto center = m_board_view.getPosition();
-  m_popup_bg.setPosition(center.x, center.y);
-  m_go_msg.setString(msg);
-  auto b = m_go_msg.getLocalBounds();
-  m_go_msg.setOrigin(b.left + b.width / 2.f, b.top + b.height / 2.f);
-  m_go_msg.setPosition(m_popup_bg.getPosition().x, m_popup_bg.getPosition().y - 20.f);
-  m_go_new_bot.setString("New Bot");
-  m_go_rematch.setString("Rematch");
-  auto nb = m_go_new_bot.getLocalBounds();
-  auto rb = m_go_rematch.getLocalBounds();
-  m_go_new_bot.setOrigin(nb.left + nb.width / 2.f, nb.top + nb.height / 2.f);
-  m_go_rematch.setOrigin(rb.left + rb.width / 2.f, rb.top + rb.height / 2.f);
-  float cx = m_popup_bg.getPosition().x;
-  float cy = m_popup_bg.getPosition().y + 30.f;
-  m_go_new_bot.setPosition(cx - 60.f, cy);
-  m_go_rematch.setPosition(cx + 60.f, cy);
-  m_nb_bounds = m_go_new_bot.getGlobalBounds();
-  m_rm_bounds = m_go_rematch.getGlobalBounds();
-
+  m_modal.showGameOver(msg, {center.x, center.y});
   if (msg.find("won") != std::string::npos) {
     m_particles.emitConfetti(center, static_cast<float>(constant::WINDOW_PX_SIZE), 200);
   }
 }
 
 void GameView::hideGameOverPopup() {
-  m_show_game_over = false;
+  m_modal.hideGameOver();
   m_particles.clear();
 }
 
 bool GameView::isGameOverPopupOpen() const {
-  return m_show_game_over;
+  return m_modal.isGameOverOpen();
 }
 
 bool GameView::isOnNewBot(core::MousePos mousePos) const {
-  return m_nb_bounds.contains(static_cast<float>(mousePos.x), static_cast<float>(mousePos.y));
+  return m_modal.hitNewBot({static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)});
 }
 
 bool GameView::isOnRematch(core::MousePos mousePos) const {
-  return m_rm_bounds.contains(static_cast<float>(mousePos.x), static_cast<float>(mousePos.y));
+  return m_modal.hitRematch({static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)});
 }
 
-void GameView::layout(unsigned int width, unsigned int height) {
-  float vMargin = std::max(
-      0.f, (static_cast<float>(height) - static_cast<float>(constant::WINDOW_PX_SIZE)) / 2.f);
-  float hMargin = std::max(
-      0.f, (static_cast<float>(width) - static_cast<float>(constant::WINDOW_TOTAL_WIDTH)) / 2.f);
-
-  float boardCenterX = hMargin +
-                       static_cast<float>(constant::EVAL_BAR_WIDTH + constant::SIDE_MARGIN) +
-                       static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
-  float boardCenterY = vMargin + static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
-
-  m_board_view.setPosition({boardCenterX, boardCenterY});
-
-  float evalCenterX =
-      hMargin + static_cast<float>(constant::EVAL_BAR_WIDTH + constant::SIDE_MARGIN) / 2.f;
-  m_eval_bar.setPosition({evalCenterX, boardCenterY});
-
-  float moveListX = hMargin + static_cast<float>(constant::EVAL_BAR_WIDTH + constant::SIDE_MARGIN +
-                                                 constant::WINDOW_PX_SIZE + constant::SIDE_MARGIN);
-  m_move_list.setPosition({moveListX, vMargin});
-  m_move_list.setSize(constant::MOVE_LIST_WIDTH, constant::WINDOW_PX_SIZE);
-
-  float boardLeft = boardCenterX - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
-  float boardTop = boardCenterY - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
-  // shift player info slightly to the right and adjust vertical placement
-  m_top_player.setPositionClamped({boardLeft + 5.f, boardTop - 45.f}, m_window.getSize());
-  m_bottom_player.setPositionClamped(
-      {boardLeft + 5.f, boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 15.f},
-      m_window.getSize());
+// ---------- Input helpers ----------
+core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
+  return m_board_view.mousePosToSquare(mousePos);
 }
 
-void GameView::resetBoard() {
-  m_piece_manager.removeAll();
-  init();
+core::MousePos GameView::clampPosToBoard(core::MousePos mousePos,
+                                         Entity::Position pieceSize) const {
+  return m_board_view.clampPosToBoard(mousePos, pieceSize);
 }
 
-void GameView::warningKingSquareAnim(core::Square ksq) {
-  m_chess_animator.warningAnim(ksq);
-  m_chess_animator.declareHighlightLevel(ksq);
+void GameView::setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos) {
+  auto size = getPieceSize(pos);
+  m_piece_manager.setPieceToScreenPos(pos, clampPosToBoard(mousePos, size));
 }
 
-void GameView::animationSnapAndReturn(core::Square sq, core::MousePos mousePos) {
-  m_chess_animator.snapAndReturn(sq, mousePos);
+void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
+  m_piece_manager.setPieceToSquareScreenPos(from, to);
 }
 
-void GameView::animationMovePiece(core::Square from, core::Square to, core::Square enPSquare,
-                                  core::PieceType promotion, std::function<void()> onComplete) {
-  m_chess_animator.movePiece(from, to, promotion, std::move(onComplete));
-  if (enPSquare != core::NO_SQUARE) m_piece_manager.removePiece(enPSquare);
+// ---------- Cursors ----------
+void GameView::setDefaultCursor() {
+  m_window.setMouseCursor(m_cursor_default);
+}
+void GameView::setHandOpenCursor() {
+  m_window.setMouseCursor(m_cursor_hand_open);
+}
+void GameView::setHandClosedCursor() {
+  m_window.setMouseCursor(m_cursor_hand_closed);
 }
 
-void GameView::animationDropPiece(core::Square from, core::Square to, core::Square enPSquare,
-                                  core::PieceType promotion) {
-  m_chess_animator.dropPiece(from, to, promotion);
-  if (enPSquare != core::NO_SQUARE) m_piece_manager.removePiece(enPSquare);
+// ---------- Board info ----------
+sf::Vector2u GameView::getWindowSize() const {
+  return m_window.getSize();
 }
 
-void GameView::playPiecePlaceHolderAnimation(core::Square sq) {
-  m_chess_animator.piecePlaceHolder(sq);
+Entity::Position GameView::getPieceSize(core::Square pos) const {
+  return m_piece_manager.getPieceSize(pos);
 }
 
-void GameView::playPromotionSelectAnim(core::Square promSq, core::Color c) {
-  m_chess_animator.promotionSelect(promSq, m_promotion_manager, c);
+void GameView::toggleBoardOrientation() {
+  m_board_view.toggleFlipped();
 }
 
-void GameView::endAnimation(core::Square sq) {
-  m_chess_animator.end(sq);
+bool GameView::isOnFlipIcon(core::MousePos mousePos) const {
+  return m_board_view.isOnFlipIcon(mousePos);
 }
 
-[[nodiscard]] bool GameView::hasPieceOnSquare(core::Square pos) const {
+// ---------- Pieces / Highlights ----------
+bool GameView::hasPieceOnSquare(core::Square pos) const {
   return m_piece_manager.hasPieceOnSquare(pos);
 }
 
-[[nodiscard]] bool GameView::isSameColorPiece(core::Square sq1, core::Square sq2) const {
+bool GameView::isSameColorPiece(core::Square sq1, core::Square sq2) const {
   return m_piece_manager.isSameColor(sq1, sq2);
 }
 
-[[nodiscard]] core::PieceType GameView::getPieceType(core::Square pos) const {
+core::PieceType GameView::getPieceType(core::Square pos) const {
   return m_piece_manager.getPieceType(pos);
 }
 
-[[nodiscard]] core::Color GameView::getPieceColor(core::Square pos) const {
+core::Color GameView::getPieceColor(core::Square pos) const {
   return m_piece_manager.getPieceColor(pos);
 }
 
@@ -361,67 +293,81 @@ void GameView::highlightCaptureSquare(core::Square pos) {
 void GameView::clearHighlightSquare(core::Square pos) {
   m_highlight_manager.clearHighlightSquare(pos);
 }
-
 void GameView::clearHighlightHoverSquare(core::Square pos) {
   m_highlight_manager.clearHighlightHoverSquare(pos);
 }
-
 void GameView::clearAllHighlights() {
   m_highlight_manager.clearAllHighlights();
 }
 
-bool GameView::isInPromotionSelection() {
-  return m_promotion_manager.hasOptions();
+// ---------- Animations ----------
+void GameView::warningKingSquareAnim(core::Square ksq) {
+  m_chess_animator.warningAnim(ksq);
+  m_chess_animator.declareHighlightLevel(ksq);
 }
 
-core::PieceType GameView::getSelectedPromotion(core::MousePos mousePos) {
-  return m_promotion_manager.clickedOnType(static_cast<Entity::Position>(mousePos));
+void GameView::animationSnapAndReturn(core::Square sq, core::MousePos mousePos) {
+  m_chess_animator.snapAndReturn(sq, mousePos);
 }
 
-void GameView::removePromotionSelection() {
-  m_promotion_manager.removeOptions();
+void GameView::animationMovePiece(core::Square from, core::Square to, core::Square enPSquare,
+                                  core::PieceType promotion, std::function<void()> onComplete) {
+  m_chess_animator.movePiece(from, to, promotion, std::move(onComplete));
+  if (enPSquare != core::NO_SQUARE) m_piece_manager.removePiece(enPSquare);
 }
 
-[[nodiscard]] core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
-  return m_board_view.mousePosToSquare(mousePos);
+void GameView::animationDropPiece(core::Square from, core::Square to, core::Square enPSquare,
+                                  core::PieceType promotion) {
+  m_chess_animator.dropPiece(from, to, promotion);
+  if (enPSquare != core::NO_SQUARE) m_piece_manager.removePiece(enPSquare);
 }
 
-core::MousePos GameView::clampPosToBoard(core::MousePos mousePos,
-                                         Entity::Position pieceSize) const {
-  return m_board_view.clampPosToBoard(mousePos, pieceSize);
+void GameView::playPromotionSelectAnim(core::Square promSq, core::Color c) {
+  m_chess_animator.promotionSelect(promSq, m_promotion_manager, c);
 }
 
-void GameView::setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos) {
-  auto size = getPieceSize(pos);
-  m_piece_manager.setPieceToScreenPos(pos, clampPosToBoard(mousePos, size));
-}
-void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
-  m_piece_manager.setPieceToSquareScreenPos(from, to);
-}
-void GameView::setDefaultCursor() {
-  m_window.setMouseCursor(m_cursor_default);
-}
-void GameView::setHandOpenCursor() {
-  m_window.setMouseCursor(m_cursor_hand_open);
-}
-void GameView::setHandClosedCursor() {
-  m_window.setMouseCursor(m_cursor_hand_closed);
+void GameView::playPiecePlaceHolderAnimation(core::Square sq) {
+  m_chess_animator.piecePlaceHolder(sq);
 }
 
-sf::Vector2u GameView::getWindowSize() const {
-  return m_window.getSize();
+void GameView::endAnimation(core::Square sq) {
+  m_chess_animator.end(sq);
 }
 
-Entity::Position GameView::getPieceSize(core::Square pos) const {
-  return m_piece_manager.getPieceSize(pos);
-}
+// ---------- Layout ----------
+void GameView::layout(unsigned int width, unsigned int height) {
+  float vMargin = std::max(
+      0.f, (static_cast<float>(height) - static_cast<float>(constant::WINDOW_PX_SIZE)) / 2.f);
+  float hMargin = std::max(
+      0.f, (static_cast<float>(width) - static_cast<float>(constant::WINDOW_TOTAL_WIDTH)) / 2.f);
 
-void GameView::toggleBoardOrientation() {
-  m_board_view.toggleFlipped();
-}
+  float boardCenterX = hMargin +
+                       static_cast<float>(constant::EVAL_BAR_WIDTH + constant::SIDE_MARGIN) +
+                       static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
+  float boardCenterY = vMargin + static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
 
-[[nodiscard]] bool GameView::isOnFlipIcon(core::MousePos mousePos) const {
-  return m_board_view.isOnFlipIcon(mousePos);
+  m_board_view.setPosition({boardCenterX, boardCenterY});
+
+  float evalCenterX =
+      hMargin + static_cast<float>(constant::EVAL_BAR_WIDTH + constant::SIDE_MARGIN) / 2.f;
+  m_eval_bar.setPosition({evalCenterX, boardCenterY});
+
+  float moveListX = hMargin + static_cast<float>(constant::EVAL_BAR_WIDTH + constant::SIDE_MARGIN +
+                                                 constant::WINDOW_PX_SIZE + constant::SIDE_MARGIN);
+  m_move_list.setPosition({moveListX, vMargin});
+  m_move_list.setSize(constant::MOVE_LIST_WIDTH, constant::WINDOW_PX_SIZE);
+
+  float boardLeft = boardCenterX - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
+  float boardTop = boardCenterY - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
+
+  // player badges
+  m_top_player.setPositionClamped({boardLeft + 5.f, boardTop - 45.f}, m_window.getSize());
+  m_bottom_player.setPositionClamped(
+      {boardLeft + 5.f, boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 15.f},
+      m_window.getSize());
+
+  // keep modal centered on window/board changes
+  m_modal.onResize(m_window.getSize(), m_board_view.getPosition());
 }
 
 }  // namespace lilia::view

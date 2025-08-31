@@ -22,7 +22,7 @@ class Event;
 namespace lilia::model {
 class ChessGame;
 struct Move;
-} // namespace lilia::model
+}  // namespace lilia::model
 
 namespace lilia::controller {
 class GameManager;
@@ -35,7 +35,7 @@ struct MoveView {
 };
 
 class GameController {
-public:
+ public:
   explicit GameController(view::GameView &gView, model::ChessGame &game);
   ~GameController();
 
@@ -55,14 +55,13 @@ public:
    * @param depth Suchtiefe für den Bot.
    */
 
-  void startGame(const std::string &fen = core::START_FEN,
-                 bool whiteIsBot = false, bool blackIsBot = true,
-                 int thinkTimeMs = 1000, int depth = 5);
+  void startGame(const std::string &fen = core::START_FEN, bool whiteIsBot = false,
+                 bool blackIsBot = true, int thinkTimeMs = 1000, int depth = 5);
 
   enum class NextAction { None, NewBot, Rematch };
   [[nodiscard]] NextAction getNextAction() const;
 
-private:
+ private:
   bool isHumanPiece(core::Square sq) const;
   bool hasCurrentLegalMove(core::Square from, core::Square to) const;
 
@@ -81,15 +80,13 @@ private:
   void dehoverSquare();
   void clearPremove();
 
-  void movePieceAndClear(const model::Move &move, bool isPlayerMove,
-                         bool onClick);
+  void movePieceAndClear(const model::Move &move, bool isPlayerMove, bool onClick);
 
   void snapAndReturn(core::Square sq, core::MousePos cur);
   void highlightLastMove();
   void clearLastMoveHighlight();
 
-  [[nodiscard]] std::vector<core::Square>
-  getAttackSquares(core::Square pieceSQ) const;
+  [[nodiscard]] std::vector<core::Square> getAttackSquares(core::Square pieceSQ) const;
   void showAttacks(std::vector<core::Square> att);
   [[nodiscard]] bool tryMove(core::Square a, core::Square b);
   [[nodiscard]] bool isPromotion(core::Square a, core::Square b);
@@ -101,10 +98,10 @@ private:
   void resign();
 
   // ---------------- Members ----------------
-  view::GameView &m_game_view;    ///< Responsible for rendering.
-  model::ChessGame &m_chess_game; ///< Game model containing rules and state.
-  InputManager m_input_manager;   ///< Handles raw input processing.
-  view::sound::SoundManager m_sound_manager; ///< Handles sfx and music
+  view::GameView &m_game_view;                ///< Responsible for rendering.
+  model::ChessGame &m_chess_game;             ///< Game model containing rules and state.
+  InputManager m_input_manager;               ///< Handles raw input processing.
+  view::sound::SoundManager m_sound_manager;  ///< Handles sfx and music
 
   core::Square m_promotion_square = core::NO_SQUARE;
 
@@ -122,10 +119,10 @@ private:
   core::Square m_pending_from = core::NO_SQUARE;
   core::Square m_pending_to = core::NO_SQUARE;
 
-  core::Square m_selected_sq = core::NO_SQUARE; ///< Currently selected square.
-  core::Square m_hover_sq = core::NO_SQUARE;    ///< Currently hovered square.
+  core::Square m_selected_sq = core::NO_SQUARE;  ///< Currently selected square.
+  core::Square m_hover_sq = core::NO_SQUARE;     ///< Currently hovered square.
   std::pair<core::Square, core::Square> m_last_move_squares = {
-      core::NO_SQUARE, core::NO_SQUARE}; ///< Last executed move (from -> to).
+      core::NO_SQUARE, core::NO_SQUARE};  ///< Last executed move (from -> to).
 
   // ---------------- New: GameManager ----------------
   std::unique_ptr<GameManager> m_game_manager;
@@ -137,4 +134,4 @@ private:
   NextAction m_next_action{NextAction::None};
 };
 
-} // namespace lilia::controller
+}  // namespace lilia::controller

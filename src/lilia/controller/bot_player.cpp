@@ -8,6 +8,7 @@
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/move_generator.hpp"  // falls MoveGenerator an anderem Ort, anpassen
 #include "lilia/uci/uci_helper.hpp"
+#include "lilia/bot/bot_info.hpp"
 
 namespace lilia::controller {
 

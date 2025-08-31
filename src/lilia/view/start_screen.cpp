@@ -105,7 +105,7 @@ std::vector<BotType> availableBots() {
 }
 
 std::string botDisplayName(BotType t) {
-  return getBotInfo(t).name;  // assumes BotInfo has .name (e.g., "Lilia Engine")
+  return getBotConfig(t).info.name;  // assumes BotInfo has .name (e.g., "Lilia Engine")
 }
 
 // very small FEN validator (enough for UX feedback)

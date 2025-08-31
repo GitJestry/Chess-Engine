@@ -1,15 +1,17 @@
 #include "lilia/view/move_list_view.hpp"
 
 #include <SFML/Config.hpp>
+#include <SFML/Graphics/CircleShape.hpp>
+#include <SFML/Graphics/ConvexShape.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/View.hpp>
+#include <SFML/Window/Mouse.hpp>
 #include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <vector>
 
 #include "lilia/view/render_constants.hpp"
-#include "lilia/view/texture_table.hpp"
 
 namespace lilia::view {
 
@@ -20,12 +22,16 @@ constexpr float kPaddingX = 12.f;
 constexpr float kPaddingY = 8.f;
 
 constexpr float kRowH = 26.f;     // line height for moves
-constexpr float kNumColW = 34.f;  // fixed width for "1." column
-constexpr float kMoveGap = 24.f;  // gap between white and black move columns
+constexpr float kNumColW = 44.f;  // fixed width for "1." column (wider for 2+ digits)
+constexpr float kMoveGap = 30.f;  // gap between white and black move columns
 
 constexpr float kHeaderH = 54.f;     // top header (title)
 constexpr float kSubHeaderH = 28.f;  // "Move List" line
 constexpr float kListTopGap = 8.f;   // spacing below subheader before rows
+constexpr float kFooterH = 52.f;     // fixed footer height (smaller controls)
+constexpr float kSlot = 26.f;        // icon slot size (compact)
+constexpr float kSlotGap = 14.f;     // gap between slots
+constexpr float kFooterPadX = 16.f;  // horizontal padding inside footer
 
 // Fonts
 constexpr unsigned kMoveNumberFontSize = 14;
@@ -33,14 +39,15 @@ constexpr unsigned kMoveFontSize = 15;
 constexpr unsigned kHeaderFontSize = 22;
 constexpr unsigned kSubHeaderFontSize = 16;
 
-// ---------- Colors (blends with your start screen) ----------
+// ---------- Colors (theme) ----------
 const sf::Color colSidebarBG(36, 41, 54);  // panel body
 const sf::Color colHeaderBG(42, 48, 63);   // header/footer
 const sf::Color colListBG(33, 38, 50);     // list background
 const sf::Color colRowEven(44, 50, 66);
 const sf::Color colRowOdd(38, 44, 58);
-const sf::Color colBorder(120, 140, 170, 50);  // hairlines
-const sf::Color colAccent(100, 190, 255);      // same accent as start screen
+const sf::Color colBorder(120, 140, 170, 50);   // hairlines
+const sf::Color colAccent(100, 190, 255);       // accent
+const sf::Color colAccentHover(120, 205, 255);  // hover lift
 
 const sf::Color colText(240, 244, 255);
 const sf::Color colMuted(180, 186, 205);
@@ -53,41 +60,119 @@ inline sf::Vector2f snap(sf::Vector2f p) {
   return {snapf(p.x), snapf(p.y)};
 }
 
-// geometry helpers so all calculations stay consistent
-inline float listHeight(float totalH, float optionH) {
-  return totalH - optionH;
+inline float listHeight(float totalH, float /*optionH*/) {
+  return totalH - kFooterH;
 }
-inline float contentTop(float totalH, float optionH) {
-  (void)totalH;
-  (void)optionH;
+inline float contentTop(float /*totalH*/, float /*optionH*/) {
   return kHeaderH + kSubHeaderH + kListTopGap;
+}
+
+// slot drawing helpers
+void drawSlotBG(sf::RenderWindow& win, const sf::FloatRect& r, bool hovered) {
+  sf::RectangleShape bg({r.width, r.height});
+  bg.setPosition(r.left, r.top);
+  bg.setFillColor(hovered ? sf::Color(58, 66, 84) : colHeaderBG);
+  bg.setOutlineThickness(1.f);
+  bg.setOutlineColor(hovered ? sf::Color(140, 200, 240, 90) : colBorder);
+  win.draw(bg);
+}
+
+void drawChevron(sf::RenderWindow& win, const sf::FloatRect& slot, bool left, bool hovered) {
+  const float s = std::min(slot.width, slot.height) * 0.50f;  // triangle size
+  const float x0 = slot.left + (slot.width - s) * 0.5f;
+  const float y0 = slot.top + (slot.height - s) * 0.5f;
+
+  sf::ConvexShape tri(3);
+  if (left) {
+    tri.setPoint(0, {x0 + s, y0});
+    tri.setPoint(1, {x0, y0 + s * 0.5f});
+    tri.setPoint(2, {x0 + s, y0 + s});
+  } else {
+    tri.setPoint(0, {x0, y0});
+    tri.setPoint(1, {x0 + s, y0 + s * 0.5f});
+    tri.setPoint(2, {x0, y0 + s});
+  }
+  tri.setFillColor(hovered ? colAccentHover : colText);
+  win.draw(tri);
+}
+
+void drawCrossX(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered) {
+  const float s = std::min(slot.width, slot.height) * 0.70f;
+  const float cx = slot.left + slot.width * 0.5f;
+  const float cy = slot.top + slot.height * 0.5f;
+  const float thick = 2.f;
+
+  sf::RectangleShape bar1({s, thick});
+  bar1.setOrigin(s * 0.5f, thick * 0.5f);
+  bar1.setPosition(snapf(cx), snapf(cy));
+  bar1.setRotation(45.f);
+  bar1.setFillColor(hovered ? colAccentHover : colText);
+
+  sf::RectangleShape bar2 = bar1;
+  bar2.setRotation(-45.f);
+
+  win.draw(bar1);
+  win.draw(bar2);
+}
+
+void drawRobot(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered) {
+  const float s = std::min(slot.width, slot.height);
+  const float cx = slot.left + slot.width * 0.5f;
+  const float cy = slot.top + slot.height * 0.5f;
+
+  sf::RectangleShape head({s * 0.55f, s * 0.42f});
+  head.setOrigin(head.getSize() * 0.5f);
+  head.setPosition(snapf(cx), snapf(cy + s * 0.04f));
+  head.setFillColor(sf::Color::Transparent);
+  head.setOutlineThickness(2.f);
+  head.setOutlineColor(hovered ? colAccentHover : colText);
+
+  sf::RectangleShape antenna({2.f, s * 0.16f});
+  antenna.setOrigin(1.f, antenna.getSize().y);
+  antenna.setPosition(snapf(cx), snapf(cy - s * 0.30f));
+  antenna.setFillColor(hovered ? colAccentHover : colText);
+
+  sf::RectangleShape eyeL({s * 0.08f, s * 0.10f});
+  eyeL.setOrigin(eyeL.getSize() * 0.5f);
+  eyeL.setPosition(snapf(cx - s * 0.12f), snapf(cy - s * 0.02f));
+  eyeL.setFillColor(hovered ? colAccentHover : colText);
+
+  sf::RectangleShape eyeR = eyeL;
+  eyeR.setPosition(snapf(cx + s * 0.12f), snapf(cy - s * 0.02f));
+
+  win.draw(head);
+  win.draw(antenna);
+  win.draw(eyeL);
+  win.draw(eyeR);
+}
+
+void drawReload(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered) {
+  // Circular arrow (rematch)
+  const float s = std::min(slot.width, slot.height) * 0.70f;
+  const float cx = slot.left + slot.width * 0.5f;
+  const float cy = slot.top + slot.height * 0.5f;
+
+  sf::CircleShape ring(s * 0.5f);
+  ring.setOrigin(s * 0.5f, s * 0.5f);
+  ring.setPosition(snapf(cx), snapf(cy));
+  ring.setFillColor(sf::Color::Transparent);
+  ring.setOutlineThickness(2.f);
+  ring.setOutlineColor(hovered ? colAccentHover : colText);
+  win.draw(ring);
+
+  // arrow head on top-right
+  sf::ConvexShape arrow(3);
+  arrow.setPoint(0, {cx + s * 0.12f, cy - s * 0.55f});
+  arrow.setPoint(1, {cx + s * 0.42f, cy - s * 0.40f});
+  arrow.setPoint(2, {cx + s * 0.15f, cy - s * 0.25f});
+  arrow.setFillColor(hovered ? colAccentHover : colText);
+  win.draw(arrow);
 }
 
 }  // namespace
 
 MoveListView::MoveListView() {
   m_font.loadFromFile(constant::STR_FILE_PATH_FONT);
-
-  // load option icons
-  m_icon_resign.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_RESIGN));
-  m_icon_resign.setScale(2.f, 2.f);
-  m_icon_prev.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_PREV));
-  m_icon_prev.setScale(2.f, 2.f);
-  m_icon_next.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_NEXT));
-  m_icon_next.setScale(2.f, 2.f);
-  m_icon_settings.setTexture(
-      TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_SETTINGS));
-  m_icon_settings.setScale(2.f, 2.f);
-  m_icon_new_bot.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_NEW_BOT));
-  m_icon_new_bot.setScale(2.f, 2.f);
-  m_icon_rematch.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_REMATCH));
-  m_icon_rematch.setScale(2.f, 2.f);
-  m_icon_resign.setOriginToCenter();
-  m_icon_prev.setOriginToCenter();
-  m_icon_next.setOriginToCenter();
-  m_icon_settings.setOriginToCenter();
-  m_icon_new_bot.setOriginToCenter();
-  m_icon_rematch.setOriginToCenter();
 }
 
 void MoveListView::setPosition(const Entity::Position& pos) {
@@ -98,40 +183,26 @@ void MoveListView::setSize(unsigned int width, unsigned int height) {
   m_width = width;
   m_height = height;
 
-  // footer/options area height
-  m_option_height = static_cast<float>(m_height) * 0.20f;
-  float listH = listHeight(static_cast<float>(m_height), m_option_height);
-  float centerY = listH + (m_option_height / 2.f);
-  float pad = 20.f;
+  // footer height is fixed (smaller controls)
+  m_option_height = kFooterH;
 
-  // resign or new bot/rematch on left
-  m_icon_resign.setPosition(snap({pad, centerY}));
-  auto sizeR = m_icon_resign.getCurrentSize();
-  m_bounds_resign = {pad - sizeR.x / 2.f, centerY - sizeR.y / 2.f, sizeR.x, sizeR.y};
+  const float listH = listHeight(static_cast<float>(m_height), m_option_height);
+  const float centerY = listH + (m_option_height * 0.5f);
 
-  auto sizeNB = m_icon_new_bot.getCurrentSize();
-  m_icon_new_bot.setPosition(snap({pad, centerY - sizeNB.y / 2.f}));
-  m_bounds_new_bot = {pad - sizeNB.x / 2.f, centerY - sizeNB.y / 2.f, sizeNB.x, sizeNB.y};
+  // Left: resign OR (new bot + rematch)
+  const float left1X = kFooterPadX;
+  const float left2X = kFooterPadX + kSlot + kSlotGap;
 
-  float rematchX = pad;
-  m_icon_rematch.setPosition(snap({rematchX, centerY + sizeNB.y / 2.f}));
-  auto sizeRM = m_icon_rematch.getCurrentSize();
-  m_bounds_rematch = {rematchX - sizeRM.x / 2.f, centerY - sizeRM.y / 2.f, sizeRM.x, sizeRM.y};
+  // Center: prev / next
+  const float midL = (static_cast<float>(m_width) * 0.5f) - (kSlotGap * 0.5f) - kSlot;
+  const float midR = (static_cast<float>(m_width) * 0.5f) + (kSlotGap * 0.5f);
 
-  // navigation icons in middle
-  float midX = static_cast<float>(m_width) / 2.f;
-  m_icon_prev.setPosition(snap({midX - 30.f, centerY}));
-  auto sizeP = m_icon_prev.getCurrentSize();
-  m_bounds_prev = {midX - 30.f - sizeP.x / 2.f, centerY - sizeP.y / 2.f, sizeP.x, sizeP.y};
-  m_icon_next.setPosition(snap({midX + 30.f, centerY}));
-  auto sizeN = m_icon_next.getCurrentSize();
-  m_bounds_next = {midX + 30.f - sizeN.x / 2.f, centerY - sizeN.y / 2.f, sizeN.x, sizeN.y};
-
-  // settings on right
-  m_icon_settings.setPosition(snap({static_cast<float>(m_width) - pad, centerY}));
-  auto sizeS = m_icon_settings.getCurrentSize();
-  m_bounds_settings = {static_cast<float>(m_width) - pad - sizeS.x / 2.f, centerY - sizeS.y / 2.f,
-                       sizeS.x, sizeS.y};
+  // Assign click bounds (always computed; visibility depends on m_game_over)
+  m_bounds_resign = {left1X, centerY - kSlot * 0.5f, kSlot, kSlot};
+  m_bounds_new_bot = {left1X, centerY - kSlot * 0.5f, kSlot, kSlot};
+  m_bounds_rematch = {left2X, centerY - kSlot * 0.5f, kSlot, kSlot};
+  m_bounds_prev = {midL, centerY - kSlot * 0.5f, kSlot, kSlot};
+  m_bounds_next = {midR, centerY - kSlot * 0.5f, kSlot, kSlot};
 }
 
 void MoveListView::setBotMode(bool anyBot) {
@@ -154,16 +225,14 @@ void MoveListView::addMove(const std::string& uciMove) {
     std::string lineStr = numberStr + " " + uciMove;
     m_lines.push_back(lineStr);
 
-    // click bounds for the white move
     sf::Text wTxt(uciMove, m_font, kMoveFontSize);
-    float xWhite = kPaddingX + kNumColW;  // number column is fixed
+    float xWhite = kPaddingX + kNumColW;
     float w = wTxt.getLocalBounds().width;
     m_move_bounds.emplace_back(xWhite, y, w, kRowH);
   } else {
     if (!m_lines.empty()) {
       std::string& line = m_lines.back();
       std::size_t spacePos = line.find(' ');
-      std::string numberStr = line.substr(0, spacePos);
       std::string whiteStr = (spacePos != std::string::npos) ? line.substr(spacePos + 1) : "";
       line += " " + uciMove;
 
@@ -178,7 +247,6 @@ void MoveListView::addMove(const std::string& uciMove) {
   ++m_move_count;
   m_selected_move = m_move_count ? m_move_count - 1 : m_selected_move;
 
-  // scroll to bottom (respecting visible height)
   const float content = static_cast<float>(m_lines.size() + (m_result.empty() ? 0 : 1)) * kRowH;
   const float topY = contentTop(static_cast<float>(m_height), m_option_height);
   const float visible = listH - topY;
@@ -210,31 +278,27 @@ void MoveListView::render(sf::RenderWindow& window) const {
   const float listH = listHeight(static_cast<float>(m_height), m_option_height);
   const float topY = contentTop(static_cast<float>(m_height), m_option_height);
 
-  // --- Background layers (clean, rectangular, matching start screen) ---
+  // --- Background layers ---
   sf::RectangleShape bg({static_cast<float>(m_width), static_cast<float>(m_height)});
   bg.setPosition(0.f, 0.f);
   bg.setFillColor(colSidebarBG);
   window.draw(bg);
 
-  // left hairline to separate from board
   sf::RectangleShape leftLine({1.f, static_cast<float>(m_height)});
   leftLine.setPosition(0.f, 0.f);
   leftLine.setFillColor(colBorder);
   window.draw(leftLine);
 
-  // header
   sf::RectangleShape headerBG({static_cast<float>(m_width), kHeaderH});
   headerBG.setPosition(0.f, 0.f);
   headerBG.setFillColor(colHeaderBG);
   window.draw(headerBG);
 
-  // subheader
   sf::RectangleShape subBG({static_cast<float>(m_width), kSubHeaderH});
   subBG.setPosition(0.f, kHeaderH);
   subBG.setFillColor(colListBG);
   window.draw(subBG);
 
-  // separator lines
   sf::RectangleShape sep({static_cast<float>(m_width), 1.f});
   sep.setFillColor(colBorder);
   sep.setPosition(0.f, kHeaderH);
@@ -244,7 +308,6 @@ void MoveListView::render(sf::RenderWindow& window) const {
   sep.setPosition(0.f, listH);
   window.draw(sep);
 
-  // list background
   sf::RectangleShape listBG({static_cast<float>(m_width), listH - topY});
   listBG.setPosition(0.f, topY);
   listBG.setFillColor(colListBG);
@@ -282,18 +345,15 @@ void MoveListView::render(sf::RenderWindow& window) const {
     window.draw(row);
   }
 
-  // Selected move row bar (accent + subtle bar at left)
   if (m_selected_move != static_cast<std::size_t>(-1)) {
     std::size_t rowIdx = m_selected_move / 2;
     float y = topY + static_cast<float>(rowIdx) * kRowH - m_scroll_offset;
     if (y + kRowH >= visibleTop && y <= visibleBottom) {
-      // overlay to lift the row just a bit
       sf::RectangleShape hi({static_cast<float>(m_width), kRowH});
       hi.setPosition(0.f, snapf(y));
       hi.setFillColor(sf::Color(80, 100, 120, 40));
       window.draw(hi);
 
-      // left accent bar
       sf::RectangleShape bar({3.f, kRowH});
       bar.setPosition(0.f, snapf(y));
       bar.setFillColor(colAccent);
@@ -306,7 +366,6 @@ void MoveListView::render(sf::RenderWindow& window) const {
     float y = topY + static_cast<float>(i) * kRowH - m_scroll_offset + 3.f;
     if (y + kRowH < visibleTop || y > visibleBottom) continue;
 
-    // Result-only line
     if (i == m_lines.size() && !m_result.empty()) {
       sf::Text res(m_result, m_font, kMoveFontSize);
       res.setStyle(sf::Text::Bold);
@@ -317,7 +376,6 @@ void MoveListView::render(sf::RenderWindow& window) const {
       continue;
     }
 
-    // Parse "1. e4 e5" or "1. e4 1-0"
     std::istringstream iss(m_lines[i]);
     std::vector<std::string> toks;
     std::string tok;
@@ -338,7 +396,6 @@ void MoveListView::render(sf::RenderWindow& window) const {
       }
     }
 
-    // number column (fixed width for alignment)
     sf::Text num(numberStr, m_font, kMoveNumberFontSize);
     num.setFillColor(colMuted);
     num.setPosition(snapf(kPaddingX), snapf(y));
@@ -346,7 +403,6 @@ void MoveListView::render(sf::RenderWindow& window) const {
 
     float x = kPaddingX + kNumColW;
 
-    // white move
     sf::Text w(whiteMove, m_font, kMoveFontSize);
     w.setStyle(sf::Text::Bold);
     w.setFillColor((m_selected_move == i * 2) ? colText : colMuted);
@@ -354,7 +410,6 @@ void MoveListView::render(sf::RenderWindow& window) const {
     window.draw(w);
     x += w.getLocalBounds().width + kMoveGap;
 
-    // black move (optional)
     if (!blackMove.empty()) {
       sf::Text b(blackMove, m_font, kMoveFontSize);
       b.setStyle(sf::Text::Bold);
@@ -364,7 +419,6 @@ void MoveListView::render(sf::RenderWindow& window) const {
       x += b.getLocalBounds().width + kMoveGap;
     }
 
-    // trailing result on the same line (rare)
     if (!result.empty()) {
       sf::Text r(result, m_font, kMoveFontSize);
       r.setStyle(sf::Text::Bold);
@@ -380,18 +434,33 @@ void MoveListView::render(sf::RenderWindow& window) const {
   optionBG.setFillColor(colHeaderBG);
   window.draw(optionBG);
 
-  // top border of footer (already drawn as sep at listH)
+  // Hover detection (map mouse to our local view coords)
+  sf::Vector2i mousePx = sf::Mouse::getPosition(window);
+  sf::Vector2f mouseLocal = window.mapPixelToCoords(mousePx, view);
 
-  // icons
+  const bool hovPrev = m_bounds_prev.contains(mouseLocal.x, mouseLocal.y);
+  const bool hovNext = m_bounds_next.contains(mouseLocal.x, mouseLocal.y);
+  const bool hovResign = m_bounds_resign.contains(mouseLocal.x, mouseLocal.y);
+  const bool hovNewBot = m_bounds_new_bot.contains(mouseLocal.x, mouseLocal.y);
+  const bool hovRematch = m_bounds_rematch.contains(mouseLocal.x, mouseLocal.y);
+
+  // Draw slots + icons
   if (m_game_over) {
-    m_icon_new_bot.draw(window);
-    m_icon_rematch.draw(window);
+    drawSlotBG(window, m_bounds_new_bot, hovNewBot);
+    drawRobot(window, m_bounds_new_bot, hovNewBot);
+
+    drawSlotBG(window, m_bounds_rematch, hovRematch);
+    drawReload(window, m_bounds_rematch, hovRematch);
   } else {
-    m_icon_resign.draw(window);
+    drawSlotBG(window, m_bounds_resign, hovResign);
+    drawCrossX(window, m_bounds_resign, hovResign);
   }
-  m_icon_prev.draw(window);
-  m_icon_next.draw(window);
-  m_icon_settings.draw(window);
+
+  drawSlotBG(window, m_bounds_prev, hovPrev);
+  drawChevron(window, m_bounds_prev, /*left=*/true, hovPrev);
+
+  drawSlotBG(window, m_bounds_next, hovNext);
+  drawChevron(window, m_bounds_next, /*left=*/false, hovNext);
 
   window.setView(oldView);
 }
@@ -454,6 +523,7 @@ std::size_t MoveListView::getMoveIndexAt(const Entity::Position& pos) const {
 MoveListView::Option MoveListView::getOptionAt(const Entity::Position& pos) const {
   const float localX = pos.x - m_position.x;
   const float localY = pos.y - m_position.y;
+
   if (m_game_over) {
     if (m_bounds_new_bot.contains(localX, localY)) return Option::NewBot;
     if (m_bounds_rematch.contains(localX, localY)) return Option::Rematch;
@@ -462,7 +532,7 @@ MoveListView::Option MoveListView::getOptionAt(const Entity::Position& pos) cons
   }
   if (m_bounds_prev.contains(localX, localY)) return Option::Prev;
   if (m_bounds_next.contains(localX, localY)) return Option::Next;
-  if (m_bounds_settings.contains(localX, localY)) return Option::Settings;
+
   return Option::None;
 }
 

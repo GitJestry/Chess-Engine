@@ -15,6 +15,7 @@ struct StartConfig {
   bool blackIsBot{true};
   BotType blackBot{BotType::Lilia};
   std::string fen{core::START_FEN};
+
 };
 
 struct BotOption {

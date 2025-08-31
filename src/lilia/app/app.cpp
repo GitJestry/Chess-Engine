@@ -35,9 +35,11 @@ int App::run() {
   while (window.isOpen()) {
     lilia::view::StartScreen startScreen(window);
     auto cfg = startScreen.run();
-    m_white_is_bot = cfg.whiteIsBot;
-    m_black_is_bot = cfg.blackIsBot;
-    m_start_fen = cfg.fen;
+    bool m_white_is_bot = cfg.whiteIsBot;
+    bool m_black_is_bot = cfg.blackIsBot;
+    std::string m_start_fen = cfg.fen;
+    int m_searchDepth = 10;     // Search depth for bot
+    int m_thinkTimeMs = 10000;  // Bot think time in milliseconds
 
     lilia::controller::GameController::NextAction action =
         lilia::controller::GameController::NextAction::None;
