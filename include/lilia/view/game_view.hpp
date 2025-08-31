@@ -60,6 +60,8 @@ public:
   [[nodiscard]] bool isOnRematch(core::MousePos mousePos) const;
 
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
+  [[nodiscard]] core::MousePos clampPosToBoard(
+      core::MousePos mousePos, Entity::Position pieceSize = {0.f, 0.f}) const;
   void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
   void setPieceToSquareScreenPos(core::Square from, core::Square to);
 
