@@ -54,6 +54,8 @@ const std::string STR_FILE_PATH_HAND_OPEN = "assets/icons/cursor_hand_open.png";
 const std::string STR_FILE_PATH_HAND_CLOSED = "assets/icons/cursor_hand_closed.png";
 const std::string STR_FILE_PATH_FONT = "assets/font/OpenSans-Regular.ttf";
 const std::string STR_FILE_PATH_FLIP = "assets/icons/flip.png";
+const std::string STR_FILE_PATH_ICON_LILIA = "assets/icons/lilia.png";
+const std::string STR_FILE_PATH_ICON_CHALLENGER = "assets/icons/challenger.png";
 
 const std::string ASSET_PIECES_FILE_PATH = "assets/textures";
 constexpr float ASSET_PIECE_SCALE = 1.6f;

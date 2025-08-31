@@ -6,12 +6,13 @@
 #include <iostream>
 #include <limits>
 
+#include "lilia/bot/bot_info.hpp"
+#include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
 
 namespace lilia::view {
 
-GameView::GameView(sf::RenderWindow &window, const PlayerInfo &topInfo,
-                   const PlayerInfo &bottomInfo)
+GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
     : m_window(window), m_board_view(), m_piece_manager(m_board_view),
       m_highlight_manager(m_board_view),
       m_chess_animator(m_board_view, m_piece_manager), m_eval_bar(),
@@ -31,8 +32,21 @@ GameView::GameView(sf::RenderWindow &window, const PlayerInfo &topInfo,
         {openImg.getSize().x / 2, openImg.getSize().y / 2});
   }
   m_window.setMouseCursor(m_cursor_default);
+
+  PlayerInfo topInfo;
+  if (topIsBot)
+    topInfo = getBotInfo(BotType::Lilia);
+  else
+    topInfo = {"Challenger", 0, constant::STR_FILE_PATH_ICON_CHALLENGER};
   m_top_player.setInfo(topInfo);
+
+  PlayerInfo bottomInfo;
+  if (bottomIsBot)
+    bottomInfo = getBotInfo(BotType::Lilia);
+  else
+    bottomInfo = {"Challenger", 0, constant::STR_FILE_PATH_ICON_CHALLENGER};
   m_bottom_player.setInfo(bottomInfo);
+
   layout(m_window.getSize().x, m_window.getSize().y);
 }
 

@@ -6,7 +6,6 @@
 #include <cctype>
 #include <iostream>
 
-#include "lilia/bot/bot_info.hpp"
 #include "lilia/controller/game_controller.hpp"
 #include "lilia/engine/engine.hpp"
 #include "lilia/model/chess_game.hpp"
@@ -110,18 +109,7 @@ int App::run() {
 
   {
     lilia::model::ChessGame chessGame;
-    lilia::PlayerInfo topInfo;
-    if (m_black_is_bot)
-      topInfo = lilia::getBotInfo(lilia::BotType::Lilia);
-    else
-      topInfo = {"Challenger", 0, "assets/icons/challenger.png"};
-
-    lilia::PlayerInfo bottomInfo;
-    if (m_white_is_bot)
-      bottomInfo = lilia::getBotInfo(lilia::BotType::Lilia);
-    else
-      bottomInfo = {"Challenger", 0, "assets/icons/challenger.png"};
-    lilia::view::GameView gameView(window, topInfo, bottomInfo);
+    lilia::view::GameView gameView(window, m_black_is_bot, m_white_is_bot);
     lilia::controller::GameController gameController(gameView, chessGame);
 
     // start the game using GameController wrapper that delegates to GameManager
