@@ -4,7 +4,10 @@
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Text.hpp>
 
+#include <vector>
+
 #include "entity.hpp"
+#include "lilia/chess_types.hpp"
 #include "lilia/player_info.hpp"
 
 namespace lilia::view {
@@ -17,6 +20,10 @@ class PlayerInfoView {
   void setPositionClamped(const Entity::Position& pos, const sf::Vector2u& viewportSize);
   void render(sf::RenderWindow& window);
 
+  void addCapturedPiece(core::PieceType type, core::Color color);
+  void removeCapturedPiece();
+  void clearCapturedPieces();
+
  private:
   void setPosition(const Entity::Position& pos);
   Entity m_icon;
@@ -26,6 +33,9 @@ class PlayerInfoView {
   sf::Text m_name;
   sf::Text m_elo;
   Entity::Position m_position{};
+  std::vector<Entity> m_capturedPieces;
+
+  void layoutCaptured();
 };
 
 }  // namespace lilia::view

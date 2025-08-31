@@ -106,6 +106,8 @@ private:
   void stepForward();
   void resign();
 
+  void syncCapturedPieces();
+
   // ---------------- Members ----------------
   view::GameView &m_game_view;    ///< Responsible for rendering.
   model::ChessGame &m_chess_game; ///< Game model containing rules and state.

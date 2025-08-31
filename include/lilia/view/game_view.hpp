@@ -6,6 +6,7 @@
 #include <functional>
 #include <vector>
 
+#include "../chess_types.hpp"
 #include "../constants.hpp"
 #include "../controller/mousepos.hpp"
 #include "animation/chess_animator.hpp"
@@ -75,6 +76,10 @@ class GameView {
 
   void addPiece(core::PieceType type, core::Color color, core::Square pos);
   void removePiece(core::Square pos);
+
+  void addCapturedPiece(core::Color capturer, core::PieceType type);
+  void removeCapturedPiece(core::Color capturer);
+  void clearCapturedPieces();
 
   void highlightSquare(core::Square pos);
   void highlightAttackSquare(core::Square pos);
