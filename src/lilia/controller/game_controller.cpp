@@ -43,6 +43,24 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
 
   m_game_manager->setOnMoveExecuted(
       [this](const model::Move &mv, bool isPlayerMove, bool onClick) {
+        // If the user is currently viewing an older position, jump back to
+        // the latest board state before applying the new move to avoid
+        // corrupting the displayed board.
+        if (this->m_fen_index != this->m_fen_history.size() - 1) {
+          this->m_fen_index = this->m_fen_history.size() - 1;
+          this->m_game_view.setBoardFen(
+              this->m_fen_history[this->m_fen_index]);
+          this->m_game_view.selectMove(this->m_fen_index
+                                           ? this->m_fen_index - 1
+                                           : static_cast<std::size_t>(-1));
+          this->m_game_view.clearAllHighlights();
+          if (!this->m_move_history.empty()) {
+            const MoveView &info = this->m_move_history.back();
+            this->m_last_move_squares = {info.move.from, info.move.to};
+            this->highlightLastMove();
+          }
+        }
+
         this->movePieceAndClear(mv, isPlayerMove, onClick);
         this->m_chess_game.checkGameResult();
         this->m_game_view.addMove(move_to_uci(mv));
