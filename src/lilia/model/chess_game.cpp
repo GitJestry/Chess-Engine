@@ -200,6 +200,8 @@ core::GameResult ChessGame::getResult() {
   return m_result;
 }
 
+void ChessGame::setResult(core::GameResult res) { m_result = res; }
+
 bb::Piece ChessGame::getPiece(core::Square sq) {
   bb::Piece none;
   if (m_position.getBoard().getPiece(sq).has_value())

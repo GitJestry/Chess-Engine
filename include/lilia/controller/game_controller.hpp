@@ -59,6 +59,9 @@ public:
                  bool whiteIsBot = false, bool blackIsBot = true,
                  int thinkTimeMs = 1000, int depth = 5);
 
+  enum class NextAction { None, NewBot, Rematch };
+  [[nodiscard]] NextAction getNextAction() const;
+
 private:
   bool isHumanPiece(core::Square sq) const;
   bool hasCurrentLegalMove(core::Square from, core::Square to) const;
@@ -91,6 +94,10 @@ private:
   [[nodiscard]] bool isPromotion(core::Square a, core::Square b);
   [[nodiscard]] bool isSameColor(core::Square a, core::Square b);
   void showGameOver(core::GameResult res, core::Color sideToMove);
+
+  void stepBackward();
+  void stepForward();
+  void resign();
 
   // ---------------- Members ----------------
   view::GameView &m_game_view;    ///< Responsible for rendering.
@@ -126,6 +133,7 @@ private:
   std::vector<std::string> m_fen_history;
   std::size_t m_fen_index{0};
   std::vector<MoveView> m_move_history;
+  NextAction m_next_action{NextAction::None};
 };
 
 } // namespace lilia::controller

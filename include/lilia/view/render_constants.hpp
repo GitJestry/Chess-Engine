@@ -57,6 +57,12 @@ const std::string STR_FILE_PATH_FLIP = "assets/icons/flip.png";
 const std::string STR_FILE_PATH_ICON_LILIA = "assets/icons/lilia.png";
 const std::string STR_FILE_PATH_ICON_LILIA_START_SCREEN = "assets/icons/lilia_logo.png";
 const std::string STR_FILE_PATH_ICON_CHALLENGER = "assets/icons/challenger.png";
+const std::string STR_FILE_PATH_ICON_RESIGN = "assets/icons/resign.png";
+const std::string STR_FILE_PATH_ICON_PREV = "assets/icons/prev.png";
+const std::string STR_FILE_PATH_ICON_NEXT = "assets/icons/next.png";
+const std::string STR_FILE_PATH_ICON_SETTINGS = "assets/icons/settings.png";
+const std::string STR_FILE_PATH_ICON_NEW_BOT = "assets/icons/new_bot.png";
+const std::string STR_FILE_PATH_ICON_REMATCH = "assets/icons/rematch.png";
 
 const std::string ASSET_PIECES_FILE_PATH = "assets/textures";
 constexpr float ASSET_PIECE_SCALE = 1.6f;

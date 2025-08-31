@@ -98,16 +98,63 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
   m_pending_to = core::NO_SQUARE;
 
   m_game_view.setDefaultCursor();
+  m_next_action = NextAction::None;
 }
 
 void GameController::handleEvent(const sf::Event &event) {
-  if (m_chess_game.getResult() != core::GameResult::ONGOING)
-    return;
-
   if (event.type == sf::Event::MouseButtonPressed &&
       event.mouseButton.button == sf::Mouse::Left) {
-    std::size_t idx = m_game_view.getMoveIndexAt(
-        core::MousePos(event.mouseButton.x, event.mouseButton.y));
+    core::MousePos mp(event.mouseButton.x, event.mouseButton.y);
+
+    if (m_game_view.isResignPopupOpen()) {
+      if (m_game_view.isOnResignYes(mp)) {
+        resign();
+      }
+      m_game_view.hideResignPopup();
+      return;
+    }
+    if (m_game_view.isGameOverPopupOpen()) {
+      if (m_game_view.isOnNewBot(mp)) {
+        m_next_action = NextAction::NewBot;
+        m_game_view.hideGameOverPopup();
+        return;
+      }
+      if (m_game_view.isOnRematch(mp)) {
+        m_next_action = NextAction::Rematch;
+        m_game_view.hideGameOverPopup();
+        return;
+      }
+      m_game_view.hideGameOverPopup();
+      return;
+    }
+
+    auto opt = m_game_view.getOptionAt(mp);
+    switch (opt) {
+    case view::MoveListView::Option::Resign:
+      m_game_view.showResignPopup();
+      return;
+    case view::MoveListView::Option::Prev:
+      stepBackward();
+      return;
+    case view::MoveListView::Option::Next:
+      stepForward();
+      return;
+    case view::MoveListView::Option::Settings:
+      // Settings logic placeholder
+      return;
+    case view::MoveListView::Option::NewBot:
+      m_next_action = NextAction::NewBot;
+      return;
+    case view::MoveListView::Option::Rematch:
+      m_next_action = NextAction::Rematch;
+      return;
+    default:
+      break;
+    }
+
+    std::size_t idx =
+        m_game_view.getMoveIndexAt(core::MousePos(event.mouseButton.x,
+                                                  event.mouseButton.y));
     if (idx != static_cast<std::size_t>(-1)) {
       m_fen_index = idx + 1;
       m_game_view.setBoardFen(m_fen_history[m_fen_index]);
@@ -121,6 +168,9 @@ void GameController::handleEvent(const sf::Event &event) {
     }
   }
 
+  if (m_chess_game.getResult() != core::GameResult::ONGOING)
+    return;
+
   if (event.type == sf::Event::MouseWheelScrolled) {
     m_game_view.scrollMoveList(event.mouseWheelScroll.delta);
     if (m_fen_index != m_fen_history.size() - 1)
@@ -129,82 +179,10 @@ void GameController::handleEvent(const sf::Event &event) {
 
   if (event.type == sf::Event::KeyPressed) {
     if (event.key.code == sf::Keyboard::Left) {
-      if (m_fen_index > 0) {
-        m_game_view.setBoardFen(m_fen_history[m_fen_index]);
-        const MoveView &info = m_move_history[m_fen_index - 1];
-        core::Square epVictim = core::NO_SQUARE;
-        if (info.move.isEnPassant) {
-          epVictim = (info.moverColor == core::Color::White)
-                         ? static_cast<core::Square>(info.move.to - 8)
-                         : static_cast<core::Square>(info.move.to + 8);
-        }
-        m_game_view.animationMovePiece(
-            info.move.to, info.move.from, core::NO_SQUARE,
-            core::PieceType::None, [this, info, epVictim]() {
-              if (info.move.isCapture) {
-                core::Square capSq =
-                    info.move.isEnPassant ? epVictim : info.move.to;
-                m_game_view.addPiece(info.capturedType, ~info.moverColor,
-                                     capSq);
-              }
-              if (info.move.promotion != core::PieceType::None) {
-                m_game_view.removePiece(info.move.from);
-                m_game_view.addPiece(core::PieceType::Pawn, info.moverColor,
-                                     info.move.from);
-              }
-            });
-        if (info.move.castle != model::CastleSide::None) {
-          const core::Square rookFrom =
-              m_chess_game.getRookSquareFromCastleside(info.move.castle,
-                                                       info.moverColor);
-          const core::Square rookTo =
-              (info.move.castle == model::CastleSide::KingSide)
-                  ? static_cast<core::Square>(info.move.to - 1)
-                  : static_cast<core::Square>(info.move.to + 1);
-          m_game_view.animationMovePiece(rookTo, rookFrom);
-        }
-        --m_fen_index;
-        m_game_view.selectMove(m_fen_index ? m_fen_index - 1
-                                           : static_cast<std::size_t>(-1));
-        m_last_move_squares = {info.move.from, info.move.to};
-        m_game_view.clearAllHighlights();
-        highlightLastMove();
-        m_sound_manager.playEffect(info.sound);
-      }
+      stepBackward();
       return;
     } else if (event.key.code == sf::Keyboard::Right) {
-      if (m_fen_index < m_move_history.size()) {
-        m_game_view.setBoardFen(m_fen_history[m_fen_index]);
-        const MoveView &info = m_move_history[m_fen_index];
-        core::Square epVictim = core::NO_SQUARE;
-        if (info.move.isEnPassant) {
-          epVictim = (info.moverColor == core::Color::White)
-                         ? static_cast<core::Square>(info.move.to - 8)
-                         : static_cast<core::Square>(info.move.to + 8);
-          m_game_view.removePiece(epVictim);
-        } else if (info.move.isCapture) {
-          m_game_view.removePiece(info.move.to);
-        }
-        if (info.move.castle != model::CastleSide::None) {
-          const core::Square rookFrom =
-              m_chess_game.getRookSquareFromCastleside(info.move.castle,
-                                                       info.moverColor);
-          const core::Square rookTo =
-              (info.move.castle == model::CastleSide::KingSide)
-                  ? static_cast<core::Square>(info.move.to - 1)
-                  : static_cast<core::Square>(info.move.to + 1);
-          m_game_view.animationMovePiece(rookFrom, rookTo);
-        }
-        m_game_view.animationMovePiece(info.move.from, info.move.to, epVictim,
-                                       info.move.promotion);
-        ++m_fen_index;
-        m_game_view.selectMove(m_fen_index ? m_fen_index - 1
-                                           : static_cast<std::size_t>(-1));
-        m_last_move_squares = {info.move.from, info.move.to};
-        m_game_view.clearAllHighlights();
-        highlightLastMove();
-        m_sound_manager.playEffect(info.sound);
-      }
+      stepForward();
       return;
     }
   }
@@ -789,24 +767,132 @@ bool GameController::hasCurrentLegalMove(core::Square from,
 void GameController::showGameOver(core::GameResult res,
                                   core::Color sideToMove) {
   std::cout << "Game is Over!" << std::endl;
+  std::string resultStr;
   switch (res) {
   case core::GameResult::CHECKMATE:
     std::cout << "CHECKMATE -> "
               << (sideToMove == core::Color::White ? "Black won" : "White won");
+    resultStr = (sideToMove == core::Color::White) ? "0-1" : "1-0";
+    m_game_view.showGameOverPopup(sideToMove == core::Color::White ?
+                                       "Black won" : "White won");
     break;
   case core::GameResult::REPETITION:
     std::cout << "REPITITION -> Draw!";
+    resultStr = "1/2-1/2";
+    m_game_view.showGameOverPopup("Draw by repetition");
     break;
   case core::GameResult::MOVERULE:
     std::cout << "MOVERULE-> Draw!";
+    resultStr = "1/2-1/2";
+    m_game_view.showGameOverPopup("Draw by 50 move rule");
     break;
   case core::GameResult::STALEMATE:
     std::cout << "STALEMATE -> Draw!";
+    resultStr = "1/2-1/2";
+    m_game_view.showGameOverPopup("Stalemate");
+    break;
+  case core::GameResult::INSUFFICIENT:
+    std::cout << "INSUFFICIENT MATERIAL -> Draw!";
+    resultStr = "1/2-1/2";
+    m_game_view.showGameOverPopup("Insufficient material");
     break;
   default:
     std::cout << "result is not correct";
+    break;
   }
   std::cout << std::endl;
+  m_game_view.addResult(resultStr);
+  m_game_view.setGameOver(true);
+}
+
+void GameController::stepBackward() {
+  if (m_fen_index > 0) {
+    m_game_view.setBoardFen(m_fen_history[m_fen_index]);
+    const MoveView &info = m_move_history[m_fen_index - 1];
+    core::Square epVictim = core::NO_SQUARE;
+    if (info.move.isEnPassant) {
+      epVictim = (info.moverColor == core::Color::White)
+                     ? static_cast<core::Square>(info.move.to - 8)
+                     : static_cast<core::Square>(info.move.to + 8);
+    }
+    m_game_view.animationMovePiece(
+        info.move.to, info.move.from, core::NO_SQUARE, core::PieceType::None,
+        [this, info, epVictim]() {
+          if (info.move.isCapture) {
+            core::Square capSq =
+                info.move.isEnPassant ? epVictim : info.move.to;
+            m_game_view.addPiece(info.capturedType, ~info.moverColor, capSq);
+          }
+          if (info.move.promotion != core::PieceType::None) {
+            m_game_view.removePiece(info.move.from);
+            m_game_view.addPiece(core::PieceType::Pawn, info.moverColor,
+                                 info.move.from);
+          }
+        });
+    if (info.move.castle != model::CastleSide::None) {
+      const core::Square rookFrom =
+          m_chess_game.getRookSquareFromCastleside(info.move.castle,
+                                                   info.moverColor);
+      const core::Square rookTo =
+          (info.move.castle == model::CastleSide::KingSide)
+              ? static_cast<core::Square>(info.move.to - 1)
+              : static_cast<core::Square>(info.move.to + 1);
+      m_game_view.animationMovePiece(rookTo, rookFrom);
+    }
+    --m_fen_index;
+    m_game_view.selectMove(m_fen_index ? m_fen_index - 1
+                                       : static_cast<std::size_t>(-1));
+    m_last_move_squares = {info.move.from, info.move.to};
+    m_game_view.clearAllHighlights();
+    highlightLastMove();
+    m_sound_manager.playEffect(info.sound);
+  }
+}
+
+void GameController::stepForward() {
+  if (m_fen_index < m_move_history.size()) {
+    m_game_view.setBoardFen(m_fen_history[m_fen_index]);
+    const MoveView &info = m_move_history[m_fen_index];
+    core::Square epVictim = core::NO_SQUARE;
+    if (info.move.isEnPassant) {
+      epVictim = (info.moverColor == core::Color::White)
+                     ? static_cast<core::Square>(info.move.to - 8)
+                     : static_cast<core::Square>(info.move.to + 8);
+      m_game_view.removePiece(epVictim);
+    } else if (info.move.isCapture) {
+      m_game_view.removePiece(info.move.to);
+    }
+    if (info.move.castle != model::CastleSide::None) {
+      const core::Square rookFrom =
+          m_chess_game.getRookSquareFromCastleside(info.move.castle,
+                                                   info.moverColor);
+      const core::Square rookTo =
+          (info.move.castle == model::CastleSide::KingSide)
+              ? static_cast<core::Square>(info.move.to - 1)
+              : static_cast<core::Square>(info.move.to + 1);
+      m_game_view.animationMovePiece(rookFrom, rookTo);
+    }
+    m_game_view.animationMovePiece(info.move.from, info.move.to, epVictim,
+                                   info.move.promotion);
+    ++m_fen_index;
+    m_game_view.selectMove(m_fen_index ? m_fen_index - 1
+                                       : static_cast<std::size_t>(-1));
+    m_last_move_squares = {info.move.from, info.move.to};
+    m_game_view.clearAllHighlights();
+    highlightLastMove();
+    m_sound_manager.playEffect(info.sound);
+  }
+}
+
+void GameController::resign() {
+  m_game_manager->stopGame();
+  m_chess_game.setResult(core::GameResult::CHECKMATE);
+  showGameOver(core::GameResult::CHECKMATE,
+               m_chess_game.getGameState().sideToMove);
+}
+
+GameController::NextAction GameController::getNextAction() const {
+  return m_next_action;
 }
 
 } // namespace lilia::controller
