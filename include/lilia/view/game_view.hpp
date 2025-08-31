@@ -13,8 +13,8 @@
 #include "highlight_manager.hpp"
 #include "move_list_view.hpp"
 #include "piece_manager.hpp"
-#include "promotion_manager.hpp"
 #include "player_info_view.hpp"
+#include "promotion_manager.hpp"
 
 #include <functional>
 
@@ -81,7 +81,6 @@ public:
   bool isInPromotionSelection();
   core::PieceType getSelectedPromotion(core::MousePos mousePos);
   void removePromotionSelection();
-  void showGameOver(core::GameResult res, core::Color sideToMove);
 
   void setDefaultCursor();
   void setHandOpenCursor();
@@ -91,7 +90,6 @@ public:
   [[nodiscard]] bool isOnFlipIcon(core::MousePos mousePos) const;
 
 private:
-  core::MousePos clampPosToBoard(core::MousePos mousePos) const noexcept;
   void layout(unsigned int width, unsigned int height);
 
   sf::RenderWindow &m_window;
