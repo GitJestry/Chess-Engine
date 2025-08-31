@@ -14,6 +14,12 @@ struct StartConfig {
   BotType blackBot{BotType::Lilia};
 };
 
+struct BotOption {
+  BotType type;
+  sf::RectangleShape box;
+  sf::Text label;
+};
+
 class StartScreen {
  public:
   explicit StartScreen(sf::RenderWindow &window);
@@ -29,18 +35,21 @@ class StartScreen {
   sf::RectangleShape m_whiteBotBtn;
   sf::Text m_whitePlayerText;
   sf::Text m_whiteBotText;
-  std::vector<std::pair<BotType, sf::Text>> m_whiteBotOptions;
+  sf::Text m_whiteLabel;
+  std::vector<BotOption> m_whiteBotOptions;
   std::size_t m_whiteBotSelection{0};
 
   sf::RectangleShape m_blackPlayerBtn;
   sf::RectangleShape m_blackBotBtn;
   sf::Text m_blackPlayerText;
   sf::Text m_blackBotText;
-  std::vector<std::pair<BotType, sf::Text>> m_blackBotOptions;
+  sf::Text m_blackLabel;
+  std::vector<BotOption> m_blackBotOptions;
   std::size_t m_blackBotSelection{0};
 
   sf::RectangleShape m_startBtn;
   sf::Text m_startText;
+  sf::Text m_creditText;
 
   void setupUI();
   bool handleMouse(sf::Vector2f pos, StartConfig &cfg);
