@@ -1,8 +1,8 @@
 #pragma once
 
 #include <SFML/Graphics.hpp>
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "lilia/bot/bot_info.hpp"
 #include "lilia/constants.hpp"
@@ -33,6 +33,8 @@ class StartScreen {
   sf::Font m_font;
   sf::Texture m_logoTex;
   sf::Sprite m_logo;
+  sf::Text m_devByText;    // "@Developed by Julian Meyer" bottom-right
+  sf::Text m_fenInfoText;  // subtle hint below FEN box
 
   sf::RectangleShape m_whitePlayerBtn;
   sf::RectangleShape m_whiteBotBtn;

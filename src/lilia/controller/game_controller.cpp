@@ -306,22 +306,24 @@ void GameController::render() {
 }
 
 void GameController::update(float dt) {
-  if (m_chess_game.getResult() != core::GameResult::ONGOING) return;
-
+  // Always tick UI/animations/particles, even after game end
   m_game_view.update(dt);
   m_game_view.updateEval(m_eval_cp.load());
+
+  // Stop here if the game is over (no engine/user logic), but keep animating the view
+  if (m_chess_game.getResult() != core::GameResult::ONGOING) return;
+
+  // Game logic continues only while ongoing
   if (m_game_manager) m_game_manager->update(dt);
 
-  // --- Sicheren Auto-Move (aus Premove) nach Engine-Zug durchführen ---
+  // Safe auto-move (premove) handling
   if (m_has_pending_auto_move) {
-    // Ausführen nur, wenn weiterhin Mensch am Zug und Move noch legal
     const auto st = m_chess_game.getGameState();
     if (m_game_manager && m_game_manager->isHuman(st.sideToMove) &&
         hasCurrentLegalMove(m_pending_from, m_pending_to)) {
-      (void)m_game_manager->requestUserMove(m_pending_from, m_pending_to,
-                                            /*onClick*/ true);
+      (void)m_game_manager->requestUserMove(m_pending_from, m_pending_to, /*onClick*/ true);
     }
-    m_has_pending_auto_move = false;  // Flag immer zurücksetzen
+    m_has_pending_auto_move = false;
     m_pending_from = m_pending_to = core::NO_SQUARE;
   }
 }
@@ -631,8 +633,7 @@ void GameController::onDrag(core::MousePos start, core::MousePos current) {
 
 void GameController::onDrop(core::MousePos start, core::MousePos end) {
   const core::Square from = m_game_view.mousePosToSquare(start);
-  const core::Square to =
-      m_game_view.mousePosToSquare(m_game_view.clampPosToBoard(end));
+  const core::Square to = m_game_view.mousePosToSquare(m_game_view.clampPosToBoard(end));
 
   dehoverSquare();
 
