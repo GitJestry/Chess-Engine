@@ -1,145 +1,203 @@
 #include "lilia/view/start_screen.hpp"
 
 #include <SFML/Window/Event.hpp>
+#include <algorithm>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "lilia/view/render_constants.hpp"
 
 namespace lilia::view {
 
-StartScreen::StartScreen(sf::RenderWindow &window) : m_window(window) {
+// Helper: center origin of an sf::Text to its bounds
+static void centerOrigin(sf::Text& t) {
+  sf::FloatRect r = t.getLocalBounds();
+  t.setOrigin(r.left + r.width / 2.f, r.top + r.height / 2.f);
+}
+
+// Helper: draw a soft shadow under a rectangle, then the rectangle itself
+// (Keeps outlines on the original rect; shadow is just a blurred-looking offset quad)
+static void drawWithShadow(sf::RenderWindow& window, const sf::RectangleShape& r) {
+  sf::RectangleShape shadow = r;
+  shadow.move(0.f, 3.f);
+  shadow.setFillColor(sf::Color(0, 0, 0, 120));
+  shadow.setOutlineThickness(0.f);
+  window.draw(shadow);
+  window.draw(r);
+}
+
+StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
+  // Load assets
   m_font.loadFromFile(constant::STR_FILE_PATH_FONT);
   m_logoTex.loadFromFile(constant::STR_FILE_PATH_ICON_LILIA_START_SCREEN);
+
+  // Logo
   m_logo.setTexture(m_logoTex);
   m_logo.setOrigin(m_logo.getLocalBounds().width / 2.f, m_logo.getLocalBounds().height / 2.f);
   m_logo.setPosition(static_cast<float>(m_window.getSize().x) / 2.f,
-                     static_cast<float>(m_window.getSize().y) / 2.);
+                     static_cast<float>(m_window.getSize().y) / 2.f);
+
+  // Ensure lists start closed
+  m_showWhiteBotList = false;
+  m_showBlackBotList = false;
+  m_whiteListForceHide = false;
+  m_blackListForceHide = false;
+
   setupUI();
 }
 
 void StartScreen::setupUI() {
-  float width = static_cast<float>(m_window.getSize().x);
-  float height = static_cast<float>(m_window.getSize().y);
+  const float width = static_cast<float>(m_window.getSize().x);
+  const float height = static_cast<float>(m_window.getSize().y);
 
-  sf::Vector2f btnSize(180.f, 50.f);
-  float leftX = width * 0.15f - btnSize.x / 2.f;
-  float rightX = width * 0.85f - btnSize.x / 2.f;
-  float baseY = 260.f;
+  // Responsive layout anchors
+  const float colLeftX = width * 0.18f;
+  const float colRightX = width * 0.82f;
+  const float colWidth = 200.f;
+  const float btnH = 52.f;
+  const float btnW = std::min(colWidth, width * 0.24f);
+  const float colYBase = std::max(210.f, height * 0.30f);
 
+  const sf::Vector2f btnSize(btnW, btnH);
+
+  // Palette
+  const sf::Color outline(255, 255, 255);
+  const float outlineThick = 2.f;
+
+  // White column
   m_whitePlayerBtn.setSize(btnSize);
-  m_whitePlayerBtn.setPosition(leftX, baseY);
-  m_whitePlayerBtn.setOutlineColor(sf::Color::White);
-  m_whitePlayerBtn.setOutlineThickness(2.f);
-  m_whitePlayerText.setFont(m_font);
-  m_whitePlayerText.setString("Player");
-  m_whitePlayerText.setCharacterSize(20);
-  m_whitePlayerText.setFillColor(sf::Color::Black);
-  m_whitePlayerText.setPosition(leftX + 20.f, baseY + 12.f);
+  m_whitePlayerBtn.setPosition(colLeftX - btnW / 2.f, colYBase);
+  m_whitePlayerBtn.setOutlineColor(outline);
+  m_whitePlayerBtn.setOutlineThickness(outlineThick);
 
   m_whiteBotBtn.setSize(btnSize);
-  m_whiteBotBtn.setPosition(leftX, baseY + 70.f);
-  m_whiteBotBtn.setOutlineColor(sf::Color::White);
-  m_whiteBotBtn.setOutlineThickness(2.f);
+  m_whiteBotBtn.setPosition(colLeftX - btnW / 2.f, colYBase + btnH + 18.f);
+  m_whiteBotBtn.setOutlineColor(outline);
+  m_whiteBotBtn.setOutlineThickness(outlineThick);
+
+  m_whitePlayerText.setFont(m_font);
+  m_whitePlayerText.setString("Player");
+  m_whitePlayerText.setCharacterSize(22);
+  m_whitePlayerText.setFillColor(sf::Color::Black);
+  m_whitePlayerText.setPosition(m_whitePlayerBtn.getPosition().x + 18.f,
+                                m_whitePlayerBtn.getPosition().y + 12.f);
+
   m_whiteBotText.setFont(m_font);
-  m_whiteBotText.setCharacterSize(20);
+  m_whiteBotText.setCharacterSize(22);
   m_whiteBotText.setFillColor(sf::Color::Black);
+  m_whiteBotText.setPosition(m_whiteBotBtn.getPosition().x + 18.f,
+                             m_whiteBotBtn.getPosition().y + 12.f);
 
   m_whiteLabel.setFont(m_font);
   m_whiteLabel.setString("White");
-  m_whiteLabel.setCharacterSize(32);
+  m_whiteLabel.setCharacterSize(34);
   m_whiteLabel.setStyle(sf::Text::Bold);
   m_whiteLabel.setFillColor(sf::Color::White);
-  m_whiteLabel.setOrigin(m_whiteLabel.getLocalBounds().width / 2.f,
-                         m_whiteLabel.getLocalBounds().height / 2.f);
-  m_whiteLabel.setPosition(leftX + btnSize.x / 2.f, baseY - 50.f);
+  centerOrigin(m_whiteLabel);
+  m_whiteLabel.setPosition(colLeftX, m_whitePlayerBtn.getPosition().y - 58.f);
 
+  // Black column
   m_blackPlayerBtn.setSize(btnSize);
-  m_blackPlayerBtn.setPosition(rightX, baseY);
-  m_blackPlayerBtn.setOutlineColor(sf::Color::White);
-  m_blackPlayerBtn.setOutlineThickness(2.f);
-  m_blackPlayerText.setFont(m_font);
-  m_blackPlayerText.setString("Player");
-  m_blackPlayerText.setCharacterSize(20);
-  m_blackPlayerText.setFillColor(sf::Color::Black);
-  m_blackPlayerText.setPosition(rightX + 20.f, baseY + 12.f);
+  m_blackPlayerBtn.setPosition(colRightX - btnW / 2.f, colYBase);
+  m_blackPlayerBtn.setOutlineColor(outline);
+  m_blackPlayerBtn.setOutlineThickness(outlineThick);
 
   m_blackBotBtn.setSize(btnSize);
-  m_blackBotBtn.setPosition(rightX, baseY + 70.f);
-  m_blackBotBtn.setOutlineColor(sf::Color::White);
-  m_blackBotBtn.setOutlineThickness(2.f);
+  m_blackBotBtn.setPosition(colRightX - btnW / 2.f, colYBase + btnH + 18.f);
+  m_blackBotBtn.setOutlineColor(outline);
+  m_blackBotBtn.setOutlineThickness(outlineThick);
+
+  m_blackPlayerText.setFont(m_font);
+  m_blackPlayerText.setString("Player");
+  m_blackPlayerText.setCharacterSize(22);
+  m_blackPlayerText.setFillColor(sf::Color::Black);
+  m_blackPlayerText.setPosition(m_blackPlayerBtn.getPosition().x + 18.f,
+                                m_blackPlayerBtn.getPosition().y + 12.f);
+
   m_blackBotText.setFont(m_font);
-  m_blackBotText.setCharacterSize(20);
+  m_blackBotText.setCharacterSize(22);
   m_blackBotText.setFillColor(sf::Color::Black);
+  m_blackBotText.setPosition(m_blackBotBtn.getPosition().x + 18.f,
+                             m_blackBotBtn.getPosition().y + 12.f);
 
   m_blackLabel.setFont(m_font);
   m_blackLabel.setString("Black");
-  m_blackLabel.setCharacterSize(32);
+  m_blackLabel.setCharacterSize(34);
   m_blackLabel.setStyle(sf::Text::Bold);
   m_blackLabel.setFillColor(sf::Color::White);
-  m_blackLabel.setOrigin(m_blackLabel.getLocalBounds().width / 2.f,
-                         m_blackLabel.getLocalBounds().height / 2.f);
-  m_blackLabel.setPosition(rightX + btnSize.x / 2.f, baseY - 50.f);
+  centerOrigin(m_blackLabel);
+  m_blackLabel.setPosition(colRightX, m_blackPlayerBtn.getPosition().y - 58.f);
 
-  // prepare bot list
-  std::vector<std::pair<BotType, PlayerInfo>> bots = {{BotType::Lilia, getBotInfo(BotType::Lilia)}};
+  // Prepare bot list (anchor is computed per-frame to avoid hover gaps)
+  std::vector<std::pair<BotType, PlayerInfo>> bots = {
+      {BotType::Lilia, getBotInfo(BotType::Lilia)}
+      // Add more here later
+  };
 
-  float listYOffset = baseY + 140.f;
-  std::string defaultBotLabel = "Bot (" + bots[0].second.name + ")";
+  // Default label: "Bot (Name)"
+  const std::string defaultBotLabel = "Bot (" + bots.front().second.name + ")";
   m_whiteBotText.setString(defaultBotLabel);
   m_blackBotText.setString(defaultBotLabel);
-  m_whiteBotText.setPosition(m_whiteBotBtn.getPosition().x + 20.f,
-                             m_whiteBotBtn.getPosition().y + 12.f);
-  m_blackBotText.setPosition(m_blackBotBtn.getPosition().x + 20.f,
-                             m_blackBotBtn.getPosition().y + 12.f);
+
+  m_whiteBotOptions.clear();
+  m_blackBotOptions.clear();
+  m_whiteBotSelection = 0;
+  m_blackBotSelection = 0;
 
   for (std::size_t i = 0; i < bots.size(); ++i) {
     BotOption wOpt;
     wOpt.type = bots[i].first;
-    wOpt.box.setSize(btnSize);
-    wOpt.box.setPosition(leftX, listYOffset + i * (btnSize.y + 10.f));
+    wOpt.box.setSize(btnSize);  // final position set each frame
     wOpt.box.setFillColor(sf::Color(80, 80, 80));
-    wOpt.box.setOutlineColor(sf::Color::White);
-    wOpt.box.setOutlineThickness(2.f);
+    wOpt.box.setOutlineColor(outline);
+    wOpt.box.setOutlineThickness(outlineThick);
     wOpt.label.setFont(m_font);
     wOpt.label.setString(bots[i].second.name);
     wOpt.label.setCharacterSize(22);
     wOpt.label.setFillColor(sf::Color::White);
-    wOpt.label.setPosition(leftX + 10.f, listYOffset + i * (btnSize.y + 10.f) + 10.f);
     m_whiteBotOptions.push_back(wOpt);
 
     BotOption bOpt = wOpt;
-    bOpt.box.setPosition(rightX, listYOffset + i * (btnSize.y + 10.f));
-    bOpt.label.setPosition(rightX + 10.f, listYOffset + i * (btnSize.y + 10.f) + 10.f);
     m_blackBotOptions.push_back(bOpt);
   }
 
-  m_startBtn.setSize(sf::Vector2f(200.f, 60.f));
-  m_startBtn.setOrigin(100.f, 30.f);
-  m_startBtn.setPosition(width / 2.f, height - 60.f);
-  m_startBtn.setOutlineColor(sf::Color::White);
-  m_startBtn.setOutlineThickness(2.f);
+  // Start button
+  m_startBtn.setSize(sf::Vector2f(220.f, 64.f));
+  m_startBtn.setOrigin(110.f, 32.f);
+  m_startBtn.setPosition(width / 2.f, height - 72.f);
+  m_startBtn.setOutlineColor(outline);
+  m_startBtn.setOutlineThickness(outlineThick);
+
   m_startText.setFont(m_font);
   m_startText.setString("Start");
-  m_startText.setCharacterSize(24);
+  m_startText.setCharacterSize(26);
   m_startText.setFillColor(sf::Color::Black);
-  m_startText.setOrigin(m_startText.getLocalBounds().width / 2.f,
-                        m_startText.getLocalBounds().height / 2.f);
+  centerOrigin(m_startText);
   m_startText.setPosition(m_startBtn.getPosition());
 
+  // Credit
   m_creditText.setFont(m_font);
-  m_creditText.setString("Developed By Julian Meyer");
+  m_creditText.setString("@Developed By Julian Meyer");
   m_creditText.setCharacterSize(16);
   m_creditText.setFillColor(sf::Color(180, 180, 180));
-  sf::FloatRect bounds = m_creditText.getLocalBounds();
-  m_creditText.setPosition(width - bounds.width - 10.f, height - bounds.height - 10.f);
+  sf::FloatRect c = m_creditText.getLocalBounds();
+  m_creditText.setPosition(width - c.width - 10.f, height - c.height - 10.f);
 }
 
-bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig &cfg) {
+bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
+  // WHITE column interactions
   if (m_whitePlayerBtn.getGlobalBounds().contains(pos)) {
     cfg.whiteIsBot = false;
   } else if (m_whiteBotBtn.getGlobalBounds().contains(pos)) {
+    // Clicking the bot button while the list is force-hidden (but still hovering) re-opens it.
+    if (m_whiteListForceHide && !m_showWhiteBotList) {
+      m_whiteListForceHide = false;
+      m_showWhiteBotList = true;
+    }
+    // Confirm "white is bot" without collapsing the list
     cfg.whiteIsBot = true;
-    cfg.whiteBot = m_whiteBotOptions[m_whiteBotSelection].type;
+    if (!m_whiteBotOptions.empty()) cfg.whiteBot = m_whiteBotOptions[m_whiteBotSelection].type;
   } else if (m_showWhiteBotList) {
     for (std::size_t i = 0; i < m_whiteBotOptions.size(); ++i) {
       if (m_whiteBotOptions[i].box.getGlobalBounds().contains(pos)) {
@@ -147,19 +205,25 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig &cfg) {
         cfg.whiteIsBot = true;
         cfg.whiteBot = m_whiteBotOptions[i].type;
         m_whiteBotText.setString(m_whiteBotOptions[i].label.getString());
-        m_whiteBotText.setPosition(m_whiteBotBtn.getPosition().x + 20.f,
+        m_whiteBotText.setPosition(m_whiteBotBtn.getPosition().x + 18.f,
                                    m_whiteBotBtn.getPosition().y + 12.f);
+        // Close list after selection; keep it closed until hover fully leaves the zone.
         m_showWhiteBotList = false;
         m_whiteListForceHide = true;
       }
     }
   }
 
+  // BLACK column interactions
   if (m_blackPlayerBtn.getGlobalBounds().contains(pos)) {
     cfg.blackIsBot = false;
   } else if (m_blackBotBtn.getGlobalBounds().contains(pos)) {
+    if (m_blackListForceHide && !m_showBlackBotList) {
+      m_blackListForceHide = false;
+      m_showBlackBotList = true;
+    }
     cfg.blackIsBot = true;
-    cfg.blackBot = m_blackBotOptions[m_blackBotSelection].type;
+    if (!m_blackBotOptions.empty()) cfg.blackBot = m_blackBotOptions[m_blackBotSelection].type;
   } else if (m_showBlackBotList) {
     for (std::size_t i = 0; i < m_blackBotOptions.size(); ++i) {
       if (m_blackBotOptions[i].box.getGlobalBounds().contains(pos)) {
@@ -167,7 +231,7 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig &cfg) {
         cfg.blackIsBot = true;
         cfg.blackBot = m_blackBotOptions[i].type;
         m_blackBotText.setString(m_blackBotOptions[i].label.getString());
-        m_blackBotText.setPosition(m_blackBotBtn.getPosition().x + 20.f,
+        m_blackBotText.setPosition(m_blackBotBtn.getPosition().x + 18.f,
                                    m_blackBotBtn.getPosition().y + 12.f);
         m_showBlackBotList = false;
         m_blackListForceHide = true;
@@ -175,6 +239,7 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig &cfg) {
     }
   }
 
+  // Start
   if (m_startBtn.getGlobalBounds().contains(pos)) {
     return true;
   }
@@ -184,7 +249,43 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig &cfg) {
 StartConfig StartScreen::run() {
   StartConfig cfg;
   bool startGame = false;
+
+  // Colors (slightly brighter, clearer states)
+  const sf::Color active(210, 210, 210);
+  const sf::Color inactive(110, 110, 110);
+  const sf::Color hoverActive(235, 235, 235);
+  const sf::Color hoverInactive(140, 140, 140);
+
+  // Lambda: re-anchor dropdown lists immediately under their bot buttons every frame.
+  auto positionLists = [&]() {
+    const float spacing = 6.f;  // gap between button and first option
+    const float vpad = 4.f;     // gap between options
+    const float labelX = 10.f;
+    const float labelY = 10.f;
+
+    // WHITE list anchored to WHITE bot button
+    const float y0W = m_whiteBotBtn.getPosition().y + m_whiteBotBtn.getSize().y + spacing;
+    for (std::size_t i = 0; i < m_whiteBotOptions.size(); ++i) {
+      auto& opt = m_whiteBotOptions[i];
+      opt.box.setSize(m_whiteBotBtn.getSize());
+      opt.box.setPosition(m_whiteBotBtn.getPosition().x,
+                          y0W + static_cast<float>(i) * (m_whiteBotBtn.getSize().y + vpad));
+      opt.label.setPosition(opt.box.getPosition().x + labelX, opt.box.getPosition().y + labelY);
+    }
+
+    // BLACK list anchored to BLACK bot button
+    const float y0B = m_blackBotBtn.getPosition().y + m_blackBotBtn.getSize().y + spacing;
+    for (std::size_t i = 0; i < m_blackBotOptions.size(); ++i) {
+      auto& opt = m_blackBotOptions[i];
+      opt.box.setSize(m_blackBotBtn.getSize());
+      opt.box.setPosition(m_blackBotBtn.getPosition().x,
+                          y0B + static_cast<float>(i) * (m_blackBotBtn.getSize().y + vpad));
+      opt.label.setPosition(opt.box.getPosition().x + labelX, opt.box.getPosition().y + labelY);
+    }
+  };
+
   while (m_window.isOpen() && !startGame) {
+    // Events
     sf::Event event;
     while (m_window.pollEvent(event)) {
       if (event.type == sf::Event::Closed) {
@@ -193,15 +294,22 @@ StartConfig StartScreen::run() {
                  event.mouseButton.button == sf::Mouse::Left) {
         sf::Vector2f pos = m_window.mapPixelToCoords({event.mouseButton.x, event.mouseButton.y});
         startGame = handleMouse(pos, cfg);
+      } else if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+        // Optional: allow closing lists with Esc
+        m_showWhiteBotList = false;
+        m_showBlackBotList = false;
+        m_whiteListForceHide = false;
+        m_blackListForceHide = false;
       }
     }
 
-    sf::Vector2f mouse = m_window.mapPixelToCoords(sf::Mouse::getPosition(m_window));
-    sf::Color active(200, 200, 200);
-    sf::Color inactive(120, 120, 120);
-    sf::Color hoverActive(220, 220, 220);
-    sf::Color hoverInactive(140, 140, 140);
+    // Keep dropdowns attached to their buttons; this removes hover "gaps"
+    positionLists();
 
+    // Hover logic
+    sf::Vector2f mouse = m_window.mapPixelToCoords(sf::Mouse::getPosition(m_window));
+
+    // Button fills depend on whether that side is bot or player, and hover state
     bool hover = m_whitePlayerBtn.getGlobalBounds().contains(mouse);
     m_whitePlayerBtn.setFillColor(cfg.whiteIsBot ? (hover ? hoverInactive : inactive)
                                                  : (hover ? hoverActive : active));
@@ -209,6 +317,7 @@ StartConfig StartScreen::run() {
     hover = m_whiteBotBtn.getGlobalBounds().contains(mouse);
     m_whiteBotBtn.setFillColor(cfg.whiteIsBot ? (hover ? hoverActive : active)
                                               : (hover ? hoverInactive : inactive));
+
     hover = m_blackPlayerBtn.getGlobalBounds().contains(mouse);
     m_blackPlayerBtn.setFillColor(cfg.blackIsBot ? (hover ? hoverInactive : inactive)
                                                  : (hover ? hoverActive : active));
@@ -217,9 +326,10 @@ StartConfig StartScreen::run() {
     m_blackBotBtn.setFillColor(cfg.blackIsBot ? (hover ? hoverActive : active)
                                               : (hover ? hoverInactive : inactive));
 
+    // Compute hover for dropdown zones
     bool whiteBotHover = m_whiteBotBtn.getGlobalBounds().contains(mouse);
     bool whiteListHover = false;
-    for (auto &opt : m_whiteBotOptions) {
+    for (auto& opt : m_whiteBotOptions) {
       if (opt.box.getGlobalBounds().contains(mouse)) {
         whiteListHover = true;
         break;
@@ -230,7 +340,7 @@ StartConfig StartScreen::run() {
 
     bool blackBotHover = m_blackBotBtn.getGlobalBounds().contains(mouse);
     bool blackListHover = false;
-    for (auto &opt : m_blackBotOptions) {
+    for (auto& opt : m_blackBotOptions) {
       if (opt.box.getGlobalBounds().contains(mouse)) {
         blackListHover = true;
         break;
@@ -239,9 +349,11 @@ StartConfig StartScreen::run() {
     if (!blackBotHover && !blackListHover) m_blackListForceHide = false;
     m_showBlackBotList = !m_blackListForceHide && (blackBotHover || blackListHover);
 
+    // Highlight selected option and hover in lists
     for (std::size_t i = 0; i < m_whiteBotOptions.size(); ++i) {
       bool optHover = m_whiteBotOptions[i].box.getGlobalBounds().contains(mouse);
-      sf::Color base = (i == m_whiteBotSelection) ? sf::Color(100, 100, 100) : sf::Color(80, 80, 80);
+      sf::Color base =
+          (i == m_whiteBotSelection) ? sf::Color(100, 100, 100) : sf::Color(80, 80, 80);
       if (optHover) base = sf::Color(120, 120, 120);
       m_whiteBotOptions[i].box.setFillColor(base);
       m_whiteBotOptions[i].label.setFillColor(
@@ -249,44 +361,52 @@ StartConfig StartScreen::run() {
     }
     for (std::size_t i = 0; i < m_blackBotOptions.size(); ++i) {
       bool optHover = m_blackBotOptions[i].box.getGlobalBounds().contains(mouse);
-      sf::Color base = (i == m_blackBotSelection) ? sf::Color(100, 100, 100) : sf::Color(80, 80, 80);
+      sf::Color base =
+          (i == m_blackBotSelection) ? sf::Color(100, 100, 100) : sf::Color(80, 80, 80);
       if (optHover) base = sf::Color(120, 120, 120);
       m_blackBotOptions[i].box.setFillColor(base);
       m_blackBotOptions[i].label.setFillColor(
           (cfg.blackIsBot && i == m_blackBotSelection) ? sf::Color::Yellow : sf::Color::White);
     }
 
+    // Start button hover
     bool startHover = m_startBtn.getGlobalBounds().contains(mouse);
     m_startBtn.setFillColor(startHover ? hoverActive : active);
 
+    // ---- DRAW ----
     m_window.clear(sf::Color::Black);
+
+    // Logo
     m_window.draw(m_logo);
 
+    // White side
     m_window.draw(m_whiteLabel);
-    m_window.draw(m_whitePlayerBtn);
-    m_window.draw(m_whiteBotBtn);
+    drawWithShadow(m_window, m_whitePlayerBtn);
+    drawWithShadow(m_window, m_whiteBotBtn);
     m_window.draw(m_whitePlayerText);
     m_window.draw(m_whiteBotText);
     if (m_showWhiteBotList) {
-      for (auto &opt : m_whiteBotOptions) {
-        m_window.draw(opt.box);
+      for (auto& opt : m_whiteBotOptions) {
+        drawWithShadow(m_window, opt.box);
         m_window.draw(opt.label);
       }
     }
 
+    // Black side
     m_window.draw(m_blackLabel);
-    m_window.draw(m_blackPlayerBtn);
-    m_window.draw(m_blackBotBtn);
+    drawWithShadow(m_window, m_blackPlayerBtn);
+    drawWithShadow(m_window, m_blackBotBtn);
     m_window.draw(m_blackPlayerText);
     m_window.draw(m_blackBotText);
     if (m_showBlackBotList) {
-      for (auto &opt : m_blackBotOptions) {
-        m_window.draw(opt.box);
+      for (auto& opt : m_blackBotOptions) {
+        drawWithShadow(m_window, opt.box);
         m_window.draw(opt.label);
       }
     }
 
-    m_window.draw(m_startBtn);
+    // Start + credit
+    drawWithShadow(m_window, m_startBtn);
     m_window.draw(m_startText);
     m_window.draw(m_creditText);
 
