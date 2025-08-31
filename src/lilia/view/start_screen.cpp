@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "lilia/model/chess_game.hpp"
 #include "lilia/view/render_constants.hpp"
 
 namespace lilia::view {
@@ -183,9 +184,66 @@ void StartScreen::setupUI() {
   m_creditText.setFillColor(sf::Color(180, 180, 180));
   sf::FloatRect c = m_creditText.getLocalBounds();
   m_creditText.setPosition(width - c.width - 10.f, height - c.height - 10.f);
+
+  // FEN popup
+  m_fenPopup.setSize(sf::Vector2f(width * 0.8f, height * 0.4f));
+  m_fenPopup.setPosition(width * 0.1f, height * 0.3f);
+  m_fenPopup.setFillColor(sf::Color(60, 60, 60, 240));
+  m_fenPopup.setOutlineColor(outline);
+  m_fenPopup.setOutlineThickness(outlineThick);
+
+  m_fenInputBox.setSize(sf::Vector2f(m_fenPopup.getSize().x - 40.f, 50.f));
+  m_fenInputBox.setPosition(m_fenPopup.getPosition().x + 20.f,
+                             m_fenPopup.getPosition().y + 40.f);
+  m_fenInputBox.setFillColor(sf::Color::White);
+  m_fenInputBox.setOutlineColor(outline);
+  m_fenInputBox.setOutlineThickness(outlineThick);
+
+  m_fenInputText.setFont(m_font);
+  m_fenInputText.setCharacterSize(24);
+  m_fenInputText.setFillColor(sf::Color::Black);
+  m_fenInputText.setPosition(m_fenInputBox.getPosition().x + 5.f,
+                             m_fenInputBox.getPosition().y + 10.f);
+
+  const float fenBtnW = (m_fenPopup.getSize().x - 60.f) / 2.f;
+  const float fenBtnY = m_fenPopup.getPosition().y + m_fenPopup.getSize().y - 60.f;
+  m_fenBackBtn.setSize(sf::Vector2f(fenBtnW, 40.f));
+  m_fenBackBtn.setPosition(m_fenPopup.getPosition().x + 20.f, fenBtnY);
+  m_fenBackBtn.setOutlineColor(outline);
+  m_fenBackBtn.setOutlineThickness(outlineThick);
+
+  m_fenContinueBtn.setSize(sf::Vector2f(fenBtnW, 40.f));
+  m_fenContinueBtn.setPosition(m_fenBackBtn.getPosition().x + fenBtnW + 20.f, fenBtnY);
+  m_fenContinueBtn.setOutlineColor(outline);
+  m_fenContinueBtn.setOutlineThickness(outlineThick);
+
+  m_fenBackText.setFont(m_font);
+  m_fenBackText.setString("Back");
+  m_fenBackText.setCharacterSize(22);
+  m_fenBackText.setFillColor(sf::Color::Black);
+  centerOrigin(m_fenBackText);
+  m_fenBackText.setPosition(m_fenBackBtn.getPosition().x + fenBtnW / 2.f,
+                            m_fenBackBtn.getPosition().y + 20.f);
+
+  m_fenContinueText.setFont(m_font);
+  m_fenContinueText.setString("Continue");
+  m_fenContinueText.setCharacterSize(22);
+  m_fenContinueText.setFillColor(sf::Color::Black);
+  centerOrigin(m_fenContinueText);
+  m_fenContinueText.setPosition(m_fenContinueBtn.getPosition().x + fenBtnW / 2.f,
+                                m_fenContinueBtn.getPosition().y + 20.f);
+
+  m_fenErrorText.setFont(m_font);
+  m_fenErrorText.setCharacterSize(20);
+  m_fenErrorText.setFillColor(sf::Color::Red);
+  centerOrigin(m_fenErrorText);
+  m_fenErrorText.setPosition(width / 2.f,
+                             m_fenInputBox.getPosition().y + m_fenInputBox.getSize().y + 30.f);
 }
 
 bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
+  if (m_showFenPopup) return handleFenMouse(pos, cfg);
+
   // WHITE column interactions
   if (m_whitePlayerBtn.getGlobalBounds().contains(pos)) {
     cfg.whiteIsBot = false;
@@ -241,9 +299,43 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
 
   // Start
   if (m_startBtn.getGlobalBounds().contains(pos)) {
-    return true;
+    m_showFenPopup = true;
   }
   return false;
+}
+
+bool StartScreen::handleFenMouse(sf::Vector2f pos, StartConfig& cfg) {
+  if (m_fenBackBtn.getGlobalBounds().contains(pos)) {
+    m_showFenPopup = false;
+    m_fenString.clear();
+    m_fenInputText.setString("");
+    m_fenInputBox.setOutlineColor(sf::Color::White);
+    m_fenInputBox.setFillColor(sf::Color::White);
+    m_showError = false;
+  } else if (m_fenContinueBtn.getGlobalBounds().contains(pos)) {
+    std::string fen = m_fenString.empty() ? core::START_FEN : m_fenString;
+    if (isValidFen(fen)) {
+      cfg.fen = fen;
+      m_fenInputBox.setFillColor(sf::Color::White);
+      return true;
+    } else {
+      m_fenInputBox.setOutlineColor(sf::Color::Red);
+      m_fenInputBox.setFillColor(sf::Color(255, 200, 200));
+      m_showError = true;
+      m_errorClock.restart();
+    }
+  }
+  return false;
+}
+
+bool StartScreen::isValidFen(const std::string& fen) {
+  try {
+    model::ChessGame g;
+    g.setPosition(fen);
+  } catch (...) {
+    return false;
+  }
+  return true;
 }
 
 StartConfig StartScreen::run() {
@@ -290,11 +382,49 @@ StartConfig StartScreen::run() {
     while (m_window.pollEvent(event)) {
       if (event.type == sf::Event::Closed) {
         m_window.close();
+      } else if (m_showFenPopup) {
+        if (event.type == sf::Event::MouseButtonPressed &&
+            event.mouseButton.button == sf::Mouse::Left) {
+          sf::Vector2f pos =
+              m_window.mapPixelToCoords({event.mouseButton.x, event.mouseButton.y});
+          startGame = handleMouse(pos, cfg);
+        } else if (event.type == sf::Event::TextEntered) {
+          if (event.text.unicode == 8) {
+            if (!m_fenString.empty()) m_fenString.pop_back();
+          } else if (event.text.unicode >= 32 && event.text.unicode < 127) {
+            m_fenString += static_cast<char>(event.text.unicode);
+          }
+          m_fenInputText.setString(m_fenString);
+          m_fenInputBox.setOutlineColor(sf::Color::White);
+          m_fenInputBox.setFillColor(sf::Color::White);
+          m_showError = false;
+        } else if (event.type == sf::Event::KeyPressed) {
+          if (event.key.code == sf::Keyboard::Enter) {
+            std::string fen = m_fenString.empty() ? core::START_FEN : m_fenString;
+            if (isValidFen(fen)) {
+              cfg.fen = fen;
+              startGame = true;
+            } else {
+              m_fenInputBox.setOutlineColor(sf::Color::Red);
+              m_fenInputBox.setFillColor(sf::Color(255, 200, 200));
+              m_showError = true;
+              m_errorClock.restart();
+            }
+          } else if (event.key.code == sf::Keyboard::Escape) {
+            m_showFenPopup = false;
+            m_fenString.clear();
+            m_fenInputText.setString("");
+            m_fenInputBox.setOutlineColor(sf::Color::White);
+            m_fenInputBox.setFillColor(sf::Color::White);
+            m_showError = false;
+          }
+        }
       } else if (event.type == sf::Event::MouseButtonPressed &&
                  event.mouseButton.button == sf::Mouse::Left) {
         sf::Vector2f pos = m_window.mapPixelToCoords({event.mouseButton.x, event.mouseButton.y});
         startGame = handleMouse(pos, cfg);
-      } else if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+      } else if (event.type == sf::Event::KeyPressed &&
+                 event.key.code == sf::Keyboard::Escape) {
         // Optional: allow closing lists with Esc
         m_showWhiteBotList = false;
         m_showBlackBotList = false;
@@ -309,69 +439,86 @@ StartConfig StartScreen::run() {
     // Hover logic
     sf::Vector2f mouse = m_window.mapPixelToCoords(sf::Mouse::getPosition(m_window));
 
-    // Button fills depend on whether that side is bot or player, and hover state
-    bool hover = m_whitePlayerBtn.getGlobalBounds().contains(mouse);
-    m_whitePlayerBtn.setFillColor(cfg.whiteIsBot ? (hover ? hoverInactive : inactive)
-                                                 : (hover ? hoverActive : active));
+    if (!m_showFenPopup) {
+      // Button fills depend on whether that side is bot or player, and hover state
+      bool hover = m_whitePlayerBtn.getGlobalBounds().contains(mouse);
+      m_whitePlayerBtn.setFillColor(cfg.whiteIsBot ? (hover ? hoverInactive : inactive)
+                                                   : (hover ? hoverActive : active));
 
-    hover = m_whiteBotBtn.getGlobalBounds().contains(mouse);
-    m_whiteBotBtn.setFillColor(cfg.whiteIsBot ? (hover ? hoverActive : active)
-                                              : (hover ? hoverInactive : inactive));
+      hover = m_whiteBotBtn.getGlobalBounds().contains(mouse);
+      m_whiteBotBtn.setFillColor(cfg.whiteIsBot ? (hover ? hoverActive : active)
+                                                : (hover ? hoverInactive : inactive));
 
-    hover = m_blackPlayerBtn.getGlobalBounds().contains(mouse);
-    m_blackPlayerBtn.setFillColor(cfg.blackIsBot ? (hover ? hoverInactive : inactive)
-                                                 : (hover ? hoverActive : active));
+      hover = m_blackPlayerBtn.getGlobalBounds().contains(mouse);
+      m_blackPlayerBtn.setFillColor(cfg.blackIsBot ? (hover ? hoverInactive : inactive)
+                                                   : (hover ? hoverActive : active));
 
-    hover = m_blackBotBtn.getGlobalBounds().contains(mouse);
-    m_blackBotBtn.setFillColor(cfg.blackIsBot ? (hover ? hoverActive : active)
-                                              : (hover ? hoverInactive : inactive));
+      hover = m_blackBotBtn.getGlobalBounds().contains(mouse);
+      m_blackBotBtn.setFillColor(cfg.blackIsBot ? (hover ? hoverActive : active)
+                                                : (hover ? hoverInactive : inactive));
 
-    // Compute hover for dropdown zones
-    bool whiteBotHover = m_whiteBotBtn.getGlobalBounds().contains(mouse);
-    bool whiteListHover = false;
-    for (auto& opt : m_whiteBotOptions) {
-      if (opt.box.getGlobalBounds().contains(mouse)) {
-        whiteListHover = true;
-        break;
+      // Compute hover for dropdown zones
+      bool whiteBotHover = m_whiteBotBtn.getGlobalBounds().contains(mouse);
+      bool whiteListHover = false;
+      for (auto& opt : m_whiteBotOptions) {
+        if (opt.box.getGlobalBounds().contains(mouse)) {
+          whiteListHover = true;
+          break;
+        }
+      }
+      if (!whiteBotHover && !whiteListHover) m_whiteListForceHide = false;
+      m_showWhiteBotList = !m_whiteListForceHide && (whiteBotHover || whiteListHover);
+
+      bool blackBotHover = m_blackBotBtn.getGlobalBounds().contains(mouse);
+      bool blackListHover = false;
+      for (auto& opt : m_blackBotOptions) {
+        if (opt.box.getGlobalBounds().contains(mouse)) {
+          blackListHover = true;
+          break;
+        }
+      }
+      if (!blackBotHover && !blackListHover) m_blackListForceHide = false;
+      m_showBlackBotList = !m_blackListForceHide && (blackBotHover || blackListHover);
+
+      // Highlight selected option and hover in lists
+      for (std::size_t i = 0; i < m_whiteBotOptions.size(); ++i) {
+        bool optHover = m_whiteBotOptions[i].box.getGlobalBounds().contains(mouse);
+        sf::Color base =
+            (i == m_whiteBotSelection) ? sf::Color(100, 100, 100) : sf::Color(80, 80, 80);
+        if (optHover) base = sf::Color(120, 120, 120);
+        m_whiteBotOptions[i].box.setFillColor(base);
+        m_whiteBotOptions[i].label.setFillColor(
+            (cfg.whiteIsBot && i == m_whiteBotSelection) ? sf::Color::Yellow : sf::Color::White);
+      }
+      for (std::size_t i = 0; i < m_blackBotOptions.size(); ++i) {
+        bool optHover = m_blackBotOptions[i].box.getGlobalBounds().contains(mouse);
+        sf::Color base =
+            (i == m_blackBotSelection) ? sf::Color(100, 100, 100) : sf::Color(80, 80, 80);
+        if (optHover) base = sf::Color(120, 120, 120);
+        m_blackBotOptions[i].box.setFillColor(base);
+        m_blackBotOptions[i].label.setFillColor(
+            (cfg.blackIsBot && i == m_blackBotSelection) ? sf::Color::Yellow : sf::Color::White);
+      }
+
+      // Start button hover
+      bool startHover = m_startBtn.getGlobalBounds().contains(mouse);
+      m_startBtn.setFillColor(startHover ? hoverActive : active);
+    } else {
+      bool backHover = m_fenBackBtn.getGlobalBounds().contains(mouse);
+      bool contHover = m_fenContinueBtn.getGlobalBounds().contains(mouse);
+      m_fenBackBtn.setFillColor(backHover ? hoverActive : active);
+      m_fenContinueBtn.setFillColor(contHover ? hoverActive : active);
+
+      if (m_showError) {
+        float sec = m_errorClock.getElapsedTime().asSeconds();
+        if (sec > 2.f) {
+          m_showError = false;
+        } else {
+          sf::Uint8 a = static_cast<sf::Uint8>(255.f * (1.f - sec / 2.f));
+          m_fenErrorText.setFillColor(sf::Color(255, 0, 0, a));
+        }
       }
     }
-    if (!whiteBotHover && !whiteListHover) m_whiteListForceHide = false;
-    m_showWhiteBotList = !m_whiteListForceHide && (whiteBotHover || whiteListHover);
-
-    bool blackBotHover = m_blackBotBtn.getGlobalBounds().contains(mouse);
-    bool blackListHover = false;
-    for (auto& opt : m_blackBotOptions) {
-      if (opt.box.getGlobalBounds().contains(mouse)) {
-        blackListHover = true;
-        break;
-      }
-    }
-    if (!blackBotHover && !blackListHover) m_blackListForceHide = false;
-    m_showBlackBotList = !m_blackListForceHide && (blackBotHover || blackListHover);
-
-    // Highlight selected option and hover in lists
-    for (std::size_t i = 0; i < m_whiteBotOptions.size(); ++i) {
-      bool optHover = m_whiteBotOptions[i].box.getGlobalBounds().contains(mouse);
-      sf::Color base =
-          (i == m_whiteBotSelection) ? sf::Color(100, 100, 100) : sf::Color(80, 80, 80);
-      if (optHover) base = sf::Color(120, 120, 120);
-      m_whiteBotOptions[i].box.setFillColor(base);
-      m_whiteBotOptions[i].label.setFillColor(
-          (cfg.whiteIsBot && i == m_whiteBotSelection) ? sf::Color::Yellow : sf::Color::White);
-    }
-    for (std::size_t i = 0; i < m_blackBotOptions.size(); ++i) {
-      bool optHover = m_blackBotOptions[i].box.getGlobalBounds().contains(mouse);
-      sf::Color base =
-          (i == m_blackBotSelection) ? sf::Color(100, 100, 100) : sf::Color(80, 80, 80);
-      if (optHover) base = sf::Color(120, 120, 120);
-      m_blackBotOptions[i].box.setFillColor(base);
-      m_blackBotOptions[i].label.setFillColor(
-          (cfg.blackIsBot && i == m_blackBotSelection) ? sf::Color::Yellow : sf::Color::White);
-    }
-
-    // Start button hover
-    bool startHover = m_startBtn.getGlobalBounds().contains(mouse);
-    m_startBtn.setFillColor(startHover ? hoverActive : active);
 
     // ---- DRAW ----
     m_window.clear(sf::Color::Black);
@@ -409,6 +556,21 @@ StartConfig StartScreen::run() {
     drawWithShadow(m_window, m_startBtn);
     m_window.draw(m_startText);
     m_window.draw(m_creditText);
+
+    if (m_showFenPopup) {
+      sf::RectangleShape overlay(sf::Vector2f(static_cast<float>(m_window.getSize().x),
+                                              static_cast<float>(m_window.getSize().y)));
+      overlay.setFillColor(sf::Color(0, 0, 0, 150));
+      m_window.draw(overlay);
+      drawWithShadow(m_window, m_fenPopup);
+      drawWithShadow(m_window, m_fenInputBox);
+      m_window.draw(m_fenInputText);
+      drawWithShadow(m_window, m_fenBackBtn);
+      drawWithShadow(m_window, m_fenContinueBtn);
+      m_window.draw(m_fenBackText);
+      m_window.draw(m_fenContinueText);
+      if (m_showError) m_window.draw(m_fenErrorText);
+    }
 
     m_window.display();
   }
