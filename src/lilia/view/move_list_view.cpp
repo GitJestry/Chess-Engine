@@ -137,11 +137,15 @@ void MoveListView::addMove(const std::string &uciMove) {
 
 void MoveListView::addResult(const std::string &result) {
   m_result = result;
-  if (m_lines.empty()) {
-    m_lines.push_back(result);
-  } else {
-    m_lines.back() += " " + result;
-  }
+
+  // ensure the result line is visible by scrolling to the bottom
+  const float listHeight = static_cast<float>(m_height) - m_option_height;
+  const float contentTop =
+      listHeight * kListStartRatio + static_cast<float>(kSubHeaderFontSize) + kMoveSpacing;
+  const float visibleHeight = listHeight - contentTop;
+  const float content = static_cast<float>(m_lines.size() + 1) * kLineHeight;
+  const float maxOff = std::max(0.f, content - visibleHeight);
+  m_scroll_offset = std::clamp(maxOff, 0.f, maxOff);
 }
 
 void MoveListView::render(sf::RenderWindow &window) const {
@@ -190,6 +194,19 @@ void MoveListView::render(sf::RenderWindow &window) const {
     rowBg.setFillColor(even ? sf::Color(70, 70, 70) : sf::Color(60, 60, 60));
     rowBg.setPosition(0.f, y);
     window.draw(rowBg);
+  }
+
+  // background for result line
+  if (!m_result.empty()) {
+    float y =
+        contentTop + static_cast<float>(m_lines.size()) * kLineHeight - m_scroll_offset;
+    if (!(y < top || y + kLineHeight > bottom)) {
+      sf::RectangleShape rowBg({static_cast<float>(m_width), kLineHeight});
+      const bool even = (m_lines.size() % 2) == 0;
+      rowBg.setFillColor(even ? sf::Color(70, 70, 70) : sf::Color(60, 60, 60));
+      rowBg.setPosition(0.f, y);
+      window.draw(rowBg);
+    }
   }
 
   // Highlight ausgewählten Zug
@@ -287,6 +304,19 @@ void MoveListView::render(sf::RenderWindow &window) const {
     }
   }
 
+  if (!m_result.empty()) {
+    const float y = contentTop + static_cast<float>(m_lines.size()) * kLineHeight -
+                    m_scroll_offset + 3.f;
+    if (!(y < top || y + kLineHeight > bottom)) {
+      sf::Text resTxt(m_result, m_font, kMoveFontSize);
+      resTxt.setStyle(sf::Text::Bold);
+      resTxt.setFillColor(sf::Color(180, 180, 180));
+      auto rb = resTxt.getLocalBounds();
+      resTxt.setPosition((static_cast<float>(m_width) - rb.width) / 2.f - rb.left, y);
+      window.draw(resTxt);
+    }
+  }
+
   // option field background
   sf::RectangleShape optionBg({static_cast<float>(m_width), m_option_height});
   optionBg.setPosition(0.f, listHeight);
@@ -309,7 +339,8 @@ void MoveListView::render(sf::RenderWindow &window) const {
 void MoveListView::scroll(float delta) {
   m_scroll_offset -= delta * kLineHeight;
   const float listHeight = static_cast<float>(m_height) - m_option_height;
-  const float content = static_cast<float>(m_lines.size()) * kLineHeight;
+  const float content =
+      static_cast<float>(m_lines.size() + (m_result.empty() ? 0 : 1)) * kLineHeight;
   const float contentTop =
       listHeight * kListStartRatio + static_cast<float>(kSubHeaderFontSize) + kMoveSpacing;
   const float visibleHeight = listHeight - contentTop;
@@ -323,6 +354,7 @@ void MoveListView::clear() {
   m_scroll_offset = 0.f;
   m_selected_move = static_cast<std::size_t>(-1);
   m_move_bounds.clear();
+  m_result.clear();
 }
 
 void MoveListView::setCurrentMove(std::size_t moveIndex) {
@@ -343,7 +375,8 @@ void MoveListView::setCurrentMove(std::size_t moveIndex) {
     m_scroll_offset = lineY + kLineHeight - visibleHeight;
   }
 
-  const float content = static_cast<float>(m_lines.size()) * kLineHeight;
+  const float content =
+      static_cast<float>(m_lines.size() + (m_result.empty() ? 0 : 1)) * kLineHeight;
   const float maxOff = std::max(0.f, content - visibleHeight);
   m_scroll_offset = std::clamp(m_scroll_offset, 0.f, maxOff);
 }
