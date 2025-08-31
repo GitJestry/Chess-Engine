@@ -14,12 +14,14 @@
 #include "move_list_view.hpp"
 #include "piece_manager.hpp"
 #include "promotion_manager.hpp"
+#include "player_info_view.hpp"
 
 namespace lilia::view {
 
 class GameView {
 public:
-  GameView(sf::RenderWindow &window);
+  GameView(sf::RenderWindow &window, const PlayerInfo &topInfo,
+           const PlayerInfo &bottomInfo);
   ~GameView() = default;
 
   void init(const std::string &fen = core::START_FEN);
@@ -96,6 +98,8 @@ private:
   sf::Cursor m_cursor_hand_closed;
   EvalBar m_eval_bar;
   MoveListView m_move_list;
+  PlayerInfoView m_top_player;
+  PlayerInfoView m_bottom_player;
 };
 
 } // namespace lilia::view

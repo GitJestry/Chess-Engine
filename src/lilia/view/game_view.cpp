@@ -10,11 +10,12 @@
 
 namespace lilia::view {
 
-GameView::GameView(sf::RenderWindow &window)
+GameView::GameView(sf::RenderWindow &window, const PlayerInfo &topInfo,
+                   const PlayerInfo &bottomInfo)
     : m_window(window), m_board_view(), m_piece_manager(m_board_view),
       m_highlight_manager(m_board_view),
       m_chess_animator(m_board_view, m_piece_manager), m_eval_bar(),
-      m_move_list() {
+      m_move_list(), m_top_player(), m_bottom_player() {
   m_cursor_default.loadFromSystem(sf::Cursor::Arrow);
 
   sf::Image openImg;
@@ -30,6 +31,8 @@ GameView::GameView(sf::RenderWindow &window)
         {openImg.getSize().x / 2, openImg.getSize().y / 2});
   }
   m_window.setMouseCursor(m_cursor_default);
+  m_top_player.setInfo(topInfo);
+  m_bottom_player.setInfo(bottomInfo);
   layout(m_window.getSize().x, m_window.getSize().y);
 }
 
@@ -45,6 +48,8 @@ void GameView::updateEval(int eval) { m_eval_bar.update(eval); }
 void GameView::render() {
   m_eval_bar.render(m_window);
   m_board_view.renderBoard(m_window);
+  m_top_player.render(m_window);
+  m_bottom_player.render(m_window);
   m_highlight_manager.renderSelect(m_window);
   m_chess_animator.renderHighlightLevel(m_window);
   m_highlight_manager.renderHover(m_window);
@@ -104,6 +109,14 @@ void GameView::layout(unsigned int width, unsigned int height) {
                          constant::WINDOW_PX_SIZE + constant::SIDE_MARGIN);
   m_move_list.setPosition({moveListX, vMargin});
   m_move_list.setSize(constant::MOVE_LIST_WIDTH, constant::WINDOW_PX_SIZE);
+
+  float boardLeft = boardCenterX -
+                    static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
+  float boardTop = boardCenterY -
+                   static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
+  m_top_player.setPosition({boardLeft, boardTop - 50.f});
+  m_bottom_player.setPosition({
+      boardLeft, boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 10.f});
 }
 
 void GameView::resetBoard() {

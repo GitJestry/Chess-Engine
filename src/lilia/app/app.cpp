@@ -11,6 +11,8 @@
 #include "lilia/model/chess_game.hpp"
 #include "lilia/view/game_view.hpp"
 #include "lilia/view/texture_table.hpp"
+#include "lilia/bot/bot_info.hpp"
+
 
 namespace lilia::app {
 
@@ -109,7 +111,19 @@ int App::run() {
 
   {
     lilia::model::ChessGame chessGame;
-    lilia::view::GameView gameView(window);
+    lilia::PlayerInfo topInfo;
+    if (m_black_is_bot)
+      topInfo = lilia::getBotInfo(lilia::BotType::Lilia);
+    else
+      topInfo = {"Player", 0, "assets/textures/1.png"};
+
+    lilia::PlayerInfo bottomInfo;
+    if (m_white_is_bot)
+      bottomInfo = lilia::getBotInfo(lilia::BotType::Lilia);
+    else
+      bottomInfo = {"Player", 0, "assets/textures/1.png"};
+
+    lilia::view::GameView gameView(window, topInfo, bottomInfo);
     lilia::controller::GameController gameController(gameView, chessGame);
 
     // start the game using GameController wrapper that delegates to GameManager
