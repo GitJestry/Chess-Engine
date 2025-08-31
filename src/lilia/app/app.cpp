@@ -12,14 +12,25 @@
 
 namespace lilia::app {
 
+void drawVerticalGradient(sf::RenderWindow& window, sf::Color top, sf::Color bottom) {
+  sf::VertexArray va(sf::TriangleStrip, 4);
+  auto size = window.getSize();
+  va[0].position = {0.f, 0.f};
+  va[1].position = {static_cast<float>(size.x), 0.f};
+  va[2].position = {0.f, static_cast<float>(size.y)};
+  va[3].position = {static_cast<float>(size.x), static_cast<float>(size.y)};
+  va[0].color = va[1].color = top;
+  va[2].color = va[3].color = bottom;
+  window.draw(va);
+}
+
 int App::run() {
   engine::Engine::init();
   lilia::view::TextureTable::getInstance().preLoad();
 
-  sf::RenderWindow window(
-      sf::VideoMode(lilia::view::constant::WINDOW_TOTAL_WIDTH,
-                    lilia::view::constant::WINDOW_TOTAL_HEIGHT),
-      "Lilia", sf::Style::Titlebar | sf::Style::Close);
+  sf::RenderWindow window(sf::VideoMode(lilia::view::constant::WINDOW_TOTAL_WIDTH,
+                                        lilia::view::constant::WINDOW_TOTAL_HEIGHT),
+                          "Lilia", sf::Style::Titlebar | sf::Style::Close);
 
   while (window.isOpen()) {
     lilia::view::StartScreen startScreen(window);
@@ -37,13 +48,12 @@ int App::run() {
       lilia::view::GameView gameView(window, m_black_is_bot, m_white_is_bot);
       lilia::controller::GameController gameController(gameView, chessGame);
 
-      gameController.startGame(m_start_fen, m_white_is_bot, m_black_is_bot,
-                               m_thinkTimeMs, m_searchDepth);
+      gameController.startGame(m_start_fen, m_white_is_bot, m_black_is_bot, m_thinkTimeMs,
+                               m_searchDepth);
 
       sf::Clock clock;
-      while (window.isOpen() &&
-             gameController.getNextAction() ==
-                 lilia::controller::GameController::NextAction::None) {
+      while (window.isOpen() && gameController.getNextAction() ==
+                                    lilia::controller::GameController::NextAction::None) {
         float deltaSeconds = clock.restart().asSeconds();
         sf::Event event;
         while (window.pollEvent(event)) {
@@ -51,7 +61,7 @@ int App::run() {
           gameController.handleEvent(event);
         }
         gameController.update(deltaSeconds);
-        window.clear(sf::Color{48, 46, 43});
+        drawVerticalGradient(window, sf::Color{24, 29, 38}, sf::Color{16, 19, 26});
         gameController.render();
         window.display();
       }
@@ -60,16 +70,12 @@ int App::run() {
 
       action = gameController.getNextAction();
 
-    } while (action ==
-             lilia::controller::GameController::NextAction::Rematch &&
-             window.isOpen());
+    } while (action == lilia::controller::GameController::NextAction::Rematch && window.isOpen());
 
-    if (action != lilia::controller::GameController::NextAction::NewBot)
-      break;
+    if (action != lilia::controller::GameController::NextAction::NewBot) break;
   }
 
   return 0;
 }
 
 }  // namespace lilia::app
-

@@ -1,94 +1,117 @@
 #include "lilia/view/player_info_view.hpp"
 
 #include <algorithm>  // std::clamp, std::min
+#include <cmath>
 
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
 
 namespace lilia::view {
 
+namespace {
+// Palette in sync with the sidebar / start screen
+const sf::Color kFrameFill(42, 48, 63);            // #2A303F
+const sf::Color kFrameOutline(120, 140, 170, 60);  // subtle hairline
+const sf::Color kNameColor(240, 244, 255);         // text
+const sf::Color kEloColor(180, 186, 205);          // muted text
+
+inline float snapf(float v) {
+  return std::round(v);
+}
+inline sf::Vector2f snap(sf::Vector2f p) {
+  return {snapf(p.x), snapf(p.y)};
+}
+}  // namespace
+
 PlayerInfoView::PlayerInfoView() {
-  m_frame.setFillColor(sf::Color::White);
-  m_frame.setOutlineColor(sf::Color(100, 100, 100));
-  m_frame.setOutlineThickness(2.f);
+  // icon frame (32x32 fill area, 1px hairline border)
+  m_frame.setFillColor(kFrameFill);
+  m_frame.setOutlineColor(kFrameOutline);
+  m_frame.setOutlineThickness(1.f);
   m_frame.setSize({32.f, 32.f});
-  if (m_font2.loadFromFile(constant::STR_FILE_PATH_FONT)) {
-    m_elo.setFont(m_font2);
-    m_elo.setCharacterSize(15);
-    m_elo.setFillColor({140, 132, 130});
-    m_elo.setStyle(sf::Text::Italic);
-  }
+
+  // font (use the same face for name and ELO)
   if (m_font.loadFromFile(constant::STR_FILE_PATH_FONT)) {
+    m_font.setSmooth(false);
+
     m_name.setFont(m_font);
     m_name.setCharacterSize(16);
-    m_name.setFillColor(sf::Color::White);
+    m_name.setFillColor(kNameColor);
     m_name.setStyle(sf::Text::Bold);
+
+    m_elo.setFont(m_font);
+    m_elo.setCharacterSize(15);
+    m_elo.setFillColor(kEloColor);
+    m_elo.setStyle(sf::Text::Regular);  // no italic -> cleaner
   }
 }
 
 void PlayerInfoView::setInfo(const PlayerInfo& info) {
   m_icon.setTexture(TextureTable::getInstance().get(info.iconPath));
 
-  // Skaliere so, dass das Icon garantiert in die 32x32-Füllfläche passt (mit kleinem Innenabstand).
+  // scale icon to fit inside 32x32 frame with a small inner padding
   const auto frameSize = m_frame.getSize();  // 32x32
-  const float innerPad = 3.f;                // freier Rand innerhalb des Rahmens
+  const float innerPad = 2.f;
   const float targetW = frameSize.x - 2.f * innerPad;
   const float targetH = frameSize.y - 2.f * innerPad;
 
-  auto size = m_icon.getOriginalSize();
-  if (size.x > 0 && size.y > 0) {
-    const float sx = targetW / static_cast<float>(size.x);
-    const float sy = targetH / static_cast<float>(size.y);
-    const float scale = std::min(sx, sy) * 1.15;
-    m_icon.setScale(scale, scale);
+  const auto size = m_icon.getOriginalSize();
+  if (size.x > 0.f && size.y > 0.f) {
+    const float sx = targetW / size.x;
+    const float sy = targetH / size.y;
+    const float s = std::min(sx, sy);
+    m_icon.setScale(s, s);  // exact fit; no overscale
   }
-
   m_icon.setOriginToCenter();
+
+  // text
+  m_name.setString(info.name);
   if (info.elo == 0) {
-    m_name.setString(info.name);
     m_elo.setString("");
   } else {
-    m_name.setString(info.name);
     m_elo.setString(" (" + std::to_string(info.elo) + ")");
   }
 }
 
-// Variante 1: vorhandene Signatur behalten (kein Clamping möglich ohne Viewport-Größe)
 void PlayerInfoView::setPosition(const Entity::Position& pos) {
   m_position = pos;
 
-  // Rahmen setzen
-  m_frame.setPosition(pos);
+  // frame
+  m_frame.setPosition(snap({pos.x, pos.y}));
 
-  // Icon exakt auf die Mitte der Füllfläche (Outline wird außen gezeichnet)
-  const auto frameSize = m_frame.getSize();  // 32x32
-  m_icon.setPosition({pos.x + frameSize.x * 0.5f, pos.y + frameSize.y * 0.5f});
+  // icon centered in frame (outline is outside the 32x32 fill)
+  const auto frameSize = m_frame.getSize();
+  m_icon.setPosition(snap({pos.x + frameSize.x * 0.5f, pos.y + frameSize.y * 0.5f}));
 
-  // Text neben dem Rahmen vertikal zentrieren
+  // text baseline aligned and vertically centered to frame
   const float textLeft = pos.x + frameSize.x + 12.f;
-  const auto tb = m_name.getLocalBounds();  // tb.top ist i.d.R. negativ
-  const float textY = pos.y + (frameSize.y - tb.height) * 0.3f - tb.top;
-  m_name.setPosition(textLeft, textY);
-  m_elo.setPosition(m_name.getPosition().x + tb.width, textY);
+
+  // compute baseline using local bounds (top is usually negative in SFML)
+  auto nb = m_name.getLocalBounds();
+  const float baselineY = pos.y + (frameSize.y - nb.height) * 0.5f - nb.top;
+
+  m_name.setPosition(snap({textLeft, baselineY}));
+
+  // place ELO right after name with a small gap
+  auto nameBounds = m_name.getLocalBounds();
+  const float eloX = textLeft + nameBounds.width + 6.f;
+  m_elo.setPosition(snap({eloX, baselineY}));
 }
 
-// Variante 2: Clamping gegen Bildschirmränder
-// -> Im Header deklarieren: void setPositionClamped(const Entity::Position&, const sf::Vector2u&
-// viewportSize);
 void PlayerInfoView::setPositionClamped(const Entity::Position& pos,
                                         const sf::Vector2u& viewportSize) {
-  const auto frameSize = m_frame.getSize();             // 32x32 (Füllfläche)
-  const float outline = m_frame.getOutlineThickness();  // 2
-  const float outerW = frameSize.x + 2.f * outline;     // 36
-  const float outerH = frameSize.y + 2.f * outline;     // 36
+  const auto frameSize = m_frame.getSize();             // 32x32
+  const float outline = m_frame.getOutlineThickness();  // 1
+  const float outerW = frameSize.x + 2.f * outline;
+  const float outerH = frameSize.y + 2.f * outline;
 
-  const float pad = 8.f;  // Abstand zum Bildschirmrand
+  const float pad = 8.f;  // screen edge padding
 
   Entity::Position clamped = pos;
   clamped.x = std::clamp(clamped.x, pad, static_cast<float>(viewportSize.x) - outerW - pad);
   clamped.y = std::clamp(clamped.y, pad, static_cast<float>(viewportSize.y) - outerH - pad);
 
-  setPosition(clamped);  // nutzt die Variante oben (zentriert Icon und Text korrekt)
+  setPosition(clamped);
 }
 
 void PlayerInfoView::render(sf::RenderWindow& window) {

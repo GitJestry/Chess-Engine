@@ -412,14 +412,20 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
 }
 
 void TextureTable::preLoad() {
-  load(constant::STR_TEXTURE_EVAL_WHITE, sf::Color(255, 255, 255));
-  load(constant::STR_TEXTURE_EVAL_BLACK, sf::Color(64, 61, 57));
+  load(constant::STR_TEXTURE_EVAL_WHITE, sf::Color(236, 240, 255));
+  load(constant::STR_TEXTURE_EVAL_BLACK, sf::Color(42, 48, 63));
 
-  load(constant::STR_TEXTURE_WHITE, sf::Color(240, 240, 210));
-  load(constant::STR_TEXTURE_BLACK, sf::Color(120, 150, 86));
-  load(constant::STR_TEXTURE_SELECTHLIGHT, sf::Color(240, 240, 50, 160));
-  load(constant::STR_TEXTURE_WARNINGHLIGHT, sf::Color(255, 50, 50, 160));
-  load(constant::STR_TEXTURE_HISTORY_OVERLAY, sf::Color(80, 80, 80, 100));
+  // Board squares
+  load(constant::STR_TEXTURE_WHITE, sf::Color(230, 235, 244));  // #E6EBF4  light slate
+  load(constant::STR_TEXTURE_BLACK, sf::Color(94, 107, 135));  // #5E6B87  slate blue (not too dark)
+
+  // Overlays
+  load(constant::STR_TEXTURE_SELECTHLIGHT,
+       sf::Color(100, 190, 255, 170));  // #64BEFF, matches accent
+  load(constant::STR_TEXTURE_WARNINGHLIGHT,
+       sf::Color(255, 102, 102, 190));  // #FF6666, clear check alert
+  load(constant::STR_TEXTURE_HISTORY_OVERLAY,
+       sf::Color(120, 140, 170, 90));  // #788CAA, subtle last-move
 
   m_textures[constant::STR_TEXTURE_ATTACKHLIGHT] =
       std::move(makeAttackDotTexture(constant::ATTACK_DOT_PX_SIZE));

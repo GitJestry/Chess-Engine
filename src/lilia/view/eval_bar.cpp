@@ -1,5 +1,6 @@
 #include "lilia/view/eval_bar.hpp"
 
+#include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Text.hpp>
 #include <algorithm>
@@ -16,18 +17,13 @@
 namespace lilia::view {
 
 EvalBar::EvalBar() : EvalBar::Entity() {
-  setTexture(
-      TextureTable::getInstance().get(constant::STR_TEXTURE_TRANSPARENT));
+  setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_TRANSPARENT));
   setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
   setOriginToCenter();
-  m_black_background.setTexture(
-      TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_BLACK));
-  m_white_fill_eval.setTexture(
-      TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_WHITE));
-  m_black_background.setScale(constant::EVAL_BAR_WIDTH,
-                              constant::EVAL_BAR_HEIGHT);
-  m_white_fill_eval.setScale(constant::EVAL_BAR_WIDTH,
-                             constant::EVAL_BAR_HEIGHT);
+  m_black_background.setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_BLACK));
+  m_white_fill_eval.setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_WHITE));
+  m_black_background.setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
+  m_white_fill_eval.setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
   m_black_background.setOriginToCenter();
   m_white_fill_eval.setOriginToCenter();
   m_font.loadFromFile(constant::STR_FILE_PATH_FONT);
@@ -46,9 +42,23 @@ void EvalBar::setPosition(const Entity::Position &pos) {
 }
 
 void EvalBar::render(sf::RenderWindow &window) {
-  draw(window);
-  m_black_background.draw(window);
-  m_white_fill_eval.draw(window);
+  draw(window);                     // base (transparent)
+  m_black_background.draw(window);  // dark background
+  m_white_fill_eval.draw(window);   // white fill (scaled to eval)
+
+  // --- hairline frame to blend with the UI panels ---
+  const float W = static_cast<float>(constant::EVAL_BAR_WIDTH);
+  const float H = static_cast<float>(constant::EVAL_BAR_HEIGHT);
+  const float left = std::round(getPosition().x - W * 0.5f);
+  const float top = std::round(getPosition().y - H * 0.5f);
+
+  sf::RectangleShape frame({W, H});
+  frame.setPosition(left, top);
+  frame.setFillColor(sf::Color::Transparent);
+  frame.setOutlineThickness(1.f);
+  frame.setOutlineColor(sf::Color(120, 140, 170, 60));  // same hairline we used in sidebar
+  window.draw(frame);
+
   window.draw(m_score_text);
 }
 void EvalBar::update(int eval) {
@@ -82,16 +92,14 @@ void EvalBar::update(int eval) {
   // If the evaluation favors White (>= 0), position the text at the bottom
   // (white side) and draw it in black for contrast. Otherwise, position it
   // at the top (black side) and draw it in white.
-  const float offset = 10.f; // small margin from the edge of the bar
-  const float barHalfHeight =
-      static_cast<float>(constant::EVAL_BAR_HEIGHT) / 2.f;
+  const float offset = 10.f;  // small margin from the edge of the bar
+  const float barHalfHeight = static_cast<float>(constant::EVAL_BAR_HEIGHT) / 2.f;
 
   float xPos = getPosition().x;
   float yPos = getPosition().y;
   if (m_display_eval >= 0.f) {
     m_score_text.setFillColor(sf::Color::Black);
-    yPos +=
-        barHalfHeight - offset * 1.5; // *1.5 because of font origin position
+    yPos += barHalfHeight - offset * 1.5;  // *1.5 because of font origin position
   } else {
     m_score_text.setFillColor(sf::Color::White);
     yPos -= barHalfHeight - offset;
@@ -101,8 +109,8 @@ void EvalBar::update(int eval) {
 }
 
 static float evalToWhitePct(float cp) {
-  constexpr float k = 1000.0f;            // langsamere Sättigung
-  return 0.5f + 0.5f * std::tanh(cp / k); // 0.5 = ausgeglichen
+  constexpr float k = 1000.0f;             // langsamere Sättigung
+  return 0.5f + 0.5f * std::tanh(cp / k);  // 0.5 = ausgeglichen
 }
 
 void EvalBar::scaleToEval(float e) {
@@ -114,8 +122,7 @@ void EvalBar::scaleToEval(float e) {
 
   // Sicherstellen, dass wir die Original-Texturgröße kennen
   auto whiteOrig = m_white_fill_eval.getOriginalSize();
-  if (whiteOrig.x <= 0.f || whiteOrig.y <= 0.f)
-    return;
+  if (whiteOrig.x <= 0.f || whiteOrig.y <= 0.f) return;
 
   // Absolutgröße in Pixel => Skalierungsfaktoren = gewünschtePixel /
   // OriginalPixel
@@ -125,8 +132,7 @@ void EvalBar::scaleToEval(float e) {
 
   // Weiß unten „anheften“, damit 50% exakt Mitte ist (Origin = Center)
   const auto p = getPosition();
-  m_white_fill_eval.setPosition(
-      Entity::Position{p.x, p.y + (H - whitePx) * 0.5f});
+  m_white_fill_eval.setPosition(Entity::Position{p.x, p.y + (H - whitePx) * 0.5f});
 
   // (Optional) Hintergrund sicher auf volle Größe bringen – einmalig im Ctor
   // reicht, aber falls du es hier robust machen willst:
@@ -161,4 +167,4 @@ void EvalBar::reset() {
   scaleToEval(0.f);
 }
 
-} // namespace lilia::view
+}  // namespace lilia::view
