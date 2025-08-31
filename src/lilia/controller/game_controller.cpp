@@ -7,6 +7,7 @@
 #include <SFML/Window/Mouse.hpp>
 #include <algorithm>
 #include <string>
+#include <iostream>
 
 #include "lilia/controller/bot_player.hpp"
 #include "lilia/controller/game_manager.hpp"
@@ -48,6 +49,8 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
         if (this->m_fen_index != this->m_fen_history.size() - 1) {
           this->m_fen_index = this->m_fen_history.size() - 1;
           this->m_game_view.setBoardFen(this->m_fen_history[this->m_fen_index]);
+          this->m_eval_cp.store(this->m_eval_history[this->m_fen_index]);
+          this->m_game_view.updateEval(this->m_eval_history[this->m_fen_index]);
           this->m_game_view.selectMove(this->m_fen_index
                                            ? this->m_fen_index - 1
                                            : static_cast<std::size_t>(-1));
@@ -63,10 +66,12 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
         this->m_chess_game.checkGameResult();
         this->m_game_view.addMove(move_to_uci(mv));
         this->m_fen_history.push_back(this->m_chess_game.getFen());
+        this->m_eval_history.push_back(this->m_eval_cp.load());
         this->m_fen_index = this->m_fen_history.size() - 1;
+        this->m_game_view.updateFen(this->m_fen_history.back());
         this->m_game_view.selectMove(this->m_fen_index
-                                         ? this->m_fen_index - 1
-                                         : static_cast<std::size_t>(-1));
+                                           ? this->m_fen_index - 1
+                                           : static_cast<std::size_t>(-1));
       });
 
   m_game_manager->setOnPromotionRequested([this](core::Square sq) {
@@ -95,10 +100,14 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
                             whiteDepth, blackThinkTimeMs, blackDepth);
 
   m_fen_history.clear();
+  m_eval_history.clear();
   m_fen_history.push_back(fen);
+  m_eval_history.push_back(m_eval_cp.load());
   m_fen_index = 0;
   m_move_history.clear();
   m_game_view.selectMove(static_cast<std::size_t>(-1));
+  m_eval_cp.store(m_eval_history[0]);
+  m_game_view.updateEval(m_eval_history[0]);
 
   // UI-State
   m_mouse_down = false;
@@ -169,6 +178,9 @@ void GameController::handleEvent(const sf::Event &event) {
     case view::MoveListView::Option::Rematch:
       m_next_action = NextAction::Rematch;
       return;
+    case view::MoveListView::Option::ShowFen:
+      std::cout << "FEN: " << m_fen_history[m_fen_index] << std::endl;
+      return;
     default:
       break;
     }
@@ -184,6 +196,8 @@ void GameController::handleEvent(const sf::Event &event) {
       m_game_view.clearAllHighlights();
       highlightLastMove();
       m_sound_manager.playEffect(info.sound);
+      m_eval_cp.store(m_eval_history[m_fen_index]);
+      m_game_view.updateEval(m_eval_history[m_fen_index]);
       return;
     }
   }
@@ -471,7 +485,8 @@ void GameController::movePieceAndClear(const model::Move &move,
   }
 
   m_sound_manager.playEffect(effect);
-  m_move_history.push_back({move, moverColorBefore, capturedType, effect});
+  m_move_history.push_back({move, moverColorBefore, capturedType, effect,
+                            m_eval_cp.load()});
 
   // 7) Sichere Premove-Verarbeitung:
   //    Statt direkt im Callback zu moven (Re-Entrancy!), prüfen wir Legalität
@@ -874,6 +889,9 @@ void GameController::stepBackward() {
     m_game_view.clearAllHighlights();
     highlightLastMove();
     m_sound_manager.playEffect(info.sound);
+    m_eval_cp.store(m_eval_history[m_fen_index]);
+    m_game_view.updateEval(m_eval_history[m_fen_index]);
+    m_game_view.updateFen(m_fen_history[m_fen_index]);
   }
 }
 
@@ -908,6 +926,9 @@ void GameController::stepForward() {
     m_game_view.clearAllHighlights();
     highlightLastMove();
     m_sound_manager.playEffect(info.sound);
+    m_eval_cp.store(m_eval_history[m_fen_index]);
+    m_game_view.updateEval(m_eval_history[m_fen_index]);
+    m_game_view.updateFen(m_fen_history[m_fen_index]);
   }
 }
 

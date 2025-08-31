@@ -38,6 +38,7 @@ class GameView {
   void addResult(const std::string &result);
   void selectMove(std::size_t moveIndex);
   void setBoardFen(const std::string &fen);
+  void updateFen(const std::string &fen);
   void scrollMoveList(float delta);
   void setBotMode(bool anyBot);
 
