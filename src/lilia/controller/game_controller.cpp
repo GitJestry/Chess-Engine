@@ -123,7 +123,20 @@ void GameController::handleEvent(const sf::Event &event) {
                          ? static_cast<core::Square>(info.move.to - 8)
                          : static_cast<core::Square>(info.move.to + 8);
         }
-        m_game_view.animationMovePiece(info.move.to, info.move.from);
+        m_game_view.animationMovePiece(
+            info.move.to, info.move.from, core::NO_SQUARE, core::PieceType::None,
+            [this, info, epVictim]() {
+              if (info.move.isCapture) {
+                core::Square capSq =
+                    info.move.isEnPassant ? epVictim : info.move.to;
+                m_game_view.addPiece(info.capturedType, ~info.moverColor, capSq);
+              }
+              if (info.move.promotion != core::PieceType::None) {
+                m_game_view.removePiece(info.move.from);
+                m_game_view.addPiece(core::PieceType::Pawn, info.moverColor,
+                                     info.move.from);
+              }
+            });
         if (info.move.castle != model::CastleSide::None) {
           const core::Square rookFrom =
               m_chess_game.getRookSquareFromCastleside(info.move.castle, info.moverColor);
@@ -131,14 +144,6 @@ void GameController::handleEvent(const sf::Event &event) {
                                           ? static_cast<core::Square>(info.move.to - 1)
                                           : static_cast<core::Square>(info.move.to + 1);
           m_game_view.animationMovePiece(rookTo, rookFrom);
-        }
-        if (info.move.isCapture) {
-          core::Square capSq = info.move.isEnPassant ? epVictim : info.move.to;
-          m_game_view.addPiece(info.capturedType, ~info.moverColor, capSq);
-        }
-        if (info.move.promotion != core::PieceType::None) {
-          m_game_view.removePiece(info.move.from);
-          m_game_view.addPiece(core::PieceType::Pawn, info.moverColor, info.move.from);
         }
         --m_fen_index;
         m_game_view.selectMove(m_fen_index ? m_fen_index - 1 : static_cast<std::size_t>(-1));

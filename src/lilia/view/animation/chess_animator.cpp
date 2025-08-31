@@ -31,11 +31,13 @@ void ChessAnimator::snapAndReturn(core::Square pieceSq, core::MousePos mousePos)
       std::make_unique<SnapToSquareAnim>(m_piece_manager_ref, pieceSq, mouseToEntityPos(mousePos),
                                          m_board_view_ref.getSquareScreenPos(pieceSq)));
 }
-void ChessAnimator::movePiece(core::Square from, core::Square to, core::PieceType promotion) {
+void ChessAnimator::movePiece(core::Square from, core::Square to, core::PieceType promotion,
+                              std::function<void()> onComplete) {
   m_anim_manager.add(
       m_piece_manager_ref.getPieceID(from),
       std::make_unique<MoveAnim>(m_piece_manager_ref, m_board_view_ref.getSquareScreenPos(from),
-                                 m_board_view_ref.getSquareScreenPos(to), from, to, promotion));
+                                 m_board_view_ref.getSquareScreenPos(to), from, to, promotion,
+                                 std::move(onComplete)));
 }
 void ChessAnimator::dropPiece(core::Square from, core::Square to, core::PieceType promotion) {
   m_piece_manager_ref.movePiece(from, to, promotion);

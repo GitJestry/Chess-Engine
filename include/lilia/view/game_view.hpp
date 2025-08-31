@@ -16,6 +16,8 @@
 #include "promotion_manager.hpp"
 #include "player_info_view.hpp"
 
+#include <functional>
+
 namespace lilia::view {
 
 class GameView {
@@ -67,7 +69,8 @@ public:
   void animationSnapAndReturn(core::Square sq, core::MousePos mousePos);
   void animationMovePiece(core::Square from, core::Square to,
                           core::Square enPSquare = core::NO_SQUARE,
-                          core::PieceType promotion = core::PieceType::None);
+                          core::PieceType promotion = core::PieceType::None,
+                          std::function<void()> onComplete = {});
   void animationDropPiece(core::Square from, core::Square to,
                           core::Square enPSquare = core::NO_SQUARE,
                           core::PieceType promotion = core::PieceType::None);
