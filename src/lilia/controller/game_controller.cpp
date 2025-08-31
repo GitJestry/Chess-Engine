@@ -87,6 +87,9 @@ GameController::~GameController() = default;
 void GameController::startGame(const std::string &fen, bool whiteIsBot,
                                bool blackIsBot, int think_time_ms, int depth) {
   m_sound_manager.playEffect(view::sound::Effect::GameBegins);
+  m_game_view.hideResignPopup();
+  m_game_view.hideGameOverPopup();
+  m_game_view.setGameOver(false);
   m_game_view.init(fen);
   m_game_view.setBotMode(whiteIsBot || blackIsBot);
   m_game_manager->startGame(fen, whiteIsBot, blackIsBot, think_time_ms, depth);
@@ -186,9 +189,6 @@ void GameController::handleEvent(const sf::Event &event) {
     }
   }
 
-  if (m_chess_game.getResult() != core::GameResult::ONGOING)
-    return;
-
   if (event.type == sf::Event::MouseWheelScrolled) {
     m_game_view.scrollMoveList(event.mouseWheelScroll.delta);
     if (m_fen_index != m_fen_history.size() - 1)
@@ -205,6 +205,9 @@ void GameController::handleEvent(const sf::Event &event) {
     }
   }
   if (m_fen_index != m_fen_history.size() - 1)
+    return;
+
+  if (m_chess_game.getResult() != core::GameResult::ONGOING)
     return;
 
   switch (event.type) {
