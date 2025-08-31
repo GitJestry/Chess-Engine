@@ -1,6 +1,5 @@
 #pragma once
 
-#include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Text.hpp>
@@ -21,6 +20,7 @@
 
 #include <functional>
 #include <vector>
+#include "particle_system.hpp"
 
 namespace lilia::view {
 
@@ -144,12 +144,7 @@ private:
   sf::FloatRect m_nb_bounds;
   sf::FloatRect m_rm_bounds;
 
-  struct ConfettiParticle {
-    sf::CircleShape shape;
-    sf::Vector2f velocity;
-  };
-  std::vector<ConfettiParticle> m_confetti;
-  float m_confetti_time{0.f};
+  ParticleSystem m_particles;
 };
 
 } // namespace lilia::view

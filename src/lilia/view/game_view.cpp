@@ -5,8 +5,6 @@
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Text.hpp>
 #include <algorithm>
-#include <cmath>
-#include <random>
 
 #include "lilia/bot/bot_info.hpp"
 #include "lilia/view/render_constants.hpp"
@@ -90,15 +88,7 @@ void GameView::init(const std::string &fen) {
 
 void GameView::update(float dt) {
   m_chess_animator.updateAnimations(dt);
-  if (m_confetti_time > 0.f) {
-    m_confetti_time -= dt;
-    for (auto &p : m_confetti) {
-      p.shape.move(p.velocity * dt);
-    }
-    if (m_confetti_time <= 0.f) {
-      m_confetti.clear();
-    }
-  }
+  m_particles.update(dt);
 }
 
 void GameView::updateEval(int eval) { m_eval_bar.update(eval); }
@@ -121,10 +111,8 @@ void GameView::render() {
                                 static_cast<float>(m_window.getSize().y)});
     overlay.setFillColor(sf::Color(0, 0, 0, 100));
     m_window.draw(overlay);
-    if (m_confetti_time > 0.f) {
-      for (auto &p : m_confetti) {
-        m_window.draw(p.shape);
-      }
+    if (m_show_game_over) {
+      m_particles.render(m_window);
     }
     m_window.draw(m_popup_bg);
     if (m_show_resign) {
@@ -233,34 +221,14 @@ void GameView::showGameOverPopup(const std::string &msg) {
   m_rm_bounds = m_go_rematch.getGlobalBounds();
 
   if (msg.find("won") != std::string::npos) {
-    m_confetti_time = 1.f;
-    m_confetti.clear();
-    std::mt19937 rng(std::random_device{}());
-    constexpr float TWO_PI = 6.2831853f;
-    std::uniform_real_distribution<float> angleDist(0.f, TWO_PI);
-    std::uniform_real_distribution<float> speedDist(100.f, 200.f);
-    std::uniform_real_distribution<float> radiusDist(2.f, 4.f);
-    std::uniform_int_distribution<int> colorDist(0, 255);
-    for (int i = 0; i < 100; ++i) {
-      float angle = angleDist(rng);
-      float speed = speedDist(rng);
-      float radius = radiusDist(rng);
-      sf::CircleShape shape(radius);
-      shape.setFillColor(
-          sf::Color(colorDist(rng), colorDist(rng), colorDist(rng)));
-      shape.setOrigin(radius, radius);
-      shape.setPosition(center.x, center.y);
-      ConfettiParticle p{shape,
-                         {std::cos(angle) * speed, std::sin(angle) * speed}};
-      m_confetti.push_back(p);
-    }
+    m_particles.emitConfetti(center,
+                             static_cast<float>(constant::WINDOW_PX_SIZE), 200);
   }
 }
 
 void GameView::hideGameOverPopup() {
   m_show_game_over = false;
-  m_confetti_time = 0.f;
-  m_confetti.clear();
+  m_particles.clear();
 }
 
 bool GameView::isGameOverPopupOpen() const { return m_show_game_over; }
