@@ -46,6 +46,38 @@ void SoundManager::playCastle() {
   m_sounds[constant::SFX_CASTLE_NAME].play();
 }
 
+void SoundManager::playEffect(Effect effect) {
+  switch (effect) {
+    case Effect::PlayerMove:
+      playPlayerMove();
+      break;
+    case Effect::EnemyMove:
+      playEnemyMove();
+      break;
+    case Effect::Capture:
+      playCapture();
+      break;
+    case Effect::Check:
+      playCheck();
+      break;
+    case Effect::Warning:
+      playWarning();
+      break;
+    case Effect::Castle:
+      playCastle();
+      break;
+    case Effect::Promotion:
+      playPromotion();
+      break;
+    case Effect::GameBegins:
+      playGameBegins();
+      break;
+    case Effect::GameEnds:
+      playGameEnds();
+      break;
+  }
+}
+
 void SoundManager::playBackgroundMusic(const std::string& filename, bool loop) {
   if (!m_music.openFromFile(filename)) {
     throw std::runtime_error("Failed to open music file: " + filename);
