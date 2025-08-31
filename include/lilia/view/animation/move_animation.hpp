@@ -3,6 +3,7 @@
 #include "../../chess_types.hpp"
 #include "../piece_manager.hpp"
 #include "i_animation.hpp"
+#include <functional>
 
 namespace lilia::view::animation {
 
@@ -10,7 +11,8 @@ class MoveAnim : public IAnimation {
  public:
   explicit MoveAnim(PieceManager& pieceMgrRef, Entity::Position s, Entity::Position e,
                     core::Square from = core::NO_SQUARE, core::Square to = core::NO_SQUARE,
-                    core::PieceType promotion = core::PieceType::None);
+                    core::PieceType promotion = core::PieceType::None,
+                    std::function<void()> onComplete = {});
   void update(float dt) override;
   void draw(sf::RenderWindow& window) override;
   [[nodiscard]] inline bool isFinished() const override;
@@ -25,6 +27,7 @@ class MoveAnim : public IAnimation {
   core::Square m_from;
   core::Square m_to;
   core::PieceType m_promotion;
+  std::function<void()> m_on_complete;
 };
 
 }  

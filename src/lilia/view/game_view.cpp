@@ -158,8 +158,9 @@ void GameView::animationSnapAndReturn(core::Square sq, core::MousePos mousePos) 
 }
 
 void GameView::animationMovePiece(core::Square from, core::Square to, core::Square enPSquare,
-                                  core::PieceType promotion) {
-  m_chess_animator.movePiece(from, to, promotion);
+                                  core::PieceType promotion,
+                                  std::function<void()> onComplete) {
+  m_chess_animator.movePiece(from, to, promotion, std::move(onComplete));
   if (enPSquare != core::NO_SQUARE) m_piece_manager.removePiece(enPSquare);
 }
 

@@ -4,6 +4,7 @@
 #include "../board_view.hpp"
 #include "../piece_manager.hpp"
 #include "animation_manager.hpp"
+#include <functional>
 
 namespace lilia::view {
 class PromotionManager;
@@ -17,7 +18,8 @@ class ChessAnimator {
 
   void warningAnim(core::Square sq);
   void snapAndReturn(core::Square pieceSq, core::MousePos mousePos);
-  void movePiece(core::Square from, core::Square to, core::PieceType promotion);
+  void movePiece(core::Square from, core::Square to, core::PieceType promotion,
+                 std::function<void()> onComplete = {});
   void dropPiece(core::Square from, core::Square to, core::PieceType promotion);
   void piecePlaceHolder(core::Square sq);
   void promotionSelect(core::Square prPos, PromotionManager& prOptRef, core::Color c);
