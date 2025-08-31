@@ -38,6 +38,8 @@ class StartScreen {
   sf::Text m_whiteLabel;
   std::vector<BotOption> m_whiteBotOptions;
   std::size_t m_whiteBotSelection{0};
+  bool m_showWhiteBotList{false};
+  bool m_whiteListForceHide{false};
 
   sf::RectangleShape m_blackPlayerBtn;
   sf::RectangleShape m_blackBotBtn;
@@ -46,6 +48,8 @@ class StartScreen {
   sf::Text m_blackLabel;
   std::vector<BotOption> m_blackBotOptions;
   std::size_t m_blackBotSelection{0};
+  bool m_showBlackBotList{false};
+  bool m_blackListForceHide{false};
 
   sf::RectangleShape m_startBtn;
   sf::Text m_startText;
