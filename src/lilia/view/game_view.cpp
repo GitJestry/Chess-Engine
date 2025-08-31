@@ -1,8 +1,6 @@
 #include "lilia/view/game_view.hpp"
 
 #include <SFML/Graphics/Image.hpp>
-#include <SFML/Graphics/RectangleShape.hpp>
-#include <SFML/Graphics/Text.hpp>
 #include <algorithm>
 
 #include "lilia/bot/bot_info.hpp"
@@ -17,10 +15,13 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
       m_piece_manager(m_board_view),
       m_highlight_manager(m_board_view),
       m_chess_animator(m_board_view, m_piece_manager),
+      m_promotion_manager(),
       m_eval_bar(),
       m_move_list(),
       m_top_player(),
-      m_bottom_player() {
+      m_bottom_player(),
+      m_modal(),
+      m_particles() {
   // cursors
   m_cursor_default.loadFromSystem(sf::Cursor::Arrow);
 
@@ -55,6 +56,7 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
 
   // theme font for modals (same face as the rest of UI)
   m_modal.loadFont(constant::STR_FILE_PATH_FONT);
+
 }
 
 void GameView::init(const std::string &fen) {
@@ -75,7 +77,7 @@ void GameView::updateEval(int eval) {
 }
 
 void GameView::render() {
-  // left stack
+  // left stack (eval bar manages its own visibility and toggle)
   m_eval_bar.render(m_window);
 
   // board + pieces + overlays
@@ -254,6 +256,12 @@ void GameView::toggleBoardOrientation() {
 
 bool GameView::isOnFlipIcon(core::MousePos mousePos) const {
   return m_board_view.isOnFlipIcon(mousePos);
+}
+
+void GameView::toggleEvalBarVisibility() { m_eval_bar.toggleVisibility(); }
+
+bool GameView::isOnEvalToggle(core::MousePos mousePos) const {
+  return m_eval_bar.isOnToggle(mousePos);
 }
 
 // ---------- Pieces / Highlights ----------

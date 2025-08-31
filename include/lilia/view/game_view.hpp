@@ -113,6 +113,9 @@ class GameView {
   void toggleBoardOrientation();
   [[nodiscard]] bool isOnFlipIcon(core::MousePos mousePos) const;
 
+  void toggleEvalBarVisibility();
+  [[nodiscard]] bool isOnEvalToggle(core::MousePos mousePos) const;
+
  private:
   void layout(unsigned int width, unsigned int height);
 
@@ -138,6 +141,8 @@ class GameView {
 
   // FX
   ParticleSystem m_particles;
+
+  // eval bar toggle handled internally by EvalBar
 };
 
 }  // namespace lilia::view

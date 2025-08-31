@@ -160,6 +160,11 @@ void GameController::handleEvent(const sf::Event &event) {
       return;
     }
 
+    if (m_game_view.isOnEvalToggle(mp)) {
+      m_game_view.toggleEvalBarVisibility();
+      return;
+    }
+
     auto opt = m_game_view.getOptionAt(mp);
     switch (opt) {
     case view::MoveListView::Option::Resign:
