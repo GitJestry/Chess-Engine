@@ -128,9 +128,10 @@ void GameView::layout(unsigned int width, unsigned int height) {
                     static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
   float boardTop = boardCenterY -
                    static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
-  m_top_player.setPosition({boardLeft, boardTop - 50.f});
-  m_bottom_player.setPosition({
-      boardLeft, boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 10.f});
+  // shift player info slightly to the right and adjust vertical placement
+  m_top_player.setPosition({boardLeft + 10.f, boardTop - 45.f});
+  m_bottom_player.setPosition({boardLeft + 10.f,
+                               boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 15.f});
 }
 
 void GameView::resetBoard() {

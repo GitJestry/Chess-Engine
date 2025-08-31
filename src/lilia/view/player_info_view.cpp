@@ -14,6 +14,8 @@ PlayerInfoView::PlayerInfoView() {
     m_text.setFont(m_font);
     m_text.setCharacterSize(18);
     m_text.setFillColor(sf::Color::White);
+    // make player info bold for better visibility
+    m_text.setStyle(sf::Text::Bold);
   }
 }
 
@@ -31,8 +33,9 @@ void PlayerInfoView::setInfo(const PlayerInfo& info) {
 void PlayerInfoView::setPosition(const Entity::Position& pos) {
   m_position = pos;
   m_frame.setPosition(pos);
-  m_icon.setPosition({pos.x + 20.f, pos.y + 20.f});
-  m_text.setPosition(pos.x + 50.f, pos.y + 8.f);
+  // account for frame outline thickness when centering icon
+  m_icon.setPosition({pos.x + 22.f, pos.y + 22.f});
+  m_text.setPosition(pos.x + 60.f, pos.y + 8.f);
 }
 
 void PlayerInfoView::render(sf::RenderWindow& window) {
