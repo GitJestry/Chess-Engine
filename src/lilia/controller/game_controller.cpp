@@ -447,6 +447,11 @@ void GameController::onClick(core::MousePos mousePos) {
     return;
   }
   const core::Square sq = m_game_view.mousePosToSquare(mousePos);
+  // piece might have been moved on mouse press without dragging - reset it
+  if (m_game_view.hasPieceOnSquare(sq)) {
+    m_game_view.endAnimation(sq);
+    m_game_view.setPieceToSquareScreenPos(sq, sq);
+  }
 
   // Promotion-Auswahl?
   if (m_game_view.isInPromotionSelection()) {
