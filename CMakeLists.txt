@@ -34,6 +34,7 @@ file(GLOB_RECURSE UCI_FILES        ${PROJECT_SOURCE_DIR}/src/lilia/uci/*.cpp)
 file(GLOB_RECURSE CONTROLLER_FILES ${PROJECT_SOURCE_DIR}/src/lilia/controller/*.cpp)
 file(GLOB_RECURSE UI_FILES         ${PROJECT_SOURCE_DIR}/src/lilia/view/*.cpp)
 file(GLOB_RECURSE APP_FILES        ${PROJECT_SOURCE_DIR}/src/lilia/app/*.cpp)
+file(GLOB_RECURSE BOT_FILES        ${PROJECT_SOURCE_DIR}/src/lilia/bot/*.cpp)
 
 set(CORE_FILES
   ${MODEL_FILES}
@@ -61,6 +62,7 @@ add_executable(lilia_app
   ${UI_FILES}
   ${APP_FILES}
   ${CONTROLLER_FILES}
+  ${BOT_FILES}
 )
 
 target_compile_definitions(lilia_app PRIVATE LILIA_UI)
