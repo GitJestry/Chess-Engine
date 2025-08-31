@@ -12,7 +12,7 @@
 
 namespace lilia::model {
 class ChessGame;
-}  // namespace lilia::model
+} // namespace lilia::model
 
 namespace lilia::controller {
 struct IPlayer;
@@ -21,17 +21,19 @@ struct IPlayer;
 namespace lilia::controller {
 
 class GameManager {
- public:
-  using MoveCallback = std::function<void(const model::Move& mv, bool isPlayerMove, bool onClick)>;
+public:
+  using MoveCallback = std::function<void(const model::Move &mv,
+                                          bool isPlayerMove, bool onClick)>;
   using PromotionCallback = std::function<void(core::Square promotionSquare)>;
   using EndCallback = std::function<void(core::GameResult)>;
 
-  explicit GameManager(model::ChessGame& model);
+  explicit GameManager(model::ChessGame &model);
   ~GameManager();
 
-  void startGame(const std::string& fen = core::START_FEN,
+  void startGame(const std::string &fen = core::START_FEN,
                  bool whiteIsBot = false, bool blackIsBot = true,
-                 int thinkTimeMs = 1000, int depth = 5);
+                 int whiteThinkTimeMs = 1000, int whiteDepth = 5,
+                 int blackThinkTimeMs = 1000, int blackDepth = 5);
   void stopGame();
 
   void update(float dt);
@@ -41,7 +43,9 @@ class GameManager {
   void completePendingPromotion(core::PieceType promotion);
 
   void setOnMoveExecuted(MoveCallback cb) { onMoveExecuted_ = std::move(cb); }
-  void setOnPromotionRequested(PromotionCallback cb) { onPromotionRequested_ = std::move(cb); }
+  void setOnPromotionRequested(PromotionCallback cb) {
+    onPromotionRequested_ = std::move(cb);
+  }
   void setOnGameEnd(EndCallback cb) { onGameEnd_ = std::move(cb); }
 
   void setBotForColor(core::Color color, std::unique_ptr<IPlayer> bot);
@@ -49,15 +53,16 @@ class GameManager {
   [[nodiscard]] bool isHuman(core::Color color) const;
   [[nodiscard]] bool isHumanTurn() const;
 
- private:
-  model::ChessGame& m_game;
+private:
+  model::ChessGame &m_game;
   // Players: nullptr bedeutet menschlicher Spieler
   std::unique_ptr<IPlayer> m_white_player;
   std::unique_ptr<IPlayer> m_black_player;
 
   // Bot future & cancel token
   std::future<model::Move> m_bot_future;
-  IPlayer* m_pending_bot_player = nullptr;  // roher pointer auf den aktiven Player
+  IPlayer *m_pending_bot_player =
+      nullptr; // roher pointer auf den aktiven Player
   std::atomic<bool> m_cancel_bot{false};
 
   // pending promotion info
@@ -71,8 +76,8 @@ class GameManager {
   PromotionCallback onPromotionRequested_;
   EndCallback onGameEnd_;
 
-  void applyMoveAndNotify(const model::Move& mv, bool onClick);
+  void applyMoveAndNotify(const model::Move &mv, bool onClick);
   void startBotIfNeeded();
 };
 
-}  // namespace lilia::controller
+} // namespace lilia::controller
