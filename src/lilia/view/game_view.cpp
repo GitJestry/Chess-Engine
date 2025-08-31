@@ -67,6 +67,7 @@ void GameView::render() {
   m_top_player.render(m_window);
   m_bottom_player.render(m_window);
   m_highlight_manager.renderSelect(m_window);
+  m_highlight_manager.renderPremove(m_window);
   m_chess_animator.renderHighlightLevel(m_window);
   m_highlight_manager.renderHover(m_window);
   m_piece_manager.renderPieces(m_window, m_chess_animator);
@@ -220,6 +221,9 @@ void GameView::highlightAttackSquare(core::Square pos) {
 void GameView::highlightCaptureSquare(core::Square pos) {
   m_highlight_manager.highlightCaptureSquare(pos);
 }
+void GameView::highlightPremoveSquare(core::Square pos) {
+  m_highlight_manager.highlightPremoveSquare(pos);
+}
 
 void GameView::clearHighlightSquare(core::Square pos) {
   m_highlight_manager.clearHighlightSquare(pos);
@@ -227,6 +231,9 @@ void GameView::clearHighlightSquare(core::Square pos) {
 
 void GameView::clearHighlightHoverSquare(core::Square pos) {
   m_highlight_manager.clearHighlightHoverSquare(pos);
+}
+void GameView::clearPremoveHighlights() {
+  m_highlight_manager.clearPremoveHighlights();
 }
 
 void GameView::clearAllHighlights() {

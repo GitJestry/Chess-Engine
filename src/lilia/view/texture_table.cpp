@@ -418,6 +418,7 @@ void TextureTable::preLoad() {
   load(constant::STR_TEXTURE_WHITE, sf::Color(240, 240, 210));
   load(constant::STR_TEXTURE_BLACK, sf::Color(120, 150, 86));
   load(constant::STR_TEXTURE_SELECTHLIGHT, sf::Color(240, 240, 50, 160));
+  load(constant::STR_TEXTURE_PREMOVEHLIGHT, sf::Color(255, 100, 100, 160));
   load(constant::STR_TEXTURE_WARNINGHLIGHT, sf::Color(255, 50, 50, 160));
   load(constant::STR_TEXTURE_HISTORY_OVERLAY, sf::Color(80, 80, 80, 100));
 

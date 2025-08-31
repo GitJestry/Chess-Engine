@@ -61,8 +61,10 @@ public:
   void highlightAttackSquare(core::Square pos);
   void highlightCaptureSquare(core::Square pos);
   void highlightHoverSquare(core::Square pos);
+  void highlightPremoveSquare(core::Square pos);
   void clearHighlightSquare(core::Square pos);
   void clearHighlightHoverSquare(core::Square pos);
+  void clearPremoveHighlights();
   void clearAllHighlights();
 
   void warningKingSquareAnim(core::Square ksq);

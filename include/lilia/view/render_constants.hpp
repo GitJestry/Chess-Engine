@@ -49,6 +49,7 @@ const std::string STR_TEXTURE_CAPTUREHLIGHT = "captureHighlight";
 const std::string STR_TEXTURE_HOVERHLIGHT = "hoverHighlight";
 const std::string STR_TEXTURE_WARNINGHLIGHT = "warningHighlight";
 const std::string STR_TEXTURE_HISTORY_OVERLAY = "historyOverlay";
+const std::string STR_TEXTURE_PREMOVEHLIGHT = "premoveHighlight";
 
 const std::string STR_FILE_PATH_HAND_OPEN = "assets/icons/cursor_hand_open.png";
 const std::string STR_FILE_PATH_HAND_CLOSED = "assets/icons/cursor_hand_closed.png";
@@ -70,5 +71,6 @@ const std::string SFX_CHECK_NAME = "check";
 const std::string SFX_PROMOTION_NAME = "promotion";
 const std::string SFX_GAME_BEGINS_NAME = "game_begins";
 const std::string SFX_GAME_ENDS_NAME = "game_ends";
+const std::string SFX_PREMOVE_NAME = "premove";
 
 }  // namespace lilia::view::constant

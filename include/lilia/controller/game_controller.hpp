@@ -89,6 +89,7 @@ private:
   void showAttacks(std::vector<core::Square> att);
   [[nodiscard]] bool tryMove(core::Square a, core::Square b);
   [[nodiscard]] bool isPromotion(core::Square a, core::Square b);
+  [[nodiscard]] bool isCastle(core::Square a, core::Square b);
   [[nodiscard]] bool isSameColor(core::Square a, core::Square b);
   void showGameOver(core::GameResult res, core::Color sideToMove);
 
@@ -111,6 +112,8 @@ private:
 
   core::Square m_premove_from = core::NO_SQUARE;
   core::Square m_premove_to = core::NO_SQUARE;
+  core::Square m_premove_rook_from = core::NO_SQUARE;
+  core::Square m_premove_rook_to = core::NO_SQUARE;
   core::Square m_pending_from = core::NO_SQUARE;
   core::Square m_pending_to = core::NO_SQUARE;
 

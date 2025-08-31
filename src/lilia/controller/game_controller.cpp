@@ -339,7 +339,7 @@ void GameController::update(float dt) {
     if (m_game_manager && m_game_manager->isHuman(st.sideToMove) &&
         hasCurrentLegalMove(m_pending_from, m_pending_to)) {
       (void)m_game_manager->requestUserMove(m_pending_from, m_pending_to,
-                                            /*onClick*/ true);
+                                            /*onClick*/ false);
     }
     m_has_pending_auto_move = false; // Flag immer zurücksetzen
     m_pending_from = m_pending_to = core::NO_SQUARE;
@@ -377,8 +377,18 @@ void GameController::dehoverSquare() {
 
 void GameController::clearPremove() {
   if (m_premove_from != core::NO_SQUARE) {
+    // Reset moved pieces visually
+    m_game_view.setPieceToSquareScreenPos(m_premove_from, m_premove_from);
+    if (m_premove_rook_from != core::NO_SQUARE)
+      m_game_view.setPieceToSquareScreenPos(m_premove_rook_from,
+                                           m_premove_rook_from);
+
     m_premove_from = core::NO_SQUARE;
     m_premove_to = core::NO_SQUARE;
+    m_premove_rook_from = core::NO_SQUARE;
+    m_premove_rook_to = core::NO_SQUARE;
+
+    m_game_view.clearPremoveHighlights();
     m_game_view.clearAllHighlights();
     highlightLastMove();
   }
@@ -435,7 +445,10 @@ void GameController::movePieceAndClear(const model::Move &move,
     const core::Square rookTo = (move.castle == model::CastleSide::KingSide)
                                     ? static_cast<core::Square>(to - 1)
                                     : static_cast<core::Square>(to + 1);
-    m_game_view.animationMovePiece(rookFrom, rookTo);
+    if (onClick)
+      m_game_view.animationMovePiece(rookFrom, rookTo);
+    else
+      m_game_view.animationDropPiece(rookFrom, rookTo);
   }
 
   // 6) Visuals / Sounds
@@ -470,14 +483,14 @@ void GameController::movePieceAndClear(const model::Move &move,
     core::Square pf = m_premove_from;
     core::Square pt = m_premove_to;
 
-    // Immer zuerst Premove-Highlights entfernen
-    clearPremove();
-
-    // Nur vormerken, wenn jetzt legal
     if (hasCurrentLegalMove(pf, pt)) {
       m_has_pending_auto_move = true;
       m_pending_from = pf;
       m_pending_to = pt;
+      m_premove_from = m_premove_to = core::NO_SQUARE;
+      m_premove_rook_from = m_premove_rook_to = core::NO_SQUARE;
+    } else {
+      clearPremove();
     }
   }
 }
@@ -503,6 +516,14 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 [[nodiscard]] bool GameController::isPromotion(core::Square a, core::Square b) {
   for (const auto &m : m_chess_game.generateLegalMoves()) {
     if (m.from == a && m.to == b && m.promotion != core::PieceType::None)
+      return true;
+  }
+  return false;
+}
+
+[[nodiscard]] bool GameController::isCastle(core::Square a, core::Square b) {
+  for (const auto &m : m_chess_game.generateLegalMoves()) {
+    if (m.from == a && m.to == b && m.castle != model::CastleSide::None)
       return true;
   }
   return false;
@@ -597,11 +618,27 @@ void GameController::onClick(core::MousePos mousePos) {
         m_premove_to = sq;
         m_game_view.clearAllHighlights();
         highlightLastMove();
-        m_game_view.highlightSquare(m_premove_from);
-        if (m_game_view.hasPieceOnSquare(sq))
-          m_game_view.highlightCaptureSquare(sq);
-        else
-          m_game_view.highlightAttackSquare(sq);
+        m_game_view.highlightPremoveSquare(m_premove_from);
+        m_game_view.highlightPremoveSquare(m_premove_to);
+
+        if (isCastle(m_premove_from, m_premove_to)) {
+          model::CastleSide side = (static_cast<int>(m_premove_to) >
+                                   static_cast<int>(m_premove_from))
+                                      ? model::CastleSide::KingSide
+                                      : model::CastleSide::QueenSide;
+          core::Color col = m_chess_game.getPiece(m_premove_from).color;
+          m_premove_rook_from = m_chess_game.getRookSquareFromCastleside(side, col);
+          m_premove_rook_to = (side == model::CastleSide::KingSide)
+                                   ? static_cast<core::Square>(m_premove_to - 1)
+                                   : static_cast<core::Square>(m_premove_to + 1);
+          m_game_view.setPieceToSquareScreenPos(m_premove_rook_from,
+                                               m_premove_rook_to);
+          m_game_view.highlightPremoveSquare(m_premove_rook_from);
+          m_game_view.highlightPremoveSquare(m_premove_rook_to);
+        }
+
+        m_game_view.setPieceToSquareScreenPos(m_premove_from, m_premove_to);
+        m_sound_manager.playEffect(view::sound::Effect::PreMove);
       }
       m_selected_sq = core::NO_SQUARE;
       return; // NICHT umselektieren
@@ -705,17 +742,36 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
       setPremove = true;
       m_game_view.clearAllHighlights();
       highlightLastMove();
-      m_game_view.highlightSquare(m_premove_from);
-      if (m_game_view.hasPieceOnSquare(to))
-        m_game_view.highlightCaptureSquare(to);
-      else
-        m_game_view.highlightAttackSquare(to);
+      m_game_view.highlightPremoveSquare(m_premove_from);
+      m_game_view.highlightPremoveSquare(m_premove_to);
+
+      if (isCastle(from, to)) {
+        model::CastleSide side = (static_cast<int>(to) > static_cast<int>(from))
+                                     ? model::CastleSide::KingSide
+                                     : model::CastleSide::QueenSide;
+        m_premove_rook_from = m_chess_game.getRookSquareFromCastleside(
+            side, fromColor);
+        m_premove_rook_to = (side == model::CastleSide::KingSide)
+                                 ? static_cast<core::Square>(to - 1)
+                                 : static_cast<core::Square>(to + 1);
+        m_game_view.setPieceToSquareScreenPos(m_premove_rook_from,
+                                             m_premove_rook_to);
+        m_game_view.highlightPremoveSquare(m_premove_rook_from);
+        m_game_view.highlightPremoveSquare(m_premove_rook_to);
+      }
+
+      m_game_view.setPieceToSquareScreenPos(m_premove_from, m_premove_to);
+      m_sound_manager.playEffect(view::sound::Effect::PreMove);
     }
   }
 
   if (!accepted) {
     // Figur visuell zurücksetzen
-    m_game_view.setPieceToSquareScreenPos(from, from);
+    if (setPremove) {
+      m_game_view.setPieceToSquareScreenPos(from, to);
+    } else {
+      m_game_view.setPieceToSquareScreenPos(from, from);
+    }
 
     if (!setPremove) {
       // Fehlversuch -> zurückschnappen + evtl. Warnung

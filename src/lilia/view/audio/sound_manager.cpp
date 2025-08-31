@@ -14,6 +14,7 @@ void SoundManager::loadSounds() {
   loadEffect(constant::SFX_PLAYER_MOVE_NAME, constant::ASSET_SFX_FILE_PATH);
   loadEffect(constant::SFX_PROMOTION_NAME, constant::ASSET_SFX_FILE_PATH);
   loadEffect(constant::SFX_WARNING_NAME, constant::ASSET_SFX_FILE_PATH);
+  loadEffect(constant::SFX_PREMOVE_NAME, constant::ASSET_SFX_FILE_PATH);
 }
 
 void SoundManager::playEffect(Effect effect) {
@@ -46,6 +47,9 @@ void SoundManager::playEffect(Effect effect) {
       break;
     case Effect::GameEnds:
       m_sounds[constant::SFX_GAME_ENDS_NAME].play();
+      break;
+    case Effect::PreMove:
+      m_sounds[constant::SFX_PREMOVE_NAME].play();
       break;
   }
 }
