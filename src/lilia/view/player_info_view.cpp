@@ -12,11 +12,17 @@ PlayerInfoView::PlayerInfoView() {
   m_frame.setOutlineColor(sf::Color(100, 100, 100));
   m_frame.setOutlineThickness(2.f);
   m_frame.setSize({32.f, 32.f});
+  if (m_font2.loadFromFile(constant::STR_FILE_PATH_FONT)) {
+    m_elo.setFont(m_font2);
+    m_elo.setCharacterSize(15);
+    m_elo.setFillColor({140, 132, 130});
+    m_elo.setStyle(sf::Text::Italic);
+  }
   if (m_font.loadFromFile(constant::STR_FILE_PATH_FONT)) {
-    m_text.setFont(m_font);
-    m_text.setCharacterSize(16);
-    m_text.setFillColor(sf::Color::White);
-    m_text.setStyle(sf::Text::Bold);
+    m_name.setFont(m_font);
+    m_name.setCharacterSize(16);
+    m_name.setFillColor(sf::Color::White);
+    m_name.setStyle(sf::Text::Bold);
   }
 }
 
@@ -33,15 +39,18 @@ void PlayerInfoView::setInfo(const PlayerInfo& info) {
   if (size.x > 0 && size.y > 0) {
     const float sx = targetW / static_cast<float>(size.x);
     const float sy = targetH / static_cast<float>(size.y);
-    const float scale = std::min(sx, sy);
+    const float scale = std::min(sx, sy) * 1.15;
     m_icon.setScale(scale, scale);
   }
 
   m_icon.setOriginToCenter();
-  if (info.elo == 0)
-    m_text.setString(info.name);
-  else
-    m_text.setString(info.name + " (" + std::to_string(info.elo) + ")");
+  if (info.elo == 0) {
+    m_name.setString(info.name);
+    m_elo.setString("");
+  } else {
+    m_name.setString(info.name);
+    m_elo.setString(" (" + std::to_string(info.elo) + ")");
+  }
 }
 
 // Variante 1: vorhandene Signatur behalten (kein Clamping möglich ohne Viewport-Größe)
@@ -57,9 +66,10 @@ void PlayerInfoView::setPosition(const Entity::Position& pos) {
 
   // Text neben dem Rahmen vertikal zentrieren
   const float textLeft = pos.x + frameSize.x + 12.f;
-  const auto tb = m_text.getLocalBounds();  // tb.top ist i.d.R. negativ
-  const float textY = pos.y + (frameSize.y - tb.height) * 0.9f - tb.top;
-  m_text.setPosition(textLeft, textY);
+  const auto tb = m_name.getLocalBounds();  // tb.top ist i.d.R. negativ
+  const float textY = pos.y + (frameSize.y - tb.height) * 0.3f - tb.top;
+  m_name.setPosition(textLeft, textY);
+  m_elo.setPosition(m_name.getPosition().x + tb.width, textY);
 }
 
 // Variante 2: Clamping gegen Bildschirmränder
@@ -84,7 +94,8 @@ void PlayerInfoView::setPositionClamped(const Entity::Position& pos,
 void PlayerInfoView::render(sf::RenderWindow& window) {
   window.draw(m_frame);
   m_icon.draw(window);
-  window.draw(m_text);
+  window.draw(m_name);
+  window.draw(m_elo);
 }
 
 }  // namespace lilia::view

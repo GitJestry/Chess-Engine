@@ -22,7 +22,9 @@ class PlayerInfoView {
   Entity m_icon;
   sf::RectangleShape m_frame;
   sf::Font m_font;
-  sf::Text m_text;
+  sf::Font m_font2;
+  sf::Text m_name;
+  sf::Text m_elo;
   Entity::Position m_position{};
 };
 

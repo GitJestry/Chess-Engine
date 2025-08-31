@@ -2,8 +2,8 @@
 
 #include <atomic>
 #include <memory>
-#include <utility>
 #include <string>
+#include <utility>
 #include <vector>
 
 // Forward declaration to avoid heavy SFML header
@@ -14,10 +14,10 @@ class Event;
 // Project headers
 #include "../chess_types.hpp"
 #include "../constants.hpp"
+#include "../model/move.hpp"
 #include "../view/audio/sound_manager.hpp"
 #include "../view/game_view.hpp"
 #include "input_manager.hpp"
-#include "../model/move.hpp"
 
 namespace lilia::model {
 class ChessGame;
@@ -59,6 +59,9 @@ class GameController {
                  bool blackIsBot = true, int thinkTimeMs = 1000, int depth = 5);
 
  private:
+  bool isHumanPiece(core::Square sq) const;
+  bool hasCurrentLegalMove(core::Square from, core::Square to) const;
+
   void onMouseMove(core::MousePos pos);
   void onMousePressed(core::MousePos pos);
   void onMouseReleased(core::MousePos pos);
@@ -95,6 +98,7 @@ class GameController {
 
   bool m_dragging = false;
   bool m_mouse_down = false;
+  bool m_has_pending_auto_move = false;
 
   core::Square m_drag_from = core::NO_SQUARE;
   bool m_preview_active = false;
@@ -103,6 +107,8 @@ class GameController {
 
   core::Square m_premove_from = core::NO_SQUARE;
   core::Square m_premove_to = core::NO_SQUARE;
+  core::Square m_pending_from = core::NO_SQUARE;
+  core::Square m_pending_to = core::NO_SQUARE;
 
   core::Square m_selected_sq = core::NO_SQUARE;  ///< Currently selected square.
   core::Square m_hover_sq = core::NO_SQUARE;     ///< Currently hovered square.
