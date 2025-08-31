@@ -9,7 +9,8 @@ HighlightManager::HighlightManager(const BoardView& boardRef)
     : m_board_view_ref(boardRef),
       m_hl_attack_squares(),
       m_hl_select_squares(),
-      m_hl_hover_squares() {}
+      m_hl_hover_squares(),
+      m_hl_last_move_squares() {}
 
 void HighlightManager::renderEntitiesToBoard(std::unordered_map<core::Square, Entity>& map,
                                              sf::RenderWindow& window) {
@@ -30,6 +31,9 @@ void HighlightManager::renderHover(sf::RenderWindow& window) {
 void HighlightManager::renderSelect(sf::RenderWindow& window) {
   renderEntitiesToBoard(m_hl_select_squares, window);
 }
+void HighlightManager::renderLastMove(sf::RenderWindow& window) {
+  renderEntitiesToBoard(m_hl_last_move_squares, window);
+}
 
 void HighlightManager::highlightSquare(core::Square pos) {
   Entity newSelectHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_SELECTHLIGHT));
@@ -49,11 +53,17 @@ void HighlightManager::highlightHoverSquare(core::Square pos) {
   Entity newHoverHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_HOVERHLIGHT));
   m_hl_hover_squares[pos] = std::move(newHoverHlight);
 }
+void HighlightManager::highlightLastMoveSquare(core::Square pos) {
+  Entity newLastMove(TextureTable::getInstance().get(constant::STR_TEXTURE_SELECTHLIGHT));
+  newLastMove.setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
+  m_hl_last_move_squares[pos] = std::move(newLastMove);
+}
 void HighlightManager::clearAllHighlights() {
   m_hl_select_squares.clear();
   m_hl_attack_squares.clear();
   m_hl_hover_squares.clear();
 }
+void HighlightManager::clearLastMoveHighlights() { m_hl_last_move_squares.clear(); }
 void HighlightManager::clearHighlightSquare(core::Square pos) {
   m_hl_select_squares.erase(pos);
 }

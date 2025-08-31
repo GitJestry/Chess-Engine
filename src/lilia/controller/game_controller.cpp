@@ -41,13 +41,12 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
 
   // Move-Callback – alles GUI/Animationen laufen über diese eine Stelle.
   m_game_manager->setOnMoveExecuted([this](const model::Move &mv, bool isPlayerMove, bool onClick) {
-    this->movePieceAndClear(mv, isPlayerMove, onClick);
+    MoveSound snd = this->movePieceAndClear(mv, isPlayerMove, onClick);
     this->m_chess_game.checkGameResult();
     this->m_game_view.addMove(move_to_uci(mv));
     this->m_fen_history.push_back(this->m_chess_game.getFen());
-    this->m_move_history.emplace_back(mv.from, mv.to);
+    this->m_move_history.push_back({mv.from, mv.to, snd});
     this->m_fen_index = this->m_fen_history.size() - 1;
-    this->m_game_view.setBoardFen(this->m_fen_history.back());
     this->highlightLastMove();
     this->m_game_view.selectMove(this->m_fen_index ? this->m_fen_index - 1
                                                    : static_cast<std::size_t>(-1));
@@ -88,6 +87,8 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot, bool bla
   m_hover_sq = core::NO_SQUARE;
   m_last_move_squares = {core::NO_SQUARE, core::NO_SQUARE};
 
+  m_game_view.clearLastMoveHighlights();
+
   m_game_view.setDefaultCursor();
 }
 
@@ -101,14 +102,9 @@ void GameController::handleEvent(const sf::Event &event) {
       m_fen_index = idx + 1;
       m_game_view.setBoardFen(m_fen_history[m_fen_index]);
       m_game_view.selectMove(idx);
-      m_last_move_squares = m_move_history[idx];
-      m_game_view.clearAllHighlights();
+      m_last_move_squares = {m_move_history[idx].from, m_move_history[idx].to};
       highlightLastMove();
-      bool whiteMoved = (m_fen_index % 2 == 1);
-      if (whiteMoved)
-        m_sound_manager.playPlayerMove();
-      else
-        m_sound_manager.playEnemyMove();
+      playStoredSound(idx);
       return;
     }
   }
@@ -126,17 +122,14 @@ void GameController::handleEvent(const sf::Event &event) {
         if (m_fen_index == 0) {
           m_game_view.selectMove(static_cast<std::size_t>(-1));
           m_last_move_squares = {core::NO_SQUARE, core::NO_SQUARE};
+          m_game_view.clearLastMoveHighlights();
         } else {
           m_game_view.selectMove(m_fen_index - 1);
-          m_last_move_squares = m_move_history[m_fen_index - 1];
+          m_last_move_squares = {m_move_history[m_fen_index - 1].from,
+                                 m_move_history[m_fen_index - 1].to};
+          highlightLastMove();
+          playStoredSound(m_fen_index - 1);
         }
-        m_game_view.clearAllHighlights();
-        highlightLastMove();
-        bool whiteMoved = (m_fen_index % 2 == 1);
-        if (whiteMoved)
-          m_sound_manager.playPlayerMove();
-        else
-          m_sound_manager.playEnemyMove();
       }
       return;
     } else if (event.key.code == sf::Keyboard::Right) {
@@ -144,14 +137,10 @@ void GameController::handleEvent(const sf::Event &event) {
         ++m_fen_index;
         m_game_view.setBoardFen(m_fen_history[m_fen_index]);
         m_game_view.selectMove(m_fen_index - 1);
-        m_last_move_squares = m_move_history[m_fen_index - 1];
-        m_game_view.clearAllHighlights();
+        m_last_move_squares = {m_move_history[m_fen_index - 1].from,
+                               m_move_history[m_fen_index - 1].to};
         highlightLastMove();
-        bool whiteMoved = (m_fen_index % 2 == 1);
-        if (whiteMoved)
-          m_sound_manager.playPlayerMove();
-        else
-          m_sound_manager.playEnemyMove();
+        playStoredSound(m_fen_index - 1);
       }
       return;
     }
@@ -272,8 +261,31 @@ void GameController::update(float dt) {
 }
 
 void GameController::highlightLastMove() {
-  if (isValid(m_last_move_squares.first)) m_game_view.highlightSquare(m_last_move_squares.first);
-  if (isValid(m_last_move_squares.second)) m_game_view.highlightSquare(m_last_move_squares.second);
+  m_game_view.setLastMoveHighlight(m_last_move_squares.first, m_last_move_squares.second);
+}
+
+void GameController::playStoredSound(std::size_t idx) {
+  if (idx >= m_move_history.size()) return;
+  switch (m_move_history[idx].sound) {
+    case MoveSound::Player:
+      m_sound_manager.playPlayerMove();
+      break;
+    case MoveSound::Enemy:
+      m_sound_manager.playEnemyMove();
+      break;
+    case MoveSound::Capture:
+      m_sound_manager.playCapture();
+      break;
+    case MoveSound::Check:
+      m_sound_manager.playCheck();
+      break;
+    case MoveSound::Promotion:
+      m_sound_manager.playPromotion();
+      break;
+    case MoveSound::Castle:
+      m_sound_manager.playCastle();
+      break;
+  }
 }
 
 void GameController::selectSquare(core::Square sq) {
@@ -298,7 +310,8 @@ void GameController::dehoverSquare() {
 }
 
 // --------- ZENTRALE Move-Callback-Behandlung (auch Engine-Züge) ----------
-void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMove, bool onClick) {
+GameController::MoveSound GameController::movePieceAndClear(const model::Move &move,
+                                                            bool isPlayerMove, bool onClick) {
   const core::Square from = move.from;
   const core::Square to = move.to;
 
@@ -352,22 +365,31 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
 
   const core::Color sideToMoveNow = m_chess_game.getGameState().sideToMove;
 
+  MoveSound sound = MoveSound::Player;
   if (m_chess_game.isKingInCheck(sideToMoveNow)) {
     m_sound_manager.playCheck();
+    sound = MoveSound::Check;
   } else {
     if (move.promotion != core::PieceType::None) {
       m_sound_manager.playPromotion();
+      sound = MoveSound::Promotion;
     } else if (move.isCapture) {
       m_sound_manager.playCapture();
+      sound = MoveSound::Capture;
     } else if (move.castle == model::CastleSide::None) {
-      if (isPlayerMove)
+      if (isPlayerMove) {
         m_sound_manager.playPlayerMove();
-      else
+        sound = MoveSound::Player;
+      } else {
         m_sound_manager.playEnemyMove();
+        sound = MoveSound::Enemy;
+      }
     } else {
       m_sound_manager.playCastle();
+      sound = MoveSound::Castle;
     }
   }
+  return sound;
 }
 
 // ------------------------------------------------------------------------

@@ -68,10 +68,11 @@ class GameController {
   void hoverSquare(core::Square sq);
   void dehoverSquare();
 
-  void movePieceAndClear(const model::Move& move, bool isPlayerMove, bool onClick);
+  MoveSound movePieceAndClear(const model::Move& move, bool isPlayerMove, bool onClick);
 
   void snapAndReturn(core::Square sq, core::MousePos cur);
   void highlightLastMove();
+  void playStoredSound(std::size_t idx);
 
   [[nodiscard]] std::vector<core::Square> getAttackSquares(core::Square pieceSQ) const;
   void showAttacks(std::vector<core::Square> att);
@@ -99,13 +100,20 @@ class GameController {
   std::pair<core::Square, core::Square> m_last_move_squares = {
       core::NO_SQUARE, core::NO_SQUARE};  ///< Last executed move (from -> to).
 
+  enum class MoveSound { Player, Enemy, Capture, Check, Promotion, Castle };
+  struct MoveInfo {
+    core::Square from;
+    core::Square to;
+    MoveSound sound;
+  };
+
   // ---------------- New: GameManager ----------------
   std::unique_ptr<GameManager> m_game_manager;
   std::atomic<int> m_eval_cp{0};
 
   std::vector<std::string> m_fen_history;
   std::size_t m_fen_index{0};
-  std::vector<std::pair<core::Square, core::Square>> m_move_history;
+  std::vector<MoveInfo> m_move_history;
 };
 
 }  // namespace lilia::controller

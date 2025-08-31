@@ -54,6 +54,8 @@ public:
   void highlightAttackSquare(core::Square pos);
   void highlightCaptureSquare(core::Square pos);
   void highlightHoverSquare(core::Square pos);
+  void setLastMoveHighlight(core::Square from, core::Square to);
+  void clearLastMoveHighlights();
   void clearHighlightSquare(core::Square pos);
   void clearHighlightHoverSquare(core::Square pos);
   void clearAllHighlights();

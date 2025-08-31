@@ -64,6 +64,7 @@ void GameView::render() {
   m_board_view.renderBoard(m_window);
   m_top_player.render(m_window);
   m_bottom_player.render(m_window);
+  m_highlight_manager.renderLastMove(m_window);
   m_highlight_manager.renderSelect(m_window);
   m_chess_animator.renderHighlightLevel(m_window);
   m_highlight_manager.renderHover(m_window);
@@ -83,6 +84,7 @@ void GameView::setBoardFen(const std::string &fen) {
   m_piece_manager.removeAll();
   m_piece_manager.initFromFen(fen);
   m_highlight_manager.clearAllHighlights();
+  m_highlight_manager.clearLastMoveHighlights();
 }
 
 void GameView::scrollMoveList(float delta) { m_move_list.scroll(delta); }
@@ -195,6 +197,16 @@ void GameView::highlightAttackSquare(core::Square pos) {
 }
 void GameView::highlightCaptureSquare(core::Square pos) {
   m_highlight_manager.highlightCaptureSquare(pos);
+}
+
+void GameView::setLastMoveHighlight(core::Square from, core::Square to) {
+  m_highlight_manager.clearLastMoveHighlights();
+  if (from != core::NO_SQUARE) m_highlight_manager.highlightLastMoveSquare(from);
+  if (to != core::NO_SQUARE) m_highlight_manager.highlightLastMoveSquare(to);
+}
+
+void GameView::clearLastMoveHighlights() {
+  m_highlight_manager.clearLastMoveHighlights();
 }
 
 void GameView::clearHighlightSquare(core::Square pos) {
