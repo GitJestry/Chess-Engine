@@ -129,10 +129,13 @@ void MoveListView::addMove(const std::string &uciMove) {
   ++m_move_count;
   m_selected_move = m_move_count ? m_move_count - 1 : m_selected_move;
 
-  const float content = static_cast<float>(m_lines.size()) * kLineHeight;
+  // include result line if already set, since game over check may have
+  // occurred before the final move was added
+  const float content =
+      static_cast<float>(m_lines.size() + (m_result.empty() ? 0 : 1)) * kLineHeight;
   const float visibleHeight = listHeight - contentTop;
   const float maxOff = std::max(0.f, content - visibleHeight);
-  m_scroll_offset = std::clamp(maxOff, 0.f, maxOff);
+  m_scroll_offset = maxOff;
 }
 
 void MoveListView::addResult(const std::string &result) {
@@ -145,7 +148,7 @@ void MoveListView::addResult(const std::string &result) {
   const float visibleHeight = listHeight - contentTop;
   const float content = static_cast<float>(m_lines.size() + 1) * kLineHeight;
   const float maxOff = std::max(0.f, content - visibleHeight);
-  m_scroll_offset = std::clamp(maxOff, 0.f, maxOff);
+  m_scroll_offset = maxOff;
 }
 
 void MoveListView::render(sf::RenderWindow &window) const {
@@ -184,8 +187,9 @@ void MoveListView::render(sf::RenderWindow &window) const {
   movesBg.setFillColor(sf::Color(65, 65, 65));
   window.draw(movesBg);
 
-  // Abwechselnd gefärbte Zeilenhintergründe
-  for (std::size_t i = 0; i < m_lines.size(); ++i) {
+  // Abwechselnd gefärbte Zeilenhintergründe (inkl. Ergebniszeile)
+  const std::size_t totalLines = m_lines.size() + (m_result.empty() ? 0 : 1);
+  for (std::size_t i = 0; i < totalLines; ++i) {
     float y = contentTop + static_cast<float>(i) * kLineHeight - m_scroll_offset;
     if (y < top || y + kLineHeight > bottom) continue;
 
@@ -194,19 +198,6 @@ void MoveListView::render(sf::RenderWindow &window) const {
     rowBg.setFillColor(even ? sf::Color(70, 70, 70) : sf::Color(60, 60, 60));
     rowBg.setPosition(0.f, y);
     window.draw(rowBg);
-  }
-
-  // background for result line
-  if (!m_result.empty()) {
-    float y =
-        contentTop + static_cast<float>(m_lines.size()) * kLineHeight - m_scroll_offset;
-    if (!(y < top || y + kLineHeight > bottom)) {
-      sf::RectangleShape rowBg({static_cast<float>(m_width), kLineHeight});
-      const bool even = (m_lines.size() % 2) == 0;
-      rowBg.setFillColor(even ? sf::Color(70, 70, 70) : sf::Color(60, 60, 60));
-      rowBg.setPosition(0.f, y);
-      window.draw(rowBg);
-    }
   }
 
   // Highlight ausgewählten Zug
@@ -237,9 +228,19 @@ void MoveListView::render(sf::RenderWindow &window) const {
   window.draw(subHeader);
 
   // Zeichne nur sichtbare Zeilen
-  for (std::size_t i = 0; i < m_lines.size(); ++i) {
+  for (std::size_t i = 0; i < totalLines; ++i) {
     const float y = contentTop + (static_cast<float>(i) * kLineHeight) - m_scroll_offset + 3.f;
     if (y < top || y + kLineHeight > bottom) continue;
+
+    if (i == m_lines.size() && !m_result.empty()) {
+      sf::Text resTxt(m_result, m_font, kMoveFontSize);
+      resTxt.setStyle(sf::Text::Bold);
+      resTxt.setFillColor(sf::Color(180, 180, 180));
+      auto rb = resTxt.getLocalBounds();
+      resTxt.setPosition((static_cast<float>(m_width) - rb.width) / 2.f - rb.left, y);
+      window.draw(resTxt);
+      continue;
+    }
 
     std::istringstream iss(m_lines[i]);
     std::vector<std::string> tokens;
@@ -300,19 +301,6 @@ void MoveListView::render(sf::RenderWindow &window) const {
       resTxt.setStyle(sf::Text::Bold);
       resTxt.setFillColor(sf::Color(180, 180, 180));
       resTxt.setPosition(x, y);
-      window.draw(resTxt);
-    }
-  }
-
-  if (!m_result.empty()) {
-    const float y = contentTop + static_cast<float>(m_lines.size()) * kLineHeight -
-                    m_scroll_offset + 3.f;
-    if (!(y < top || y + kLineHeight > bottom)) {
-      sf::Text resTxt(m_result, m_font, kMoveFontSize);
-      resTxt.setStyle(sf::Text::Bold);
-      resTxt.setFillColor(sf::Color(180, 180, 180));
-      auto rb = resTxt.getLocalBounds();
-      resTxt.setPosition((static_cast<float>(m_width) - rb.width) / 2.f - rb.left, y);
       window.draw(resTxt);
     }
   }
