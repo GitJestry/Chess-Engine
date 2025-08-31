@@ -56,7 +56,7 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
 
   m_game_manager->setOnGameEnd([this](core::GameResult res) {
     this->m_game_view.showGameOver(res, m_chess_game.getGameState().sideToMove);
-    this->m_sound_manager.playGameEnds();
+    this->m_sound_manager.playEffect(view::sound::Effect::GameEnds);
   });
 }
 
@@ -64,7 +64,7 @@ GameController::~GameController() = default;
 
 void GameController::startGame(const std::string &fen, bool whiteIsBot, bool blackIsBot,
                                int think_time_ms, int depth) {
-  m_sound_manager.playGameBegins();
+  m_sound_manager.playEffect(view::sound::Effect::GameBegins);
   m_game_view.init(fen);
   m_game_view.setBotMode(whiteIsBot || blackIsBot);
   m_game_manager->startGame(fen, whiteIsBot, blackIsBot, think_time_ms, depth);
@@ -98,7 +98,7 @@ void GameController::handleEvent(const sf::Event &event) {
       m_fen_index = idx + 1;
       m_game_view.setBoardFen(m_fen_history[m_fen_index]);
       m_game_view.selectMove(idx);
-      const MoveView& info = m_move_history[idx];
+      const MoveView &info = m_move_history[idx];
       m_last_move_squares = {info.move.from, info.move.to};
       m_game_view.clearAllHighlights();
       highlightLastMove();
@@ -115,7 +115,7 @@ void GameController::handleEvent(const sf::Event &event) {
   if (event.type == sf::Event::KeyPressed) {
     if (event.key.code == sf::Keyboard::Left) {
       if (m_fen_index > 0) {
-        const MoveView& info = m_move_history[m_fen_index - 1];
+        const MoveView &info = m_move_history[m_fen_index - 1];
         core::Square epVictim = core::NO_SQUARE;
         if (info.move.isEnPassant) {
           epVictim = (info.moverColor == core::Color::White)
@@ -126,10 +126,9 @@ void GameController::handleEvent(const sf::Event &event) {
         if (info.move.castle != model::CastleSide::None) {
           const core::Square rookFrom =
               m_chess_game.getRookSquareFromCastleside(info.move.castle, info.moverColor);
-          const core::Square rookTo =
-              (info.move.castle == model::CastleSide::KingSide)
-                  ? static_cast<core::Square>(info.move.to - 1)
-                  : static_cast<core::Square>(info.move.to + 1);
+          const core::Square rookTo = (info.move.castle == model::CastleSide::KingSide)
+                                          ? static_cast<core::Square>(info.move.to - 1)
+                                          : static_cast<core::Square>(info.move.to + 1);
           m_game_view.animationMovePiece(rookTo, rookFrom);
         }
         if (info.move.isCapture) {
@@ -150,7 +149,7 @@ void GameController::handleEvent(const sf::Event &event) {
       return;
     } else if (event.key.code == sf::Keyboard::Right) {
       if (m_fen_index < m_move_history.size()) {
-        const MoveView& info = m_move_history[m_fen_index];
+        const MoveView &info = m_move_history[m_fen_index];
         core::Square epVictim = core::NO_SQUARE;
         if (info.move.isEnPassant) {
           epVictim = (info.moverColor == core::Color::White)
@@ -163,14 +162,12 @@ void GameController::handleEvent(const sf::Event &event) {
         if (info.move.castle != model::CastleSide::None) {
           const core::Square rookFrom =
               m_chess_game.getRookSquareFromCastleside(info.move.castle, info.moverColor);
-          const core::Square rookTo =
-              (info.move.castle == model::CastleSide::KingSide)
-                  ? static_cast<core::Square>(info.move.to - 1)
-                  : static_cast<core::Square>(info.move.to + 1);
+          const core::Square rookTo = (info.move.castle == model::CastleSide::KingSide)
+                                          ? static_cast<core::Square>(info.move.to - 1)
+                                          : static_cast<core::Square>(info.move.to + 1);
           m_game_view.animationMovePiece(rookFrom, rookTo);
         }
-        m_game_view.animationMovePiece(info.move.from, info.move.to, epVictim,
-                                       info.move.promotion);
+        m_game_view.animationMovePiece(info.move.from, info.move.to, epVictim, info.move.promotion);
         ++m_fen_index;
         m_game_view.selectMove(m_fen_index ? m_fen_index - 1 : static_cast<std::size_t>(-1));
         m_last_move_squares = {info.move.from, info.move.to};
@@ -393,8 +390,7 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
   } else if (move.castle != model::CastleSide::None) {
     effect = view::sound::Effect::Castle;
   } else {
-    effect = isPlayerMove ? view::sound::Effect::PlayerMove
-                          : view::sound::Effect::EnemyMove;
+    effect = isPlayerMove ? view::sound::Effect::PlayerMove : view::sound::Effect::EnemyMove;
   }
 
   m_sound_manager.playEffect(effect);
@@ -555,7 +551,7 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
         m_chess_game.getPiece(from).color == m_chess_game.getGameState().sideToMove) {
       m_game_view.warningKingSquareAnim(
           m_chess_game.getKingSquare(m_chess_game.getGameState().sideToMove));
-      m_sound_manager.playWarning();
+      m_sound_manager.playEffect(view::sound::Effect::Warning);
     }
 
     m_game_view.setPieceToSquareScreenPos(from, from);

@@ -16,64 +16,36 @@ void SoundManager::loadSounds() {
   loadEffect(constant::SFX_WARNING_NAME, constant::ASSET_SFX_FILE_PATH);
 }
 
-void SoundManager::playPlayerMove() {
-  m_sounds[constant::SFX_PLAYER_MOVE_NAME].play();
-}
-void SoundManager::playEnemyMove() {
-  m_sounds[constant::SFX_ENEMY_MOVE_NAME].play();
-}
-void SoundManager::playCapture() {
-  m_sounds[constant::SFX_CAPTURE_NAME].play();
-}
-void SoundManager::playCheck() {
-  m_sounds[constant::SFX_CHECK_NAME].play();
-}
-void SoundManager::playGameBegins() {
-  m_sounds[constant::SFX_GAME_BEGINS_NAME].play();
-}
-
-void SoundManager::playWarning() {
-  m_sounds[constant::SFX_WARNING_NAME].play();
-}
-
-void SoundManager::playPromotion() {
-  m_sounds[constant::SFX_PROMOTION_NAME].play();
-}
-void SoundManager::playGameEnds() {
-  m_sounds[constant::SFX_GAME_ENDS_NAME].play();
-}
-void SoundManager::playCastle() {
-  m_sounds[constant::SFX_CASTLE_NAME].play();
-}
-
 void SoundManager::playEffect(Effect effect) {
   switch (effect) {
     case Effect::PlayerMove:
-      playPlayerMove();
+      m_sounds[constant::SFX_PLAYER_MOVE_NAME].play();
+
       break;
     case Effect::EnemyMove:
-      playEnemyMove();
+      m_sounds[constant::SFX_ENEMY_MOVE_NAME].play();
+
       break;
     case Effect::Capture:
-      playCapture();
+      m_sounds[constant::SFX_CAPTURE_NAME].play();
       break;
     case Effect::Check:
-      playCheck();
+      m_sounds[constant::SFX_CHECK_NAME].play();
       break;
     case Effect::Warning:
-      playWarning();
+      m_sounds[constant::SFX_WARNING_NAME].play();
       break;
     case Effect::Castle:
-      playCastle();
+      m_sounds[constant::SFX_CASTLE_NAME].play();
       break;
     case Effect::Promotion:
-      playPromotion();
+      m_sounds[constant::SFX_PROMOTION_NAME].play();
       break;
     case Effect::GameBegins:
-      playGameBegins();
+      m_sounds[constant::SFX_GAME_BEGINS_NAME].play();
       break;
     case Effect::GameEnds:
-      playGameEnds();
+      m_sounds[constant::SFX_GAME_ENDS_NAME].play();
       break;
   }
 }
@@ -106,14 +78,12 @@ void SoundManager::loadEffect(const std::string& name, const std::string& filepa
     throw std::runtime_error("Failed to load sound effect: " + filepath + "/" + name + ".wav");
   }
 
-  
   auto [it, inserted] = m_buffers.emplace(name, std::move(buffer));
 
-  
   sf::Sound sound;
   sound.setBuffer(it->second);
   sound.setVolume(m_effects_volume);
   m_sounds[name] = std::move(sound);
 }
 
-}  
+}  // namespace lilia::view::sound

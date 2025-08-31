@@ -26,16 +26,6 @@ class SoundManager {
 
   void loadSounds();
 
-  void playPlayerMove();
-  void playEnemyMove();
-  void playCapture();
-  void playCheck();
-  void playWarning();
-  void playCastle();
-  void playPromotion();
-  void playGameBegins();
-  void playGameEnds();
-
   void playEffect(Effect effect);
 
   void playBackgroundMusic(const std::string& filename, bool loop = true);
