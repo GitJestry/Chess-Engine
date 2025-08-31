@@ -1,7 +1,8 @@
 #pragma once
 
-#include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
+#include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Text.hpp>
 #include <SFML/System/Vector2.hpp>
 #include <SFML/Window/Cursor.hpp>
@@ -19,6 +20,7 @@
 #include "promotion_manager.hpp"
 
 #include <functional>
+#include <vector>
 
 namespace lilia::view {
 
@@ -60,8 +62,9 @@ public:
   [[nodiscard]] bool isOnRematch(core::MousePos mousePos) const;
 
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
-  [[nodiscard]] core::MousePos clampPosToBoard(
-      core::MousePos mousePos, Entity::Position pieceSize = {0.f, 0.f}) const;
+  [[nodiscard]] core::MousePos clampPosToBoard(core::MousePos mousePos,
+                                               Entity::Position pieceSize = {
+                                                   0.f, 0.f}) const;
   void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
   void setPieceToSquareScreenPos(core::Square from, core::Square to);
 
@@ -140,6 +143,13 @@ private:
   sf::Text m_go_rematch;
   sf::FloatRect m_nb_bounds;
   sf::FloatRect m_rm_bounds;
+
+  struct ConfettiParticle {
+    sf::CircleShape shape;
+    sf::Vector2f velocity;
+  };
+  std::vector<ConfettiParticle> m_confetti;
+  float m_confetti_time{0.f};
 };
 
 } // namespace lilia::view
