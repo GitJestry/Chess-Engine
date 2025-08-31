@@ -25,6 +25,8 @@ public:
   void scroll(float delta);
   void clear();
 
+  void setBotMode(bool anyBot);
+
   [[nodiscard]] std::size_t getMoveIndexAt(const Entity::Position &pos) const;
 
 private:
@@ -37,6 +39,7 @@ private:
   std::size_t m_move_count{0};
   std::size_t m_selected_move{static_cast<std::size_t>(-1)};
   std::vector<sf::FloatRect> m_move_bounds;
+  bool m_any_bot{false};
 };
 
 } // namespace lilia::view
