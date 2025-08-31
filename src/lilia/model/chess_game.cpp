@@ -67,6 +67,12 @@ std::optional<Move> ChessGame::getMove(core::Square from, core::Square to) {
 }
 
 void ChessGame::setPosition(const std::string& fen) {
+  // Reset to a fresh game state so old pieces or metadata do not persist
+  m_position = Position{};
+  m_result = core::GameResult::ONGOING;
+  m_pseudo_moves.clear();
+  m_legal_moves.clear();
+
   std::istringstream iss(fen);
   std::string board, activeColor, castling, enPassant, halfmoveClock, fullmoveNumber;
 
