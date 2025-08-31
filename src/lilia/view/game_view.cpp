@@ -83,6 +83,8 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
 void GameView::init(const std::string &fen) {
   m_board_view.init();
   m_piece_manager.initFromFen(fen);
+  m_eval_bar.setResult("");
+  m_eval_bar.update(0);
 }
 
 void GameView::update(float dt) {
@@ -91,6 +93,10 @@ void GameView::update(float dt) {
 
 void GameView::updateEval(int eval) {
   m_eval_bar.update(eval);
+}
+
+void GameView::setEvalResult(const std::string &result) {
+  m_eval_bar.setResult(result);
 }
 
 void GameView::render() {

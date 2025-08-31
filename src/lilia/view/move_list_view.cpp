@@ -233,11 +233,25 @@ void MoveListView::render(sf::RenderWindow &window) const {
     std::string blackMove;
     std::string result;
     if (tokens.size() > 2) {
-      if (tokens[2] == "1-0" || tokens[2] == "0-1" || tokens[2] == "1/2-1/2") {
-        result = tokens[2];
+      // Join remaining tokens and decide whether they represent a result
+      auto joinFrom = [&](std::size_t idx) {
+        std::string tmp;
+        for (std::size_t j = idx; j < tokens.size(); ++j) {
+          if (j > idx) tmp += " ";
+          tmp += tokens[j];
+        }
+        return tmp;
+      };
+
+      std::string rem = joinFrom(2);
+      if (rem == "1-0" || rem == "0-1" || rem == "1/2 - 1/2") {
+        result = rem;
       } else {
         blackMove = tokens[2];
-        if (tokens.size() > 3) result = tokens[3];
+        rem = joinFrom(3);
+        if (rem == "1-0" || rem == "0-1" || rem == "1/2 - 1/2") {
+          result = rem;
+        }
       }
     }
 

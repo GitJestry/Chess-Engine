@@ -51,8 +51,10 @@ void EvalBar::render(sf::RenderWindow &window) {
   window.draw(m_score_text);
 }
 void EvalBar::update(int eval) {
+  if (!m_result.empty()) return;
+
   m_target_eval = static_cast<float>(eval);
-  m_display_eval += (m_target_eval - m_display_eval) * 0.1f;
+  m_display_eval = std::lerp(m_display_eval, m_target_eval, 0.05f);
   scaleToEval(m_display_eval);
 
   int absEval = std::abs(eval);
@@ -128,6 +130,18 @@ void EvalBar::scaleToEval(float e) {
     m_black_background.setScale(W / bgOrig.x, H / bgOrig.y);
     m_black_background.setPosition(p);
   }
+}
+
+void EvalBar::setResult(const std::string &result) {
+  m_result = result;
+  if (m_result.empty()) return;
+
+  m_score_text.setString(m_result);
+  m_score_text.setFillColor(sf::Color::White);
+  auto b = m_score_text.getLocalBounds();
+  m_score_text.setOrigin(b.width / 2.f, b.height / 2.f);
+  m_score_text.setPosition(std::round(getPosition().x),
+                           std::round(getPosition().y));
 }
 
 } // namespace lilia::view

@@ -70,7 +70,6 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
 
   m_game_manager->setOnGameEnd([this](core::GameResult res) {
     this->showGameOver(res, m_chess_game.getGameState().sideToMove);
-    this->m_sound_manager.playEffect(view::sound::Effect::GameEnds);
   });
 }
 
@@ -743,25 +742,26 @@ bool GameController::hasCurrentLegalMove(core::Square from, core::Square to) con
 
 void GameController::showGameOver(core::GameResult res, core::Color sideToMove) {
   std::string resultStr;
+  m_sound_manager.playEffect(view::sound::Effect::GameEnds);
   switch (res) {
     case core::GameResult::CHECKMATE:
       resultStr = (sideToMove == core::Color::White) ? "0-1" : "1-0";
       m_game_view.showGameOverPopup(sideToMove == core::Color::White ? "Black won" : "White won");
       break;
     case core::GameResult::REPETITION:
-      resultStr = "1/2-1/2";
+      resultStr = "1/2 - 1/2";
       m_game_view.showGameOverPopup("Draw by repetition");
       break;
     case core::GameResult::MOVERULE:
-      resultStr = "1/2-1/2";
+      resultStr = "1/2 - 1/2";
       m_game_view.showGameOverPopup("Draw by 50 move rule");
       break;
     case core::GameResult::STALEMATE:
-      resultStr = "1/2-1/2";
+      resultStr = "1/2 - 1/2";
       m_game_view.showGameOverPopup("Stalemate");
       break;
     case core::GameResult::INSUFFICIENT:
-      resultStr = "1/2-1/2";
+      resultStr = "1/2 - 1/2";
       m_game_view.showGameOverPopup("Insufficient material");
       break;
     default:
@@ -770,6 +770,7 @@ void GameController::showGameOver(core::GameResult res, core::Color sideToMove) 
       break;
   }
   m_game_view.addResult(resultStr);
+  m_game_view.setEvalResult(resultStr);
   m_game_view.setGameOver(true);
 }
 

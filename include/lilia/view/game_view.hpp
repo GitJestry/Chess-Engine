@@ -5,6 +5,7 @@
 #include <SFML/Graphics/Text.hpp>
 #include <SFML/System/Vector2.hpp>
 #include <SFML/Window/Cursor.hpp>
+#include <string>
 
 #include "../constants.hpp"
 #include "../controller/mousepos.hpp"
@@ -33,6 +34,7 @@ public:
 
   void update(float dt);
   void updateEval(int eval);
+  void setEvalResult(const std::string &result);
 
   void render();
 
