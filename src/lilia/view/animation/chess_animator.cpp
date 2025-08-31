@@ -55,6 +55,10 @@ void ChessAnimator::end(core::Square sq) {
   m_anim_manager.endAnim(m_piece_manager_ref.getPieceID(sq));
 }
 
+void ChessAnimator::cancelAll() {
+  m_anim_manager.cancelAll();
+}
+
 [[nodiscard]] bool ChessAnimator::isAnimating(Entity::ID_type entityID) const {
   return m_anim_manager.isAnimating(entityID);
 }

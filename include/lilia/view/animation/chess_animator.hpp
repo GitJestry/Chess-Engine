@@ -24,6 +24,7 @@ class ChessAnimator {
 
   void declareHighlightLevel(core::Square sq);
   void end(core::Square sq);
+  void cancelAll();
 
   [[nodiscard]] bool isAnimating(Entity::ID_type entityID) const;
   void updateAnimations(float dt);
