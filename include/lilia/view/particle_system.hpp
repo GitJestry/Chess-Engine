@@ -13,6 +13,7 @@ public:
     sf::CircleShape shape;
     sf::Vector2f velocity;
     float lifetime;
+    float floorY; // y position where particle should disappear
   };
 
   // Emit confetti across the board starting from the bottom edge.
