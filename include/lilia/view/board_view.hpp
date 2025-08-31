@@ -18,7 +18,8 @@ public:
   void setFlipped(bool flipped);
   [[nodiscard]] bool isFlipped() const;
   [[nodiscard]] bool isOnFlipIcon(core::MousePos mousePos) const;
-  core::MousePos clampPosToBoard(core::MousePos mousePos) const noexcept;
+  core::MousePos clampPosToBoard(core::MousePos mousePos,
+                                 Entity::Position pieceSize = {0.f, 0.f}) const noexcept;
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
 
   void setPosition(const Entity::Position &pos);

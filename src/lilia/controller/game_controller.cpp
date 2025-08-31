@@ -608,7 +608,8 @@ void GameController::onClick(core::MousePos mousePos) {
 
 void GameController::onDrag(core::MousePos start, core::MousePos current) {
   const core::Square sqStart = m_game_view.mousePosToSquare(start);
-  const core::Square sqMous = m_game_view.mousePosToSquare(current);
+  const core::MousePos clamped = m_game_view.clampPosToBoard(current);
+  const core::Square sqMous = m_game_view.mousePosToSquare(clamped);
 
   if (m_game_view.isInPromotionSelection()) return;
   if (!m_game_view.hasPieceOnSquare(sqStart)) return;
@@ -631,7 +632,8 @@ void GameController::onDrag(core::MousePos start, core::MousePos current) {
 
 void GameController::onDrop(core::MousePos start, core::MousePos end) {
   const core::Square from = m_game_view.mousePosToSquare(start);
-  const core::Square to = m_game_view.mousePosToSquare(end);
+  const core::Square to =
+      m_game_view.mousePosToSquare(m_game_view.clampPosToBoard(end));
 
   dehoverSquare();
 

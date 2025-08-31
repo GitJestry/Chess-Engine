@@ -375,8 +375,14 @@ void GameView::removePromotionSelection() {
   return m_board_view.mousePosToSquare(mousePos);
 }
 
+core::MousePos GameView::clampPosToBoard(core::MousePos mousePos,
+                                         Entity::Position pieceSize) const {
+  return m_board_view.clampPosToBoard(mousePos, pieceSize);
+}
+
 void GameView::setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos) {
-  m_piece_manager.setPieceToScreenPos(pos, m_board_view.clampPosToBoard(mousePos));
+  auto size = getPieceSize(pos);
+  m_piece_manager.setPieceToScreenPos(pos, clampPosToBoard(mousePos, size));
 }
 void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
   m_piece_manager.setPieceToSquareScreenPos(from, to);

@@ -85,17 +85,23 @@ constexpr int clampInt(int v, int lo, int hi) noexcept {
 } // namespace
 
 core::MousePos
-BoardView::clampPosToBoard(core::MousePos mousePos) const noexcept {
+BoardView::clampPosToBoard(core::MousePos mousePos,
+                            Entity::Position pieceSize) const noexcept {
   const int sx = normalizeUnsignedToSigned(mousePos.x);
   const int sy = normalizeUnsignedToSigned(mousePos.y);
 
   auto boardCenter = getPosition();
+  const float halfW = pieceSize.x / 2.f;
+  const float halfH = pieceSize.y / 2.f;
+
   const int left = static_cast<int>(
-      boardCenter.x - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f);
+      boardCenter.x - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f + halfW);
   const int top = static_cast<int>(
-      boardCenter.y - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f);
-  const int right = left + static_cast<int>(constant::WINDOW_PX_SIZE) - 1;
-  const int bottom = top + static_cast<int>(constant::WINDOW_PX_SIZE) - 1;
+      boardCenter.y - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f + halfH);
+  const int right = static_cast<int>(
+      boardCenter.x + static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f - 1.f - halfW);
+  const int bottom = static_cast<int>(
+      boardCenter.y + static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f - 1.f - halfH);
 
   const int cx = clampInt(sx, left, right);
   const int cy = clampInt(sy, top, bottom);
