@@ -7,9 +7,9 @@ namespace lilia::view {
 
 PlayerInfoView::PlayerInfoView() {
   m_frame.setFillColor(sf::Color::White);
-  m_frame.setOutlineColor(sf::Color(120, 120, 120));
+  m_frame.setOutlineColor(sf::Color(100, 100, 100));
   m_frame.setOutlineThickness(2.f);
-  m_frame.setSize({40.f, 40.f});
+  m_frame.setSize({32.f, 32.f});
   if (m_font.loadFromFile(constant::STR_FILE_PATH_FONT)) {
     m_text.setFont(m_font);
     m_text.setCharacterSize(18);
@@ -21,7 +21,7 @@ void PlayerInfoView::setInfo(const PlayerInfo& info) {
   m_icon.setTexture(TextureTable::getInstance().get(info.iconPath));
   auto size = m_icon.getOriginalSize();
   if (size.x > 0) {
-    float scale = 32.f / static_cast<float>(size.x);
+    float scale = 25.f / static_cast<float>(size.x);
     m_icon.setScale(scale, scale);
   }
   m_icon.setOriginToCenter();

@@ -12,11 +12,11 @@ namespace lilia::view {
 namespace {
 constexpr float kPaddingX = 8.f;
 constexpr float kPaddingY = 8.f;
-constexpr float kLineHeight = 28.f;
+constexpr float kLineHeight = 26.f;
 constexpr float kMoveSpacing = 30.f;
 constexpr float kListStartRatio = 0.3f;
 constexpr unsigned kMoveNumberFontSize = 14;
-constexpr unsigned kMoveFontSize = 16;
+constexpr unsigned kMoveFontSize = 15;
 constexpr unsigned kHeaderFontSize = 24;
 constexpr unsigned kSubHeaderFontSize = 18;
 }  // namespace
@@ -105,8 +105,7 @@ void MoveListView::render(sf::RenderWindow &window) const {
   const float bottom = static_cast<float>(m_height);
 
   // Hintergrundsegment neben dem Brett
-  sf::RectangleShape segmentBg(
-      {static_cast<float>(m_width), static_cast<float>(m_height)});
+  sf::RectangleShape segmentBg({static_cast<float>(m_width), static_cast<float>(m_height)});
   segmentBg.setPosition(0.f, 0.f);
   segmentBg.setFillColor(sf::Color(45, 45, 45));
   window.draw(segmentBg);
@@ -161,12 +160,12 @@ void MoveListView::render(sf::RenderWindow &window) const {
   subHeader.setStyle(sf::Text::Bold);
   subHeader.setFillColor(sf::Color::White);
   auto sb = subHeader.getLocalBounds();
-  subHeader.setPosition((static_cast<float>(m_width) - sb.width) / 2.f - sb.left, listTop - 2.f);
+  subHeader.setPosition((static_cast<float>(m_width) - sb.width) / 2.f - sb.left, listTop + 10.f);
   window.draw(subHeader);
 
   // Zeichne nur sichtbare Zeilen
   for (std::size_t i = 0; i < m_lines.size(); ++i) {
-    const float y = contentTop + (static_cast<float>(i) * kLineHeight) - m_scroll_offset;
+    const float y = contentTop + (static_cast<float>(i) * kLineHeight) - m_scroll_offset + 3.f;
     if (y < top || y + kLineHeight > bottom) continue;
 
     std::string line = m_lines[i];
