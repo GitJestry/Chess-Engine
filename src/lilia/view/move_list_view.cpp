@@ -228,16 +228,23 @@ void MoveListView::render(sf::RenderWindow &window) const {
     std::vector<std::string> tokens;
     std::string tok;
     while (iss >> tok) tokens.push_back(tok);
-    std::string numberStr = tokens.size() > 0 ? tokens[0] : "";
-    std::string whiteMove = tokens.size() > 1 ? tokens[1] : "";
+    std::string numberStr;
+    std::string whiteMove;
     std::string blackMove;
     std::string result;
-    if (tokens.size() > 2) {
-      if (tokens[2] == "1-0" || tokens[2] == "0-1" || tokens[2] == "1/2-1/2") {
-        result = tokens[2];
-      } else {
-        blackMove = tokens[2];
-        if (tokens.size() > 3) result = tokens[3];
+    if (tokens.size() == 1 &&
+        (tokens[0] == "1-0" || tokens[0] == "0-1" || tokens[0] == "1/2-1/2")) {
+      result = tokens[0];
+    } else {
+      numberStr = tokens.size() > 0 ? tokens[0] : "";
+      whiteMove = tokens.size() > 1 ? tokens[1] : "";
+      if (tokens.size() > 2) {
+        if (tokens[2] == "1-0" || tokens[2] == "0-1" || tokens[2] == "1/2-1/2") {
+          result = tokens[2];
+        } else {
+          blackMove = tokens[2];
+          if (tokens.size() > 3) result = tokens[3];
+        }
       }
     }
 

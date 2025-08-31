@@ -6,6 +6,7 @@
 #include <cmath>
 #include <iomanip>
 #include <sstream>
+#include <string>
 
 #include "lilia/engine/config.hpp"
 #include "lilia/model/position.hpp"
@@ -51,21 +52,27 @@ void EvalBar::render(sf::RenderWindow &window) {
   window.draw(m_score_text);
 }
 void EvalBar::update(int eval) {
-  m_target_eval = static_cast<float>(eval);
-  m_display_eval += (m_target_eval - m_display_eval) * 0.1f;
+  if (!m_has_result) {
+    m_target_eval = static_cast<float>(eval);
+    m_display_eval += (m_target_eval - m_display_eval) * 0.05f;
+  }
   scaleToEval(m_display_eval);
 
-  int absEval = std::abs(eval);
-  if (absEval >= engine::MATE_THR) {
-    int moves = (engine::MATE - absEval) / 2;
-    std::string prefix = "M";
-    m_score_text.setString(prefix + std::to_string(moves));
+  if (m_has_result) {
+    m_score_text.setString(m_result);
   } else {
-    double val = std::abs(m_display_eval / 100.0);
-    std::ostringstream ss;
-    ss.setf(std::ios::fixed);
-    ss << std::setprecision(1) << val;
-    m_score_text.setString(ss.str());
+    int absEval = std::abs(static_cast<int>(m_display_eval));
+    if (absEval >= engine::MATE_THR) {
+      int moves = (engine::MATE - absEval) / 2;
+      std::string prefix = "M";
+      m_score_text.setString(prefix + std::to_string(moves));
+    } else {
+      double val = std::abs(m_display_eval / 100.0);
+      std::ostringstream ss;
+      ss.setf(std::ios::fixed);
+      ss << std::setprecision(1) << val;
+      m_score_text.setString(ss.str());
+    }
   }
   // Recompute origin after updating the text string
   auto b = m_score_text.getLocalBounds();
@@ -128,6 +135,30 @@ void EvalBar::scaleToEval(float e) {
     m_black_background.setScale(W / bgOrig.x, H / bgOrig.y);
     m_black_background.setPosition(p);
   }
+}
+
+void EvalBar::setResult(const std::string &result) {
+  m_has_result = true;
+  m_result = result;
+  if (result == "1-0") {
+    m_display_eval = m_target_eval = static_cast<float>(engine::MATE);
+  } else if (result == "0-1") {
+    m_display_eval = m_target_eval = -static_cast<float>(engine::MATE);
+  } else {
+    m_display_eval = m_target_eval = 0.f;
+  }
+  update(static_cast<int>(m_display_eval));
+}
+
+void EvalBar::reset() {
+  m_has_result = false;
+  m_result.clear();
+  m_display_eval = 0.f;
+  m_target_eval = 0.f;
+  m_score_text.setString("0.0");
+  auto b = m_score_text.getLocalBounds();
+  m_score_text.setOrigin(b.width / 2.f, b.height / 2.f);
+  scaleToEval(0.f);
 }
 
 } // namespace lilia::view
