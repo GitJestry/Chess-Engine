@@ -29,12 +29,18 @@ MoveListView::MoveListView() {
   }
   // load option icons
   m_icon_resign.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_RESIGN));
+  m_icon_resign.setScale(2.f, 2.f);
   m_icon_prev.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_PREV));
+  m_icon_prev.setScale(2.f, 2.f);
   m_icon_next.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_NEXT));
+  m_icon_next.setScale(2.f, 2.f);
   m_icon_settings.setTexture(
       TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_SETTINGS));
+  m_icon_settings.setScale(2.f, 2.f);
   m_icon_new_bot.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_NEW_BOT));
+  m_icon_new_bot.setScale(2.f, 2.f);
   m_icon_rematch.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_REMATCH));
+  m_icon_rematch.setScale(2.f, 2.f);
   m_icon_resign.setOriginToCenter();
   m_icon_prev.setOriginToCenter();
   m_icon_next.setOriginToCenter();
@@ -58,12 +64,12 @@ void MoveListView::setSize(unsigned int width, unsigned int height) {
   auto sizeR = m_icon_resign.getCurrentSize();
   m_bounds_resign = {padding - sizeR.x / 2.f, centerY - sizeR.y / 2.f, sizeR.x, sizeR.y};
 
-  m_icon_new_bot.setPosition({padding, centerY});
   auto sizeNB = m_icon_new_bot.getCurrentSize();
+  m_icon_new_bot.setPosition({padding, centerY - sizeNB.y / 2});
   m_bounds_new_bot = {padding - sizeNB.x / 2.f, centerY - sizeNB.y / 2.f, sizeNB.x, sizeNB.y};
 
-  float rematchX = padding + sizeNB.x + 10.f;
-  m_icon_rematch.setPosition({rematchX, centerY});
+  float rematchX = padding;
+  m_icon_rematch.setPosition({rematchX, centerY + sizeNB.y / 2});
   auto sizeRM = m_icon_rematch.getCurrentSize();
   m_bounds_rematch = {rematchX - sizeRM.x / 2.f, centerY - sizeRM.y / 2.f, sizeRM.x, sizeRM.y};
   // navigation icons in middle
