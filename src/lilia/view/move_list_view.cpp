@@ -28,30 +28,19 @@ MoveListView::MoveListView() {
   if (!m_font.loadFromFile(constant::STR_FILE_PATH_FONT)) {
   }
   // load option icons
-  m_icon_resign.setTexture(
-      TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_RESIGN));
-  m_icon_prev.setTexture(
-      TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_PREV));
-  m_icon_next.setTexture(
-      TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_NEXT));
+  m_icon_resign.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_RESIGN));
+  m_icon_prev.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_PREV));
+  m_icon_next.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_NEXT));
   m_icon_settings.setTexture(
       TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_SETTINGS));
-  m_icon_new_bot.setTexture(
-      TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_NEW_BOT));
-  m_icon_rematch.setTexture(
-      TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_REMATCH));
+  m_icon_new_bot.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_NEW_BOT));
+  m_icon_rematch.setTexture(TextureTable::getInstance().get(constant::STR_FILE_PATH_ICON_REMATCH));
   m_icon_resign.setOriginToCenter();
   m_icon_prev.setOriginToCenter();
   m_icon_next.setOriginToCenter();
   m_icon_settings.setOriginToCenter();
   m_icon_new_bot.setOriginToCenter();
   m_icon_rematch.setOriginToCenter();
-  m_icon_resign.setScale(0.5f, 0.5f);
-  m_icon_prev.setScale(0.5f, 0.5f);
-  m_icon_next.setScale(0.5f, 0.5f);
-  m_icon_settings.setScale(0.5f, 0.5f);
-  m_icon_new_bot.setScale(0.5f, 0.5f);
-  m_icon_rematch.setScale(0.5f, 0.5f);
 }
 
 void MoveListView::setPosition(const Entity::Position &pos) {
@@ -67,29 +56,24 @@ void MoveListView::setSize(unsigned int width, unsigned int height) {
   // resign or new bot/rematch on left
   m_icon_resign.setPosition({padding, centerY});
   auto sizeR = m_icon_resign.getCurrentSize();
-  m_bounds_resign = {padding - sizeR.x / 2.f, centerY - sizeR.y / 2.f, sizeR.x,
-                     sizeR.y};
+  m_bounds_resign = {padding - sizeR.x / 2.f, centerY - sizeR.y / 2.f, sizeR.x, sizeR.y};
 
   m_icon_new_bot.setPosition({padding, centerY});
   auto sizeNB = m_icon_new_bot.getCurrentSize();
-  m_bounds_new_bot =
-      {padding - sizeNB.x / 2.f, centerY - sizeNB.y / 2.f, sizeNB.x, sizeNB.y};
+  m_bounds_new_bot = {padding - sizeNB.x / 2.f, centerY - sizeNB.y / 2.f, sizeNB.x, sizeNB.y};
 
   float rematchX = padding + sizeNB.x + 10.f;
   m_icon_rematch.setPosition({rematchX, centerY});
   auto sizeRM = m_icon_rematch.getCurrentSize();
-  m_bounds_rematch = {rematchX - sizeRM.x / 2.f, centerY - sizeRM.y / 2.f,
-                      sizeRM.x, sizeRM.y};
+  m_bounds_rematch = {rematchX - sizeRM.x / 2.f, centerY - sizeRM.y / 2.f, sizeRM.x, sizeRM.y};
   // navigation icons in middle
   float midX = static_cast<float>(m_width) / 2.f;
   m_icon_prev.setPosition({midX - 30.f, centerY});
   auto sizeP = m_icon_prev.getCurrentSize();
-  m_bounds_prev = {midX - 30.f - sizeP.x / 2.f, centerY - sizeP.y / 2.f,
-                   sizeP.x, sizeP.y};
+  m_bounds_prev = {midX - 30.f - sizeP.x / 2.f, centerY - sizeP.y / 2.f, sizeP.x, sizeP.y};
   m_icon_next.setPosition({midX + 30.f, centerY});
   auto sizeN = m_icon_next.getCurrentSize();
-  m_bounds_next = {midX + 30.f - sizeN.x / 2.f, centerY - sizeN.y / 2.f,
-                   sizeN.x, sizeN.y};
+  m_bounds_next = {midX + 30.f - sizeN.x / 2.f, centerY - sizeN.y / 2.f, sizeN.x, sizeN.y};
   // settings on right
   m_icon_settings.setPosition({static_cast<float>(m_width) - padding, centerY});
   auto sizeS = m_icon_settings.getCurrentSize();
@@ -106,8 +90,8 @@ void MoveListView::addMove(const std::string &uciMove) {
   const std::size_t lineIndex = moveIndex / 2;
   const bool whiteMove = (moveIndex % 2) == 0;
   const float listHeight = static_cast<float>(m_height) - m_option_height;
-  const float contentTop = listHeight * kListStartRatio +
-                           static_cast<float>(kSubHeaderFontSize) + kMoveSpacing;
+  const float contentTop =
+      listHeight * kListStartRatio + static_cast<float>(kSubHeaderFontSize) + kMoveSpacing;
   const float y = contentTop + static_cast<float>(lineIndex) * kLineHeight;
 
   if (whiteMove) {
@@ -163,8 +147,7 @@ void MoveListView::addResult(const std::string &result) {
 void MoveListView::render(sf::RenderWindow &window) const {
   const sf::View oldView = window.getView();
 
-  sf::View view(sf::FloatRect(0.f, 0.f, static_cast<float>(m_width),
-                              static_cast<float>(m_height)));
+  sf::View view(sf::FloatRect(0.f, 0.f, static_cast<float>(m_width), static_cast<float>(m_height)));
   view.setViewport(
       sf::FloatRect(m_position.x / static_cast<float>(window.getSize().x),
                     m_position.y / static_cast<float>(window.getSize().y),
@@ -179,8 +162,7 @@ void MoveListView::render(sf::RenderWindow &window) const {
   const float bottom = listHeight;
 
   // Hintergrundsegment neben dem Brett
-  sf::RectangleShape segmentBg({static_cast<float>(m_width),
-                                static_cast<float>(m_height)});
+  sf::RectangleShape segmentBg({static_cast<float>(m_width), static_cast<float>(m_height)});
   segmentBg.setPosition(0.f, 0.f);
   segmentBg.setFillColor(sf::Color(45, 45, 45));
   window.draw(segmentBg);
@@ -193,8 +175,7 @@ void MoveListView::render(sf::RenderWindow &window) const {
   window.draw(headerBg);
 
   float movesBgY = contentTop;
-  sf::RectangleShape movesBg(
-      {static_cast<float>(m_width), listHeight - movesBgY});
+  sf::RectangleShape movesBg({static_cast<float>(m_width), listHeight - movesBgY});
   movesBg.setPosition(0.f, movesBgY);
   movesBg.setFillColor(sf::Color(65, 65, 65));
   window.draw(movesBg);
@@ -240,8 +221,7 @@ void MoveListView::render(sf::RenderWindow &window) const {
 
   // Zeichne nur sichtbare Zeilen
   for (std::size_t i = 0; i < m_lines.size(); ++i) {
-    const float y = contentTop + (static_cast<float>(i) * kLineHeight) -
-                    m_scroll_offset + 3.f;
+    const float y = contentTop + (static_cast<float>(i) * kLineHeight) - m_scroll_offset + 3.f;
     if (y < top || y + kLineHeight > bottom) continue;
 
     std::istringstream iss(m_lines[i]);
@@ -301,8 +281,7 @@ void MoveListView::render(sf::RenderWindow &window) const {
   }
 
   // option field background
-  sf::RectangleShape optionBg(
-      {static_cast<float>(m_width), m_option_height});
+  sf::RectangleShape optionBg({static_cast<float>(m_width), m_option_height});
   optionBg.setPosition(0.f, listHeight);
   optionBg.setFillColor(sf::Color(55, 55, 55));
   window.draw(optionBg);
@@ -324,8 +303,8 @@ void MoveListView::scroll(float delta) {
   m_scroll_offset -= delta * kLineHeight;
   const float listHeight = static_cast<float>(m_height) - m_option_height;
   const float content = static_cast<float>(m_lines.size()) * kLineHeight;
-  const float contentTop = listHeight * kListStartRatio +
-                           static_cast<float>(kSubHeaderFontSize) + kMoveSpacing;
+  const float contentTop =
+      listHeight * kListStartRatio + static_cast<float>(kSubHeaderFontSize) + kMoveSpacing;
   const float visibleHeight = listHeight - contentTop;
   const float maxOff = std::max(0.f, content - visibleHeight);
   m_scroll_offset = std::clamp(m_scroll_offset, 0.f, maxOff);
@@ -347,8 +326,8 @@ void MoveListView::setCurrentMove(std::size_t moveIndex) {
   const float lineY = lineIndex * kLineHeight;
 
   const float listHeight = static_cast<float>(m_height) - m_option_height;
-  const float contentTop = listHeight * kListStartRatio +
-                           static_cast<float>(kSubHeaderFontSize) + kMoveSpacing;
+  const float contentTop =
+      listHeight * kListStartRatio + static_cast<float>(kSubHeaderFontSize) + kMoveSpacing;
   const float visibleHeight = listHeight - contentTop;
 
   if (lineY < m_scroll_offset) {
@@ -366,8 +345,7 @@ std::size_t MoveListView::getMoveIndexAt(const Entity::Position &pos) const {
   const float localX = pos.x - m_position.x;
   const float localY = pos.y - m_position.y + m_scroll_offset;
   const float listHeight = static_cast<float>(m_height) - m_option_height;
-  if (localX < 0.f || localY < 0.f || localX > static_cast<float>(m_width) ||
-      localY > listHeight)
+  if (localX < 0.f || localY < 0.f || localX > static_cast<float>(m_width) || localY > listHeight)
     return static_cast<std::size_t>(-1);
 
   for (std::size_t i = 0; i < m_move_bounds.size(); ++i) {
@@ -391,6 +369,8 @@ MoveListView::Option MoveListView::getOptionAt(const Entity::Position &pos) cons
   return Option::None;
 }
 
-void MoveListView::setGameOver(bool over) { m_game_over = over; }
+void MoveListView::setGameOver(bool over) {
+  m_game_over = over;
+}
 
 }  // namespace lilia::view
