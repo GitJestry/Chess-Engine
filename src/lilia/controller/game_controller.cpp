@@ -220,8 +220,16 @@ void GameController::handleEvent(const sf::Event &event) {
   if (m_fen_index != m_fen_history.size() - 1)
     return;
 
-  if (m_chess_game.getResult() != core::GameResult::ONGOING)
+  if (m_chess_game.getResult() != core::GameResult::ONGOING) {
+    if (event.type == sf::Event::MouseButtonPressed &&
+        event.mouseButton.button == sf::Mouse::Left) {
+      core::MousePos mp(event.mouseButton.x, event.mouseButton.y);
+      if (m_game_view.isOnFlipIcon(mp)) {
+        m_game_view.toggleBoardOrientation();
+      }
+    }
     return;
+  }
 
   switch (event.type) {
   case sf::Event::MouseMoved:

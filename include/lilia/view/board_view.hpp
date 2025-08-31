@@ -27,7 +27,8 @@ public:
 
 private:
   Board m_board;
-  Entity m_flip_icon;
+  Entity::Position m_flip_pos{};
+  float m_flip_size{0.f};
   bool m_flipped{false};
 };
 

@@ -2,31 +2,69 @@
 
 #include <limits>
 
+#include <algorithm>
+#include <cmath>
+#include <SFML/Graphics.hpp>
+
 #include "lilia/view/texture_table.hpp"
 
 namespace lilia::view {
 
+namespace {
+const sf::Color colText(240, 244, 255);
+const sf::Color colAccentHover(120, 205, 255);
+
+inline float snapf(float v) { return std::round(v); }
+
+void drawFlipIcon(sf::RenderWindow &win, const sf::FloatRect &slot, bool hovered) {
+  const float s = std::min(slot.width, slot.height) * 0.70f;
+  const float cx = slot.left + slot.width * 0.5f;
+  const float cy = slot.top + slot.height * 0.5f;
+
+  sf::CircleShape ring(s * 0.5f);
+  ring.setOrigin(s * 0.5f, s * 0.5f);
+  ring.setPosition(snapf(cx), snapf(cy));
+  ring.setFillColor(sf::Color::Transparent);
+  ring.setOutlineThickness(2.f);
+  ring.setOutlineColor(hovered ? colAccentHover : colText);
+  win.draw(ring);
+
+  sf::ConvexShape arrow1(3);
+  arrow1.setPoint(0, {cx + s * 0.12f, cy - s * 0.55f});
+  arrow1.setPoint(1, {cx + s * 0.42f, cy - s * 0.40f});
+  arrow1.setPoint(2, {cx + s * 0.15f, cy - s * 0.25f});
+  arrow1.setFillColor(hovered ? colAccentHover : colText);
+  win.draw(arrow1);
+
+  sf::ConvexShape arrow2(3);
+  arrow2.setPoint(0, {cx - s * 0.12f, cy + s * 0.55f});
+  arrow2.setPoint(1, {cx - s * 0.42f, cy + s * 0.40f});
+  arrow2.setPoint(2, {cx - s * 0.15f, cy + s * 0.25f});
+  arrow2.setFillColor(hovered ? colAccentHover : colText);
+  win.draw(arrow2);
+}
+}  // namespace
+
 BoardView::BoardView()
     : m_board({constant::WINDOW_PX_SIZE / 2, constant::WINDOW_PX_SIZE / 2}),
-      m_flip_icon(), m_flipped(false) {}
+      m_flip_pos(), m_flip_size(0.f), m_flipped(false) {}
 
 void BoardView::init() {
   m_board.init(
       TextureTable::getInstance().get(constant::STR_TEXTURE_WHITE),
       TextureTable::getInstance().get(constant::STR_TEXTURE_BLACK),
       TextureTable::getInstance().get(constant::STR_TEXTURE_TRANSPARENT));
-  m_flip_icon.setTexture(
-      TextureTable::getInstance().get(constant::STR_FILE_PATH_FLIP));
-  auto size = m_flip_icon.getOriginalSize();
-  float scale = (constant::SQUARE_PX_SIZE * 0.3f) / size.x;
-  m_flip_icon.setScale(scale, scale);
-  m_flip_icon.setOriginToCenter();
   setPosition(getPosition());
 }
 
 void BoardView::renderBoard(sf::RenderWindow &window) {
   m_board.draw(window);
-  m_flip_icon.draw(window);
+  sf::Vector2i mousePx = sf::Mouse::getPosition(window);
+  sf::Vector2f mouse = window.mapPixelToCoords(mousePx);
+  sf::FloatRect slot(m_flip_pos.x - m_flip_size / 2.f,
+                     m_flip_pos.y - m_flip_size / 2.f, m_flip_size, m_flip_size);
+  bool hovered = slot.contains(mouse.x, mouse.y);
+  drawFlipIcon(window, slot, hovered);
 }
 [[nodiscard]] Entity::Position
 BoardView::getSquareScreenPos(core::Square sq) const {
@@ -52,9 +90,9 @@ void BoardView::setFlipped(bool flipped) {
 void BoardView::setPosition(const Entity::Position &pos) {
   m_board.setPosition(pos);
   float iconOffset = constant::SQUARE_PX_SIZE * 0.2f;
-  m_flip_icon.setPosition(
-      {pos.x + constant::WINDOW_PX_SIZE / 2.f + iconOffset,
-       pos.y - constant::WINDOW_PX_SIZE / 2.f + 2.f - iconOffset});
+  m_flip_size = constant::SQUARE_PX_SIZE * 0.3f;
+  m_flip_pos = {pos.x + constant::WINDOW_PX_SIZE / 2.f + iconOffset,
+                pos.y - constant::WINDOW_PX_SIZE / 2.f + 2.f - iconOffset};
 }
 
 [[nodiscard]] Entity::Position BoardView::getPosition() const {
@@ -62,12 +100,10 @@ void BoardView::setPosition(const Entity::Position &pos) {
 }
 
 [[nodiscard]] bool BoardView::isOnFlipIcon(core::MousePos mousePos) const {
-  auto pos = m_flip_icon.getPosition();
-  auto size = m_flip_icon.getCurrentSize();
-  float left = pos.x - size.x / 2.f;
-  float right = pos.x + size.x / 2.f;
-  float top = pos.y - size.y / 2.f;
-  float bottom = pos.y + size.y / 2.f;
+  float left = m_flip_pos.x - m_flip_size / 2.f;
+  float right = m_flip_pos.x + m_flip_size / 2.f;
+  float top = m_flip_pos.y - m_flip_size / 2.f;
+  float bottom = m_flip_pos.y + m_flip_size / 2.f;
   return mousePos.x >= left && mousePos.x <= right && mousePos.y >= top &&
          mousePos.y <= bottom;
 }
