@@ -6,7 +6,6 @@
 #include <algorithm>
 
 #include "lilia/view/render_constants.hpp"
-#include "lilia/view/rounded_rectangle_shape.hpp"
 
 namespace lilia::view {
 
@@ -19,7 +18,7 @@ constexpr float kListStartRatio = 0.3f;
 constexpr unsigned kMoveNumberFontSize = 14;
 constexpr unsigned kMoveFontSize = 18;
 constexpr unsigned kHeaderFontSize = 24;
-constexpr unsigned kSubHeaderFontSize = 20;
+constexpr unsigned kSubHeaderFontSize = 18;
 } // namespace
 
 MoveListView::MoveListView() {
@@ -88,12 +87,6 @@ void MoveListView::addMove(const std::string &uciMove) {
 }
 
 void MoveListView::render(sf::RenderWindow &window) const {
-  RoundedRectangleShape bg(
-      {static_cast<float>(m_width), static_cast<float>(m_height)}, 8.f, 10);
-  bg.setPosition(m_position);
-  bg.setFillColor(sf::Color(38, 37, 34));
-  window.draw(bg);
-
   const sf::View oldView = window.getView();
 
   sf::View view(sf::FloatRect(0.f, 0.f, static_cast<float>(m_width),
@@ -111,14 +104,32 @@ void MoveListView::render(sf::RenderWindow &window) const {
   const float top = contentTop;
   const float bottom = static_cast<float>(m_height);
 
+  // Hintergrundsegmente
+  sf::RectangleShape headerBg(
+      {static_cast<float>(m_width),
+       static_cast<float>(kHeaderFontSize) + 2.f * kPaddingY});
+  headerBg.setPosition(0.f, 0.f);
+  headerBg.setFillColor(sf::Color(40, 40, 40));
+  window.draw(headerBg);
+
+  float movesBgY = listTop + static_cast<float>(kSubHeaderFontSize);
+  sf::RectangleShape movesBg(
+      {static_cast<float>(m_width), static_cast<float>(m_height) - movesBgY});
+  movesBg.setPosition(0.f, movesBgY);
+  movesBg.setFillColor(sf::Color(60, 60, 60));
+  window.draw(movesBg);
+
+  // Highlight ausgewählten Zug
   if (m_selected_move != static_cast<std::size_t>(-1) &&
       m_selected_move < m_move_bounds.size()) {
     const auto &rect = m_move_bounds[m_selected_move];
-    float y = rect.top - m_scroll_offset;
-    if (y + rect.height >= top && y <= bottom) {
-      sf::RectangleShape hl({rect.width, rect.height});
-      hl.setPosition(rect.left, y);
-      hl.setFillColor(sf::Color(100, 100, 100));
+    constexpr float pad = 4.f;
+    float y = rect.top - m_scroll_offset - pad;
+    float h = rect.height + 2.f * pad;
+    if (y + h >= top && y <= bottom) {
+      sf::RectangleShape hl({rect.width + 2.f * pad, h});
+      hl.setPosition(rect.left - pad, y);
+      hl.setFillColor(sf::Color(80, 80, 80));
       window.draw(hl);
     }
   }
@@ -128,13 +139,17 @@ void MoveListView::render(sf::RenderWindow &window) const {
                   kHeaderFontSize);
   header.setStyle(sf::Text::Bold);
   header.setFillColor(sf::Color::White);
-  header.setPosition(kPaddingX, kPaddingY);
+  auto hb = header.getLocalBounds();
+  header.setPosition((static_cast<float>(m_width) - hb.width) / 2.f - hb.left,
+                     kPaddingY);
   window.draw(header);
 
   sf::Text subHeader("Movelist", m_font, kSubHeaderFontSize);
   subHeader.setStyle(sf::Text::Bold);
   subHeader.setFillColor(sf::Color::White);
-  subHeader.setPosition(kPaddingX, listTop);
+  auto sb = subHeader.getLocalBounds();
+  subHeader.setPosition(
+      (static_cast<float>(m_width) - sb.width) / 2.f - sb.left, listTop);
   window.draw(subHeader);
 
   // Zeichne nur sichtbare Zeilen
@@ -155,7 +170,7 @@ void MoveListView::render(sf::RenderWindow &window) const {
 
     sf::Text numTxt(numberStr + " ", m_font, kMoveNumberFontSize);
     numTxt.setStyle(sf::Text::Regular);
-    numTxt.setFillColor(sf::Color(200, 200, 200));
+    numTxt.setFillColor(sf::Color(180, 180, 180));
     numTxt.setPosition(kPaddingX, y);
     window.draw(numTxt);
 
@@ -164,9 +179,9 @@ void MoveListView::render(sf::RenderWindow &window) const {
     sf::Text whiteTxt(whiteMove, m_font, kMoveFontSize);
     whiteTxt.setStyle(sf::Text::Bold);
     if (m_selected_move == i * 2)
-      whiteTxt.setFillColor(sf::Color(255, 255, 170));
-    else
       whiteTxt.setFillColor(sf::Color::White);
+    else
+      whiteTxt.setFillColor(sf::Color(180, 180, 180));
     whiteTxt.setPosition(x, y);
     window.draw(whiteTxt);
     x += whiteTxt.getLocalBounds().width + kMoveSpacing;
@@ -175,9 +190,9 @@ void MoveListView::render(sf::RenderWindow &window) const {
       sf::Text blackTxt(blackMove, m_font, kMoveFontSize);
       blackTxt.setStyle(sf::Text::Bold);
       if (m_selected_move == i * 2 + 1)
-        blackTxt.setFillColor(sf::Color(255, 255, 170));
-      else
         blackTxt.setFillColor(sf::Color::White);
+      else
+        blackTxt.setFillColor(sf::Color(180, 180, 180));
       blackTxt.setPosition(x, y);
       window.draw(blackTxt);
     }

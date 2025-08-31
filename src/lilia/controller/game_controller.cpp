@@ -117,7 +117,7 @@ void GameController::handleEvent(const sf::Event &event) {
         m_sound_manager.playPlayerMove();
       else
         m_sound_manager.playEnemyMove();
-      m_game_view.setDefaultCursor();
+      m_game_view.setHandClosedCursor();
       return;
     }
   }
