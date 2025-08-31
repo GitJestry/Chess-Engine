@@ -6,9 +6,10 @@
 namespace lilia::view {
 
 PlayerInfoView::PlayerInfoView() {
-  m_frame.setFillColor(sf::Color(60, 60, 60));
+  m_frame.setFillColor(sf::Color::White);
   m_frame.setOutlineColor(sf::Color(120, 120, 120));
   m_frame.setOutlineThickness(2.f);
+  m_frame.setSize({40.f, 40.f});
   if (m_font.loadFromFile(constant::STR_FILE_PATH_FONT)) {
     m_text.setFont(m_font);
     m_text.setCharacterSize(18);
@@ -25,15 +26,13 @@ void PlayerInfoView::setInfo(const PlayerInfo& info) {
   }
   m_icon.setOriginToCenter();
   m_text.setString(info.name + " (" + std::to_string(info.elo) + ")");
-  auto bounds = m_text.getLocalBounds();
-  m_frame.setSize({bounds.width + 48.f, 40.f});
 }
 
 void PlayerInfoView::setPosition(const Entity::Position& pos) {
   m_position = pos;
   m_frame.setPosition(pos);
   m_icon.setPosition({pos.x + 20.f, pos.y + 20.f});
-  m_text.setPosition(pos.x + 40.f, pos.y + 8.f);
+  m_text.setPosition(pos.x + 50.f, pos.y + 8.f);
 }
 
 void PlayerInfoView::render(sf::RenderWindow& window) {

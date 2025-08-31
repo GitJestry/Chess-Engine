@@ -20,8 +20,7 @@ namespace lilia::view {
 
 class GameView {
 public:
-  GameView(sf::RenderWindow &window, const PlayerInfo &topInfo,
-           const PlayerInfo &bottomInfo);
+  GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot);
   ~GameView() = default;
 
   void init(const std::string &fen = core::START_FEN);

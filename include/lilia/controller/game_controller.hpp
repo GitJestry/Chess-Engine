@@ -91,7 +91,6 @@ class GameController {
   bool m_mouse_down = false;
 
   core::Square m_drag_from = core::NO_SQUARE;
-  core::MousePos m_drag_start{0u, 0u};
   bool m_preview_active = false;
   core::Square m_prev_selected_before_preview = core::NO_SQUARE;
 

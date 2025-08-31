@@ -87,7 +87,6 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
   m_mouse_down = false;
   m_dragging = false;
   m_drag_from = core::NO_SQUARE;
-  m_drag_start = {0u, 0u};
   m_preview_active = false;
   m_prev_selected_before_preview = core::NO_SQUARE;
   m_selected_sq = core::NO_SQUARE;
@@ -190,7 +189,6 @@ void GameController::handleEvent(const sf::Event &event) {
 
 void GameController::onMouseMove(core::MousePos pos) {
   if (m_dragging) {
-    onDrag(m_drag_start, pos);
     m_game_view.setHandClosedCursor();
     return;
   }
@@ -260,7 +258,6 @@ void GameController::onMousePressed(core::MousePos pos) {
   if (!tryMove(m_selected_sq, sq)) {
     m_dragging = true;
     m_drag_from = sq;
-    m_drag_start = pos;
     m_game_view.setPieceToMouseScreenPos(sq, pos);
     m_game_view.playPiecePlaceHolderAnimation(sq);
   }
@@ -270,7 +267,6 @@ void GameController::onMouseReleased(core::MousePos pos) {
   m_mouse_down = false;
 
   if (m_dragging) {
-    onDrop(m_drag_start, pos);
     m_dragging = false;
     m_drag_from = core::NO_SQUARE;
   }
