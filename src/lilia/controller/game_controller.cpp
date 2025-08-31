@@ -13,6 +13,8 @@
 #include "lilia/controller/game_manager.hpp"
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/move.hpp"
+#include "lilia/model/move_generator.hpp"
+#include "lilia/model/position.hpp"
 #include "lilia/uci/uci_helper.hpp"
 #include "lilia/view/render_constants.hpp"
 
@@ -240,6 +242,8 @@ void GameController::onMousePressed(core::MousePos pos) {
   }
 
   const core::Square sq = m_game_view.mousePosToSquare(pos);
+  m_selection_changed_on_press = false;
+  if (m_premove_from != core::NO_SQUARE) clearPremove();
 
   // clicking the already selected piece should lead to deselection on release
   if (m_selected_sq != core::NO_SQUARE && m_selected_sq == sq) {
@@ -258,7 +262,8 @@ void GameController::onMousePressed(core::MousePos pos) {
 
   if (!m_game_view.hasPieceOnSquare(sq)) return;
 
-  // Preview-Logik: Wechsel der Auswahl neu highlighten
+  const bool selectionWasDifferent = (m_selected_sq != sq);
+
   if (m_selected_sq != core::NO_SQUARE && m_selected_sq != sq) {
     m_preview_active = true;
     m_prev_selected_before_preview = m_selected_sq;
@@ -288,6 +293,8 @@ void GameController::onMousePressed(core::MousePos pos) {
     m_game_view.setPieceToMouseScreenPos(sq, pos);
     m_game_view.playPiecePlaceHolderAnimation(sq);
   }
+
+  m_selection_changed_on_press = selectionWasDifferent && (m_selected_sq == sq);
 }
 
 void GameController::onMouseReleased(core::MousePos pos) {
@@ -340,6 +347,15 @@ void GameController::hoverSquare(core::Square sq) {
 void GameController::dehoverSquare() {
   if (isValid(m_hover_sq)) m_game_view.clearHighlightHoverSquare(m_hover_sq);
   m_hover_sq = core::NO_SQUARE;
+}
+
+void GameController::clearPremove() {
+  if (m_premove_from != core::NO_SQUARE) {
+    m_premove_from = core::NO_SQUARE;
+    m_premove_to = core::NO_SQUARE;
+    m_game_view.clearAllHighlights();
+    highlightLastMove();
+  }
 }
 
 // --------- ZENTRALE Move-Callback-Behandlung (auch Engine-Züge) ----------
@@ -418,6 +434,14 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
 
   m_sound_manager.playEffect(effect);
   m_move_history.push_back({move, moverColorBefore, capturedType, effect});
+
+  if (m_premove_from != core::NO_SQUARE && m_game_manager &&
+      m_game_manager->isHuman(m_chess_game.getGameState().sideToMove)) {
+    core::Square pf = m_premove_from;
+    core::Square pt = m_premove_to;
+    clearPremove();
+    (void)m_game_manager->requestUserMove(pf, pt, /*onClick*/ true);
+  }
 }
 
 // ------------------------------------------------------------------------
@@ -448,14 +472,28 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 [[nodiscard]] std::vector<core::Square> GameController::getAttackSquares(
     core::Square pieceSQ) const {
   std::vector<core::Square> att;
-  for (const auto &m : m_chess_game.generateLegalMoves()) {
-    if (m.from == pieceSQ) att.push_back(m.to);
+  if (!isValid(pieceSQ)) return att;
+
+  auto pc = m_chess_game.getPiece(pieceSQ);
+  if (pc.type == core::PieceType::None) return att;
+
+  model::Position pos = m_chess_game.getPositionRefForBot();
+  model::GameState st = pos.getState();
+  st.sideToMove = pc.color;
+
+  model::MoveGenerator gen;
+  std::vector<model::Move> pseudo;
+  gen.generatePseudoLegalMoves(pos.getBoard(), st, pseudo);
+  for (const auto &m : pseudo) {
+    if (m.from == pieceSQ && pos.doMove(m)) {
+      pos.undoMove();
+      att.push_back(m.to);
+    }
   }
   return att;
 }
 
 void GameController::showAttacks(std::vector<core::Square> att) {
-  if (!m_game_manager || !m_game_manager->isHumanTurn()) return;
   for (auto sq : att) {
     if (m_game_view.hasPieceOnSquare(sq))
       m_game_view.highlightCaptureSquare(sq);
@@ -476,6 +514,12 @@ void GameController::onClick(core::MousePos mousePos) {
     m_game_view.setPieceToSquareScreenPos(sq, sq);
   }
 
+  if (m_selection_changed_on_press && sq == m_selected_sq) {
+    m_selection_changed_on_press = false;
+    return;
+  }
+  m_selection_changed_on_press = false;
+
   // Promotion-Auswahl?
   if (m_game_view.isInPromotionSelection()) {
     const core::PieceType promoType = m_game_view.getSelectedPromotion(mousePos);
@@ -490,12 +534,27 @@ void GameController::onClick(core::MousePos mousePos) {
     const auto st = m_chess_game.getGameState();
     const bool ownTurnAndPiece = (st.sideToMove == m_chess_game.getPiece(m_selected_sq).color) &&
                                  (!m_game_manager || m_game_manager->isHuman(st.sideToMove));
+    const core::Color humanColor = ~st.sideToMove;
 
-    if (ownTurnAndPiece && tryMove(m_selected_sq, sq)) {
-      if (m_game_manager) {
-        (void)m_game_manager->requestUserMove(m_selected_sq, sq,
-                                              /*onClick*/ true);
+    if (tryMove(m_selected_sq, sq)) {
+      if (ownTurnAndPiece) {
+        if (m_game_manager) {
+          (void)m_game_manager->requestUserMove(m_selected_sq, sq,
+                                                /*onClick*/ true);
+        }
+      } else if (m_chess_game.getPiece(m_selected_sq).color == humanColor &&
+                 (!m_game_manager || m_game_manager->isHuman(humanColor))) {
+        m_premove_from = m_selected_sq;
+        m_premove_to = sq;
+        m_game_view.clearAllHighlights();
+        highlightLastMove();
+        m_game_view.highlightSquare(m_premove_from);
+        if (m_game_view.hasPieceOnSquare(sq))
+          m_game_view.highlightCaptureSquare(sq);
+        else
+          m_game_view.highlightAttackSquare(sq);
       }
+      m_selected_sq = core::NO_SQUARE;
       return;  // NICHT umselektieren
     }
 

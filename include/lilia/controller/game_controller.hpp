@@ -72,6 +72,7 @@ class GameController {
   void deselectSquare();
   void hoverSquare(core::Square sq);
   void dehoverSquare();
+  void clearPremove();
 
   void movePieceAndClear(const model::Move& move, bool isPlayerMove, bool onClick);
 
@@ -98,6 +99,10 @@ class GameController {
   core::Square m_drag_from = core::NO_SQUARE;
   bool m_preview_active = false;
   core::Square m_prev_selected_before_preview = core::NO_SQUARE;
+  bool m_selection_changed_on_press = false;
+
+  core::Square m_premove_from = core::NO_SQUARE;
+  core::Square m_premove_to = core::NO_SQUARE;
 
   core::Square m_selected_sq = core::NO_SQUARE;  ///< Currently selected square.
   core::Square m_hover_sq = core::NO_SQUARE;     ///< Currently hovered square.
