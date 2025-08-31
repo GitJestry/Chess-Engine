@@ -134,8 +134,7 @@ void PlayerInfoView::addCapturedPiece(core::PieceType type, core::Color color) {
                          ".png";
   const sf::Texture& texture = TextureTable::getInstance().get(filename);
   Entity piece(texture);
-  piece.setScale(constant::ASSET_PIECE_SCALE * 0.6f,
-                 constant::ASSET_PIECE_SCALE * 0.6f);
+  piece.setScale(constant::ASSET_PIECE_SCALE * 0.2f, constant::ASSET_PIECE_SCALE * 0.2f);
   m_capturedPieces.push_back(std::move(piece));
   layoutCaptured();
 }
@@ -152,12 +151,11 @@ void PlayerInfoView::clearCapturedPieces() {
 }
 
 void PlayerInfoView::layoutCaptured() {
-  float x = m_position.x;
-  float y = m_position.y + m_frame.getSize().y + 6.f;
-  const float gap = 4.f;
+  float x = m_name.getPosition().x + 150;
+  float y = m_name.getPosition().y + 10;
   for (auto& piece : m_capturedPieces) {
     piece.setPosition(snap({x, y}));
-    x += piece.getCurrentSize().x + gap;
+    x += piece.getCurrentSize().x * 0.8;
   }
 }
 
