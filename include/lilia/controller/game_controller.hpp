@@ -32,6 +32,7 @@ struct MoveView {
   core::Color moverColor;
   core::PieceType capturedType;
   view::sound::Effect sound;
+  int evalCp{};
 };
 
 class GameController {
@@ -137,6 +138,7 @@ private:
   std::atomic<int> m_eval_cp{0};
 
   std::vector<std::string> m_fen_history;
+  std::vector<int> m_eval_history;
   std::size_t m_fen_index{0};
   std::vector<MoveView> m_move_history;
   NextAction m_next_action{NextAction::None};

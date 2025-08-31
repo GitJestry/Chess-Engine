@@ -26,6 +26,7 @@ constexpr float kNumColW = 44.f;  // fixed width for "1." column (wider for 2+ d
 constexpr float kMoveGap = 30.f;  // gap between white and black move columns
 
 constexpr float kHeaderH = 54.f;     // top header (title)
+constexpr float kFenH = 28.f;        // FEN info row
 constexpr float kSubHeaderH = 28.f;  // "Move List" line
 constexpr float kListTopGap = 8.f;   // spacing below subheader before rows
 constexpr float kFooterH = 52.f;     // fixed footer height (smaller controls)
@@ -64,7 +65,7 @@ inline float listHeight(float totalH, float /*optionH*/) {
   return totalH - kFooterH;
 }
 inline float contentTop(float /*totalH*/, float /*optionH*/) {
-  return kHeaderH + kSubHeaderH + kListTopGap;
+  return kHeaderH + kFenH + kSubHeaderH + kListTopGap;
 }
 
 // slot drawing helpers
@@ -169,6 +170,40 @@ void drawReload(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered) 
   win.draw(arrow);
 }
 
+void drawFenIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered) {
+  // simple document icon with folded corner
+  const float w = slot.width * 0.8f;
+  const float h = slot.height * 0.9f;
+  sf::RectangleShape sheet({w, h});
+  sheet.setPosition(snapf(slot.left + (slot.width - w) * 0.5f),
+                    snapf(slot.top + (slot.height - h) * 0.5f));
+  sheet.setFillColor(sf::Color::Transparent);
+  sheet.setOutlineThickness(2.f);
+  sheet.setOutlineColor(hovered ? colAccentHover : colText);
+  win.draw(sheet);
+
+  const float fold = w * 0.25f;
+  sf::ConvexShape corner(3);
+  corner.setPoint(0, {sheet.getPosition().x + w - fold, sheet.getPosition().y});
+  corner.setPoint(1, {sheet.getPosition().x + w, sheet.getPosition().y});
+  corner.setPoint(2, {sheet.getPosition().x + w, sheet.getPosition().y + fold});
+  corner.setFillColor(hovered ? colAccentHover : colText);
+  win.draw(corner);
+}
+
+// Ellipsize long FEN strings keeping tail
+std::string ellipsizeRightKeepTail(const std::string& s, sf::Text& probe,
+                                   float maxW) {
+  probe.setString(s);
+  if (probe.getLocalBounds().width <= maxW) return s;
+  for (std::size_t cut = 0; cut < s.size(); ++cut) {
+    std::string view = "..." + s.substr(cut);
+    probe.setString(view);
+    if (probe.getLocalBounds().width <= maxW) return view;
+  }
+  return s;
+}
+
 }  // namespace
 
 MoveListView::MoveListView() {
@@ -203,6 +238,11 @@ void MoveListView::setSize(unsigned int width, unsigned int height) {
   m_bounds_rematch = {left2X, centerY - kSlot * 0.5f, kSlot, kSlot};
   m_bounds_prev = {midL, centerY - kSlot * 0.5f, kSlot, kSlot};
   m_bounds_next = {midR, centerY - kSlot * 0.5f, kSlot, kSlot};
+
+  const float fenIconSize = 18.f;
+  m_bounds_fen_icon = {kPaddingX,
+                       kHeaderH + (kFenH - fenIconSize) * 0.5f,
+                       fenIconSize, fenIconSize};
 }
 
 void MoveListView::setBotMode(bool anyBot) {
@@ -264,6 +304,8 @@ void MoveListView::addResult(const std::string& result) {
   m_scroll_offset = maxOff;
 }
 
+void MoveListView::setFen(const std::string& fen) { m_fen_str = fen; }
+
 void MoveListView::render(sf::RenderWindow& window) const {
   const sf::View oldView = window.getView();
 
@@ -274,6 +316,9 @@ void MoveListView::render(sf::RenderWindow& window) const {
                     static_cast<float>(m_width) / static_cast<float>(window.getSize().x),
                     static_cast<float>(m_height) / static_cast<float>(window.getSize().y)));
   window.setView(view);
+
+  sf::Vector2i mousePx = sf::Mouse::getPosition(window);
+  sf::Vector2f mouseLocal = window.mapPixelToCoords(mousePx, view);
 
   const float listH = listHeight(static_cast<float>(m_height), m_option_height);
   const float topY = contentTop(static_cast<float>(m_height), m_option_height);
@@ -294,8 +339,13 @@ void MoveListView::render(sf::RenderWindow& window) const {
   headerBG.setFillColor(colHeaderBG);
   window.draw(headerBG);
 
+  sf::RectangleShape fenBG({static_cast<float>(m_width), kFenH});
+  fenBG.setPosition(0.f, kHeaderH);
+  fenBG.setFillColor(colListBG);
+  window.draw(fenBG);
+
   sf::RectangleShape subBG({static_cast<float>(m_width), kSubHeaderH});
-  subBG.setPosition(0.f, kHeaderH);
+  subBG.setPosition(0.f, kHeaderH + kFenH);
   subBG.setFillColor(colListBG);
   window.draw(subBG);
 
@@ -303,7 +353,9 @@ void MoveListView::render(sf::RenderWindow& window) const {
   sep.setFillColor(colBorder);
   sep.setPosition(0.f, kHeaderH);
   window.draw(sep);
-  sep.setPosition(0.f, kHeaderH + kSubHeaderH);
+  sep.setPosition(0.f, kHeaderH + kFenH);
+  window.draw(sep);
+  sep.setPosition(0.f, kHeaderH + kFenH + kSubHeaderH);
   window.draw(sep);
   sep.setPosition(0.f, listH);
   window.draw(sep);
@@ -327,8 +379,23 @@ void MoveListView::render(sf::RenderWindow& window) const {
   sub.setFillColor(colMuted);
   auto sb = sub.getLocalBounds();
   sub.setPosition(snapf((m_width - sb.width) / 2.f - sb.left),
-                  snapf(kHeaderH + (kSubHeaderH - sb.height) / 2.f - sb.top - 2.f));
+                  snapf(kHeaderH + kFenH +
+                        (kSubHeaderH - sb.height) / 2.f - sb.top - 2.f));
   window.draw(sub);
+
+  // FEN line
+  const bool hovFen = m_bounds_fen_icon.contains(mouseLocal.x, mouseLocal.y);
+  drawFenIcon(window, m_bounds_fen_icon, hovFen);
+  float textX = m_bounds_fen_icon.left + m_bounds_fen_icon.width + 6.f;
+  float availW = static_cast<float>(m_width) - textX - kPaddingX;
+  sf::Text probe("", m_font, kMoveFontSize);
+  std::string fenDisp = ellipsizeRightKeepTail("FEN: " + m_fen_str, probe, availW);
+  sf::Text fenTxt(fenDisp, m_font, kMoveFontSize);
+  fenTxt.setFillColor(colMuted);
+  auto fb = fenTxt.getLocalBounds();
+  fenTxt.setPosition(snapf(textX),
+                     snapf(kHeaderH + (kFenH - fb.height) / 2.f - fb.top - 2.f));
+  window.draw(fenTxt);
 
   // --- Alternating rows + selection highlight ---
   const std::size_t totalLines = m_lines.size() + (m_result.empty() ? 0 : 1);
@@ -435,9 +502,6 @@ void MoveListView::render(sf::RenderWindow& window) const {
   window.draw(optionBG);
 
   // Hover detection (map mouse to our local view coords)
-  sf::Vector2i mousePx = sf::Mouse::getPosition(window);
-  sf::Vector2f mouseLocal = window.mapPixelToCoords(mousePx, view);
-
   const bool hovPrev = m_bounds_prev.contains(mouseLocal.x, mouseLocal.y);
   const bool hovNext = m_bounds_next.contains(mouseLocal.x, mouseLocal.y);
   const bool hovResign = m_bounds_resign.contains(mouseLocal.x, mouseLocal.y);
@@ -483,6 +547,7 @@ void MoveListView::clear() {
   m_selected_move = static_cast<std::size_t>(-1);
   m_move_bounds.clear();
   m_result.clear();
+  m_fen_str.clear();
 }
 
 void MoveListView::setCurrentMove(std::size_t moveIndex) {
@@ -523,6 +588,8 @@ std::size_t MoveListView::getMoveIndexAt(const Entity::Position& pos) const {
 MoveListView::Option MoveListView::getOptionAt(const Entity::Position& pos) const {
   const float localX = pos.x - m_position.x;
   const float localY = pos.y - m_position.y;
+
+  if (m_bounds_fen_icon.contains(localX, localY)) return Option::ShowFen;
 
   if (m_game_over) {
     if (m_bounds_new_bot.contains(localX, localY)) return Option::NewBot;

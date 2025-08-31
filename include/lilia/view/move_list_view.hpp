@@ -18,6 +18,7 @@ public:
 
   void setPosition(const Entity::Position &pos);
   void setSize(unsigned int width, unsigned int height);
+  void setFen(const std::string &fen);
 
   void addMove(const std::string &uciMove);
   void addResult(const std::string &result);
@@ -30,7 +31,7 @@ public:
 
   [[nodiscard]] std::size_t getMoveIndexAt(const Entity::Position &pos) const;
 
-  enum class Option { None, Resign, Prev, Next, Settings, NewBot, Rematch };
+  enum class Option { None, Resign, Prev, Next, Settings, NewBot, Rematch, ShowFen };
   [[nodiscard]] Option getOptionAt(const Entity::Position &pos) const;
   void setGameOver(bool over);
 
@@ -48,6 +49,7 @@ private:
   std::vector<sf::FloatRect> m_move_bounds;
   bool m_any_bot{false};
   bool m_game_over{false};
+  std::string m_fen_str{};
 
   // Icons in bottom option field
   mutable Entity m_icon_resign;
@@ -62,6 +64,7 @@ private:
   sf::FloatRect m_bounds_settings{};
   sf::FloatRect m_bounds_new_bot{};
   sf::FloatRect m_bounds_rematch{};
+  sf::FloatRect m_bounds_fen_icon{};
 };
 
 } // namespace lilia::view

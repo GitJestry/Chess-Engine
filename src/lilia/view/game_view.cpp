@@ -62,6 +62,7 @@ void GameView::init(const std::string &fen) {
   m_piece_manager.initFromFen(fen);
   m_move_list.clear();
   m_eval_bar.reset();
+  m_move_list.setFen(fen);
 }
 
 void GameView::update(float dt) {
@@ -119,7 +120,10 @@ void GameView::setBoardFen(const std::string &fen) {
   m_piece_manager.removeAll();
   m_piece_manager.initFromFen(fen);
   m_highlight_manager.clearAllHighlights();
+  m_move_list.setFen(fen);
 }
+
+void GameView::updateFen(const std::string &fen) { m_move_list.setFen(fen); }
 
 void GameView::resetBoard() {
   m_piece_manager.removeAll();
