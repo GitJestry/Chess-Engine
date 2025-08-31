@@ -41,7 +41,6 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
     topInfo = getBotInfo(BotType::Lilia);
   } else {
     topInfo = {"Challenger", 0, constant::STR_FILE_PATH_ICON_CHALLENGER};
-    m_board_view.setFlipped(true);
   }
   m_top_player.setInfo(topInfo);
 
@@ -50,9 +49,11 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
     bottomInfo = getBotInfo(BotType::Lilia);
   } else {
     bottomInfo = {"Challenger", 0, constant::STR_FILE_PATH_ICON_CHALLENGER};
-    m_board_view.setFlipped(false);
   }
   m_bottom_player.setInfo(bottomInfo);
+
+  // If black is a player but white is not, start with the board flipped.
+  m_board_view.setFlipped(bottomIsBot && !topIsBot);
 
   layout(m_window.getSize().x, m_window.getSize().y);
 
