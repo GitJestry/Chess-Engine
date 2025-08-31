@@ -14,10 +14,11 @@ class PlayerInfoView {
   PlayerInfoView();
 
   void setInfo(const PlayerInfo& info);
-  void setPosition(const Entity::Position& pos);
+  void setPositionClamped(const Entity::Position& pos, const sf::Vector2u& viewportSize);
   void render(sf::RenderWindow& window);
 
  private:
+  void setPosition(const Entity::Position& pos);
   Entity m_icon;
   sf::RectangleShape m_frame;
   sf::Font m_font;
