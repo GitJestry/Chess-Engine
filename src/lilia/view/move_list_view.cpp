@@ -12,11 +12,11 @@ namespace lilia::view {
 namespace {
 constexpr float kPaddingX = 8.f;
 constexpr float kPaddingY = 8.f;
-constexpr float kLineHeight = 28.f;
+constexpr float kLineHeight = 26.f;
 constexpr float kMoveSpacing = 30.f;
 constexpr float kListStartRatio = 0.3f;
 constexpr unsigned kMoveNumberFontSize = 14;
-constexpr unsigned kMoveFontSize = 16;
+constexpr unsigned kMoveFontSize = 15;
 constexpr unsigned kHeaderFontSize = 24;
 constexpr unsigned kSubHeaderFontSize = 18;
 }  // namespace
@@ -55,8 +55,9 @@ void MoveListView::addMove(const std::string &uciMove) {
 
     sf::Text numTxt(numberStr + " ", m_font, kMoveNumberFontSize);
     sf::Text moveTxt(uciMove, m_font, kMoveFontSize);
-    float x = kPaddingX + numTxt.getLocalBounds().width + kMoveSpacing;
-    float w = moveTxt.getLocalBounds().width;
+    float x = kPaddingX + numTxt.getGlobalBounds().width + kMoveSpacing;
+    moveTxt.setPosition(x, y);
+    float w = moveTxt.getGlobalBounds().width;
     m_move_bounds.emplace_back(x, y, w, kLineHeight);
   } else {
     if (!m_lines.empty()) {
@@ -70,9 +71,10 @@ void MoveListView::addMove(const std::string &uciMove) {
       sf::Text numTxt(numberStr + " ", m_font, kMoveNumberFontSize);
       sf::Text whiteTxt(whiteMoveStr, m_font, kMoveFontSize);
       sf::Text moveTxt(uciMove, m_font, kMoveFontSize);
-      float x = kPaddingX + numTxt.getLocalBounds().width + kMoveSpacing +
-                whiteTxt.getLocalBounds().width + kMoveSpacing;
-      float w = moveTxt.getLocalBounds().width;
+      float x = kPaddingX + numTxt.getGlobalBounds().width + kMoveSpacing +
+                whiteTxt.getGlobalBounds().width + kMoveSpacing;
+      moveTxt.setPosition(x, y);
+      float w = moveTxt.getGlobalBounds().width;
       m_move_bounds.emplace_back(x, y, w, kLineHeight);
     }
   }
@@ -102,36 +104,46 @@ void MoveListView::render(sf::RenderWindow &window) const {
   const float top = contentTop;
   const float bottom = static_cast<float>(m_height);
 
-  // Gesamthintergrund für Play-Bots-Header und Zugliste
-  sf::RectangleShape bg({static_cast<float>(m_width), static_cast<float>(m_height)});
-  bg.setPosition(0.f, 0.f);
-  bg.setFillColor(sf::Color(30, 30, 30));
-  window.draw(bg);
+  // Hintergrundsegment neben dem Brett
+  sf::RectangleShape segmentBg({static_cast<float>(m_width), static_cast<float>(m_height)});
+  segmentBg.setPosition(0.f, 0.f);
+  segmentBg.setFillColor(sf::Color(45, 45, 45));
+  window.draw(segmentBg);
 
-  // Hintergrundsegmente
+  // Bereich für Überschriften und Zugliste farblich absetzen
   sf::RectangleShape headerBg(
       {static_cast<float>(m_width), static_cast<float>(kHeaderFontSize) + 2.f * kPaddingY});
   headerBg.setPosition(0.f, 0.f);
-  headerBg.setFillColor(sf::Color(40, 40, 40));
+  headerBg.setFillColor(sf::Color(55, 55, 55));
   window.draw(headerBg);
 
   float movesBgY = contentTop;
   sf::RectangleShape movesBg(
       {static_cast<float>(m_width), static_cast<float>(m_height) - movesBgY});
   movesBg.setPosition(0.f, movesBgY);
-  movesBg.setFillColor(sf::Color(60, 60, 60));
+  movesBg.setFillColor(sf::Color(65, 65, 65));
   window.draw(movesBg);
 
+  // Abwechselnd gefärbte Zeilenhintergründe
+  for (std::size_t i = 0; i < m_lines.size(); ++i) {
+    float y = contentTop + static_cast<float>(i) * kLineHeight - m_scroll_offset;
+    if (y < top || y + kLineHeight > bottom) continue;
+
+    sf::RectangleShape rowBg({static_cast<float>(m_width), kLineHeight});
+    const bool even = (i % 2) == 0;
+    rowBg.setFillColor(even ? sf::Color(70, 70, 70) : sf::Color(60, 60, 60));
+    rowBg.setPosition(0.f, y);
+    window.draw(rowBg);
+  }
+
   // Highlight ausgewählten Zug
-  if (m_selected_move != static_cast<std::size_t>(-1) && m_selected_move < m_move_bounds.size()) {
-    const auto &rect = m_move_bounds[m_selected_move];
-    constexpr float pad = 4.f;
-    float y = rect.top - m_scroll_offset - pad;
-    float h = rect.height + 2.f * pad;
-    if (y >= top && y + h <= bottom) {
-      sf::RectangleShape hl({rect.width + 2.f * pad, h});
-      hl.setPosition(rect.left - pad, y);
-      hl.setFillColor(sf::Color(80, 80, 80));
+  if (m_selected_move != static_cast<std::size_t>(-1)) {
+    std::size_t lineIndex = m_selected_move / 2;
+    float y = contentTop + static_cast<float>(lineIndex) * kLineHeight - m_scroll_offset;
+    if (y >= top && y + kLineHeight <= bottom) {
+      sf::RectangleShape hl({static_cast<float>(m_width), kLineHeight});
+      hl.setPosition(0.f, y);
+      hl.setFillColor(sf::Color(90, 90, 90));
       window.draw(hl);
     }
   }
@@ -148,12 +160,12 @@ void MoveListView::render(sf::RenderWindow &window) const {
   subHeader.setStyle(sf::Text::Bold);
   subHeader.setFillColor(sf::Color::White);
   auto sb = subHeader.getLocalBounds();
-  subHeader.setPosition((static_cast<float>(m_width) - sb.width) / 2.f - sb.left, listTop - 2.f);
+  subHeader.setPosition((static_cast<float>(m_width) - sb.width) / 2.f - sb.left, listTop + 10.f);
   window.draw(subHeader);
 
   // Zeichne nur sichtbare Zeilen
   for (std::size_t i = 0; i < m_lines.size(); ++i) {
-    const float y = contentTop + (static_cast<float>(i) * kLineHeight) - m_scroll_offset;
+    const float y = contentTop + (static_cast<float>(i) * kLineHeight) - m_scroll_offset + 3.f;
     if (y < top || y + kLineHeight > bottom) continue;
 
     std::string line = m_lines[i];
