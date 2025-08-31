@@ -8,6 +8,7 @@
 #include "../controller/mousepos.hpp"
 #include "animation/chess_animator.hpp"
 #include "board_view.hpp"
+#include "settings_bar.hpp"
 #include "entity.hpp"
 #include "eval_bar.hpp"
 #include "highlight_manager.hpp"
@@ -93,6 +94,7 @@ private:
 
   sf::RenderWindow &m_window;
   BoardView m_board_view;
+  SettingsBar m_settings_bar;
   PieceManager m_piece_manager;
   HighlightManager m_highlight_manager;
   animation::ChessAnimator m_chess_animator;

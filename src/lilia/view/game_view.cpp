@@ -15,6 +15,7 @@ namespace lilia::view {
 GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
     : m_window(window),
       m_board_view(),
+      m_settings_bar(),
       m_piece_manager(m_board_view),
       m_highlight_manager(m_board_view),
       m_chess_animator(m_board_view, m_piece_manager),
@@ -53,6 +54,7 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
     m_board_view.setFlipped(false);
   }
   m_bottom_player.setInfo(bottomInfo);
+  m_settings_bar.init();
 
   layout(m_window.getSize().x, m_window.getSize().y);
 }
@@ -73,6 +75,7 @@ void GameView::updateEval(int eval) {
 void GameView::render() {
   m_eval_bar.render(m_window);
   m_board_view.renderBoard(m_window);
+  m_settings_bar.render(m_window);
   m_top_player.render(m_window);
   m_bottom_player.render(m_window);
   m_highlight_manager.renderSelect(m_window);
@@ -124,6 +127,7 @@ void GameView::layout(unsigned int width, unsigned int height) {
   float boardCenterY = vMargin + static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
 
   m_board_view.setPosition({boardCenterX, boardCenterY});
+  m_settings_bar.setBoardPosition({boardCenterX, boardCenterY});
 
   float evalCenterX =
       hMargin + static_cast<float>(constant::EVAL_BAR_WIDTH + constant::SIDE_MARGIN) / 2.f;
@@ -354,7 +358,7 @@ void GameView::toggleBoardOrientation() {
 }
 
 [[nodiscard]] bool GameView::isOnFlipIcon(core::MousePos mousePos) const {
-  return m_board_view.isOnFlipIcon(mousePos);
+  return m_settings_bar.isOnFlipIcon(mousePos);
 }
 
 }  // namespace lilia::view
