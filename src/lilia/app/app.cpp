@@ -6,13 +6,12 @@
 #include <cctype>
 #include <iostream>
 
+#include "lilia/bot/bot_info.hpp"
 #include "lilia/controller/game_controller.hpp"
 #include "lilia/engine/engine.hpp"
 #include "lilia/model/chess_game.hpp"
 #include "lilia/view/game_view.hpp"
 #include "lilia/view/texture_table.hpp"
-#include "lilia/bot/bot_info.hpp"
-
 
 namespace lilia::app {
 
@@ -115,14 +114,13 @@ int App::run() {
     if (m_black_is_bot)
       topInfo = lilia::getBotInfo(lilia::BotType::Lilia);
     else
-      topInfo = {"Player", 0, "assets/textures/1.png"};
+      topInfo = {"Challenger", 0, "assets/icons/challenger.png"};
 
     lilia::PlayerInfo bottomInfo;
     if (m_white_is_bot)
       bottomInfo = lilia::getBotInfo(lilia::BotType::Lilia);
     else
-      bottomInfo = {"Player", 0, "assets/textures/1.png"};
-
+      bottomInfo = {"Challenger", 0, "assets/icons/challenger.png"};
     lilia::view::GameView gameView(window, topInfo, bottomInfo);
     lilia::controller::GameController gameController(gameView, chessGame);
 

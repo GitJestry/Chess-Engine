@@ -36,11 +36,10 @@ void PlayerInfoView::setPosition(const Entity::Position& pos) {
   m_text.setPosition(pos.x + 40.f, pos.y + 8.f);
 }
 
-void PlayerInfoView::render(sf::RenderWindow& window) const {
+void PlayerInfoView::render(sf::RenderWindow& window) {
   window.draw(m_frame);
   m_icon.draw(window);
   window.draw(m_text);
 }
 
-} // namespace lilia::view
-
+}  // namespace lilia::view

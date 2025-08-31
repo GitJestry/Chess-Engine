@@ -4,8 +4,8 @@
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Text.hpp>
 
-#include "lilia/player_info.hpp"
 #include "entity.hpp"
+#include "lilia/player_info.hpp"
 
 namespace lilia::view {
 
@@ -15,7 +15,7 @@ class PlayerInfoView {
 
   void setInfo(const PlayerInfo& info);
   void setPosition(const Entity::Position& pos);
-  void render(sf::RenderWindow& window) const;
+  void render(sf::RenderWindow& window);
 
  private:
   Entity m_icon;
@@ -25,5 +25,4 @@ class PlayerInfoView {
   Entity::Position m_position{};
 };
 
-} // namespace lilia::view
-
+}  // namespace lilia::view

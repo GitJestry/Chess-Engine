@@ -6,9 +6,8 @@ PlayerInfo getBotInfo(BotType type) {
   switch (type) {
     case BotType::Lilia:
     default:
-      return {"Lilia", 2000, "assets/textures/5.png"};
+      return {"Lilia", 2000, "assets/icons/lilia.png"};
   }
 }
 
-} // namespace lilia
-
+}  // namespace lilia

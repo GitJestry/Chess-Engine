@@ -13,17 +13,16 @@ namespace {
 constexpr float kPaddingX = 8.f;
 constexpr float kPaddingY = 8.f;
 constexpr float kLineHeight = 28.f;
-constexpr float kMoveSpacing = 10.f;
+constexpr float kMoveSpacing = 30.f;
 constexpr float kListStartRatio = 0.3f;
 constexpr unsigned kMoveNumberFontSize = 14;
-constexpr unsigned kMoveFontSize = 18;
+constexpr unsigned kMoveFontSize = 16;
 constexpr unsigned kHeaderFontSize = 24;
 constexpr unsigned kSubHeaderFontSize = 18;
-} // namespace
+}  // namespace
 
 MoveListView::MoveListView() {
-  if (!m_font.loadFromFile(
-          constant::STR_FILE_PATH_FONT)) { /* Fehlerbehandlung */
+  if (!m_font.loadFromFile(constant::STR_FILE_PATH_FONT)) { /* Fehlerbehandlung */
   }
 }
 
@@ -36,15 +35,16 @@ void MoveListView::setSize(unsigned int width, unsigned int height) {
   m_height = height;
 }
 
-void MoveListView::setBotMode(bool anyBot) { m_any_bot = anyBot; }
+void MoveListView::setBotMode(bool anyBot) {
+  m_any_bot = anyBot;
+}
 
 void MoveListView::addMove(const std::string &uciMove) {
   const std::size_t moveIndex = m_move_count;
   const std::size_t lineIndex = moveIndex / 2;
   const bool whiteMove = (moveIndex % 2) == 0;
   const float contentTop = static_cast<float>(m_height) * kListStartRatio +
-                           static_cast<float>(kSubHeaderFontSize) +
-                           kMoveSpacing;
+                           static_cast<float>(kSubHeaderFontSize) + kMoveSpacing;
   const float y = contentTop + static_cast<float>(lineIndex) * kLineHeight;
 
   if (whiteMove) {
@@ -63,8 +63,8 @@ void MoveListView::addMove(const std::string &uciMove) {
       std::string &line = m_lines.back();
       // parse existing parts
       std::size_t spacePos = line.find(' ');
-      std::string numberStr = line.substr(0, spacePos);     // "1."
-      std::string whiteMoveStr = line.substr(spacePos + 1); // "e4"
+      std::string numberStr = line.substr(0, spacePos);      // "1."
+      std::string whiteMoveStr = line.substr(spacePos + 1);  // "e4"
       line += " " + uciMove;
 
       sf::Text numTxt(numberStr + " ", m_font, kMoveNumberFontSize);
@@ -89,46 +89,41 @@ void MoveListView::addMove(const std::string &uciMove) {
 void MoveListView::render(sf::RenderWindow &window) const {
   const sf::View oldView = window.getView();
 
-  sf::View view(sf::FloatRect(0.f, 0.f, static_cast<float>(m_width),
-                              static_cast<float>(m_height)));
-  view.setViewport(sf::FloatRect(
-      m_position.x / static_cast<float>(window.getSize().x),
-      m_position.y / static_cast<float>(window.getSize().y),
-      static_cast<float>(m_width) / static_cast<float>(window.getSize().x),
-      static_cast<float>(m_height) / static_cast<float>(window.getSize().y)));
+  sf::View view(sf::FloatRect(0.f, 0.f, static_cast<float>(m_width), static_cast<float>(m_height)));
+  view.setViewport(
+      sf::FloatRect(m_position.x / static_cast<float>(window.getSize().x),
+                    m_position.y / static_cast<float>(window.getSize().y),
+                    static_cast<float>(m_width) / static_cast<float>(window.getSize().x),
+                    static_cast<float>(m_height) / static_cast<float>(window.getSize().y)));
   window.setView(view);
 
   const float listTop = static_cast<float>(m_height) * kListStartRatio;
-  const float contentTop =
-      listTop + static_cast<float>(kSubHeaderFontSize) + kMoveSpacing;
+  const float contentTop = listTop + static_cast<float>(kSubHeaderFontSize) + kMoveSpacing;
   const float top = contentTop;
   const float bottom = static_cast<float>(m_height);
 
   // Gesamthintergrund für Play-Bots-Header und Zugliste
-  sf::RectangleShape bg({static_cast<float>(m_width),
-                         static_cast<float>(m_height)});
+  sf::RectangleShape bg({static_cast<float>(m_width), static_cast<float>(m_height)});
   bg.setPosition(0.f, 0.f);
   bg.setFillColor(sf::Color(30, 30, 30));
   window.draw(bg);
 
   // Hintergrundsegmente
   sf::RectangleShape headerBg(
-      {static_cast<float>(m_width),
-       static_cast<float>(kHeaderFontSize) + 2.f * kPaddingY});
+      {static_cast<float>(m_width), static_cast<float>(kHeaderFontSize) + 2.f * kPaddingY});
   headerBg.setPosition(0.f, 0.f);
   headerBg.setFillColor(sf::Color(40, 40, 40));
   window.draw(headerBg);
 
   float movesBgY = contentTop;
-  sf::RectangleShape movesBg({static_cast<float>(m_width),
-                              static_cast<float>(m_height) - movesBgY});
+  sf::RectangleShape movesBg(
+      {static_cast<float>(m_width), static_cast<float>(m_height) - movesBgY});
   movesBg.setPosition(0.f, movesBgY);
   movesBg.setFillColor(sf::Color(60, 60, 60));
   window.draw(movesBg);
 
   // Highlight ausgewählten Zug
-  if (m_selected_move != static_cast<std::size_t>(-1) &&
-      m_selected_move < m_move_bounds.size()) {
+  if (m_selected_move != static_cast<std::size_t>(-1) && m_selected_move < m_move_bounds.size()) {
     const auto &rect = m_move_bounds[m_selected_move];
     constexpr float pad = 4.f;
     float y = rect.top - m_scroll_offset - pad;
@@ -142,29 +137,24 @@ void MoveListView::render(sf::RenderWindow &window) const {
   }
 
   // Überschriften
-  sf::Text header(m_any_bot ? "Play Bots" : "2 Player", m_font,
-                  kHeaderFontSize);
+  sf::Text header(m_any_bot ? "Play Bots" : "2 Player", m_font, kHeaderFontSize);
   header.setStyle(sf::Text::Bold);
   header.setFillColor(sf::Color::White);
   auto hb = header.getLocalBounds();
-  header.setPosition((static_cast<float>(m_width) - hb.width) / 2.f - hb.left,
-                     kPaddingY);
+  header.setPosition((static_cast<float>(m_width) - hb.width) / 2.f - hb.left, kPaddingY);
   window.draw(header);
 
   sf::Text subHeader("Movelist", m_font, kSubHeaderFontSize);
   subHeader.setStyle(sf::Text::Bold);
   subHeader.setFillColor(sf::Color::White);
   auto sb = subHeader.getLocalBounds();
-  subHeader.setPosition((static_cast<float>(m_width) - sb.width) / 2.f - sb.left,
-                        listTop - 2.f);
+  subHeader.setPosition((static_cast<float>(m_width) - sb.width) / 2.f - sb.left, listTop - 2.f);
   window.draw(subHeader);
 
   // Zeichne nur sichtbare Zeilen
   for (std::size_t i = 0; i < m_lines.size(); ++i) {
-    const float y =
-        contentTop + (static_cast<float>(i) * kLineHeight) - m_scroll_offset;
-    if (y < top || y + kLineHeight > bottom)
-      continue;
+    const float y = contentTop + (static_cast<float>(i) * kLineHeight) - m_scroll_offset;
+    if (y < top || y + kLineHeight > bottom) continue;
 
     std::string line = m_lines[i];
     std::size_t spacePos = line.find(' ');
@@ -172,8 +162,7 @@ void MoveListView::render(sf::RenderWindow &window) const {
     std::string rest = line.substr(spacePos + 1);
     std::size_t secondSpace = rest.find(' ');
     std::string whiteMove = rest.substr(0, secondSpace);
-    std::string blackMove =
-        secondSpace == std::string::npos ? "" : rest.substr(secondSpace + 1);
+    std::string blackMove = secondSpace == std::string::npos ? "" : rest.substr(secondSpace + 1);
 
     sf::Text numTxt(numberStr + " ", m_font, kMoveNumberFontSize);
     numTxt.setStyle(sf::Text::Regular);
@@ -212,8 +201,7 @@ void MoveListView::scroll(float delta) {
   m_scroll_offset -= delta * kLineHeight;
   const float content = static_cast<float>(m_lines.size()) * kLineHeight;
   const float contentTop = static_cast<float>(m_height) * kListStartRatio +
-                           static_cast<float>(kSubHeaderFontSize) +
-                           kMoveSpacing;
+                           static_cast<float>(kSubHeaderFontSize) + kMoveSpacing;
   const float visibleHeight = static_cast<float>(m_height) - contentTop;
   const float maxOff = std::max(0.f, content - visibleHeight);
   m_scroll_offset = std::clamp(m_scroll_offset, 0.f, maxOff);
@@ -229,15 +217,13 @@ void MoveListView::clear() {
 
 void MoveListView::setCurrentMove(std::size_t moveIndex) {
   m_selected_move = moveIndex;
-  if (moveIndex == static_cast<std::size_t>(-1))
-    return;
+  if (moveIndex == static_cast<std::size_t>(-1)) return;
 
   const std::size_t lineIndex = moveIndex / 2;
   const float lineY = lineIndex * kLineHeight;
 
   const float contentTop = static_cast<float>(m_height) * kListStartRatio +
-                           static_cast<float>(kSubHeaderFontSize) +
-                           kMoveSpacing;
+                           static_cast<float>(kSubHeaderFontSize) + kMoveSpacing;
   const float visibleHeight = static_cast<float>(m_height) - contentTop;
 
   if (lineY < m_scroll_offset) {
@@ -258,10 +244,9 @@ std::size_t MoveListView::getMoveIndexAt(const Entity::Position &pos) const {
     return static_cast<std::size_t>(-1);
 
   for (std::size_t i = 0; i < m_move_bounds.size(); ++i) {
-    if (m_move_bounds[i].contains(localX, localY))
-      return i;
+    if (m_move_bounds[i].contains(localX, localY)) return i;
   }
   return static_cast<std::size_t>(-1);
 }
 
-} // namespace lilia::view
+}  // namespace lilia::view
