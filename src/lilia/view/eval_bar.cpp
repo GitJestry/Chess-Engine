@@ -3,6 +3,7 @@
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Text.hpp>
+#include <SFML/Window/Mouse.hpp>
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
@@ -13,6 +14,14 @@
 #include "lilia/model/position.hpp"
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
+
+namespace {
+const sf::Color colHeaderBG(42, 48, 63);
+const sf::Color colHoverBG(58, 66, 84);
+const sf::Color colBorder(120, 140, 170, 50);
+const sf::Color colText(240, 244, 255);
+const sf::Color colAccentHover(120, 205, 255);
+}  // namespace
 
 namespace lilia::view {
 
@@ -30,6 +39,8 @@ EvalBar::EvalBar() : EvalBar::Entity() {
   m_font.setSmooth(false);
   m_score_text.setFont(m_font);
   m_score_text.setCharacterSize(constant::EVAL_BAR_FONT_SIZE);
+  m_toggle_text.setFont(m_font);
+  m_toggle_text.setCharacterSize(16);
   // Default evaluation is 0.0 (balanced), which appears on the white side,
   // so draw the text in black for better visibility.
   m_score_text.setFillColor(sf::Color::Black);
@@ -39,27 +50,56 @@ void EvalBar::setPosition(const Entity::Position &pos) {
   Entity::setPosition(pos);
   m_black_background.setPosition(getPosition());
   m_white_fill_eval.setPosition(getPosition());
+
+  float btnW = static_cast<float>(constant::EVAL_BAR_WIDTH);
+  float btnH = 26.f;
+  float toggleY = pos.y + static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f +
+                  (static_cast<float>(constant::SIDE_MARGIN) - btnH) / 2.f;
+  m_toggle_bounds =
+      sf::FloatRect(pos.x - btnW / 2.f, toggleY, btnW, btnH);
 }
 
 void EvalBar::render(sf::RenderWindow &window) {
-  draw(window);                     // base (transparent)
-  m_black_background.draw(window);  // dark background
-  m_white_fill_eval.draw(window);   // white fill (scaled to eval)
+  if (m_visible) {
+    draw(window);                     // base (transparent)
+    m_black_background.draw(window);  // dark background
+    m_white_fill_eval.draw(window);   // white fill (scaled to eval)
 
-  // --- hairline frame to blend with the UI panels ---
-  const float W = static_cast<float>(constant::EVAL_BAR_WIDTH);
-  const float H = static_cast<float>(constant::EVAL_BAR_HEIGHT);
-  const float left = std::round(getPosition().x - W * 0.5f);
-  const float top = std::round(getPosition().y - H * 0.5f);
+    // --- hairline frame to blend with the UI panels ---
+    const float W = static_cast<float>(constant::EVAL_BAR_WIDTH);
+    const float H = static_cast<float>(constant::EVAL_BAR_HEIGHT);
+    const float left = std::round(getPosition().x - W * 0.5f);
+    const float top = std::round(getPosition().y - H * 0.5f);
 
-  sf::RectangleShape frame({W, H});
-  frame.setPosition(left, top);
-  frame.setFillColor(sf::Color::Transparent);
-  frame.setOutlineThickness(1.f);
-  frame.setOutlineColor(sf::Color(120, 140, 170, 60));  // same hairline we used in sidebar
-  window.draw(frame);
+    sf::RectangleShape frame({W, H});
+    frame.setPosition(left, top);
+    frame.setFillColor(sf::Color::Transparent);
+    frame.setOutlineThickness(1.f);
+    frame.setOutlineColor(sf::Color(120, 140, 170, 60));  // same hairline we used in sidebar
+    window.draw(frame);
 
-  window.draw(m_score_text);
+    window.draw(m_score_text);
+  }
+
+  // toggle button always rendered
+  sf::Vector2i mp = sf::Mouse::getPosition(window);
+  sf::Vector2f mpos = window.mapPixelToCoords(mp);
+  bool hov = m_toggle_bounds.contains(mpos.x, mpos.y);
+
+  sf::RectangleShape bg({m_toggle_bounds.width, m_toggle_bounds.height});
+  bg.setPosition(m_toggle_bounds.left, m_toggle_bounds.top);
+  bg.setFillColor(hov ? colHoverBG : colHeaderBG);
+  bg.setOutlineThickness(1.f);
+  bg.setOutlineColor(hov ? sf::Color(140, 200, 240, 90) : colBorder);
+  window.draw(bg);
+
+  m_toggle_text.setString(m_visible ? "Hide" : "Show");
+  m_toggle_text.setFillColor(hov ? colAccentHover : colText);
+  auto tb = m_toggle_text.getLocalBounds();
+  m_toggle_text.setOrigin(tb.left + tb.width / 2.f, tb.top + tb.height / 2.f);
+  m_toggle_text.setPosition(m_toggle_bounds.left + m_toggle_bounds.width / 2.f,
+                            m_toggle_bounds.top + m_toggle_bounds.height / 2.f);
+  window.draw(m_toggle_text);
 }
 void EvalBar::update(int eval) {
   if (!m_has_result) {
@@ -165,6 +205,13 @@ void EvalBar::reset() {
   auto b = m_score_text.getLocalBounds();
   m_score_text.setOrigin(b.width / 2.f, b.height / 2.f);
   scaleToEval(0.f);
+}
+
+void EvalBar::toggleVisibility() { m_visible = !m_visible; }
+
+bool EvalBar::isOnToggle(core::MousePos mousePos) const {
+  return m_toggle_bounds.contains(static_cast<float>(mousePos.x),
+                                  static_cast<float>(mousePos.y));
 }
 
 }  // namespace lilia::view

@@ -1,6 +1,8 @@
 #pragma once
 #include "entity.hpp"
 #include <SFML/Graphics/Text.hpp>
+#include <SFML/Graphics/Rect.hpp>
+#include "../controller/mousepos.hpp"
 #include <string>
 
 namespace sf {
@@ -19,12 +21,18 @@ class EvalBar : Entity {
   void setResult(const std::string &result);
   void reset();
 
+  void toggleVisibility();
+  [[nodiscard]] bool isOnToggle(core::MousePos mousePos) const;
+
  private:
   void scaleToEval(float e);
   Entity m_black_background;
   Entity m_white_fill_eval;
   sf::Font m_font;
   sf::Text m_score_text;
+  sf::Text m_toggle_text;
+  sf::FloatRect m_toggle_bounds;
+  bool m_visible{true};
   float m_display_eval{0.f};
   float m_target_eval{0.f};
   bool m_has_result{false};

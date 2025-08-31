@@ -1,9 +1,6 @@
 #pragma once
 
 #include <SFML/Graphics/RenderWindow.hpp>
-#include <SFML/Graphics/Font.hpp>
-#include <SFML/Graphics/Text.hpp>
-#include <SFML/Graphics/Rect.hpp>
 #include <SFML/System/Vector2.hpp>
 #include <SFML/Window/Cursor.hpp>
 #include <functional>
@@ -140,11 +137,7 @@ class GameView {
   // FX
   ParticleSystem m_particles;
 
-  // eval bar toggle button
-  bool m_show_eval_bar;
-  sf::Font m_ui_font;
-  sf::Text m_eval_toggle_text;
-  sf::FloatRect m_eval_toggle_bounds;
+  // eval bar toggle handled internally by EvalBar
 };
 
 }  // namespace lilia::view

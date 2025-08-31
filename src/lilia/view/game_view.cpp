@@ -1,21 +1,11 @@
 #include "lilia/view/game_view.hpp"
 
 #include <SFML/Graphics/Image.hpp>
-#include <SFML/Graphics/RectangleShape.hpp>
-#include <SFML/Graphics/Text.hpp>
 #include <algorithm>
 
 #include "lilia/bot/bot_info.hpp"
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
-
-namespace {
-const sf::Color colHeaderBG(42, 48, 63);
-const sf::Color colHoverBG(58, 66, 84);
-const sf::Color colBorder(120, 140, 170, 50);
-const sf::Color colText(240, 244, 255);
-const sf::Color colAccentHover(120, 205, 255);
-}  // namespace
 
 namespace lilia::view {
 
@@ -31,8 +21,7 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
       m_top_player(),
       m_bottom_player(),
       m_modal(),
-      m_particles(),
-      m_show_eval_bar(true) {
+      m_particles() {
   // cursors
   m_cursor_default.loadFromSystem(sf::Cursor::Arrow);
 
@@ -68,10 +57,6 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
   // theme font for modals (same face as the rest of UI)
   m_modal.loadFont(constant::STR_FILE_PATH_FONT);
 
-  m_ui_font.loadFromFile(constant::STR_FILE_PATH_FONT);
-  m_ui_font.setSmooth(false);
-  m_eval_toggle_text.setFont(m_ui_font);
-  m_eval_toggle_text.setCharacterSize(16);
 }
 
 void GameView::init(const std::string &fen) {
@@ -92,28 +77,8 @@ void GameView::updateEval(int eval) {
 }
 
 void GameView::render() {
-  // left stack
-  if (m_show_eval_bar) m_eval_bar.render(m_window);
-
-  // eval bar toggle button
-  sf::Vector2i mp = sf::Mouse::getPosition(m_window);
-  sf::Vector2f mpos = m_window.mapPixelToCoords(mp);
-  bool hov = m_eval_toggle_bounds.contains(mpos.x, mpos.y);
-
-  sf::RectangleShape bg({m_eval_toggle_bounds.width, m_eval_toggle_bounds.height});
-  bg.setPosition(m_eval_toggle_bounds.left, m_eval_toggle_bounds.top);
-  bg.setFillColor(hov ? colHoverBG : colHeaderBG);
-  bg.setOutlineThickness(1.f);
-  bg.setOutlineColor(hov ? sf::Color(140, 200, 240, 90) : colBorder);
-  m_window.draw(bg);
-
-  m_eval_toggle_text.setString(m_show_eval_bar ? "Hide" : "Show");
-  m_eval_toggle_text.setFillColor(hov ? colAccentHover : colText);
-  auto tb = m_eval_toggle_text.getLocalBounds();
-  m_eval_toggle_text.setOrigin(tb.left + tb.width / 2.f, tb.top + tb.height / 2.f);
-  m_eval_toggle_text.setPosition(m_eval_toggle_bounds.left + m_eval_toggle_bounds.width / 2.f,
-                                 m_eval_toggle_bounds.top + m_eval_toggle_bounds.height / 2.f);
-  m_window.draw(m_eval_toggle_text);
+  // left stack (eval bar manages its own visibility and toggle)
+  m_eval_bar.render(m_window);
 
   // board + pieces + overlays
   m_board_view.renderBoard(m_window);
@@ -293,11 +258,10 @@ bool GameView::isOnFlipIcon(core::MousePos mousePos) const {
   return m_board_view.isOnFlipIcon(mousePos);
 }
 
-void GameView::toggleEvalBarVisibility() { m_show_eval_bar = !m_show_eval_bar; }
+void GameView::toggleEvalBarVisibility() { m_eval_bar.toggleVisibility(); }
 
 bool GameView::isOnEvalToggle(core::MousePos mousePos) const {
-  return m_eval_toggle_bounds.contains(static_cast<float>(mousePos.x),
-                                       static_cast<float>(mousePos.y));
+  return m_eval_bar.isOnToggle(mousePos);
 }
 
 // ---------- Pieces / Highlights ----------
@@ -399,13 +363,6 @@ void GameView::layout(unsigned int width, unsigned int height) {
   float evalCenterX =
       hMargin + static_cast<float>(constant::EVAL_BAR_WIDTH + constant::SIDE_MARGIN) / 2.f;
   m_eval_bar.setPosition({evalCenterX, boardCenterY});
-
-  float btnW = static_cast<float>(constant::EVAL_BAR_WIDTH);
-  float btnH = 26.f;
-  float toggleY = vMargin + static_cast<float>(constant::WINDOW_PX_SIZE) +
-                  (static_cast<float>(constant::SIDE_MARGIN) - btnH) / 2.f;
-  m_eval_toggle_bounds =
-      sf::FloatRect(evalCenterX - btnW / 2.f, toggleY, btnW, btnH);
 
   float moveListX = hMargin + static_cast<float>(constant::EVAL_BAR_WIDTH + constant::SIDE_MARGIN +
                                                  constant::WINDOW_PX_SIZE + constant::SIDE_MARGIN);
