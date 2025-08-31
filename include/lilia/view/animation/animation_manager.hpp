@@ -26,6 +26,7 @@ class AnimationManager {
                     AnimLayer layer = AnimLayer::Base);
 
   void cancelAll(Entity::ID_type entityID);
+  void cancelAll();
 
   bool hasInAnyLayer(Entity::ID_type entityID) const;
 

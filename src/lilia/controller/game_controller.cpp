@@ -115,6 +115,7 @@ void GameController::handleEvent(const sf::Event &event) {
   if (event.type == sf::Event::KeyPressed) {
     if (event.key.code == sf::Keyboard::Left) {
       if (m_fen_index > 0) {
+        m_game_view.setBoardFen(m_fen_history[m_fen_index]);
         const MoveView &info = m_move_history[m_fen_index - 1];
         core::Square epVictim = core::NO_SQUARE;
         if (info.move.isEnPassant) {
@@ -149,6 +150,7 @@ void GameController::handleEvent(const sf::Event &event) {
       return;
     } else if (event.key.code == sf::Keyboard::Right) {
       if (m_fen_index < m_move_history.size()) {
+        m_game_view.setBoardFen(m_fen_history[m_fen_index]);
         const MoveView &info = m_move_history[m_fen_index];
         core::Square epVictim = core::NO_SQUARE;
         if (info.move.isEnPassant) {
@@ -210,6 +212,14 @@ void GameController::onMouseMove(core::MousePos pos) {
   }
 
   const core::Square sq = m_game_view.mousePosToSquare(pos);
+
+  // clicking the already selected piece should lead to deselection on release
+  if (m_selected_sq != core::NO_SQUARE && m_selected_sq == sq) {
+    m_preview_active = false;
+    m_prev_selected_before_preview = core::NO_SQUARE;
+    m_game_view.setHandClosedCursor();
+    return;
+  }
   if (m_game_view.hasPieceOnSquare(sq) && !m_game_view.isInPromotionSelection())
     m_game_view.setHandOpenCursor();
   else
@@ -225,6 +235,14 @@ void GameController::onMousePressed(core::MousePos pos) {
   }
 
   const core::Square sq = m_game_view.mousePosToSquare(pos);
+
+  // clicking the already selected piece should lead to deselection on release
+  if (m_selected_sq != core::NO_SQUARE && m_selected_sq == sq) {
+    m_preview_active = false;
+    m_prev_selected_before_preview = core::NO_SQUARE;
+    m_game_view.setHandClosedCursor();
+    return;
+  }
 
   if (m_game_view.hasPieceOnSquare(sq)) {
     // Erst versuchen, ob ein Klick-Zug von der aktuellen Auswahl möglich ist.
@@ -478,10 +496,14 @@ void GameController::onClick(core::MousePos mousePos) {
 
     // Kein legaler Klick-Zug -> ggf. Auswahl ändern/entfernen
     if (m_game_view.hasPieceOnSquare(sq)) {
-      m_game_view.clearAllHighlights();
-      highlightLastMove();
-      selectSquare(sq);
-      showAttacks(getAttackSquares(sq));
+      if (sq == m_selected_sq) {
+        deselectSquare();
+      } else {
+        m_game_view.clearAllHighlights();
+        highlightLastMove();
+        selectSquare(sq);
+        showAttacks(getAttackSquares(sq));
+      }
     } else {
       deselectSquare();
     }

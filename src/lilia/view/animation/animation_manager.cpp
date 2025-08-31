@@ -70,6 +70,11 @@ void AnimationManager::cancelAll(Entity::ID_type entityID) {
   }
 }
 
+void AnimationManager::cancelAll() {
+  m_animations.clear();
+  m_highlight_level_animations.clear();
+}
+
 void AnimationManager::update(float dt) {
   // Base-Layer
   for (auto it = m_animations.begin(); it != m_animations.end();) {

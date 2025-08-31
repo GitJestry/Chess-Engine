@@ -93,6 +93,7 @@ void GameView::selectMove(std::size_t moveIndex) {
 }
 
 void GameView::setBoardFen(const std::string &fen) {
+  m_chess_animator.cancelAll();
   m_piece_manager.removeAll();
   m_piece_manager.initFromFen(fen);
   m_highlight_manager.clearAllHighlights();
