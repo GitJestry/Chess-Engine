@@ -31,6 +31,7 @@ int App::run() {
         lilia::controller::GameController::NextAction::None;
 
     do {
+      action = lilia::controller::GameController::NextAction::None;
       lilia::model::ChessGame chessGame;
       lilia::view::GameView gameView(window, m_black_is_bot, m_white_is_bot);
       lilia::controller::GameController gameController(gameView, chessGame);
