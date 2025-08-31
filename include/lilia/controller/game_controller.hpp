@@ -17,6 +17,7 @@ class Event;
 #include "../view/audio/sound_manager.hpp"
 #include "../view/game_view.hpp"
 #include "input_manager.hpp"
+#include "../model/move.hpp"
 
 namespace lilia::model {
 class ChessGame;
@@ -25,9 +26,13 @@ struct Move;
 
 namespace lilia::controller {
 class GameManager;
-}
 
-namespace lilia::controller {
+struct MoveView {
+  model::Move move;
+  core::Color moverColor;
+  core::PieceType capturedType;
+  view::sound::Effect sound;
+};
 
 class GameController {
  public:
@@ -105,7 +110,7 @@ class GameController {
 
   std::vector<std::string> m_fen_history;
   std::size_t m_fen_index{0};
-  std::vector<std::pair<core::Square, core::Square>> m_move_history;
+  std::vector<MoveView> m_move_history;
 };
 
 }  // namespace lilia::controller

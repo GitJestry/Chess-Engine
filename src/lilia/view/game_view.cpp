@@ -188,6 +188,20 @@ void GameView::endAnimation(core::Square sq) {
   return m_piece_manager.isSameColor(sq1, sq2);
 }
 
+[[nodiscard]] core::PieceType GameView::getPieceType(core::Square pos) const {
+  return m_piece_manager.getPieceType(pos);
+}
+
+[[nodiscard]] core::Color GameView::getPieceColor(core::Square pos) const {
+  return m_piece_manager.getPieceColor(pos);
+}
+
+void GameView::addPiece(core::PieceType type, core::Color color, core::Square pos) {
+  m_piece_manager.addPiece(type, color, pos);
+}
+
+void GameView::removePiece(core::Square pos) { m_piece_manager.removePiece(pos); }
+
 void GameView::highlightSquare(core::Square pos) {
   m_highlight_manager.highlightSquare(pos);
 }

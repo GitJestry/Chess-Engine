@@ -49,6 +49,11 @@ public:
 
   [[nodiscard]] bool hasPieceOnSquare(core::Square pos) const;
   [[nodiscard]] bool isSameColorPiece(core::Square sq1, core::Square sq2) const;
+  [[nodiscard]] core::PieceType getPieceType(core::Square pos) const;
+  [[nodiscard]] core::Color getPieceColor(core::Square pos) const;
+
+  void addPiece(core::PieceType type, core::Color color, core::Square pos);
+  void removePiece(core::Square pos);
 
   void highlightSquare(core::Square pos);
   void highlightAttackSquare(core::Square pos);

@@ -7,6 +7,18 @@
 
 namespace lilia::view::sound {
 
+enum class Effect {
+  PlayerMove,
+  EnemyMove,
+  Capture,
+  Check,
+  Warning,
+  Castle,
+  Promotion,
+  GameBegins,
+  GameEnds
+};
+
 class SoundManager {
  public:
   SoundManager() = default;
@@ -23,6 +35,8 @@ class SoundManager {
   void playPromotion();
   void playGameBegins();
   void playGameEnds();
+
+  void playEffect(Effect effect);
 
   void playBackgroundMusic(const std::string& filename, bool loop = true);
   void stopBackgroundMusic();

@@ -105,6 +105,16 @@ void PieceManager::removeAll() {
   m_pieces.clear();
 }
 
+core::PieceType PieceManager::getPieceType(core::Square pos) const {
+  auto it = m_pieces.find(pos);
+  return it != m_pieces.end() ? it->second.getType() : core::PieceType::None;
+}
+
+core::Color PieceManager::getPieceColor(core::Square pos) const {
+  auto it = m_pieces.find(pos);
+  return it != m_pieces.end() ? it->second.getColor() : core::Color::White;
+}
+
 [[nodiscard]] bool PieceManager::hasPieceOnSquare(core::Square pos) const {
   return m_pieces.find(pos) != m_pieces.end();
 }
