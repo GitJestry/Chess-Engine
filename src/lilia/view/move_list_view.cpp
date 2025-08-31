@@ -125,6 +125,18 @@ void MoveListView::render(sf::RenderWindow &window) const {
   movesBg.setFillColor(sf::Color(65, 65, 65));
   window.draw(movesBg);
 
+  // Abwechselnd gefärbte Zeilenhintergründe
+  for (std::size_t i = 0; i < m_lines.size(); ++i) {
+    float y = contentTop + static_cast<float>(i) * kLineHeight - m_scroll_offset;
+    if (y < top || y + kLineHeight > bottom) continue;
+
+    sf::RectangleShape rowBg({static_cast<float>(m_width), kLineHeight});
+    const bool even = (i % 2) == 0;
+    rowBg.setFillColor(even ? sf::Color(70, 70, 70) : sf::Color(60, 60, 60));
+    rowBg.setPosition(0.f, y);
+    window.draw(rowBg);
+  }
+
   // Highlight ausgewählten Zug
   if (m_selected_move != static_cast<std::size_t>(-1)) {
     std::size_t lineIndex = m_selected_move / 2;
@@ -132,7 +144,7 @@ void MoveListView::render(sf::RenderWindow &window) const {
     if (y >= top && y + kLineHeight <= bottom) {
       sf::RectangleShape hl({static_cast<float>(m_width), kLineHeight});
       hl.setPosition(0.f, y);
-      hl.setFillColor(sf::Color(80, 80, 80));
+      hl.setFillColor(sf::Color(90, 90, 90));
       window.draw(hl);
     }
   }
