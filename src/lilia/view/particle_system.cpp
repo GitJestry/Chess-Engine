@@ -12,8 +12,8 @@ void ParticleSystem::emitConfetti(const sf::Vector2f &center, float boardSize, s
   std::uniform_real_distribution<float> xDist(center.x - boardSize / 2.f,
                                               center.x + boardSize / 2.f);
   // Give particles a wider horizontal spread and faster upward launch
-  std::uniform_real_distribution<float> vxDist(-100.f, 100.f);
-  std::uniform_real_distribution<float> vyDist(-900.f, -700.f);
+  std::uniform_real_distribution<float> vxDist(-200.f, 200.f);
+  std::uniform_real_distribution<float> vyDist(-1800.f, -1400.f);
 
   // Wider spread of sizes for more noticeable variation
   std::uniform_real_distribution<float> radiusDist(1.5f, 6.0f);
@@ -42,9 +42,9 @@ void ParticleSystem::emitConfetti(const sf::Vector2f &center, float boardSize, s
 
 void ParticleSystem::update(float dt) {
   // Simple gravity and slight horizontal jitter to simulate confetti drift
-  static constexpr float gravity = 500.f;  // pixels per second^2
+  static constexpr float gravity = 2000.f;  // pixels per second^2
   static thread_local std::mt19937 rng{std::random_device{}()};
-  std::uniform_real_distribution<float> jitterDist(-5.f, 5.f);
+  std::uniform_real_distribution<float> jitterDist(-10.f, 10.f);
 
   for (auto it = m_particles.begin(); it != m_particles.end();) {
     it->lifetime -= dt;
