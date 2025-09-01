@@ -1,6 +1,6 @@
 #include "lilia/view/player_info_view.hpp"
 
-#include <algorithm>  // std::clamp, std::min
+#include <algorithm>  // std::clamp, std::min, std::max
 #include <cmath>
 
 #include "lilia/view/render_constants.hpp"
@@ -14,8 +14,20 @@ const sf::Color kFrameFill(42, 48, 63);            // #2A303F
 const sf::Color kFrameOutline(120, 140, 170, 60);  // subtle hairline
 const sf::Color kNameColor(240, 244, 255);         // text
 const sf::Color kEloColor(180, 186, 205);          // muted text
-const sf::Color kBoxDark(33, 38, 50);              // capture box for white
-const sf::Color kBoxLight(210, 215, 230);          // capture box for black
+
+// Capture box fills (you wanted different tints per side)
+const sf::Color kBoxDark(33, 38, 50);      // dark slot (for white player header)
+const sf::Color kBoxLight(210, 215, 230);  // light slot (for black player header)
+
+// Layout
+constexpr float kIconFrameSize = 32.f;
+constexpr float kIconOutline = 1.f;
+constexpr float kTextGap = 12.f;  // gap between frame and name
+constexpr float kEloGap = 6.f;    // gap between name and elo
+constexpr float kCapPad = 4.f;    // inner padding inside capture box
+constexpr float kCapMinH = 18.f;
+constexpr float kCapMaxH = 28.f;        // keep compact in the row
+constexpr float kPieceAdvance = 0.86f;  // horizontal advance factor (slight overlap)
 
 inline float snapf(float v) {
   return std::round(v);
@@ -26,13 +38,12 @@ inline sf::Vector2f snap(sf::Vector2f p) {
 }  // namespace
 
 PlayerInfoView::PlayerInfoView() {
-  // icon frame (32x32 fill area, 1px hairline border)
+  // 32x32 icon frame, 1px hairline border
   m_frame.setFillColor(kFrameFill);
   m_frame.setOutlineColor(kFrameOutline);
-  m_frame.setOutlineThickness(1.f);
-  m_frame.setSize({32.f, 32.f});
+  m_frame.setOutlineThickness(kIconOutline);
+  m_frame.setSize({kIconFrameSize, kIconFrameSize});
 
-  // font (use the same face for name and ELO)
   if (m_font.loadFromFile(constant::STR_FILE_PATH_FONT)) {
     m_font.setSmooth(false);
 
@@ -44,12 +55,13 @@ PlayerInfoView::PlayerInfoView() {
     m_elo.setFont(m_font);
     m_elo.setCharacterSize(15);
     m_elo.setFillColor(kEloColor);
-    m_elo.setStyle(sf::Text::Regular);  // no italic -> cleaner
+    m_elo.setStyle(sf::Text::Regular);
+
+    m_noCaptures.setFont(m_font);
+    m_noCaptures.setCharacterSize(14);
+    m_noCaptures.setString("no captures");
   }
 
-  m_noCaptures.setFont(m_font);
-  m_noCaptures.setCharacterSize(14);
-  m_noCaptures.setString("no captures");
   m_captureBox.setOutlineThickness(1.f);
   m_captureBox.setOutlineColor(kFrameOutline);
 }
@@ -69,13 +81,11 @@ void PlayerInfoView::setInfo(const PlayerInfo& info) {
   m_icon.setTexture(TextureTable::getInstance().get(info.iconPath));
 
   // scale icon to fit inside 32x32 frame with a small inner padding
-  const auto frameSize = m_frame.getSize();  // 32x32
-  const float innerPad = 2.f;
-  const float targetW = frameSize.x - 2.f * innerPad;
-  const float targetH = frameSize.y - 2.f * innerPad;
-
   const auto size = m_icon.getOriginalSize();
   if (size.x > 0.f && size.y > 0.f) {
+    const float innerPad = 2.f;
+    const float targetW = kIconFrameSize - 2.f * innerPad;
+    const float targetH = kIconFrameSize - 2.f * innerPad;
     const float sx = targetW / size.x;
     const float sy = targetH / size.y;
     const float s = std::min(sx, sy);
@@ -90,6 +100,8 @@ void PlayerInfoView::setInfo(const PlayerInfo& info) {
   } else {
     m_elo.setString(" (" + std::to_string(info.elo) + ")");
   }
+
+  // captured pieces get re-laid out when we set position
 }
 
 void PlayerInfoView::setPosition(const Entity::Position& pos) {
@@ -98,36 +110,29 @@ void PlayerInfoView::setPosition(const Entity::Position& pos) {
   // frame
   m_frame.setPosition(snap({pos.x, pos.y}));
 
-  // icon centered in frame (outline is outside the 32x32 fill)
-  const auto frameSize = m_frame.getSize();
-  m_icon.setPosition(snap({pos.x + frameSize.x * 0.5f, pos.y + frameSize.y * 0.5f}));
+  // icon centered in frame
+  m_icon.setPosition(snap({pos.x + kIconFrameSize * 0.5f, pos.y + kIconFrameSize * 0.5f}));
 
-  // text baseline aligned and vertically centered to frame
-  const float textLeft = pos.x + frameSize.x + 12.f;
-
-  // compute baseline using local bounds (top is usually negative in SFML)
+  // name baseline aligned & vertically centered to frame
   auto nb = m_name.getLocalBounds();
-  const float baselineY = pos.y + (frameSize.y - nb.height) * 0.5f - nb.top;
+  const float nameBaseY = pos.y + (kIconFrameSize - nb.height) * 0.5f - nb.top;
+  const float textLeft = pos.x + kIconFrameSize + kTextGap;
+  m_name.setPosition(snap({textLeft, nameBaseY}));
 
-  m_name.setPosition(snap({textLeft, baselineY}));
-
-  // place ELO right after name with a small gap
-  auto nameBounds = m_name.getLocalBounds();
-  const float eloX = textLeft + nameBounds.width + 6.f;
-  m_elo.setPosition(snap({eloX, baselineY}));
+  // ELO follows name
+  auto nB = m_name.getLocalBounds();
+  const float eloX = textLeft + nB.width + kEloGap;
+  m_elo.setPosition(snap({eloX, nameBaseY}));
 
   layoutCaptured();
 }
 
 void PlayerInfoView::setPositionClamped(const Entity::Position& pos,
                                         const sf::Vector2u& viewportSize) {
-  const auto frameSize = m_frame.getSize();             // 32x32
-  const float outline = m_frame.getOutlineThickness();  // 1
-  const float outerW = frameSize.x + 2.f * outline;
-  const float outerH = frameSize.y + 2.f * outline;
+  const float outerW = kIconFrameSize + 2.f * kIconOutline;
+  const float outerH = kIconFrameSize + 2.f * kIconOutline;
 
-  const float pad = 8.f;  // screen edge padding
-
+  const float pad = 8.f;
   Entity::Position clamped = pos;
   clamped.x = std::clamp(clamped.x, pad, static_cast<float>(viewportSize.x) - outerW - pad);
   clamped.y = std::clamp(clamped.y, pad, static_cast<float>(viewportSize.y) - outerH - pad);
@@ -141,6 +146,7 @@ void PlayerInfoView::render(sf::RenderWindow& window) {
   window.draw(m_name);
   window.draw(m_elo);
   window.draw(m_captureBox);
+
   if (m_capturedPieces.empty()) {
     window.draw(m_noCaptures);
   } else {
@@ -151,14 +157,16 @@ void PlayerInfoView::render(sf::RenderWindow& window) {
 }
 
 void PlayerInfoView::addCapturedPiece(core::PieceType type, core::Color color) {
+  // build piece texture path
   std::uint8_t numTypes = 6;
   std::string filename = constant::ASSET_PIECES_FILE_PATH + "/piece_" +
                          std::to_string(static_cast<std::uint8_t>(type) +
                                         numTypes * static_cast<std::uint8_t>(color)) +
                          ".png";
   const sf::Texture& texture = TextureTable::getInstance().get(filename);
+
   Entity piece(texture);
-  piece.setScale(constant::ASSET_PIECE_SCALE * 0.2f, constant::ASSET_PIECE_SCALE * 0.2f);
+  piece.setScale(1.f, 1.f);
   m_capturedPieces.push_back(std::move(piece));
   layoutCaptured();
 }
@@ -175,28 +183,57 @@ void PlayerInfoView::clearCapturedPieces() {
   layoutCaptured();
 }
 
+// --- Core layout logic: pieces fit inside the box height; box resizes to content.
 void PlayerInfoView::layoutCaptured() {
-  const float baseX = m_name.getPosition().x + 150.f;
-  const float baseY = m_name.getPosition().y + 4.f;
-  const float pad = 4.f;
+  // Compute capture row height, centered in the 32px frame
+  const float capH = std::clamp(kIconFrameSize - 6.f, kCapMinH, kCapMaxH);
+
+  // Compute left edge = after name & ELO
+  auto nameG = m_name.getGlobalBounds();
+  auto eloG = m_elo.getGlobalBounds();
+  const float rightText = std::max(nameG.left + nameG.width, eloG.left + eloG.width);
+  const float baseX = snapf(rightText + kTextGap);
+  const float baseY = snapf(m_frame.getPosition().y + (kIconFrameSize - capH) * 0.5f);
+
   if (m_capturedPieces.empty()) {
-    auto b = m_noCaptures.getLocalBounds();
-    m_captureBox.setSize({b.width + 2.f * pad, b.height + 2.f * pad});
-    m_captureBox.setPosition(snap({baseX, baseY}));
-    m_noCaptures.setPosition(
-        snap({baseX + pad, baseY + pad - b.top}));
-  } else {
-    float x = pad;
-    float maxH = 0.f;
-    for (auto& piece : m_capturedPieces) {
-      piece.setPosition(snap({baseX + x, baseY + pad}));
-      maxH = std::max(maxH, piece.getCurrentSize().y);
-      x += piece.getCurrentSize().x * 0.9f;
-    }
-    float lastW = m_capturedPieces.back().getCurrentSize().x;
-    m_captureBox.setSize({x + lastW * 0.1f + pad, maxH + 2.f * pad});
-    m_captureBox.setPosition(snap({baseX, baseY}));
+    // Text-centered capture box
+    auto tb = m_noCaptures.getLocalBounds();
+    const float boxW = tb.width + 2.f * kCapPad;
+    m_captureBox.setSize({boxW, capH});
+    m_captureBox.setPosition({baseX, baseY});
+
+    // center text vertically, left padding horizontally
+    const float tx = baseX + kCapPad;
+    const float ty = baseY + (capH - tb.height) * 0.5f - tb.top;
+    m_noCaptures.setPosition(snap({tx, ty}));
+    return;
   }
+
+  // Scale each piece to fit capH with padding, then place them L→R with slight overlap
+  const float targetH = capH - 2.f * kCapPad;
+  float x = kCapPad;
+  float maxH = 0.f;
+
+  for (auto& piece : m_capturedPieces) {
+    const auto orig = piece.getOriginalSize();
+    if (orig.x <= 0.f || orig.y <= 0.f) continue;
+
+    const float s = (targetH / orig.y) * 1.3f;  // fit height
+    piece.setScale(s, s);
+
+    const float w = orig.x * s;
+    const float h = orig.y * s;
+
+    piece.setPosition(snap({baseX * 1.04f + x, baseY * 1.7f + kCapPad}));
+    x += w * kPieceAdvance;  // advance slightly less than full width to tuck them
+
+    maxH = std::max(maxH, h);
+  }
+
+  // Right padding so last piece isn't flush
+  const float contentW = x + kCapPad;
+  m_captureBox.setSize({contentW, capH});
+  m_captureBox.setPosition({baseX, baseY});
 }
 
 }  // namespace lilia::view
