@@ -236,12 +236,8 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to) {
     m_hidden_squares.insert(from);
   }
 
-  // If destination has a *real* piece, stash it so cancel restores it
-  auto captured = m_pieces.find(to);
-  if (captured != m_pieces.end()) {
-    m_captured_backup[to] = std::move(captured->second);
-    m_pieces.erase(captured);
-  }
+  // Destination pieces remain in the main map so the opponent can still move
+  // them before the premove executes; hiding the square is enough.
 
   ghost.setPosition(createPiecePositon(to));
 
@@ -259,20 +255,14 @@ void PieceManager::consumePremoveGhost(core::Square from, core::Square to) {
   if (it != m_premove_pieces.end()) m_premove_pieces.erase(it);
 
   // The move will actually be applied by the caller (real piece drawn),
-  // so unhide involved squares and drop any stashed victim for 'to'
+  // so unhide involved squares
   m_hidden_squares.erase(from);
   m_hidden_squares.erase(to);
-  m_captured_backup.erase(to);
 }
 
-void PieceManager::clearPremovePieces(bool restore) {
-  if (restore) {
-    for (auto& pair : m_captured_backup) {
-      m_pieces[pair.first] = std::move(pair.second);
-      m_pieces[pair.first].setPosition(createPiecePositon(pair.first));
-    }
-  }
-  m_captured_backup.clear();
+void PieceManager::clearPremovePieces(bool /*restore*/) {
+  // No pieces were removed from the main map during preview, so clearing
+  // premove state only needs to drop ghosts and reveal hidden squares.
   m_premove_pieces.clear();
   m_hidden_squares.clear();
 }

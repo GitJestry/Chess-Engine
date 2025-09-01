@@ -545,7 +545,7 @@ void GameController::clearPremove() {
   if (!m_premove_queue.empty()) {
     m_premove_queue.clear();
     m_game_view.clearPremoveHighlights();
-    m_game_view.clearPremovePieces(true);  // restore any stashed captures
+    m_game_view.clearPremovePieces(true);  // restore hidden pieces
     highlightLastMove();
   }
 }
