@@ -47,6 +47,8 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
 
   m_top_player.setInfo(topInfo);
   m_bottom_player.setInfo(bottomInfo);
+  m_top_player.setPlayerColor(core::Color::Black);
+  m_bottom_player.setPlayerColor(core::Color::White);
 
   // board orientation
   m_board_view.setFlipped(bottomIsBot && !topIsBot);

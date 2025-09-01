@@ -14,6 +14,8 @@ const sf::Color kFrameFill(42, 48, 63);            // #2A303F
 const sf::Color kFrameOutline(120, 140, 170, 60);  // subtle hairline
 const sf::Color kNameColor(240, 244, 255);         // text
 const sf::Color kEloColor(180, 186, 205);          // muted text
+const sf::Color kBoxDark(33, 38, 50);              // capture box for white
+const sf::Color kBoxLight(210, 215, 230);          // capture box for black
 
 inline float snapf(float v) {
   return std::round(v);
@@ -43,6 +45,23 @@ PlayerInfoView::PlayerInfoView() {
     m_elo.setCharacterSize(15);
     m_elo.setFillColor(kEloColor);
     m_elo.setStyle(sf::Text::Regular);  // no italic -> cleaner
+  }
+
+  m_noCaptures.setFont(m_font);
+  m_noCaptures.setCharacterSize(14);
+  m_noCaptures.setString("no captures");
+  m_captureBox.setOutlineThickness(1.f);
+  m_captureBox.setOutlineColor(kFrameOutline);
+}
+
+void PlayerInfoView::setPlayerColor(core::Color color) {
+  m_playerColor = color;
+  if (m_playerColor == core::Color::White) {
+    m_captureBox.setFillColor(kBoxDark);
+    m_noCaptures.setFillColor(kEloColor);
+  } else {
+    m_captureBox.setFillColor(kBoxLight);
+    m_noCaptures.setFillColor(kFrameFill);
   }
 }
 
@@ -121,8 +140,13 @@ void PlayerInfoView::render(sf::RenderWindow& window) {
   m_icon.draw(window);
   window.draw(m_name);
   window.draw(m_elo);
-  for (auto& piece : m_capturedPieces) {
-    piece.draw(window);
+  window.draw(m_captureBox);
+  if (m_capturedPieces.empty()) {
+    window.draw(m_noCaptures);
+  } else {
+    for (auto& piece : m_capturedPieces) {
+      piece.draw(window);
+    }
   }
 }
 
@@ -148,14 +172,30 @@ void PlayerInfoView::removeCapturedPiece() {
 
 void PlayerInfoView::clearCapturedPieces() {
   m_capturedPieces.clear();
+  layoutCaptured();
 }
 
 void PlayerInfoView::layoutCaptured() {
-  float x = m_name.getPosition().x + 150;
-  float y = m_name.getPosition().y + 10;
-  for (auto& piece : m_capturedPieces) {
-    piece.setPosition(snap({x, y}));
-    x += piece.getCurrentSize().x * 0.8;
+  const float baseX = m_name.getPosition().x + 150.f;
+  const float baseY = m_name.getPosition().y + 4.f;
+  const float pad = 4.f;
+  if (m_capturedPieces.empty()) {
+    auto b = m_noCaptures.getLocalBounds();
+    m_captureBox.setSize({b.width + 2.f * pad, b.height + 2.f * pad});
+    m_captureBox.setPosition(snap({baseX, baseY}));
+    m_noCaptures.setPosition(
+        snap({baseX + pad, baseY + pad - b.top}));
+  } else {
+    float x = pad;
+    float maxH = 0.f;
+    for (auto& piece : m_capturedPieces) {
+      piece.setPosition(snap({baseX + x, baseY + pad}));
+      maxH = std::max(maxH, piece.getCurrentSize().y);
+      x += piece.getCurrentSize().x * 0.9f;
+    }
+    float lastW = m_capturedPieces.back().getCurrentSize().x;
+    m_captureBox.setSize({x + lastW * 0.1f + pad, maxH + 2.f * pad});
+    m_captureBox.setPosition(snap({baseX, baseY}));
   }
 }
 
