@@ -66,7 +66,6 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
 
   // theme font for modals (same face as the rest of UI)
   m_modal.loadFont(constant::STR_FILE_PATH_FONT);
-
 }
 
 void GameView::init(const std::string &fen) {
@@ -137,7 +136,9 @@ void GameView::setBoardFen(const std::string &fen) {
   m_move_list.setFen(fen);
 }
 
-void GameView::updateFen(const std::string &fen) { m_move_list.setFen(fen); }
+void GameView::updateFen(const std::string &fen) {
+  m_move_list.setFen(fen);
+}
 
 void GameView::resetBoard() {
   m_piece_manager.removeAll();
@@ -275,13 +276,17 @@ bool GameView::isOnFlipIcon(core::MousePos mousePos) const {
   return m_board_view.isOnFlipIcon(mousePos);
 }
 
-void GameView::toggleEvalBarVisibility() { m_eval_bar.toggleVisibility(); }
+void GameView::toggleEvalBarVisibility() {
+  m_eval_bar.toggleVisibility();
+}
 
 bool GameView::isOnEvalToggle(core::MousePos mousePos) const {
   return m_eval_bar.isOnToggle(mousePos);
 }
 
-void GameView::resetEvalBar() { m_eval_bar.reset(); }
+void GameView::resetEvalBar() {
+  m_eval_bar.reset();
+}
 
 void GameView::setEvalResult(const std::string &result) {
   m_eval_bar.setResult(result);
@@ -318,14 +323,12 @@ void GameView::removePiece(core::Square pos) {
 }
 
 void GameView::addCapturedPiece(core::Color capturer, core::PieceType type) {
-  PlayerInfoView& view =
-      (capturer == core::Color::White) ? *m_white_player : *m_black_player;
+  PlayerInfoView &view = (capturer == core::Color::White) ? *m_white_player : *m_black_player;
   view.addCapturedPiece(type, ~capturer);
 }
 
 void GameView::removeCapturedPiece(core::Color capturer) {
-  PlayerInfoView& view =
-      (capturer == core::Color::White) ? *m_white_player : *m_black_player;
+  PlayerInfoView &view = (capturer == core::Color::White) ? *m_white_player : *m_black_player;
   view.removeCapturedPiece();
 }
 
@@ -423,8 +426,8 @@ void GameView::layout(unsigned int width, unsigned int height) {
       {boardLeft + 5.f, boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 15.f},
       m_window.getSize());
 
-  float clockX = boardLeft + static_cast<float>(constant::WINDOW_PX_SIZE) - Clock::WIDTH;
-  m_top_clock.setPosition({clockX, boardTop - Clock::HEIGHT - 5.f});
+  float clockX = boardLeft + static_cast<float>(constant::WINDOW_PX_SIZE) - Clock::WIDTH * 0.85;
+  m_top_clock.setPosition({clockX, boardTop - Clock::HEIGHT});
   m_bottom_clock.setPosition(
       {clockX, boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 5.f});
 
