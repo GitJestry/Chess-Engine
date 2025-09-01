@@ -36,6 +36,12 @@ struct MoveView {
   int evalCp{};
 };
 
+struct TimeView {
+  float white;
+  float black;
+  core::Color active;
+};
+
 class GameController {
 public:
   explicit GameController(view::GameView &gView, model::ChessGame &game);
@@ -147,6 +153,7 @@ private:
   std::vector<int> m_eval_history;
   std::size_t m_fen_index{0};
   std::vector<MoveView> m_move_history;
+  std::vector<TimeView> m_time_history;
   NextAction m_next_action{NextAction::None};
 };
 
