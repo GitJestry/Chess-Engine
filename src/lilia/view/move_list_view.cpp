@@ -19,17 +19,16 @@ namespace {
 
 // ---------- Layout ----------
 constexpr float kPaddingX = 12.f;
-constexpr float kPaddingY = 8.f;
 
 constexpr float kRowH = 26.f;     // line height for moves
-constexpr float kNumColW = 44.f;  // fixed width for "1." column (wider for 2+ digits)
+constexpr float kNumColW = 56.f;  // wider for 3-digit turns (prevents text collisions)
 constexpr float kMoveGap = 30.f;  // gap between white and black move columns
 
-constexpr float kHeaderH = 54.f;     // top header (title)
-constexpr float kFenH = 28.f;        // FEN info row
+constexpr float kHeaderH = 58.f;     // top header (a bit taller for safety)
+constexpr float kFenH = 30.f;        // FEN info row
 constexpr float kSubHeaderH = 28.f;  // "Move List" line
 constexpr float kListTopGap = 8.f;   // spacing below subheader before rows
-constexpr float kFooterH = 52.f;     // fixed footer height (smaller controls)
+constexpr float kFooterH = 54.f;     // fixed footer height (beveled controls)
 constexpr float kSlot = 26.f;        // icon slot size (compact)
 constexpr float kSlotGap = 14.f;     // gap between slots
 constexpr float kFooterPadX = 16.f;  // horizontal padding inside footer
@@ -68,16 +67,66 @@ inline float contentTop(float /*totalH*/, float /*optionH*/) {
   return kHeaderH + kFenH + kSubHeaderH + kListTopGap;
 }
 
-// slot drawing helpers
-void drawSlotBG(sf::RenderWindow& win, const sf::FloatRect& r, bool hovered) {
-  sf::RectangleShape bg({r.width, r.height});
-  bg.setPosition(r.left, r.top);
-  bg.setFillColor(hovered ? sf::Color(58, 66, 84) : colHeaderBG);
-  bg.setOutlineThickness(1.f);
-  bg.setOutlineColor(hovered ? sf::Color(140, 200, 240, 90) : colBorder);
-  win.draw(bg);
+inline sf::Color lighten(sf::Color c, int d) {
+  auto clip = [](int x) { return std::clamp(x, 0, 255); };
+  return sf::Color(clip(c.r + d), clip(c.g + d), clip(c.b + d), c.a);
+}
+inline sf::Color darken(sf::Color c, int d) {
+  return lighten(c, -d);
 }
 
+// Panel soft shadow (inside the viewport)
+void drawSoftShadowRect(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color base, int layers = 3,
+                        float step = 6.f) {
+  for (int i = layers; i >= 1; --i) {
+    float grow = static_cast<float>(i) * step;
+    sf::RectangleShape s({r.width + 2.f * grow, r.height + 2.f * grow});
+    s.setPosition(snapf(r.left - grow), snapf(r.top - grow));
+    sf::Color c = base;
+    c.a = static_cast<sf::Uint8>(std::clamp(30 * i, 0, 255));
+    t.draw(s);
+  }
+}
+
+// Thin drop shadow strip under a bar (for separation)
+void drawStripShadow(sf::RenderTarget& t, float x, float y, float w) {
+  sf::RectangleShape s({w, 2.f});
+  s.setPosition(snapf(x), snapf(y));
+  s.setFillColor(sf::Color(0, 0, 0, 70));
+  t.draw(s);
+}
+
+// Beveled slot (footer control)
+void drawBevelSlot3D(sf::RenderWindow& win, const sf::FloatRect& r, bool hovered) {
+  sf::Color base = hovered ? sf::Color(58, 66, 84) : sf::Color(50, 56, 72);
+
+  // body
+  sf::RectangleShape body({r.width, r.height});
+  body.setPosition(r.left, r.top);
+  body.setFillColor(base);
+  win.draw(body);
+
+  // bevel
+  sf::RectangleShape top({r.width, 1.f});
+  top.setPosition(r.left, r.top);
+  top.setFillColor(lighten(base, 24));
+  win.draw(top);
+
+  sf::RectangleShape bottom({r.width, 1.f});
+  bottom.setPosition(r.left, r.top + r.height - 1.f);
+  bottom.setFillColor(darken(base, 26));
+  win.draw(bottom);
+
+  // border (hairline)
+  sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
+  inset.setPosition(r.left + 1.f, r.top + 1.f);
+  inset.setFillColor(sf::Color(0, 0, 0, 0));
+  inset.setOutlineThickness(1.f);
+  inset.setOutlineColor(hovered ? sf::Color(140, 200, 240, 90) : colBorder);
+  win.draw(inset);
+}
+
+// slot drawing helpers (icons)
 void drawChevron(sf::RenderWindow& win, const sf::FloatRect& slot, bool left, bool hovered) {
   const float s = std::min(slot.width, slot.height) * 0.50f;  // triangle size
   const float x0 = slot.left + (slot.width - s) * 0.5f;
@@ -192,8 +241,7 @@ void drawFenIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered)
 }
 
 // Ellipsize long FEN strings keeping tail
-std::string ellipsizeRightKeepTail(const std::string& s, sf::Text& probe,
-                                   float maxW) {
+std::string ellipsizeRightKeepTail(const std::string& s, sf::Text& probe, float maxW) {
   probe.setString(s);
   if (probe.getLocalBounds().width <= maxW) return s;
   for (std::size_t cut = 0; cut < s.size(); ++cut) {
@@ -240,9 +288,8 @@ void MoveListView::setSize(unsigned int width, unsigned int height) {
   m_bounds_next = {midR, centerY - kSlot * 0.5f, kSlot, kSlot};
 
   const float fenIconSize = 18.f;
-  m_bounds_fen_icon = {kPaddingX,
-                       kHeaderH + (kFenH - fenIconSize) * 0.5f,
-                       fenIconSize, fenIconSize};
+  m_bounds_fen_icon = {kPaddingX, kHeaderH + (kFenH - fenIconSize) * 0.5f, fenIconSize,
+                       fenIconSize};
 }
 
 void MoveListView::setBotMode(bool anyBot) {
@@ -266,7 +313,7 @@ void MoveListView::addMove(const std::string& uciMove) {
     m_lines.push_back(lineStr);
 
     sf::Text wTxt(uciMove, m_font, kMoveFontSize);
-    float xWhite = kPaddingX + kNumColW;
+    float xWhite = kPaddingX + kNumColW;  // number column is fixed
     float w = wTxt.getLocalBounds().width;
     m_move_bounds.emplace_back(xWhite, y, w, kRowH);
   } else {
@@ -304,7 +351,9 @@ void MoveListView::addResult(const std::string& result) {
   m_scroll_offset = maxOff;
 }
 
-void MoveListView::setFen(const std::string& fen) { m_fen_str = fen; }
+void MoveListView::setFen(const std::string& fen) {
+  m_fen_str = fen;
+}
 
 void MoveListView::render(sf::RenderWindow& window) const {
   const sf::View oldView = window.getView();
@@ -323,17 +372,31 @@ void MoveListView::render(sf::RenderWindow& window) const {
   const float listH = listHeight(static_cast<float>(m_height), m_option_height);
   const float topY = contentTop(static_cast<float>(m_height), m_option_height);
 
+  // --- Panel shadow + border (inside our viewport) ---
+  {
+    const sf::FloatRect panelRect(0.f, 0.f, static_cast<float>(m_width),
+                                  static_cast<float>(m_height));
+    drawSoftShadowRect(window, panelRect, sf::Color(0, 0, 0, 90));
+    // outer hairline
+    sf::RectangleShape border({panelRect.width + 2.f, panelRect.height + 2.f});
+    border.setPosition(snapf(panelRect.left - 1.f), snapf(panelRect.top - 1.f));
+    border.setFillColor(colBorder);
+    window.draw(border);
+  }
+
   // --- Background layers ---
   sf::RectangleShape bg({static_cast<float>(m_width), static_cast<float>(m_height)});
   bg.setPosition(0.f, 0.f);
   bg.setFillColor(colSidebarBG);
   window.draw(bg);
 
+  // left separator (toward board)
   sf::RectangleShape leftLine({1.f, static_cast<float>(m_height)});
   leftLine.setPosition(0.f, 0.f);
   leftLine.setFillColor(colBorder);
   window.draw(leftLine);
 
+  // header stack
   sf::RectangleShape headerBG({static_cast<float>(m_width), kHeaderH});
   headerBG.setPosition(0.f, 0.f);
   headerBG.setFillColor(colHeaderBG);
@@ -349,6 +412,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
   subBG.setFillColor(colListBG);
   window.draw(subBG);
 
+  // hairlines
   sf::RectangleShape sep({static_cast<float>(m_width), 1.f});
   sep.setFillColor(colBorder);
   sep.setPosition(0.f, kHeaderH);
@@ -360,6 +424,11 @@ void MoveListView::render(sf::RenderWindow& window) const {
   sep.setPosition(0.f, listH);
   window.draw(sep);
 
+  // drop shadows under header + FEN rows (prevents perceived overlap)
+  drawStripShadow(window, 0.f, kHeaderH - 1.f, static_cast<float>(m_width));
+  drawStripShadow(window, 0.f, kHeaderH + kFenH - 1.f, static_cast<float>(m_width));
+
+  // list background
   sf::RectangleShape listBG({static_cast<float>(m_width), listH - topY});
   listBG.setPosition(0.f, topY);
   listBG.setFillColor(colListBG);
@@ -379,8 +448,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
   sub.setFillColor(colMuted);
   auto sb = sub.getLocalBounds();
   sub.setPosition(snapf((m_width - sb.width) / 2.f - sb.left),
-                  snapf(kHeaderH + kFenH +
-                        (kSubHeaderH - sb.height) / 2.f - sb.top - 2.f));
+                  snapf(kHeaderH + kFenH + (kSubHeaderH - sb.height) / 2.f - sb.top - 2.f));
   window.draw(sub);
 
   // FEN line
@@ -393,8 +461,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
   sf::Text fenTxt(fenDisp, m_font, kMoveFontSize);
   fenTxt.setFillColor(colMuted);
   auto fb = fenTxt.getLocalBounds();
-  fenTxt.setPosition(snapf(textX),
-                     snapf(kHeaderH + (kFenH - fb.height) / 2.f - fb.top - 2.f));
+  fenTxt.setPosition(snapf(textX), snapf(kHeaderH + (kFenH - fb.height) / 2.f - fb.top - 2.f));
   window.draw(fenTxt);
 
   // --- Alternating rows + selection highlight ---
@@ -416,6 +483,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
     std::size_t rowIdx = m_selected_move / 2;
     float y = topY + static_cast<float>(rowIdx) * kRowH - m_scroll_offset;
     if (y + kRowH >= visibleTop && y <= visibleBottom) {
+      // subtle lift + left accent
       sf::RectangleShape hi({static_cast<float>(m_width), kRowH});
       hi.setPosition(0.f, snapf(y));
       hi.setFillColor(sf::Color(80, 100, 120, 40));
@@ -495,35 +563,35 @@ void MoveListView::render(sf::RenderWindow& window) const {
     }
   }
 
-  // --- Footer / options tray ---
+  // --- Footer / beveled controls ---
   sf::RectangleShape optionBG({static_cast<float>(m_width), m_option_height});
   optionBG.setPosition(0.f, listH);
   optionBG.setFillColor(colHeaderBG);
   window.draw(optionBG);
 
-  // Hover detection (map mouse to our local view coords)
+  // hover detection (in local coords)
   const bool hovPrev = m_bounds_prev.contains(mouseLocal.x, mouseLocal.y);
   const bool hovNext = m_bounds_next.contains(mouseLocal.x, mouseLocal.y);
   const bool hovResign = m_bounds_resign.contains(mouseLocal.x, mouseLocal.y);
   const bool hovNewBot = m_bounds_new_bot.contains(mouseLocal.x, mouseLocal.y);
   const bool hovRematch = m_bounds_rematch.contains(mouseLocal.x, mouseLocal.y);
 
-  // Draw slots + icons
+  // draw slots (3D) + icons
   if (m_game_over) {
-    drawSlotBG(window, m_bounds_new_bot, hovNewBot);
+    drawBevelSlot3D(window, m_bounds_new_bot, hovNewBot);
     drawRobot(window, m_bounds_new_bot, hovNewBot);
 
-    drawSlotBG(window, m_bounds_rematch, hovRematch);
+    drawBevelSlot3D(window, m_bounds_rematch, hovRematch);
     drawReload(window, m_bounds_rematch, hovRematch);
   } else {
-    drawSlotBG(window, m_bounds_resign, hovResign);
+    drawBevelSlot3D(window, m_bounds_resign, hovResign);
     drawCrossX(window, m_bounds_resign, hovResign);
   }
 
-  drawSlotBG(window, m_bounds_prev, hovPrev);
+  drawBevelSlot3D(window, m_bounds_prev, hovPrev);
   drawChevron(window, m_bounds_prev, /*left=*/true, hovPrev);
 
-  drawSlotBG(window, m_bounds_next, hovNext);
+  drawBevelSlot3D(window, m_bounds_next, hovNext);
   drawChevron(window, m_bounds_next, /*left=*/false, hovNext);
 
   window.setView(oldView);

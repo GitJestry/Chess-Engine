@@ -22,23 +22,22 @@ constexpr float BTN_H = 44.f;
 constexpr float BTN_W = 180.f;
 
 constexpr float LIST_ITEM_H = 36.f;
-constexpr float SHADOW_OFFSET = 6.f;
 
 constexpr float POPUP_W = 700.f;
 constexpr float POPUP_H = 240.f;
 
-constexpr float ERROR_FADE_SEC = 1.6f;
-
 // --- Time panel (smaller + centered) ---
-constexpr float TIME_W = 200.f;  // ~half the previous width
+constexpr float TIME_W = 200.f;  // compact width
 constexpr float TIME_H = 120.f;  // compact height
 constexpr float CHIP_H = 24.f;
 constexpr float CHIP_GAP = 10.f;
+constexpr float TOGGLE_W = TIME_W * 0.80f;
+constexpr float TOGGLE_H = 30.f;
 
 sf::Color colBGTop(24, 29, 38);
 sf::Color colBGBottom(16, 19, 26);
 
-// Glass panel + border (rectangular)
+// Glass panel background
 sf::Color colPanel(36, 41, 54, 150);
 sf::Color colTextPanel(36, 41, 54);
 sf::Color colPanelBorder(180, 186, 205, 50);
@@ -50,7 +49,7 @@ sf::Color colButtonActive(92, 98, 120);
 sf::Color colAccent(100, 190, 255);
 sf::Color colText(240, 244, 255);
 sf::Color colSubtle(180, 186, 205);
-sf::Color colTimeOff(150, 80, 120);
+sf::Color colTimeOff(86, 64, 96);  // cooler OFF color
 
 sf::Color colInput(44, 50, 66);
 sf::Color colInputBorder(120, 140, 180);
@@ -97,6 +96,14 @@ inline void drawSoftShadowRect(sf::RenderTarget& t, const sf::FloatRect& r) {
     s.setFillColor(sc);
     t.draw(s);
   }
+}
+
+inline sf::Color lighten(sf::Color c, int d) {
+  auto clip = [](int x) { return std::clamp(x, 0, 255); };
+  return sf::Color(clip(c.r + d), clip(c.g + d), clip(c.b + d), c.a);
+}
+inline sf::Color darken(sf::Color c, int d) {
+  return lighten(c, -d);
 }
 
 template <typename T>
@@ -205,6 +212,54 @@ inline int clampIncSeconds(int sec) {
   return std::clamp(sec, 0, 30);
 }  // 0..30s
 
+// --- 3D (bevel) button draw helper (no rounded corners) ---
+void drawBevelButton3D(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color base, bool hovered,
+                       bool pressed) {
+  // Drop shadow
+  sf::RectangleShape shadow({r.width, r.height});
+  shadow.setPosition(snapf(r.left), snapf(r.top + 2.f));
+  shadow.setFillColor(sf::Color(0, 0, 0, 90));
+  t.draw(shadow);
+
+  // Base body
+  sf::RectangleShape body({r.width, r.height});
+  body.setPosition(snapf(r.left), snapf(r.top));
+  sf::Color bodyCol = base;
+  if (hovered && !pressed) bodyCol = lighten(bodyCol, 8);
+  if (pressed) bodyCol = darken(bodyCol, 6);
+  body.setFillColor(bodyCol);
+  t.draw(body);
+
+  // Bevel lines (top highlight, bottom shadow)
+  sf::RectangleShape topLine({r.width, 1.f});
+  topLine.setPosition(snapf(r.left), snapf(r.top));
+  topLine.setFillColor(lighten(bodyCol, 24));
+  t.draw(topLine);
+
+  sf::RectangleShape bottomLine({r.width, 1.f});
+  bottomLine.setPosition(snapf(r.left), snapf(r.top + r.height - 1.f));
+  bottomLine.setFillColor(darken(bodyCol, 24));
+  t.draw(bottomLine);
+
+  // Thin inside stroke (inset) to crisp the edges a bit
+  sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
+  inset.setPosition(snapf(r.left + 1.f), snapf(r.top + 1.f));
+  inset.setFillColor(sf::Color(0, 0, 0, 0));
+  inset.setOutlineThickness(1.f);
+  inset.setOutlineColor(darken(bodyCol, 18));
+  t.draw(inset);
+}
+
+// Optional accent inset for selected items
+void drawAccentInset(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color accent) {
+  sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
+  inset.setPosition(snapf(r.left + 1.f), snapf(r.top + 1.f));
+  inset.setFillColor(sf::Color(0, 0, 0, 0));
+  inset.setOutlineThickness(1.f);
+  inset.setOutlineColor(accent);
+  t.draw(inset);
+}
+
 }  // namespace
 
 // ---------------------- class impl ----------------------
@@ -212,15 +267,16 @@ inline int clampIncSeconds(int sec) {
 StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
   // Fonts / logo
   m_font.loadFromFile(constant::STR_FILE_PATH_FONT);
-  m_logoTex.loadFromFile(constant::STR_FILE_PATH_ICON_LILIA_START_SCREEN);  // safe if missing
+  m_logoTex.loadFromFile(constant::STR_FILE_PATH_ICON_LILIA_START_SCREEN);
   m_logo.setTexture(m_logoTex);
 
   // Default FEN
   m_fenString = core::START_FEN;
 
-  // Time defaults (5|0)
+  // Time defaults (5|0) — start with time OFF
   m_baseSeconds = 300;
   m_incrementSeconds = 0;
+  m_timeEnabled = false;
 
   setupUI();
 }
@@ -230,7 +286,6 @@ void StartScreen::setupUI() {
 
   // Panel anchor for initial layout
   sf::Vector2f panelPos((ws.x - PANEL_W) * 0.5f, (ws.y - PANEL_H) * 0.5f);
-  m_whitePlayerBtn.setPosition(panelPos.x + 40.f, panelPos.y + 120.f);  // layout anchor
 
   // Headings
   m_whiteLabel.setFont(m_font);
@@ -243,15 +298,13 @@ void StartScreen::setupUI() {
   m_blackLabel.setCharacterSize(22);
   m_blackLabel.setFillColor(colText);
 
-  // Buttons - White
+  // Buttons - White column
   m_whitePlayerBtn.setSize({BTN_W, BTN_H});
   m_whiteBotBtn.setSize({BTN_W, BTN_H});
+  m_whitePlayerBtn.setOutlineThickness(0.f);
+  m_whiteBotBtn.setOutlineThickness(0.f);
   m_whitePlayerBtn.setFillColor(colButton);
   m_whiteBotBtn.setFillColor(colButton);
-  m_whitePlayerBtn.setOutlineThickness(1.0f);
-  m_whiteBotBtn.setOutlineThickness(1.0f);
-  m_whitePlayerBtn.setOutlineColor(sf::Color(0, 0, 0, 0));
-  m_whiteBotBtn.setOutlineColor(sf::Color(0, 0, 0, 0));
 
   m_whitePlayerText.setFont(m_font);
   m_whiteBotText.setFont(m_font);
@@ -262,15 +315,13 @@ void StartScreen::setupUI() {
   m_whitePlayerText.setString("Human");
   m_whiteBotText.setString(botDisplayName(BotType::Lilia));
 
-  // Buttons - Black
+  // Buttons - Black column
   m_blackPlayerBtn.setSize({BTN_W, BTN_H});
   m_blackBotBtn.setSize({BTN_W, BTN_H});
+  m_blackPlayerBtn.setOutlineThickness(0.f);
+  m_blackBotBtn.setOutlineThickness(0.f);
   m_blackPlayerBtn.setFillColor(colButton);
   m_blackBotBtn.setFillColor(colButton);
-  m_blackPlayerBtn.setOutlineThickness(1.0f);
-  m_blackBotBtn.setOutlineThickness(1.0f);
-  m_blackPlayerBtn.setOutlineColor(sf::Color(0, 0, 0, 0));
-  m_blackBotBtn.setOutlineColor(sf::Color(0, 0, 0, 0));
 
   m_blackPlayerText.setFont(m_font);
   m_blackBotText.setFont(m_font);
@@ -281,7 +332,7 @@ void StartScreen::setupUI() {
   m_blackPlayerText.setString("Human");
   m_blackBotText.setString(botDisplayName(BotType::Lilia));
 
-  // Start button (rectangular)
+  // Start button
   m_startBtn.setSize({260.f, 54.f});
   m_startBtn.setFillColor(colAccent);
   m_startBtn.setOutlineThickness(0);
@@ -320,13 +371,13 @@ void StartScreen::setupUI() {
   // Tip (panel bottom-left)
   m_creditText.setPosition(snapf(x0 + 24.f), snapf(y0 + PANEL_H - 40.f));
 
-  // FEN popup (rectangular glass)
+  // FEN popup
   m_fenPopup.setSize({POPUP_W, POPUP_H});
   m_fenPopup.setFillColor(colPanel);
   m_fenPopup.setOutlineThickness(0.f);
   m_fenPopup.setPosition(snapf((ws.x - POPUP_W) / 2.f), snapf((ws.y - POPUP_H) / 2.f));
 
-  m_fenInputBox.setSize({POPUP_W - 60.f - 90.f, 44.f});  // leave room for label
+  m_fenInputBox.setSize({POPUP_W - 60.f - 90.f, 44.f});
   m_fenInputBox.setFillColor(colInput);
   m_fenInputBox.setOutlineThickness(2.f);
   m_fenInputBox.setOutlineColor(colInputBorder);
@@ -367,7 +418,7 @@ void StartScreen::setupUI() {
   m_fenErrorText.setPosition(snapf(m_fenInputBox.getPosition().x),
                              snapf(m_fenInputBox.getPosition().y + 52.f));
 
-  // Build bot option lists (simple vertical lists)
+  // Build bot option lists
   auto bots = availableBots();
   auto buildList = [&](std::vector<BotOption>& out, float left, float top) {
     out.clear();
@@ -394,13 +445,14 @@ void StartScreen::setupUI() {
   const float timeX = x0 + (PANEL_W - TIME_W) * 0.5f;
   const float timeY = y0 + (PANEL_H - TIME_H) * 0.5f;
 
-  m_timeToggleBtn.setSize({TIME_W, 32.f});
-  m_timeToggleBtn.setPosition(snap({timeX, timeY - 44.f}));
-  m_timeToggleBtn.setOutlineThickness(1.f);
-  m_timeToggleBtn.setOutlineColor(colPanelBorder);
+  // Beveled toggle above the timer
+  m_timeToggleBtn.setSize({TOGGLE_W, TOGGLE_H});
+  m_timeToggleBtn.setPosition(snap({x0 + (PANEL_W - TOGGLE_W) * 0.5f, timeY - 56.f}));
+  m_timeToggleBtn.setOutlineThickness(0.f);
   m_timeToggleText.setFont(m_font);
   m_timeToggleText.setCharacterSize(16);
 
+  // Time panel
   m_timePanel.setSize({TIME_W, TIME_H});
   m_timePanel.setPosition(snap({timeX, timeY}));
   m_timePanel.setFillColor(sf::Color(42, 48, 63));
@@ -455,15 +507,14 @@ void StartScreen::setupUI() {
   m_incPlusTxt = m_incMinusTxt;
   m_incPlusTxt.setString("+");
 
-  // Preset chips (below the compact box)
+  // Preset chips
   m_presets.clear();
   auto makeChip = [&](const char* label, int base, int inc) {
     PresetChip c;
-    float chipW = 74.f;  // compact width to fit three nicely
+    float chipW = 74.f;
     c.box.setSize({chipW, CHIP_H});
     c.box.setFillColor(colButton);
-    c.box.setOutlineThickness(1.f);
-    c.box.setOutlineColor(colPanelBorder);
+    c.box.setOutlineThickness(0.f);
     c.label.setFont(m_font);
     c.label.setCharacterSize(13);
     c.label.setFillColor(colText);
@@ -609,7 +660,7 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
     }
   }
 
-  // presets (time) — handled here for click; hold steppers handled in run()
+  // presets (time) — click
   if (m_timeEnabled) {
     for (std::size_t i = 0; i < m_presets.size(); ++i) {
       auto& chip = m_presets[i];
@@ -651,7 +702,7 @@ void StartScreen::processHoldRepeater(HoldRepeater& r, const sf::FloatRect& boun
                                       sf::Vector2f mouse, std::function<void()> stepFn,
                                       float initialDelay, float repeatRate) {
   if (!r.active) return;
-  if (!bounds.contains(mouse)) return;  // only repeat while cursor stays over the control
+  if (!bounds.contains(mouse)) return;
   float t = r.clock.getElapsedTime().asSeconds();
   if (t < initialDelay) return;
   int ticks = static_cast<int>((t - initialDelay) / repeatRate);
@@ -672,12 +723,7 @@ StartConfig StartScreen::run() {
   cfg.timeIncrementSeconds = m_incrementSeconds;
   cfg.timeEnabled = m_timeEnabled;
 
-  // hover visuals
-  auto hoverButton = [&](sf::RectangleShape& btn, sf::Vector2f mouse) {
-    btn.setFillColor(contains(btn.getGlobalBounds(), mouse) ? colButtonHover : colButton);
-  };
-
-  // Toast (unused now but kept if you want it later)
+  // Toast (kept for later)
   bool toastVisible = false;
   sf::Clock toastClock;
   std::string toastMsg = "Using standard start position";
@@ -689,7 +735,7 @@ StartConfig StartScreen::run() {
   auto drawUI = [&]() {
     drawVerticalGradient(m_window, colBGTop, colBGBottom);
 
-    // faint logo top-right, no rotation
+    // faint logo top-right
     if (m_logoTex.getSize().x > 0 && m_logoTex.getSize().y > 0) {
       sf::Sprite logoBG(m_logoTex);
       const auto ws = m_window.getSize();
@@ -725,71 +771,70 @@ StartConfig StartScreen::run() {
     m_window.draw(m_whiteLabel);
     m_window.draw(m_blackLabel);
 
-    // Selected state styling
-    auto applyToggleStyle = [&](sf::RectangleShape& humanBtn, sf::RectangleShape& botBtn,
-                                bool isBot) {
-      humanBtn.setOutlineThickness(1.f);
-      botBtn.setOutlineThickness(1.f);
-      humanBtn.setOutlineColor(sf::Color(0, 0, 0, 0));
-      botBtn.setOutlineColor(sf::Color(0, 0, 0, 0));
-      humanBtn.setFillColor(colButton);
-      botBtn.setFillColor(colButton);
-      if (isBot) {
-        botBtn.setFillColor(colButtonActive);
-        botBtn.setOutlineThickness(2.f);
-        botBtn.setOutlineColor(colAccent);
-      } else {
-        humanBtn.setFillColor(colButtonActive);
-        humanBtn.setOutlineThickness(2.f);
-        humanBtn.setOutlineColor(colAccent);
-      }
-    };
-    applyToggleStyle(m_whitePlayerBtn, m_whiteBotBtn, cfg.whiteIsBot);
-    applyToggleStyle(m_blackPlayerBtn, m_blackBotBtn, cfg.blackIsBot);
+    // --- White column buttons (beveled) ---
+    {
+      const auto humanR = m_whitePlayerBtn.getGlobalBounds();
+      const auto botR = m_whiteBotBtn.getGlobalBounds();
+      const bool hovH = contains(humanR, m_mousePos);
+      const bool hovB = contains(botR, m_mousePos);
+      const bool selH = !cfg.whiteIsBot;
+      const bool selB = cfg.whiteIsBot;
 
-    // White column
-    m_window.draw(m_whitePlayerBtn);
-    m_window.draw(m_whiteBotBtn);
-    centerText(m_whitePlayerText, m_whitePlayerBtn.getGlobalBounds());
-    centerText(m_whiteBotText, m_whiteBotBtn.getGlobalBounds());
-    m_window.draw(m_whitePlayerText);
-    m_window.draw(m_whiteBotText);
+      drawBevelButton3D(m_window, humanR, selH ? colButtonActive : colButton, hovH, selH);
+      centerText(m_whitePlayerText, humanR);
+      m_window.draw(m_whitePlayerText);
+      if (selH) drawAccentInset(m_window, humanR, colAccent);
 
-    // Black column
-    m_window.draw(m_blackPlayerBtn);
-    m_window.draw(m_blackBotBtn);
-    centerText(m_blackPlayerText, m_blackPlayerBtn.getGlobalBounds());
-    centerText(m_blackBotText, m_blackBotBtn.getGlobalBounds());
-    m_window.draw(m_blackPlayerText);
-    m_window.draw(m_blackBotText);
+      drawBevelButton3D(m_window, botR, selB ? colButtonActive : colButton, hovB, selB);
+      centerText(m_whiteBotText, botR);
+      m_window.draw(m_whiteBotText);
+      if (selB) drawAccentInset(m_window, botR, colAccent);
+    }
 
-    // Bot dropdown lists
+    // --- Black column buttons (beveled) ---
+    {
+      const auto humanR = m_blackPlayerBtn.getGlobalBounds();
+      const auto botR = m_blackBotBtn.getGlobalBounds();
+      const bool hovH = contains(humanR, m_mousePos);
+      const bool hovB = contains(botR, m_mousePos);
+      const bool selH = !cfg.blackIsBot;
+      const bool selB = cfg.blackIsBot;
+
+      drawBevelButton3D(m_window, humanR, selH ? colButtonActive : colButton, hovH, selH);
+      centerText(m_blackPlayerText, humanR);
+      m_window.draw(m_blackPlayerText);
+      if (selH) drawAccentInset(m_window, humanR, colAccent);
+
+      drawBevelButton3D(m_window, botR, selB ? colButtonActive : colButton, hovB, selB);
+      centerText(m_blackBotText, botR);
+      m_window.draw(m_blackBotText);
+      if (selB) drawAccentInset(m_window, botR, colAccent);
+    }
+
+    // Bot dropdown lists (beveled items)
     auto drawBotList = [&](const std::vector<BotOption>& list, std::size_t selIdx) {
       for (std::size_t i = 0; i < list.size(); ++i) {
         const auto& opt = list[i];
-        sf::RectangleShape box = opt.box;
-        if (i == selIdx) {
-          box.setFillColor(colButtonActive);
-          box.setOutlineThickness(2.f);
-          box.setOutlineColor(colAccent);
-        } else {
-          box.setFillColor(colButton);
-          box.setOutlineThickness(0.f);
-        }
-        m_window.draw(box);
+        const auto r = opt.box.getGlobalBounds();
+        const bool hov = contains(r, m_mousePos);
+        const bool sel = (i == selIdx);
+        drawBevelButton3D(m_window, r, sel ? colButtonActive : colButton, hov, sel);
         sf::Text label = opt.label;
-        leftCenterText(label, box.getGlobalBounds(), 10.f);
+        leftCenterText(label, r, 10.f);
         m_window.draw(label);
+        if (sel) drawAccentInset(m_window, r, colAccent);
       }
     };
     if (m_showWhiteBotList) drawBotList(m_whiteBotOptions, m_whiteBotSelection);
     if (m_showBlackBotList) drawBotList(m_blackBotOptions, m_blackBotSelection);
 
-    // --- Time Toggle ---
+    // --- Time Toggle (beveled) ---
     {
-      auto gb = m_timeToggleBtn.getGlobalBounds();
-      drawSoftShadowRect(m_window, gb);
-      m_window.draw(m_timeToggleBtn);
+      const auto gb = m_timeToggleBtn.getGlobalBounds();
+      const bool hov = contains(gb, m_mousePos);
+      const bool on = m_timeEnabled;
+      const sf::Color base = on ? colAccent : colTimeOff;
+      drawBevelButton3D(m_window, gb, base, hov, on);
       centerText(m_timeToggleText, gb);
       m_window.draw(m_timeToggleText);
     }
@@ -800,56 +845,46 @@ StartConfig StartScreen::run() {
       m_window.draw(m_timePanel);
       m_window.draw(m_timeTitle);
 
-      // hover fill for steppers
-      auto hoverColorize = [&](sf::RectangleShape& r) {
-        bool hov = contains(r.getGlobalBounds(), m_mousePos);
-        r.setFillColor(hov ? colButtonHover : colButton);
+      // --- Steppers (beveled + pressed while holding) ---
+      auto drawStep = [&](sf::RectangleShape& box, sf::Text& txt, bool holdActive) {
+        const auto r = box.getGlobalBounds();
+        const bool hov = contains(r, m_mousePos);
+        const bool pressed = holdActive && hov;
+        drawBevelButton3D(m_window, r, colButton, hov, pressed);
+        centerText(txt, r);
+        m_window.draw(txt);
       };
-      hoverColorize(m_timeMinusBtn);
-      hoverColorize(m_timePlusBtn);
-      hoverColorize(m_incMinusBtn);
-      hoverColorize(m_incPlusBtn);
+      drawStep(m_timeMinusBtn, m_minusTxt, m_holdBaseMinus.active);
+      drawStep(m_timePlusBtn, m_plusTxt, m_holdBasePlus.active);
 
-      // draw time controls
-      m_window.draw(m_timeMinusBtn);
-      m_window.draw(m_timePlusBtn);
-      m_window.draw(m_minusTxt);
-      m_window.draw(m_plusTxt);
+      // time text (centered between steppers)
       m_window.draw(m_timeMain);
 
       // increment row
       m_window.draw(m_incLabel);
-      m_window.draw(m_incMinusBtn);
-      m_window.draw(m_incPlusBtn);
-      m_window.draw(m_incMinusTxt);
-      m_window.draw(m_incPlusTxt);
+      drawStep(m_incMinusBtn, m_incMinusTxt, m_holdIncMinus.active);
+      drawStep(m_incPlusBtn, m_incPlusTxt, m_holdIncPlus.active);
       m_window.draw(m_incValue);
 
-      // presets
+      // presets (beveled chips)
       for (std::size_t i = 0; i < m_presets.size(); ++i) {
         auto& c = m_presets[i];
-        bool hov = contains(c.box.getGlobalBounds(), m_mousePos);
-        if (m_presetSelection == static_cast<int>(i)) {
-          c.box.setFillColor(colButtonActive);
-          c.box.setOutlineColor(colAccent);
-        } else {
-          c.box.setOutlineColor(colPanelBorder);
-          c.box.setFillColor(hov ? colButtonHover : colButton);
-        }
-        m_window.draw(c.box);
+        const auto r = c.box.getGlobalBounds();
+        const bool hov = contains(r, m_mousePos);
+        const bool sel = (m_presetSelection == static_cast<int>(i));
+        drawBevelButton3D(m_window, r, sel ? colButtonActive : colButton, hov, sel);
+        centerText(c.label, r, -1.f);
         m_window.draw(c.label);
+        if (sel) drawAccentInset(m_window, r, colAccent);
       }
     }
 
-    // Start button (shadow + body)
+    // Start button (beveled)
     {
-      const sf::FloatRect gb = m_startBtn.getGlobalBounds();
-      drawSoftShadowRect(m_window, {gb.left, gb.top, gb.width, gb.height});
-      sf::RectangleShape body({gb.width, gb.height});
-      body.setPosition(snapf(gb.left), snapf(gb.top));
-      body.setFillColor(m_startBtn.getFillColor());
-      m_window.draw(body);
-      centerText(m_startText, gb);
+      const auto r = m_startBtn.getGlobalBounds();
+      const bool hov = contains(r, m_mousePos);
+      drawBevelButton3D(m_window, r, colAccent, hov, false);
+      centerText(m_startText, r);
       m_window.draw(m_startText);
     }
 
@@ -857,7 +892,7 @@ StartConfig StartScreen::run() {
     m_window.draw(m_creditText);
   };
 
-  // Popup drawing (unchanged except placeholder text fix kept earlier)
+  // Popup drawing (beveled action buttons)
   auto drawFenPopup = [&]() {
     sf::RectangleShape overlay(
         {static_cast<float>(m_window.getSize().x), static_cast<float>(m_window.getSize().y)});
@@ -889,26 +924,31 @@ StartConfig StartScreen::run() {
     label.setPosition(snapf(p.x + 20.f), snapf(m_fenInputBox.getPosition().y + 10.f));
     m_window.draw(label);
 
+    // input box (kept flat)
     m_window.draw(m_fenInputBox);
-
     const float padX = 10.f;
     const float usableW = m_fenInputBox.getSize().x - (padX * 2.f);
-
     std::string toShow;
     bool isEmpty = m_fenString.empty();
     if (!isEmpty) toShow = ellipsizeRightKeepTail(m_fenString, m_fenInputText, usableW);
-
     m_fenInputText.setFillColor(isEmpty ? colSubtle : colText);
     m_fenInputText.setString(isEmpty ? "Paste or type a FEN..." : toShow);
     leftCenterText(m_fenInputText, m_fenInputBox.getGlobalBounds(), padX);
     m_window.draw(m_fenInputText);
 
-    centerText(m_fenBackText, m_fenBackBtn.getGlobalBounds());
-    centerText(m_fenContinueText, m_fenContinueBtn.getGlobalBounds());
-    m_window.draw(m_fenBackBtn);
-    m_window.draw(m_fenBackText);
-    m_window.draw(m_fenContinueBtn);
-    m_window.draw(m_fenContinueText);
+    // beveled action buttons
+    {
+      const auto rBack = m_fenBackBtn.getGlobalBounds();
+      const auto rCont = m_fenContinueBtn.getGlobalBounds();
+      const bool hovB = contains(rBack, m_mousePos);
+      const bool hovC = contains(rCont, m_mousePos);
+      drawBevelButton3D(m_window, rBack, colButton, hovB, false);
+      drawBevelButton3D(m_window, rCont, colAccent, hovC, false);
+      centerText(m_fenBackText, rBack);
+      centerText(m_fenContinueText, rCont);
+      m_window.draw(m_fenBackText);
+      m_window.draw(m_fenContinueText);
+    }
   };
 
   // Input focus for popup
@@ -929,16 +969,6 @@ StartConfig StartScreen::run() {
 
       if (e.type == sf::Event::MouseMoved) {
         m_mousePos = {static_cast<float>(e.mouseMove.x), static_cast<float>(e.mouseMove.y)};
-        // basic button hovers
-        hoverButton(m_whitePlayerBtn, m_mousePos);
-        hoverButton(m_whiteBotBtn, m_mousePos);
-        hoverButton(m_blackPlayerBtn, m_mousePos);
-        hoverButton(m_blackBotBtn, m_mousePos);
-        if (contains(m_startBtn.getGlobalBounds(), m_mousePos)) {
-          m_startBtn.setFillColor(sf::Color(80, 205, 255));
-        } else {
-          m_startBtn.setFillColor(colAccent);
-        }
       }
 
       if (!m_showFenPopup) {
@@ -1013,7 +1043,6 @@ StartConfig StartScreen::run() {
         }
 
         if (e.type == sf::Event::MouseButtonReleased && e.mouseButton.button == sf::Mouse::Left) {
-          // stop all repeaters
           m_holdBaseMinus.active = m_holdBasePlus.active = m_holdIncMinus.active =
               m_holdIncPlus.active = false;
         }
@@ -1063,7 +1092,7 @@ StartConfig StartScreen::run() {
           }
         }
         if (fenInputActive && e.type == sf::Event::TextEntered) {
-          if (e.text.unicode == 8) {  // backspace
+          if (e.text.unicode == 8) {
             if (!m_fenString.empty()) m_fenString.pop_back();
           } else if (e.text.unicode >= 32 && e.text.unicode < 127) {
             m_fenString.push_back(static_cast<char>(e.text.unicode));
