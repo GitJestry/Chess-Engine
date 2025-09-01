@@ -404,6 +404,14 @@ void GameView::clearNonPremoveHighlights() {
 void GameView::clearAttackHighlights() {
   m_highlight_manager.clearAttackHighlights();
 }
+void GameView::showPremovePiece(core::Square from, core::Square to) {
+  m_piece_manager.setPremovePiece(from, to);
+}
+
+void GameView::clearPremovePieces() {
+  m_piece_manager.clearPremovePieces();
+}
+
 
 // ---------- Animations ----------
 void GameView::warningKingSquareAnim(core::Square ksq) {

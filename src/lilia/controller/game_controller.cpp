@@ -533,12 +533,17 @@ void GameController::enqueuePremove(core::Square from, core::Square to) {
   m_game_view.highlightPremoveSquare(from);
   m_game_view.highlightPremoveSquare(to);
   m_premove_queue.push_back(pm);
+  if (!m_premove_queue.empty()) {
+    const auto &front = m_premove_queue.front();
+    m_game_view.showPremovePiece(front.from, front.to);
+  }
 }
 
 void GameController::clearPremove() {
   if (!m_premove_queue.empty()) {
     m_premove_queue.clear();
     m_game_view.clearPremoveHighlights();
+    m_game_view.clearPremovePieces();
     highlightLastMove();
   }
 }
@@ -647,6 +652,12 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
     for (const auto &remaining : m_premove_queue) {
       m_game_view.highlightPremoveSquare(remaining.from);
       m_game_view.highlightPremoveSquare(remaining.to);
+    }
+    if (!m_premove_queue.empty()) {
+      const auto &front = m_premove_queue.front();
+      m_game_view.showPremovePiece(front.from, front.to);
+    } else {
+      m_game_view.clearPremovePieces();
     }
   }
 }

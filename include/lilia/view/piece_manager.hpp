@@ -38,11 +38,17 @@ class PieceManager {
   void renderPieces(sf::RenderWindow& window, const animation::ChessAnimator& chessAnimRef);
   void renderPiece(core::Square pos, sf::RenderWindow& window);
 
+  // Visual-only helpers for premove previews
+  void setPremovePiece(core::Square from, core::Square to);
+  void clearPremovePieces();
+
  private:
   Entity::Position createPiecePositon(core::Square pos);
 
   const BoardView& m_board_view_ref;
   std::unordered_map<core::Square, Piece> m_pieces;
+  // Pieces rendered for premove visualization without affecting board state
+  std::unordered_map<core::Square, Piece> m_premove_pieces;
 };
 
 }  // namespace lilia::view

@@ -159,6 +159,10 @@ void PieceManager::renderPieces(sf::RenderWindow& window,
       piece.draw(window);
     }
   }
+  // Draw premove preview pieces on top of regular pieces
+  for (auto& pair : m_premove_pieces) {
+    pair.second.draw(window);
+  }
 }
 
 void PieceManager::renderPiece(core::Square pos, sf::RenderWindow& window) {
@@ -167,5 +171,16 @@ void PieceManager::renderPiece(core::Square pos, sf::RenderWindow& window) {
     it->second.draw(window);
   }
 }
+
+void PieceManager::setPremovePiece(core::Square from, core::Square to) {
+  auto it = m_pieces.find(from);
+  if (it == m_pieces.end()) return;
+  Piece ghost = it->second;  // copy to preserve original
+  ghost.setPosition(createPiecePositon(to));
+  m_premove_pieces.clear();
+  m_premove_pieces[to] = std::move(ghost);
+}
+
+void PieceManager::clearPremovePieces() { m_premove_pieces.clear(); }
 
 }  // namespace lilia::view
