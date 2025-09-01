@@ -179,6 +179,11 @@ void GameController::handleEvent(const sf::Event &event) {
       return;
     }
 
+    if (m_game_view.isOnFlipIcon(mp)) {
+      m_game_view.toggleBoardOrientation();
+      return;
+    }
+
     auto opt = m_game_view.getOptionAt(mp);
     switch (opt) {
     case view::MoveListView::Option::Resign:
