@@ -74,6 +74,12 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
         this->highlightLastMove();
       }
       this->syncCapturedPieces();
+      if (this->m_fen_index < this->m_time_history.size()) {
+        const TimeView &tv = this->m_time_history[this->m_fen_index];
+        this->m_game_view.updateClock(core::Color::White, tv.white);
+        this->m_game_view.updateClock(core::Color::Black, tv.black);
+        this->m_game_view.setClockActive(tv.active);
+      }
     }
 
     this->movePieceAndClear(mv, isPlayerMove, onClick);
@@ -85,9 +91,18 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
     this->m_game_view.updateFen(this->m_fen_history.back());
     this->m_game_view.selectMove(this->m_fen_index ? this->m_fen_index - 1
                                                    : static_cast<std::size_t>(-1));
+    core::Color stm = this->m_chess_game.getGameState().sideToMove;
     if (this->m_time_controller) {
-      core::Color mover = ~this->m_chess_game.getGameState().sideToMove;
+      core::Color mover = ~stm;
       this->m_time_controller->onMove(mover);
+      float w = this->m_time_controller->getTime(core::Color::White);
+      float b = this->m_time_controller->getTime(core::Color::Black);
+      this->m_game_view.updateClock(core::Color::White, w);
+      this->m_game_view.updateClock(core::Color::Black, b);
+      this->m_game_view.setClockActive(this->m_time_controller->getActive());
+      this->m_time_history.push_back({w, b, stm});
+    } else {
+      this->m_time_history.push_back({0.f, 0.f, stm});
     }
   });
 
@@ -122,9 +137,14 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot, bool bla
     m_game_view.setClocksVisible(true);
     m_game_view.updateClock(core::Color::White, static_cast<float>(baseSeconds));
     m_game_view.updateClock(core::Color::Black, static_cast<float>(baseSeconds));
+    m_game_view.setClockActive(m_time_controller->getActive());
+    m_time_history.clear();
+    m_time_history.push_back({static_cast<float>(baseSeconds), static_cast<float>(baseSeconds), stm});
   } else {
     m_time_controller.reset();
     m_game_view.setClocksVisible(false);
+    m_time_history.clear();
+    m_time_history.push_back({0.f, 0.f, m_chess_game.getGameState().sideToMove});
   }
 
   m_fen_history.clear();
@@ -258,6 +278,17 @@ void GameController::handleEvent(const sf::Event &event) {
       if (enteringFinalState) {
         m_game_view.setEvalResult(
             resultToString(m_chess_game.getResult(), m_chess_game.getGameState().sideToMove));
+      }
+      if (m_fen_index < m_time_history.size()) {
+        const TimeView &tv = m_time_history[m_fen_index];
+        m_game_view.updateClock(core::Color::White, tv.white);
+        m_game_view.updateClock(core::Color::Black, tv.black);
+        bool latest = (m_fen_index == m_fen_history.size() - 1 &&
+                       m_chess_game.getResult() == core::GameResult::ONGOING);
+        if (latest)
+          m_game_view.setClockActive(tv.active);
+        else
+          m_game_view.setClockActive(std::nullopt);
       }
       syncCapturedPieces();
       return;
@@ -416,9 +447,20 @@ void GameController::update(float dt) {
 
   if (m_time_controller) {
     m_time_controller->update(dt);
-    m_game_view.updateClock(core::Color::White, m_time_controller->getTime(core::Color::White));
-    m_game_view.updateClock(core::Color::Black, m_time_controller->getTime(core::Color::Black));
-    m_game_view.setClockActive(m_time_controller->getActive());
+    if (!m_time_history.empty()) {
+      m_time_history.back().white = m_time_controller->getTime(core::Color::White);
+      m_time_history.back().black = m_time_controller->getTime(core::Color::Black);
+    }
+    if (m_fen_index == m_fen_history.size() - 1) {
+      m_game_view.updateClock(core::Color::White, m_time_controller->getTime(core::Color::White));
+      m_game_view.updateClock(core::Color::Black, m_time_controller->getTime(core::Color::Black));
+      m_game_view.setClockActive(m_time_controller->getActive());
+    } else if (m_fen_index < m_time_history.size()) {
+      const TimeView &tv = m_time_history[m_fen_index];
+      m_game_view.updateClock(core::Color::White, tv.white);
+      m_game_view.updateClock(core::Color::Black, tv.black);
+      m_game_view.setClockActive(std::nullopt);
+    }
     if (auto flag = m_time_controller->getFlagged()) {
       m_chess_game.setResult(core::GameResult::TIMEOUT);
       if (m_game_manager) m_game_manager->stopGame();
@@ -651,15 +693,17 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 
   // Visualisierung immer aus Sicht der Figurenfarbe – unabhängig vom Zugrecht.
   model::Position pos = m_chess_game.getPositionRefForBot();
-  model::GameState st = pos.getState();
-  st.sideToMove = pc.color;
+  pos.getState().sideToMove = pc.color;
 
   model::MoveGenerator gen;
   std::vector<model::Move> pseudo;
-  gen.generatePseudoLegalMoves(pos.getBoard(), st, pseudo);
+  gen.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), pseudo);
 
   for (const auto &m : pseudo) {
-    if (m.from == pieceSQ) att.push_back(m.to);
+    if (m.from == pieceSQ && pos.doMove(m)) {
+      att.push_back(m.to);
+      pos.undoMove();
+    }
   }
   return att;
 }
@@ -880,6 +924,16 @@ void GameController::showGameOver(core::GameResult res, core::Color sideToMove) 
   m_dragging = false;
   m_game_view.setDefaultCursor();
 
+  if (m_time_controller) {
+    m_time_controller->stop();
+    m_game_view.setClockActive(std::nullopt);
+    if (!m_time_history.empty()) {
+      const TimeView &tv = m_time_history.back();
+      m_game_view.updateClock(core::Color::White, tv.white);
+      m_game_view.updateClock(core::Color::Black, tv.black);
+    }
+  }
+
   m_sound_manager.playEffect(view::sound::Effect::GameEnds);
   std::string resultStr;
   switch (res) {
@@ -970,6 +1024,17 @@ void GameController::stepBackward() {
     if (leavingFinalState) m_game_view.resetEvalBar();
     m_game_view.updateEval(m_eval_history[m_fen_index]);
     m_game_view.updateFen(m_fen_history[m_fen_index]);
+    if (m_fen_index < m_time_history.size()) {
+      const TimeView &tv = m_time_history[m_fen_index];
+      m_game_view.updateClock(core::Color::White, tv.white);
+      m_game_view.updateClock(core::Color::Black, tv.black);
+      bool latest = (m_fen_index == m_fen_history.size() - 1 &&
+                     m_chess_game.getResult() == core::GameResult::ONGOING);
+      if (latest)
+        m_game_view.setClockActive(tv.active);
+      else
+        m_game_view.setClockActive(std::nullopt);
+    }
     syncCapturedPieces();
   }
 }
@@ -1012,6 +1077,17 @@ void GameController::stepForward() {
           resultToString(m_chess_game.getResult(), m_chess_game.getGameState().sideToMove));
     }
     m_game_view.updateFen(m_fen_history[m_fen_index]);
+    if (m_fen_index < m_time_history.size()) {
+      const TimeView &tv = m_time_history[m_fen_index];
+      m_game_view.updateClock(core::Color::White, tv.white);
+      m_game_view.updateClock(core::Color::Black, tv.black);
+      bool latest = (m_fen_index == m_fen_history.size() - 1 &&
+                     m_chess_game.getResult() == core::GameResult::ONGOING);
+      if (latest)
+        m_game_view.setClockActive(tv.active);
+      else
+        m_game_view.setClockActive(std::nullopt);
+    }
     syncCapturedPieces();
   }
 }

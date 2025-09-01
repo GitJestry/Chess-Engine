@@ -34,6 +34,10 @@ void TimeController::update(float dt) {
   }
 }
 
+void TimeController::stop() {
+  m_running = false;
+}
+
 float TimeController::getTime(core::Color color) const {
   return (color == core::Color::White) ? m_white_time : m_black_time;
 }

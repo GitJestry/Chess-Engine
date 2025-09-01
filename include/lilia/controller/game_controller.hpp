@@ -42,6 +42,10 @@ struct Premove {
   core::Square to;
   core::PieceType capturedType;
   core::Color capturedColor;
+struct TimeView {
+  float white;
+  float black;
+  core::Color active;
 };
 
 class GameController {
@@ -158,6 +162,7 @@ private:
   std::vector<int> m_eval_history;
   std::size_t m_fen_index{0};
   std::vector<MoveView> m_move_history;
+  std::vector<TimeView> m_time_history;
   NextAction m_next_action{NextAction::None};
 };
 
