@@ -217,7 +217,9 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to) {
   ghost.setPosition(createPiecePositon(to));
   m_premove_pieces.clear();
   m_premove_pieces[to] = std::move(ghost);
-  m_hidden_squares.clear();
+  // Keep the original piece hidden as long as a premove is pending. Avoid
+  // clearing previously hidden squares so the real piece never pops back into
+  // view when chaining multiple premoves.
   m_hidden_squares.insert(from);
   if (m_pieces.find(to) != m_pieces.end()) m_hidden_squares.insert(to);
 }

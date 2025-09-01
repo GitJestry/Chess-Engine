@@ -16,7 +16,8 @@ enum class Effect {
   Castle,
   Promotion,
   GameBegins,
-  GameEnds
+  GameEnds,
+  Premove
 };
 
 class SoundManager {

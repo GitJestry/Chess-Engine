@@ -77,5 +77,6 @@ const std::string SFX_CHECK_NAME = "check";
 const std::string SFX_PROMOTION_NAME = "promotion";
 const std::string SFX_GAME_BEGINS_NAME = "game_begins";
 const std::string SFX_GAME_ENDS_NAME = "game_ends";
+const std::string SFX_PREMOVE_NAME = "pre_move";
 
 }  // namespace lilia::view::constant
