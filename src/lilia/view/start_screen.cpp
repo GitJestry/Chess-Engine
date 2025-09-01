@@ -2,7 +2,7 @@
 
 #include <SFML/Graphics.hpp>
 #include <SFML/Window/Clipboard.hpp>
-#include <algorithm>  // for std::clamp, std::max
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <sstream>
@@ -13,9 +13,8 @@
 
 namespace lilia::view {
 
-// ---------------------- helpers ----------------------
-
 namespace {
+// --------- Layout ---------
 constexpr float PANEL_W = 820.f;
 constexpr float PANEL_H = 520.f;
 
@@ -24,38 +23,35 @@ constexpr float BTN_W = 180.f;
 
 constexpr float LIST_ITEM_H = 36.f;
 
-constexpr float POPUP_W = 700.f;
-constexpr float POPUP_H = 240.f;
-
-// --- Time panel (smaller + centered) ---
-constexpr float TIME_W = 200.f;  // compact width
-constexpr float TIME_H = 120.f;  // compact height
+// Time panel (no shadows now)
+constexpr float TIME_W = 200.f;
+constexpr float TIME_H = 120.f;
 constexpr float CHIP_H = 24.f;
 constexpr float CHIP_GAP = 10.f;
 constexpr float TOGGLE_W = TIME_W * 0.80f;
 constexpr float TOGGLE_H = 30.f;
 
+// Colors
 sf::Color colBGTop(24, 29, 38);
 sf::Color colBGBottom(16, 19, 26);
 
-// Glass panel background
 sf::Color colPanel(36, 41, 54, 150);
 sf::Color colTextPanel(36, 41, 54);
 sf::Color colPanelBorder(180, 186, 205, 50);
-sf::Color colShadow(0, 0, 0, 90);
 
 sf::Color colButton(58, 64, 80);
-sf::Color colButtonHover(72, 78, 96);
 sf::Color colButtonActive(92, 98, 120);
 sf::Color colAccent(100, 190, 255);
 sf::Color colText(240, 244, 255);
 sf::Color colSubtle(180, 186, 205);
-sf::Color colTimeOff(86, 64, 96);  // cooler OFF color
+sf::Color colTimeOff(86, 64, 96);
 
 sf::Color colInput(44, 50, 66);
 sf::Color colInputBorder(120, 140, 180);
+sf::Color colValid(86, 180, 130);
+sf::Color colInvalid(220, 90, 90);
 
-// --- pixel snapping ---
+// --------- Utils ---------
 inline float snapf(float v) {
   return std::round(v);
 }
@@ -86,19 +82,6 @@ void drawVerticalGradient(sf::RenderWindow& window, sf::Color top, sf::Color bot
   window.draw(va);
 }
 
-// rectangular soft shadow
-inline void drawSoftShadowRect(sf::RenderTarget& t, const sf::FloatRect& r) {
-  for (int i = 3; i >= 1; --i) {
-    float grow = static_cast<float>(i) * 6.f;
-    sf::RectangleShape s({r.width + 2.f * grow, r.height + 2.f * grow});
-    s.setPosition(snapf(r.left - grow), snapf(r.top - grow));
-    sf::Color sc = colShadow;
-    sc.a = static_cast<sf::Uint8>(30 * i);
-    s.setFillColor(sc);
-    t.draw(s);
-  }
-}
-
 inline sf::Color lighten(sf::Color c, int d) {
   auto clip = [](int x) { return std::clamp(x, 0, 255); };
   return sf::Color(clip(c.r + d), clip(c.g + d), clip(c.b + d), c.a);
@@ -112,6 +95,7 @@ bool contains(const sf::Rect<T>& r, sf::Vector2f p) {
   return r.contains(p);
 }
 
+// Bots
 std::vector<BotType> availableBots() {
   return {BotType::Lilia};
 }
@@ -119,7 +103,7 @@ std::string botDisplayName(BotType t) {
   return getBotConfig(t).info.name;
 }
 
-// tiny FEN validator
+// FEN validator (basic)
 bool basicFenCheck(const std::string& fen) {
   std::istringstream ss(fen);
   std::string fields[6];
@@ -129,11 +113,11 @@ bool basicFenCheck(const std::string& fen) {
   if (ss >> extra) return false;
   {
     int rankCount = 0, i = 0;
-    while (i < static_cast<int>(fields[0].size())) {
+    while (i < (int)fields[0].size()) {
       int fileSum = 0;
-      while (i < static_cast<int>(fields[0].size()) && fields[0][i] != '/') {
+      while (i < (int)fields[0].size() && fields[0][i] != '/') {
         char c = fields[0][i++];
-        if (std::isdigit(static_cast<unsigned char>(c))) {
+        if (std::isdigit((unsigned char)c)) {
           int n = c - '0';
           if (n <= 0 || n > 8) return false;
           fileSum += n;
@@ -161,7 +145,7 @@ bool basicFenCheck(const std::string& fen) {
       }
       if (fileSum != 8) return false;
       ++rankCount;
-      if (i < static_cast<int>(fields[0].size()) && fields[0][i] == '/') ++i;
+      if (i < (int)fields[0].size() && fields[0][i] == '/') ++i;
     }
     if (rankCount != 8) return false;
   }
@@ -175,7 +159,7 @@ bool basicFenCheck(const std::string& fen) {
   auto isNonNegInt = [](const std::string& s) {
     if (s.empty()) return false;
     for (char c : s)
-      if (!std::isdigit(static_cast<unsigned char>(c))) return false;
+      if (!std::isdigit((unsigned char)c)) return false;
     return true;
   };
   if (!isNonNegInt(fields[4])) return false;
@@ -184,45 +168,25 @@ bool basicFenCheck(const std::string& fen) {
   return true;
 }
 
-std::string ellipsizeRightKeepTail(const std::string& s, sf::Text& probe, float maxW) {
-  probe.setString(s);
-  if (probe.getLocalBounds().width <= maxW) return s;
-  for (std::size_t cut = 0; cut < s.size(); ++cut) {
-    std::string view = "..." + s.substr(cut);
-    probe.setString(view);
-    if (probe.getLocalBounds().width <= maxW) return view;
-  }
-  return s;
-}
-
-// --- Time helpers ---
 inline std::string formatHMS(int totalSeconds) {
   totalSeconds = std::max(0, totalSeconds);
-  int h = totalSeconds / 3600;
-  int m = (totalSeconds % 3600) / 60;
-  int s = totalSeconds % 60;
+  int h = totalSeconds / 3600, m = (totalSeconds % 3600) / 60, s = totalSeconds % 60;
   std::ostringstream ss;
   ss << (h < 10 ? "0" : "") << h << ":" << (m < 10 ? "0" : "") << m << ":" << (s < 10 ? "0" : "")
      << s;
   return ss.str();
 }
-inline int clampBaseSeconds(int sec) {
-  return std::clamp(sec, 60, 2 * 60 * 60);
-}  // 1m..2h
-inline int clampIncSeconds(int sec) {
-  return std::clamp(sec, 0, 30);
-}  // 0..30s
+inline int clampBaseSeconds(int s) {
+  return std::clamp(s, 60, 2 * 60 * 60);
+}
+inline int clampIncSeconds(int s) {
+  return std::clamp(s, 0, 30);
+}
 
-// --- 3D (bevel) button draw helper (no rounded corners) ---
+// Bevel button
 void drawBevelButton3D(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color base, bool hovered,
                        bool pressed) {
-  // Drop shadow
-  sf::RectangleShape shadow({r.width, r.height});
-  shadow.setPosition(snapf(r.left), snapf(r.top + 2.f));
-  shadow.setFillColor(sf::Color(0, 0, 0, 90));
-  t.draw(shadow);
-
-  // Base body
+  // No drop shadow (kept super clean)
   sf::RectangleShape body({r.width, r.height});
   body.setPosition(snapf(r.left), snapf(r.top));
   sf::Color bodyCol = base;
@@ -231,31 +195,27 @@ void drawBevelButton3D(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color ba
   body.setFillColor(bodyCol);
   t.draw(body);
 
-  // Bevel lines (top highlight, bottom shadow)
-  sf::RectangleShape topLine({r.width, 1.f});
-  topLine.setPosition(snapf(r.left), snapf(r.top));
-  topLine.setFillColor(lighten(bodyCol, 24));
-  t.draw(topLine);
+  sf::RectangleShape top({r.width, 1.f});
+  top.setPosition(snapf(r.left), snapf(r.top));
+  top.setFillColor(lighten(bodyCol, 24));
+  t.draw(top);
+  sf::RectangleShape bot({r.width, 1.f});
+  bot.setPosition(snapf(r.left), snapf(r.top + r.height - 1.f));
+  bot.setFillColor(darken(bodyCol, 24));
+  t.draw(bot);
 
-  sf::RectangleShape bottomLine({r.width, 1.f});
-  bottomLine.setPosition(snapf(r.left), snapf(r.top + r.height - 1.f));
-  bottomLine.setFillColor(darken(bodyCol, 24));
-  t.draw(bottomLine);
-
-  // Thin inside stroke (inset) to crisp the edges a bit
   sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
   inset.setPosition(snapf(r.left + 1.f), snapf(r.top + 1.f));
-  inset.setFillColor(sf::Color(0, 0, 0, 0));
+  inset.setFillColor(sf::Color::Transparent);
   inset.setOutlineThickness(1.f);
   inset.setOutlineColor(darken(bodyCol, 18));
   t.draw(inset);
 }
 
-// Optional accent inset for selected items
 void drawAccentInset(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color accent) {
   sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
   inset.setPosition(snapf(r.left + 1.f), snapf(r.top + 1.f));
-  inset.setFillColor(sf::Color(0, 0, 0, 0));
+  inset.setFillColor(sf::Color::Transparent);
   inset.setOutlineThickness(1.f);
   inset.setOutlineColor(accent);
   t.draw(inset);
@@ -266,15 +226,14 @@ void drawAccentInset(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color acce
 // ---------------------- class impl ----------------------
 
 StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
-  // Fonts / logo
   m_font.loadFromFile(constant::STR_FILE_PATH_FONT);
   m_logoTex.loadFromFile(constant::STR_FILE_PATH_ICON_LILIA_START_SCREEN);
   m_logo.setTexture(m_logoTex);
 
-  // Default FEN
-  m_fenString = core::START_FEN;
+  // FEN starts empty => STANDARD unless user provides one
+  m_fenString.clear();
 
-  // Time defaults (5|0) — start with time OFF
+  // Time defaults (off)
   m_baseSeconds = 300;
   m_incrementSeconds = 0;
   m_timeEnabled = false;
@@ -285,55 +244,38 @@ StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
 void StartScreen::setupUI() {
   const sf::Vector2u ws = m_window.getSize();
 
-  // Panel anchor for initial layout
-  sf::Vector2f panelPos((ws.x - PANEL_W) * 0.5f, (ws.y - PANEL_H) * 0.5f);
-
   // Headings
   m_whiteLabel.setFont(m_font);
   m_whiteLabel.setString("White");
   m_whiteLabel.setCharacterSize(22);
   m_whiteLabel.setFillColor(colText);
-
   m_blackLabel.setFont(m_font);
   m_blackLabel.setString("Black");
   m_blackLabel.setCharacterSize(22);
   m_blackLabel.setFillColor(colText);
 
-  // Buttons - White column
-  m_whitePlayerBtn.setSize({BTN_W, BTN_H});
-  m_whiteBotBtn.setSize({BTN_W, BTN_H});
-  m_whitePlayerBtn.setOutlineThickness(0.f);
-  m_whiteBotBtn.setOutlineThickness(0.f);
-  m_whitePlayerBtn.setFillColor(colButton);
-  m_whiteBotBtn.setFillColor(colButton);
+  // Player/Bot buttons
+  auto initSideBtns = [&](sf::RectangleShape& humanBtn, sf::RectangleShape& botBtn,
+                          sf::Text& humanTxt, sf::Text& botTxt) {
+    humanBtn.setSize({BTN_W, BTN_H});
+    botBtn.setSize({BTN_W, BTN_H});
+    humanBtn.setFillColor(colButton);
+    botBtn.setFillColor(colButton);
+    humanBtn.setOutlineThickness(0.f);
+    botBtn.setOutlineThickness(0.f);
+    humanTxt.setFont(m_font);
+    botTxt.setFont(m_font);
+    humanTxt.setCharacterSize(18);
+    botTxt.setCharacterSize(18);
+    humanTxt.setFillColor(colText);
+    botTxt.setFillColor(colText);
+    humanTxt.setString("Human");
+    botTxt.setString(botDisplayName(BotType::Lilia));
+  };
+  initSideBtns(m_whitePlayerBtn, m_whiteBotBtn, m_whitePlayerText, m_whiteBotText);
+  initSideBtns(m_blackPlayerBtn, m_blackBotBtn, m_blackPlayerText, m_blackBotText);
 
-  m_whitePlayerText.setFont(m_font);
-  m_whiteBotText.setFont(m_font);
-  m_whitePlayerText.setCharacterSize(18);
-  m_whiteBotText.setCharacterSize(18);
-  m_whitePlayerText.setFillColor(colText);
-  m_whiteBotText.setFillColor(colText);
-  m_whitePlayerText.setString("Human");
-  m_whiteBotText.setString(botDisplayName(BotType::Lilia));
-
-  // Buttons - Black column
-  m_blackPlayerBtn.setSize({BTN_W, BTN_H});
-  m_blackBotBtn.setSize({BTN_W, BTN_H});
-  m_blackPlayerBtn.setOutlineThickness(0.f);
-  m_blackBotBtn.setOutlineThickness(0.f);
-  m_blackPlayerBtn.setFillColor(colButton);
-  m_blackBotBtn.setFillColor(colButton);
-
-  m_blackPlayerText.setFont(m_font);
-  m_blackBotText.setFont(m_font);
-  m_blackPlayerText.setCharacterSize(18);
-  m_blackBotText.setCharacterSize(18);
-  m_blackPlayerText.setFillColor(colText);
-  m_blackBotText.setFillColor(colText);
-  m_blackPlayerText.setString("Human");
-  m_blackBotText.setString(botDisplayName(BotType::Lilia));
-
-  // Start button
+  // Start
   m_startBtn.setSize({260.f, 54.f});
   m_startBtn.setFillColor(colAccent);
   m_startBtn.setOutlineThickness(0);
@@ -342,13 +284,7 @@ void StartScreen::setupUI() {
   m_startText.setCharacterSize(22);
   m_startText.setFillColor(sf::Color::Black);
 
-  // Tip
-  m_creditText.setFont(m_font);
-  m_creditText.setCharacterSize(14);
-  m_creditText.setFillColor(colSubtle);
-  m_creditText.setString("Press F to edit FEN");
-
-  // Arrange positions (snap them)
+  // Layout anchors
   float x0 = (ws.x - PANEL_W) * 0.5f;
   float y0 = (ws.y - PANEL_H) * 0.5f;
 
@@ -356,68 +292,33 @@ void StartScreen::setupUI() {
   m_blackLabel.setPosition(snapf(x0 + PANEL_W - 80.f - m_blackLabel.getLocalBounds().width),
                            snapf(y0 + 100.f));
 
-  // White buttons (left column)
   m_whitePlayerBtn.setPosition(snapf(x0 + 60.f), snapf(y0 + 150.f));
   m_whiteBotBtn.setPosition(snapf(x0 + 60.f), snapf(y0 + 208.f));
 
-  // Black buttons (right column)
   m_blackPlayerBtn.setPosition(snapf(x0 + PANEL_W - 60.f - BTN_W), snapf(y0 + 150.f));
   m_blackBotBtn.setPosition(snapf(x0 + PANEL_W - 60.f - BTN_W), snapf(y0 + 208.f));
 
-  // Start button (center-bottom)
   m_startBtn.setPosition(snapf(x0 + (PANEL_W - m_startBtn.getSize().x) / 2.f),
                          snapf(y0 + PANEL_H - 120.f));
-  centerText(m_startText, m_startBtn.getGlobalBounds(), 0.f);
+  centerText(m_startText, m_startBtn.getGlobalBounds());
 
-  // Tip (panel bottom-left)
-  m_creditText.setPosition(snapf(x0 + 24.f), snapf(y0 + PANEL_H - 40.f));
+  // -------- Inline FEN (50% smaller height) --------
+  const float fenW = PANEL_W * 0.95f;
+  const float fenH = 22.f;  // 44 * 0.5
+  const float fenY = m_startBtn.getPosition().y + m_startBtn.getSize().y + 25.f;
+  const float fenX = x0 + (PANEL_W - fenW) * 0.5f;
 
-  // FEN popup
-  m_fenPopup.setSize({POPUP_W, POPUP_H});
-  m_fenPopup.setFillColor(colPanel);
-  m_fenPopup.setOutlineThickness(0.f);
-  m_fenPopup.setPosition(snapf((ws.x - POPUP_W) / 2.f), snapf((ws.y - POPUP_H) / 2.f));
-
-  m_fenInputBox.setSize({POPUP_W - 60.f - 90.f, 44.f});
+  m_fenInputBox.setSize({fenW, fenH});
   m_fenInputBox.setFillColor(colInput);
   m_fenInputBox.setOutlineThickness(2.f);
   m_fenInputBox.setOutlineColor(colInputBorder);
-  m_fenInputBox.setPosition(snapf(m_fenPopup.getPosition().x + 90.f),
-                            snapf(m_fenPopup.getPosition().y + 90.f));
+  m_fenInputBox.setPosition(snapf(fenX), snapf(fenY));
 
   m_fenInputText.setFont(m_font);
-  m_fenInputText.setCharacterSize(18);
+  m_fenInputText.setCharacterSize(15);
   m_fenInputText.setFillColor(colText);
   m_fenInputText.setString(m_fenString);
-  leftCenterText(m_fenInputText, m_fenInputBox.getGlobalBounds(), 10.f);
-
-  m_fenBackBtn.setSize({120.f, 40.f});
-  m_fenContinueBtn.setSize({140.f, 40.f});
-  m_fenBackBtn.setFillColor(colButton);
-  m_fenContinueBtn.setFillColor(colAccent);
-  float by = m_fenPopup.getPosition().y + POPUP_H - 60.f;
-  m_fenBackBtn.setPosition(snapf(m_fenPopup.getPosition().x + 20.f), snapf(by));
-  m_fenContinueBtn.setPosition(
-      snapf(m_fenPopup.getPosition().x + POPUP_W - 20.f - m_fenContinueBtn.getSize().x), snapf(by));
-
-  m_fenBackText.setFont(m_font);
-  m_fenBackText.setCharacterSize(18);
-  m_fenBackText.setString("Back");
-  m_fenBackText.setFillColor(colText);
-  centerText(m_fenBackText, m_fenBackBtn.getGlobalBounds());
-
-  m_fenContinueText.setFont(m_font);
-  m_fenContinueText.setCharacterSize(18);
-  m_fenContinueText.setString("Continue");
-  m_fenContinueText.setFillColor(sf::Color::Black);
-  centerText(m_fenContinueText, m_fenContinueBtn.getGlobalBounds());
-
-  m_fenErrorText.setFont(m_font);
-  m_fenErrorText.setCharacterSize(16);
-  m_fenErrorText.setFillColor(sf::Color(255, 90, 90, 0));
-  m_fenErrorText.setString("Incorrect FEN");
-  m_fenErrorText.setPosition(snapf(m_fenInputBox.getPosition().x),
-                             snapf(m_fenInputBox.getPosition().y + 52.f));
+  leftCenterText(m_fenInputText, m_fenInputBox.getGlobalBounds(), 8.f);
 
   // Build bot option lists
   auto bots = availableBots();
@@ -427,7 +328,7 @@ void StartScreen::setupUI() {
       BotOption opt;
       opt.type = bots[i];
       opt.box.setSize({BTN_W, LIST_ITEM_H});
-      opt.box.setPosition(snapf(left), snapf(top + static_cast<float>(i) * (LIST_ITEM_H + 6.f)));
+      opt.box.setPosition(snapf(left), snapf(top + (float)i * (LIST_ITEM_H + 6.f)));
       opt.box.setFillColor(colButton);
       opt.label.setFont(m_font);
       opt.label.setCharacterSize(16);
@@ -442,18 +343,16 @@ void StartScreen::setupUI() {
   buildList(m_blackBotOptions, m_blackBotBtn.getPosition().x,
             m_blackBotBtn.getPosition().y + BTN_H + 8.f);
 
-  // --- Time Control UI (center of main panel) ---
+  // Time block
   const float timeX = x0 + (PANEL_W - TIME_W) * 0.5f;
   const float timeY = y0 + (PANEL_H - TIME_H) * 0.5f;
 
-  // Beveled toggle above the timer
   m_timeToggleBtn.setSize({TOGGLE_W, TOGGLE_H});
   m_timeToggleBtn.setPosition(snap({x0 + (PANEL_W - TOGGLE_W) * 0.5f, timeY - 56.f}));
   m_timeToggleBtn.setOutlineThickness(0.f);
   m_timeToggleText.setFont(m_font);
   m_timeToggleText.setCharacterSize(16);
 
-  // Time panel
   m_timePanel.setSize({TIME_W, TIME_H});
   m_timePanel.setPosition(snap({timeX, timeY}));
   m_timePanel.setFillColor(sf::Color(42, 48, 63));
@@ -466,18 +365,15 @@ void StartScreen::setupUI() {
   m_timeTitle.setString("Time Control");
   m_timeTitle.setPosition(snap({timeX + 10.f, timeY + 8.f}));
 
-  // main time display
   m_timeMain.setFont(m_font);
   m_timeMain.setCharacterSize(22);
   m_timeMain.setFillColor(colText);
   m_timeMain.setString(formatHMS(m_baseSeconds));
 
-  // base steppers
   m_timeMinusBtn.setSize({28.f, 26.f});
   m_timePlusBtn.setSize({28.f, 26.f});
   m_timeMinusBtn.setFillColor(colButton);
   m_timePlusBtn.setFillColor(colButton);
-
   m_minusTxt.setFont(m_font);
   m_minusTxt.setCharacterSize(18);
   m_minusTxt.setFillColor(colText);
@@ -485,22 +381,18 @@ void StartScreen::setupUI() {
   m_plusTxt = m_minusTxt;
   m_plusTxt.setString("+");
 
-  // increment row
   m_incLabel.setFont(m_font);
   m_incLabel.setCharacterSize(12);
   m_incLabel.setFillColor(colSubtle);
   m_incLabel.setString("Increment");
-
   m_incValue.setFont(m_font);
   m_incValue.setCharacterSize(16);
   m_incValue.setFillColor(colText);
   m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
-
   m_incMinusBtn.setSize({24.f, 22.f});
   m_incPlusBtn.setSize({24.f, 22.f});
   m_incMinusBtn.setFillColor(colButton);
   m_incPlusBtn.setFillColor(colButton);
-
   m_incMinusTxt.setFont(m_font);
   m_incMinusTxt.setCharacterSize(16);
   m_incMinusTxt.setFillColor(colText);
@@ -508,7 +400,7 @@ void StartScreen::setupUI() {
   m_incPlusTxt = m_incMinusTxt;
   m_incPlusTxt.setString("+");
 
-  // Preset chips
+  // Presets
   m_presets.clear();
   auto makeChip = [&](const char* label, int base, int inc) {
     PresetChip c;
@@ -528,15 +420,10 @@ void StartScreen::setupUI() {
   makeChip("Blitz", 180, 2);
   makeChip("Rapid", 600, 0);
 
-  // layout internals
   auto layoutTimeControls = [&]() {
     const sf::Vector2f p = m_timePanel.getPosition();
-
-    // Row 1: [-]  HH:MM:SS  [+]
     float row1Y = p.y + 42.f;
-    const float gap = 10.f;
-    const float mw = m_timeMinusBtn.getSize().x;
-    const float pw = m_timePlusBtn.getSize().x;
+    const float gap = 10.f, mw = m_timeMinusBtn.getSize().x, pw = m_timePlusBtn.getSize().x;
     auto mb = m_timeMain.getLocalBounds();
     float totalW = mw + gap + mb.width + gap + pw;
     float left = p.x + (TIME_W - totalW) * 0.5f;
@@ -546,16 +433,13 @@ void StartScreen::setupUI() {
         snap({left + mw + gap + mb.width + gap, row1Y - m_timePlusBtn.getSize().y * 0.5f}));
 
     sf::FloatRect minusGB = m_timeMinusBtn.getGlobalBounds();
-    sf::FloatRect plusGB = m_timePlusBtn.getGlobalBounds();
     sf::FloatRect midBox(minusGB.left + minusGB.width + gap, row1Y - 14.f, mb.width, 28.f);
     centerText(m_timeMain, midBox);
     centerText(m_minusTxt, m_timeMinusBtn.getGlobalBounds());
     centerText(m_plusTxt, m_timePlusBtn.getGlobalBounds());
 
-    // Row 2: Increment label + value [+/-] on the right
     float row2Y = p.y + 80.f;
     m_incLabel.setPosition(snap({p.x + 10.f, row2Y - 9.f}));
-
     const float incRight = p.x + TIME_W - 10.f;
     m_incPlusBtn.setPosition(
         snap({incRight - m_incPlusBtn.getSize().x, row2Y - m_incPlusBtn.getSize().y * 0.5f}));
@@ -567,7 +451,6 @@ void StartScreen::setupUI() {
     centerText(m_incMinusTxt, m_incMinusBtn.getGlobalBounds());
     centerText(m_incPlusTxt, m_incPlusBtn.getGlobalBounds());
 
-    // Presets row under the box, centered
     float yChips = p.y + TIME_H + 12.f;
     float chipsTotalW = 3.f * m_presets[0].box.getSize().x + 2.f * CHIP_GAP;
     float chipsLeft = p.x + (TIME_W - chipsTotalW) * 0.5f;
@@ -578,7 +461,6 @@ void StartScreen::setupUI() {
     }
   };
 
-  // initialize text strings and layout
   m_timeMain.setString(formatHMS(m_baseSeconds));
   m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
   updateTimeToggle();
@@ -598,10 +480,19 @@ void StartScreen::updateTimeToggle() {
   centerText(m_timeToggleText, m_timeToggleBtn.getGlobalBounds());
 }
 
-// rectangular panel with soft shadow and border
 static void drawPanelWithShadow(sf::RenderWindow& win, const sf::Vector2f& topLeft) {
+  // Keep panel shadowed (overall), not the clock panel
   sf::FloatRect rect(topLeft.x, topLeft.y, PANEL_W, PANEL_H);
-  drawSoftShadowRect(win, rect);
+  // soft shadow
+  for (int i = 3; i >= 1; --i) {
+    float grow = (float)i * 6.f;
+    sf::RectangleShape s({rect.width + 2.f * grow, rect.height + 2.f * grow});
+    s.setPosition(snapf(rect.left - grow), snapf(rect.top - grow));
+    sf::Color sc(0, 0, 0, (sf::Uint8)(30 * i));
+    s.setFillColor(sc);
+    win.draw(s);
+  }
+  // border + body
   sf::RectangleShape border({rect.width + 2.f, rect.height + 2.f});
   border.setPosition(snapf(rect.left - 1.f), snapf(rect.top - 1.f));
   border.setFillColor(colPanelBorder);
@@ -613,7 +504,7 @@ static void drawPanelWithShadow(sf::RenderWindow& win, const sf::Vector2f& topLe
 }
 
 bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
-  // toggle white side
+  // White toggles
   if (contains(m_whitePlayerBtn.getGlobalBounds(), pos)) {
     cfg.whiteIsBot = false;
     m_showWhiteBotList = false;
@@ -622,7 +513,6 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
   if (contains(m_whiteBotBtn.getGlobalBounds(), pos)) {
     cfg.whiteIsBot = true;
     m_showWhiteBotList = !m_showWhiteBotList;
-    m_whiteListForceHide = false;
     return false;
   }
   if (m_showWhiteBotList) {
@@ -637,7 +527,7 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
     }
   }
 
-  // toggle black side
+  // Black toggles
   if (contains(m_blackPlayerBtn.getGlobalBounds(), pos)) {
     cfg.blackIsBot = false;
     m_showBlackBotList = false;
@@ -646,7 +536,6 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
   if (contains(m_blackBotBtn.getGlobalBounds(), pos)) {
     cfg.blackIsBot = true;
     m_showBlackBotList = !m_showBlackBotList;
-    m_blackListForceHide = false;
     return false;
   }
   if (m_showBlackBotList) {
@@ -661,12 +550,12 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
     }
   }
 
-  // presets (time) — click
+  // Time presets (if enabled)
   if (m_timeEnabled) {
     for (std::size_t i = 0; i < m_presets.size(); ++i) {
       auto& chip = m_presets[i];
       if (contains(chip.box.getGlobalBounds(), pos)) {
-        m_presetSelection = static_cast<int>(i);
+        m_presetSelection = (int)i;
         m_baseSeconds = clampBaseSeconds(chip.base);
         m_incrementSeconds = clampIncSeconds(chip.inc);
         m_timeMain.setString(formatHMS(m_baseSeconds));
@@ -676,14 +565,34 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
     }
   }
 
-  // start
-  if (contains(m_startBtn.getGlobalBounds(), pos)) {
-    return true;
-  }
+  // Start
+  if (contains(m_startBtn.getGlobalBounds(), pos)) return true;
 
-  // clicking elsewhere hides the lists
-  if (!contains(m_whiteBotBtn.getGlobalBounds(), pos)) m_showWhiteBotList = false;
-  if (!contains(m_blackBotBtn.getGlobalBounds(), pos)) m_showBlackBotList = false;
+  // Close lists only if clicking outside both buttons AND both lists
+  bool inWhiteButton = contains(m_whiteBotBtn.getGlobalBounds(), pos);
+  bool inBlackButton = contains(m_blackBotBtn.getGlobalBounds(), pos);
+  bool inWhiteList = false;
+  if (m_showWhiteBotList) {
+    for (auto& o : m_whiteBotOptions) {
+      if (contains(o.box.getGlobalBounds(), pos)) {
+        inWhiteList = true;
+        break;
+      }
+    }
+  }
+  bool inBlackList = false;
+  if (m_showBlackBotList) {
+    for (auto& o : m_blackBotOptions) {
+      if (contains(o.box.getGlobalBounds(), pos)) {
+        inBlackList = true;
+        break;
+      }
+    }
+  }
+  if (!(inWhiteButton || inWhiteList || inBlackButton || inBlackList)) {
+    m_showWhiteBotList = false;
+    m_showBlackBotList = false;
+  }
 
   return false;
 }
@@ -698,7 +607,6 @@ bool StartScreen::isValidFen(const std::string& fen) {
   return basicFenCheck(fen);
 }
 
-// --- helper: process press&hold repeating ---
 void StartScreen::processHoldRepeater(HoldRepeater& r, const sf::FloatRect& bounds,
                                       sf::Vector2f mouse, std::function<void()> stepFn,
                                       float initialDelay, float repeatRate) {
@@ -706,7 +614,7 @@ void StartScreen::processHoldRepeater(HoldRepeater& r, const sf::FloatRect& boun
   if (!bounds.contains(mouse)) return;
   float t = r.clock.getElapsedTime().asSeconds();
   if (t < initialDelay) return;
-  int ticks = static_cast<int>((t - initialDelay) / repeatRate);
+  int ticks = (int)((t - initialDelay) / repeatRate);
   while (r.fired < ticks) {
     stepFn();
     r.fired++;
@@ -719,35 +627,37 @@ StartConfig StartScreen::run() {
   cfg.blackIsBot = true;
   cfg.whiteBot = BotType::Lilia;
   cfg.blackBot = BotType::Lilia;
-  cfg.fen = m_fenString;  // default prefill
+  cfg.fen = core::START_FEN;
   cfg.timeBaseSeconds = m_baseSeconds;
   cfg.timeIncrementSeconds = m_incrementSeconds;
   cfg.timeEnabled = m_timeEnabled;
 
-  // Toast (kept for later)
+  // FEN field state
+  bool fenInputActive = false;
+  bool fenUserEdited = false;
+  const float fenPadX = 8.f;
+
+  // Toast
   bool toastVisible = false;
   sf::Clock toastClock;
-  std::string toastMsg = "Using standard start position";
-  auto showToast = [&]() {
-    toastVisible = true;
-    toastClock.restart();
-  };
+  std::string toastMsg;
+
+  // Caret blink
+  sf::Clock caretClock;
 
   auto drawUI = [&]() {
     drawVerticalGradient(m_window, colBGTop, colBGBottom);
 
-    // faint logo top-right
+    // faint logo
     if (m_logoTex.getSize().x > 0 && m_logoTex.getSize().y > 0) {
       sf::Sprite logoBG(m_logoTex);
       const auto ws = m_window.getSize();
       const float desiredH = ws.y * 0.90f;
-      const float s = desiredH / static_cast<float>(m_logoTex.getSize().y);
+      const float s = desiredH / (float)m_logoTex.getSize().y;
       logoBG.setScale(s, s);
-      const sf::FloatRect lb = logoBG.getLocalBounds();
+      auto lb = logoBG.getLocalBounds();
       logoBG.setOrigin(lb.width, 0.f);
-      const float pad = 24.f;
-      logoBG.setPosition(snapf(static_cast<float>(ws.x) - pad), snapf(pad));
-      logoBG.setRotation(0.f);
+      logoBG.setPosition(snapf((float)ws.x - 24.f), snapf(24.f));
       logoBG.setColor(sf::Color(150, 120, 255, 70));
       m_window.draw(logoBG, sf::RenderStates(sf::BlendAlpha));
     }
@@ -768,57 +678,49 @@ StartConfig StartScreen::run() {
     subtitle.setPosition(snapf(panelPos.x + 24.f), snapf(panelPos.y + 52.f));
     m_window.draw(subtitle);
 
-    // Section labels
+    // Sections
     m_window.draw(m_whiteLabel);
     m_window.draw(m_blackLabel);
 
-    // --- White column buttons (beveled) ---
+    // White column
     {
-      const auto humanR = m_whitePlayerBtn.getGlobalBounds();
-      const auto botR = m_whiteBotBtn.getGlobalBounds();
-      const bool hovH = contains(humanR, m_mousePos);
-      const bool hovB = contains(botR, m_mousePos);
-      const bool selH = !cfg.whiteIsBot;
-      const bool selB = cfg.whiteIsBot;
-
+      auto humanR = m_whitePlayerBtn.getGlobalBounds();
+      auto botR = m_whiteBotBtn.getGlobalBounds();
+      bool hovH = contains(humanR, m_mousePos), hovB = contains(botR, m_mousePos);
+      bool selH = !cfg.whiteIsBot, selB = cfg.whiteIsBot;
       drawBevelButton3D(m_window, humanR, selH ? colButtonActive : colButton, hovH, selH);
       centerText(m_whitePlayerText, humanR);
       m_window.draw(m_whitePlayerText);
       if (selH) drawAccentInset(m_window, humanR, colAccent);
-
       drawBevelButton3D(m_window, botR, selB ? colButtonActive : colButton, hovB, selB);
       centerText(m_whiteBotText, botR);
       m_window.draw(m_whiteBotText);
       if (selB) drawAccentInset(m_window, botR, colAccent);
     }
 
-    // --- Black column buttons (beveled) ---
+    // Black column
     {
-      const auto humanR = m_blackPlayerBtn.getGlobalBounds();
-      const auto botR = m_blackBotBtn.getGlobalBounds();
-      const bool hovH = contains(humanR, m_mousePos);
-      const bool hovB = contains(botR, m_mousePos);
-      const bool selH = !cfg.blackIsBot;
-      const bool selB = cfg.blackIsBot;
-
+      auto humanR = m_blackPlayerBtn.getGlobalBounds();
+      auto botR = m_blackBotBtn.getGlobalBounds();
+      bool hovH = contains(humanR, m_mousePos), hovB = contains(botR, m_mousePos);
+      bool selH = !cfg.blackIsBot, selB = cfg.blackIsBot;
       drawBevelButton3D(m_window, humanR, selH ? colButtonActive : colButton, hovH, selH);
       centerText(m_blackPlayerText, humanR);
       m_window.draw(m_blackPlayerText);
       if (selH) drawAccentInset(m_window, humanR, colAccent);
-
       drawBevelButton3D(m_window, botR, selB ? colButtonActive : colButton, hovB, selB);
       centerText(m_blackBotText, botR);
       m_window.draw(m_blackBotText);
       if (selB) drawAccentInset(m_window, botR, colAccent);
     }
 
-    // Bot dropdown lists (beveled items)
+    // Bot dropdowns
     auto drawBotList = [&](const std::vector<BotOption>& list, std::size_t selIdx) {
       for (std::size_t i = 0; i < list.size(); ++i) {
         const auto& opt = list[i];
-        const auto r = opt.box.getGlobalBounds();
-        const bool hov = contains(r, m_mousePos);
-        const bool sel = (i == selIdx);
+        auto r = opt.box.getGlobalBounds();
+        bool hov = contains(r, m_mousePos);
+        bool sel = (i == selIdx);
         drawBevelButton3D(m_window, r, sel ? colButtonActive : colButton, hov, sel);
         sf::Text label = opt.label;
         leftCenterText(label, r, 10.f);
@@ -829,50 +731,55 @@ StartConfig StartScreen::run() {
     if (m_showWhiteBotList) drawBotList(m_whiteBotOptions, m_whiteBotSelection);
     if (m_showBlackBotList) drawBotList(m_blackBotOptions, m_blackBotSelection);
 
-    // --- Time Toggle (beveled) ---
+    // Time toggle
     {
-      const auto gb = m_timeToggleBtn.getGlobalBounds();
-      const bool hov = contains(gb, m_mousePos);
-      const bool on = m_timeEnabled;
-      const sf::Color base = on ? colAccent : colTimeOff;
+      auto gb = m_timeToggleBtn.getGlobalBounds();
+      bool hov = contains(gb, m_mousePos);
+      bool on = m_timeEnabled;
+      sf::Color base = on ? colAccent : colTimeOff;
       drawBevelButton3D(m_window, gb, base, hov, on);
       centerText(m_timeToggleText, gb);
       m_window.draw(m_timeToggleText);
     }
 
+    // Time panel (no shadow)
     if (m_timeEnabled) {
       auto gb = m_timePanel.getGlobalBounds();
-      drawSoftShadowRect(m_window, gb);
       m_window.draw(m_timePanel);
+      // simple inner lines (not shadows)
+      sf::RectangleShape top({gb.width, 1.f});
+      top.setPosition(gb.left, gb.top);
+      top.setFillColor(sf::Color(255, 255, 255, 18));
+      m_window.draw(top);
+      sf::RectangleShape bot({gb.width, 1.f});
+      bot.setPosition(gb.left, gb.top + gb.height - 1.f);
+      bot.setFillColor(sf::Color(0, 0, 0, 40));
+      m_window.draw(bot);
+
       m_window.draw(m_timeTitle);
 
-      // --- Steppers (beveled + pressed while holding) ---
-      auto drawStep = [&](sf::RectangleShape& box, sf::Text& txt, bool holdActive) {
-        const auto r = box.getGlobalBounds();
-        const bool hov = contains(r, m_mousePos);
-        const bool pressed = holdActive && hov;
+      auto step = [&](sf::RectangleShape& box, sf::Text& txt, bool hold) {
+        auto r = box.getGlobalBounds();
+        bool hov = contains(r, m_mousePos);
+        bool pressed = hold && hov;
         drawBevelButton3D(m_window, r, colButton, hov, pressed);
         centerText(txt, r);
         m_window.draw(txt);
       };
-      drawStep(m_timeMinusBtn, m_minusTxt, m_holdBaseMinus.active);
-      drawStep(m_timePlusBtn, m_plusTxt, m_holdBasePlus.active);
-
-      // time text (centered between steppers)
+      step(m_timeMinusBtn, m_minusTxt, m_holdBaseMinus.active);
+      step(m_timePlusBtn, m_plusTxt, m_holdBasePlus.active);
       m_window.draw(m_timeMain);
 
-      // increment row
       m_window.draw(m_incLabel);
-      drawStep(m_incMinusBtn, m_incMinusTxt, m_holdIncMinus.active);
-      drawStep(m_incPlusBtn, m_incPlusTxt, m_holdIncPlus.active);
+      step(m_incMinusBtn, m_incMinusTxt, m_holdIncMinus.active);
+      step(m_incPlusBtn, m_incPlusTxt, m_holdIncPlus.active);
       m_window.draw(m_incValue);
 
-      // presets (beveled chips)
       for (std::size_t i = 0; i < m_presets.size(); ++i) {
         auto& c = m_presets[i];
-        const auto r = c.box.getGlobalBounds();
-        const bool hov = contains(r, m_mousePos);
-        const bool sel = (m_presetSelection == static_cast<int>(i));
+        auto r = c.box.getGlobalBounds();
+        bool hov = contains(r, m_mousePos);
+        bool sel = (m_presetSelection == (int)i);
         drawBevelButton3D(m_window, r, sel ? colButtonActive : colButton, hov, sel);
         centerText(c.label, r, -1.f);
         m_window.draw(c.label);
@@ -880,85 +787,93 @@ StartConfig StartScreen::run() {
       }
     }
 
-    // Start button (beveled)
+    // Start (beveled)
     {
-      const auto r = m_startBtn.getGlobalBounds();
-      const bool hov = contains(r, m_mousePos);
+      auto r = m_startBtn.getGlobalBounds();
+      bool hov = contains(r, m_mousePos);
       drawBevelButton3D(m_window, r, colAccent, hov, false);
       centerText(m_startText, r);
       m_window.draw(m_startText);
     }
 
-    // Tip
-    m_window.draw(m_creditText);
-  };
+    // -------- FEN field --------
+    const bool fenEmpty = m_fenString.empty();
+    const bool fenValid = (!fenEmpty) && isValidFen(m_fenString);
 
-  // Popup drawing (beveled action buttons)
-  auto drawFenPopup = [&]() {
-    sf::RectangleShape overlay(
-        {static_cast<float>(m_window.getSize().x), static_cast<float>(m_window.getSize().y)});
-    overlay.setPosition(0.f, 0.f);
-    overlay.setFillColor(sf::Color(0, 0, 0, 180));
-    m_window.draw(overlay);
-
-    sf::Vector2f p = m_fenPopup.getPosition();
-    sf::FloatRect rect(p.x, p.y, POPUP_W, POPUP_H);
-    drawSoftShadowRect(m_window, rect);
-
-    sf::RectangleShape border({rect.width + 2.f, rect.height + 2.f});
-    border.setPosition(snapf(rect.left - 1.f), snapf(rect.top - 1.f));
-    border.setFillColor(colPanelBorder);
-    m_window.draw(border);
-
-    sf::RectangleShape body({rect.width, rect.height});
-    body.setPosition(snapf(rect.left), snapf(rect.top));
-    body.setFillColor(colTextPanel);
-    m_window.draw(body);
-
-    sf::Text title("Custom Position", m_font, 22);
-    title.setFillColor(colText);
-    title.setPosition(snapf(p.x + 20.f), snapf(p.y + 18.f));
-    m_window.draw(title);
-
-    sf::Text label("FEN:", m_font, 18);
-    label.setFillColor(colSubtle);
-    label.setPosition(snapf(p.x + 20.f), snapf(m_fenInputBox.getPosition().y + 10.f));
-    m_window.draw(label);
-
-    // input box (kept flat)
+    m_fenInputBox.setOutlineColor(fenEmpty ? colInputBorder : (fenValid ? colValid : colInvalid));
     m_window.draw(m_fenInputBox);
-    const float padX = 10.f;
-    const float usableW = m_fenInputBox.getSize().x - (padX * 2.f);
-    std::string toShow;
-    bool isEmpty = m_fenString.empty();
-    if (!isEmpty) toShow = ellipsizeRightKeepTail(m_fenString, m_fenInputText, usableW);
-    m_fenInputText.setFillColor(isEmpty ? colSubtle : colText);
-    m_fenInputText.setString(isEmpty ? "Paste or type a FEN..." : toShow);
-    leftCenterText(m_fenInputText, m_fenInputBox.getGlobalBounds(), padX);
-    m_window.draw(m_fenInputText);
 
-    // beveled action buttons
+    // Text or placeholder
+    if (fenEmpty) {
+      sf::Text placeholder("STANDARD FEN", m_font, 15);
+      placeholder.setFillColor(colSubtle);
+      leftCenterText(placeholder, m_fenInputBox.getGlobalBounds(), fenPadX);
+      m_window.draw(placeholder);
+    } else {
+      m_fenInputText.setString(m_fenString);
+      leftCenterText(m_fenInputText, m_fenInputBox.getGlobalBounds(), fenPadX);
+      m_window.draw(m_fenInputText);
+    }
+
+    // Blinking caret when focused
+    if (fenInputActive) {
+      float t = std::fmod(caretClock.getElapsedTime().asSeconds(), 1.0f);
+      if (t < 0.5f) {
+        // caret position = end of current text
+        sf::Text probe(m_fenString, m_font, 15);
+        auto b = probe.getLocalBounds();
+        float left = m_fenInputBox.getPosition().x + fenPadX;
+        float top = m_fenInputBox.getPosition().y;
+        float h = m_fenInputBox.getSize().y;
+        float caretX = left + b.width + 1.f;
+        float maxX = m_fenInputBox.getPosition().x + m_fenInputBox.getSize().x - 2.f;
+        caretX = std::min(caretX, maxX - 1.f);
+        sf::RectangleShape caret({2.f, h * 0.65f});
+        caret.setPosition(snapf(caretX), snapf(top + (h - caret.getSize().y) * 0.5f));
+        caret.setFillColor(colText);
+        m_window.draw(caret);
+      }
+    }
+
+    // Toast (bottom center)
+    if (toastVisible) {
+      float elapsed = toastClock.getElapsedTime().asSeconds();
+      if (elapsed < 2.2f) {
+        sf::Text ttxt(toastMsg, m_font, 14);
+        ttxt.setFillColor(colText);
+        auto tb = ttxt.getLocalBounds();
+        float pad = 12.f;
+        float bw = tb.width + pad * 2.f;
+        float bh = tb.height + pad * 2.f;
+        sf::Vector2u ws = m_window.getSize();
+        float x = (ws.x - bw) * 0.5f;
+        float y = ws.y - bh - 24.f;
+        sf::RectangleShape bg({bw, bh});
+        bg.setPosition(snapf(x), snapf(y));
+        bg.setFillColor(sf::Color(36, 41, 54, 220));
+        bg.setOutlineThickness(1.f);
+        bg.setOutlineColor(colPanelBorder);
+        m_window.draw(bg);
+        ttxt.setPosition(snapf(x + pad - tb.left), snapf(y + pad - tb.top));
+        m_window.draw(ttxt);
+      } else {
+        toastVisible = false;
+      }
+    }
+
+    // Developer credit (bottom right)
     {
-      const auto rBack = m_fenBackBtn.getGlobalBounds();
-      const auto rCont = m_fenContinueBtn.getGlobalBounds();
-      const bool hovB = contains(rBack, m_mousePos);
-      const bool hovC = contains(rCont, m_mousePos);
-      drawBevelButton3D(m_window, rBack, colButton, hovB, false);
-      drawBevelButton3D(m_window, rCont, colAccent, hovC, false);
-      centerText(m_fenBackText, rBack);
-      centerText(m_fenContinueText, rCont);
-      m_window.draw(m_fenBackText);
-      m_window.draw(m_fenContinueText);
+      sf::Text credit("@ 2025 Julian Meyer", m_font, 13);
+      credit.setFillColor(colSubtle);
+      auto cb = credit.getLocalBounds();
+      sf::Vector2u ws = m_window.getSize();
+      credit.setPosition(snapf((float)ws.x - cb.width - 18.f),
+                         snapf((float)ws.y - cb.height - 22.f));
+      m_window.draw(credit);
     }
   };
 
-  // Input focus for popup
-  static bool fenInputActive = false;
-  static bool skipNextText = false;
-  (void)fenInputActive;
-  (void)skipNextText;
-
-  // loop
+  // Loop
   while (m_window.isOpen()) {
     sf::Event e{};
     while (m_window.pollEvent(e)) {
@@ -967,157 +882,161 @@ StartConfig StartScreen::run() {
         break;
       }
       if (e.type == sf::Event::Resized) {
-        setupUI();  // re-layout
+        setupUI();
       }
-
       if (e.type == sf::Event::MouseMoved) {
-        m_mousePos = {static_cast<float>(e.mouseMove.x), static_cast<float>(e.mouseMove.y)};
+        m_mousePos = {(float)e.mouseMove.x, (float)e.mouseMove.y};
       }
 
-      if (!m_showFenPopup) {
-        // normal screen input
-        if (e.type == sf::Event::KeyPressed) {
-          if (e.key.code == sf::Keyboard::F) {
-            m_showFenPopup = true;
-            fenInputActive = true;
-            skipNextText = true;
-            m_fenInputText.setString(m_fenString);
-          } else if (m_timeEnabled && e.key.code == sf::Keyboard::Left) {
-            m_baseSeconds = clampBaseSeconds(m_baseSeconds - (e.key.shift ? 300 : 60));
-            m_timeMain.setString(formatHMS(m_baseSeconds));
-          } else if (m_timeEnabled && e.key.code == sf::Keyboard::Right) {
-            m_baseSeconds = clampBaseSeconds(m_baseSeconds + (e.key.shift ? 300 : 60));
-            m_timeMain.setString(formatHMS(m_baseSeconds));
-          } else if (m_timeEnabled && e.key.code == sf::Keyboard::Down) {
-            m_incrementSeconds = clampIncSeconds(m_incrementSeconds - 1);
-            m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
-          } else if (m_timeEnabled && e.key.code == sf::Keyboard::Up) {
-            m_incrementSeconds = clampIncSeconds(m_incrementSeconds + 1);
-            m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
-          } else if (e.key.code == sf::Keyboard::Enter) {
+      // Keyboard
+      if (e.type == sf::Event::KeyPressed) {
+        if (m_timeEnabled && e.key.code == sf::Keyboard::Left) {
+          m_baseSeconds = clampBaseSeconds(m_baseSeconds - (e.key.shift ? 300 : 60));
+          m_timeMain.setString(formatHMS(m_baseSeconds));
+        } else if (m_timeEnabled && e.key.code == sf::Keyboard::Right) {
+          m_baseSeconds = clampBaseSeconds(m_baseSeconds + (e.key.shift ? 300 : 60));
+          m_timeMain.setString(formatHMS(m_baseSeconds));
+        } else if (m_timeEnabled && e.key.code == sf::Keyboard::Down) {
+          m_incrementSeconds = clampIncSeconds(m_incrementSeconds - 1);
+          m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+        } else if (m_timeEnabled && e.key.code == sf::Keyboard::Up) {
+          m_incrementSeconds = clampIncSeconds(m_incrementSeconds + 1);
+          m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+        } else if (e.key.code == sf::Keyboard::Enter) {
+          // Start game
+          cfg.timeBaseSeconds = m_baseSeconds;
+          cfg.timeIncrementSeconds = m_incrementSeconds;
+          cfg.timeEnabled = m_timeEnabled;
+          if (m_fenString.empty() || !isValidFen(m_fenString)) {
+            if (!m_fenString.empty()) {
+              toastMsg = "INCORRECT. STANDARD WILL BE CHOSEN";
+              toastVisible = true;
+              toastClock.restart();
+            }
+            cfg.fen = core::START_FEN;
+          } else {
+            cfg.fen = m_fenString;
+          }
+          return cfg;
+        }
+      }
+
+      // Mouse press
+      if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
+        sf::Vector2f mp((float)e.mouseButton.x, (float)e.mouseButton.y);
+
+        // steppers
+        if (m_timeEnabled && contains(m_timeMinusBtn.getGlobalBounds(), mp)) {
+          m_baseSeconds = clampBaseSeconds(m_baseSeconds - 60);
+          m_timeMain.setString(formatHMS(m_baseSeconds));
+          m_holdBaseMinus.active = true;
+          m_holdBaseMinus.clock.restart();
+          m_holdBaseMinus.fired = 0;
+        } else if (m_timeEnabled && contains(m_timePlusBtn.getGlobalBounds(), mp)) {
+          m_baseSeconds = clampBaseSeconds(m_baseSeconds + 60);
+          m_timeMain.setString(formatHMS(m_baseSeconds));
+          m_holdBasePlus.active = true;
+          m_holdBasePlus.clock.restart();
+          m_holdBasePlus.fired = 0;
+        } else if (m_timeEnabled && contains(m_incMinusBtn.getGlobalBounds(), mp)) {
+          m_incrementSeconds = clampIncSeconds(m_incrementSeconds - 1);
+          m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+          m_holdIncMinus.active = true;
+          m_holdIncMinus.clock.restart();
+          m_holdIncMinus.fired = 0;
+        } else if (m_timeEnabled && contains(m_incPlusBtn.getGlobalBounds(), mp)) {
+          m_incrementSeconds = clampIncSeconds(m_incrementSeconds + 1);
+          m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+          m_holdIncPlus.active = true;
+          m_holdIncPlus.clock.restart();
+          m_holdIncPlus.fired = 0;
+        } else if (contains(m_timeToggleBtn.getGlobalBounds(), mp)) {
+          m_timeEnabled = !m_timeEnabled;
+          updateTimeToggle();
+          m_holdBaseMinus.active = m_holdBasePlus.active = m_holdIncMinus.active =
+              m_holdIncPlus.active = false;
+        } else if (contains(m_fenInputBox.getGlobalBounds(), mp)) {
+          fenInputActive = true;
+          caretClock.restart();
+        } else {
+          // Blurring FEN: show toast if user edited & invalid (and not empty)
+          if (fenInputActive) {
+            fenInputActive = false;
+            if (fenUserEdited && !m_fenString.empty() && !isValidFen(m_fenString)) {
+              toastMsg = "INCORRECT. STANDARD WILL BE CHOSEN";
+              toastVisible = true;
+              toastClock.restart();
+            }
+          }
+          // delegate (sides/presets/start)
+          if (handleMouse(mp, cfg)) {
             cfg.timeBaseSeconds = m_baseSeconds;
             cfg.timeIncrementSeconds = m_incrementSeconds;
             cfg.timeEnabled = m_timeEnabled;
+            if (m_fenString.empty() || !isValidFen(m_fenString)) {
+              if (!m_fenString.empty()) {
+                toastMsg = "INCORRECT. STANDARD WILL BE CHOSEN";
+                toastVisible = true;
+                toastClock.restart();
+              }
+              cfg.fen = core::START_FEN;
+            } else
+              cfg.fen = m_fenString;
             return cfg;
           }
         }
+      }
 
-        if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
-          sf::Vector2f mp(static_cast<float>(e.mouseButton.x), static_cast<float>(e.mouseButton.y));
+      if (e.type == sf::Event::MouseButtonReleased && e.mouseButton.button == sf::Mouse::Left) {
+        m_holdBaseMinus.active = m_holdBasePlus.active = m_holdIncMinus.active =
+            m_holdIncPlus.active = false;
+      }
 
-          // steppers: immediate step + arm hold repeater
-          if (m_timeEnabled && contains(m_timeMinusBtn.getGlobalBounds(), mp)) {
-            m_baseSeconds = clampBaseSeconds(m_baseSeconds - 60);
-            m_timeMain.setString(formatHMS(m_baseSeconds));
-            m_holdBaseMinus.active = true;
-            m_holdBaseMinus.clock.restart();
-            m_holdBaseMinus.fired = 0;
-          } else if (m_timeEnabled && contains(m_timePlusBtn.getGlobalBounds(), mp)) {
-            m_baseSeconds = clampBaseSeconds(m_baseSeconds + 60);
-            m_timeMain.setString(formatHMS(m_baseSeconds));
-            m_holdBasePlus.active = true;
-            m_holdBasePlus.clock.restart();
-            m_holdBasePlus.fired = 0;
-          } else if (m_timeEnabled && contains(m_incMinusBtn.getGlobalBounds(), mp)) {
-            m_incrementSeconds = clampIncSeconds(m_incrementSeconds - 1);
-            m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
-            m_holdIncMinus.active = true;
-            m_holdIncMinus.clock.restart();
-            m_holdIncMinus.fired = 0;
-          } else if (m_timeEnabled && contains(m_incPlusBtn.getGlobalBounds(), mp)) {
-            m_incrementSeconds = clampIncSeconds(m_incrementSeconds + 1);
-            m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
-            m_holdIncPlus.active = true;
-            m_holdIncPlus.clock.restart();
-            m_holdIncPlus.fired = 0;
-          } else if (contains(m_timeToggleBtn.getGlobalBounds(), mp)) {
-            m_timeEnabled = !m_timeEnabled;
-            updateTimeToggle();
-            m_holdBaseMinus.active = m_holdBasePlus.active = m_holdIncMinus.active =
-                m_holdIncPlus.active = false;
-          } else {
-            // delegate to general handler (sides, presets, start)
-            if (handleMouse(mp, cfg)) {
-              cfg.timeBaseSeconds = m_baseSeconds;
-              cfg.timeIncrementSeconds = m_incrementSeconds;
-              cfg.timeEnabled = m_timeEnabled;
-              return cfg;
-            }
+      // Paste to FEN (fit to width; no overflow)
+      if (fenInputActive && e.type == sf::Event::KeyPressed && (e.key.control || e.key.system) &&
+          e.key.code == sf::Keyboard::V) {
+        auto clip = sf::Clipboard::getString().toAnsiString();
+        clip.erase(std::remove(clip.begin(), clip.end(), '\n'), clip.end());
+        clip.erase(std::remove(clip.begin(), clip.end(), '\r'), clip.end());
+        // append only while it fits
+        const float avail = m_fenInputBox.getSize().x - 2.f * fenPadX - 2.f;
+        std::string out = m_fenString;
+        for (char c : clip) {
+          sf::Text probe(out + c, m_font, 15);
+          if (probe.getLocalBounds().width <= avail)
+            out.push_back(c);
+          else
+            break;
+        }
+        if (out != m_fenString) {
+          m_fenString = out;
+          fenUserEdited = true;
+        }
+        m_fenInputText.setString(m_fenString);
+      }
+
+      // Typing into FEN (no overflow)
+      if (fenInputActive && e.type == sf::Event::TextEntered) {
+        if (e.text.unicode == 8) {  // backspace
+          if (!m_fenString.empty()) {
+            m_fenString.pop_back();
+            fenUserEdited = true;
+          }
+        } else if (e.text.unicode >= 32 && e.text.unicode < 127) {
+          const float avail = m_fenInputBox.getSize().x - 2.f * fenPadX - 2.f;
+          std::string tmp = m_fenString;
+          tmp.push_back((char)e.text.unicode);
+          sf::Text probe(tmp, m_font, 15);
+          if (probe.getLocalBounds().width <= avail) {
+            m_fenString.push_back((char)e.text.unicode);
+            fenUserEdited = true;
           }
         }
-
-        if (e.type == sf::Event::MouseButtonReleased && e.mouseButton.button == sf::Mouse::Left) {
-          m_holdBaseMinus.active = m_holdBasePlus.active = m_holdIncMinus.active =
-              m_holdIncPlus.active = false;
-        }
-
-      } else {
-        // popup input
-        if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
-          sf::Vector2f mp(static_cast<float>(e.mouseButton.x), static_cast<float>(e.mouseButton.y));
-          bool clickedBack = contains(m_fenBackBtn.getGlobalBounds(), mp);
-          bool clickedContinue = contains(m_fenContinueBtn.getGlobalBounds(), mp);
-          bool clickedInput = contains(m_fenInputBox.getGlobalBounds(), mp);
-          bool clickedInsidePopup = contains(m_fenPopup.getGlobalBounds(), mp);
-
-          if (clickedBack) {
-            m_showFenPopup = false;
-            fenInputActive = false;
-          } else if (clickedContinue) {
-            if (m_fenString.empty() || !isValidFen(m_fenString)) {
-              cfg.fen = core::START_FEN;
-              m_showFenPopup = false;
-              fenInputActive = false;
-            } else {
-              cfg.fen = m_fenString;
-              m_showFenPopup = false;
-              fenInputActive = false;
-            }
-          } else if (clickedInput) {
-            fenInputActive = true;
-          } else if (!clickedInsidePopup) {
-            fenInputActive = false;
-          }
-        }
-        if (e.type == sf::Event::KeyPressed) {
-          if (fenInputActive && (e.key.control || e.key.system) &&
-              e.key.code == sf::Keyboard::V) {
-            auto clip = sf::Clipboard::getString().toAnsiString();
-            clip.erase(std::remove(clip.begin(), clip.end(), '\n'), clip.end());
-            clip.erase(std::remove(clip.begin(), clip.end(), '\r'), clip.end());
-            m_fenString = clip;
-            m_fenInputText.setString(m_fenString);
-          } else if (e.key.code == sf::Keyboard::Escape) {
-            m_showFenPopup = false;
-            fenInputActive = false;
-          } else if (e.key.code == sf::Keyboard::Enter) {
-            if (m_fenString.empty() || !isValidFen(m_fenString)) {
-              cfg.fen = core::START_FEN;
-              m_showFenPopup = false;
-              fenInputActive = false;
-            } else {
-              cfg.fen = m_fenString;
-              m_showFenPopup = false;
-              fenInputActive = false;
-            }
-          }
-        }
-        if (fenInputActive && e.type == sf::Event::TextEntered) {
-          if (skipNextText) {
-            skipNextText = false;
-          } else {
-            if (e.text.unicode == 8) {
-              if (!m_fenString.empty()) m_fenString.pop_back();
-            } else if (e.text.unicode >= 32 && e.text.unicode < 127) {
-              m_fenString.push_back(static_cast<char>(e.text.unicode));
-            }
-            m_fenInputText.setString(m_fenString);
-          }
-        }
+        m_fenInputText.setString(m_fenString);
       }
     }
 
-    // ---- Press&Hold auto-repeat processing (every frame) ----
+    // hold-repeat ticks
     if (m_timeEnabled) {
       processHoldRepeater(m_holdBaseMinus, m_timeMinusBtn.getGlobalBounds(), m_mousePos, [&] {
         m_baseSeconds = clampBaseSeconds(m_baseSeconds - 60);
@@ -1140,14 +1059,17 @@ StartConfig StartScreen::run() {
     // draw
     m_window.clear();
     drawUI();
-    if (m_showFenPopup) drawFenPopup();
     m_window.display();
   }
 
   cfg.timeBaseSeconds = m_baseSeconds;
   cfg.timeIncrementSeconds = m_incrementSeconds;
   cfg.timeEnabled = m_timeEnabled;
-  return cfg;  // window closed
+  if (m_fenString.empty() || !isValidFen(m_fenString))
+    cfg.fen = core::START_FEN;
+  else
+    cfg.fen = m_fenString;
+  return cfg;
 }
 
 }  // namespace lilia::view

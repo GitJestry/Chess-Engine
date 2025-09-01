@@ -5,6 +5,7 @@
 #include <SFML/Graphics/ConvexShape.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/View.hpp>
+#include <SFML/Window/Clipboard.hpp>
 #include <SFML/Window/Mouse.hpp>
 #include <algorithm>
 #include <cmath>
@@ -26,18 +27,28 @@ constexpr float kMoveGap = 30.f;  // gap between white and black move columns
 
 constexpr float kHeaderH = 58.f;     // top header (a bit taller for safety)
 constexpr float kFenH = 30.f;        // FEN info row
-constexpr float kSubHeaderH = 28.f;  // "Move List" line
+constexpr float kSubHeaderH = 40.f;  // "Move List" line
 constexpr float kListTopGap = 8.f;   // spacing below subheader before rows
 constexpr float kFooterH = 54.f;     // fixed footer height (beveled controls)
 constexpr float kSlot = 26.f;        // icon slot size (compact)
 constexpr float kSlotGap = 14.f;     // gap between slots
-constexpr float kFooterPadX = 16.f;  // horizontal padding inside footer
+constexpr float kFooterPadX = 20.f;  // horizontal padding inside footer
+
+// Tooltip
+constexpr float kTipPadX = 8.f;
+constexpr float kTipPadY = 5.f;
+constexpr float kTipArrowH = 6.f;
+
+// Toast
+constexpr float kToastDur = 1.6f;
+constexpr float kToastFade = 0.5f;
 
 // Fonts
 constexpr unsigned kMoveNumberFontSize = 14;
 constexpr unsigned kMoveFontSize = 15;
 constexpr unsigned kHeaderFontSize = 22;
 constexpr unsigned kSubHeaderFontSize = 16;
+constexpr unsigned kTipFontSize = 13;
 
 // ---------- Colors (theme) ----------
 const sf::Color colSidebarBG(36, 41, 54);  // panel body
@@ -51,6 +62,12 @@ const sf::Color colAccentHover(120, 205, 255);  // hover lift
 
 const sf::Color colText(240, 244, 255);
 const sf::Color colMuted(180, 186, 205);
+const sf::Color colTooltipBG(20, 24, 32, 230);
+
+// ---------- Module-local UI state (no header change needed) ----------
+static bool g_prevLeftDown = false;
+static bool g_toastVisible = false;
+static sf::Clock g_toastClock;
 
 // ---------- Helpers ----------
 inline float snapf(float v) {
@@ -238,6 +255,45 @@ void drawFenIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered)
   corner.setPoint(2, {sheet.getPosition().x + w, sheet.getPosition().y + fold});
   corner.setFillColor(hovered ? colAccentHover : colText);
   win.draw(corner);
+}
+
+// Tooltip bubble with small down arrow, anchored above a slot center
+void drawTooltip(sf::RenderWindow& win, const sf::Vector2f center, const std::string& label,
+                 const sf::Font& font) {
+  sf::Text t(label, font, kTipFontSize);
+  t.setFillColor(colText);
+  auto b = t.getLocalBounds();
+
+  const float w = b.width + 2.f * kTipPadX;
+  const float h = b.height + 2.f * kTipPadY;
+  const float x = snapf(center.x - w * 0.5f);
+  const float y = snapf(center.y - h - kTipArrowH - 4.f);  // 4px gap from slot
+
+  // shadow
+  sf::RectangleShape shadow({w, h});
+  shadow.setPosition(x + 2.f, y + 2.f);
+  shadow.setFillColor(sf::Color(0, 0, 0, 60));
+  win.draw(shadow);
+
+  // body
+  sf::RectangleShape body({w, h});
+  body.setPosition(x, y);
+  body.setFillColor(colTooltipBG);
+  body.setOutlineThickness(1.f);
+  body.setOutlineColor(colBorder);
+  win.draw(body);
+
+  // arrow
+  sf::ConvexShape arrow(3);
+  arrow.setPoint(0, {center.x - 6.f, y + h});
+  arrow.setPoint(1, {center.x + 6.f, y + h});
+  arrow.setPoint(2, {center.x, y + h + kTipArrowH});
+  arrow.setFillColor(colTooltipBG);
+  win.draw(arrow);
+
+  // text
+  t.setPosition(snapf(x + kTipPadX - b.left), snapf(y + kTipPadY - b.top));
+  win.draw(t);
 }
 
 // Ellipsize long FEN strings keeping tail
@@ -451,7 +507,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
                   snapf(kHeaderH + kFenH + (kSubHeaderH - sb.height) / 2.f - sb.top - 2.f));
   window.draw(sub);
 
-  // FEN line
+  // FEN line (copy icon + text)
   const bool hovFen = m_bounds_fen_icon.contains(mouseLocal.x, mouseLocal.y);
   drawFenIcon(window, m_bounds_fen_icon, hovFen);
   float textX = m_bounds_fen_icon.left + m_bounds_fen_icon.width + 6.f;
@@ -593,6 +649,66 @@ void MoveListView::render(sf::RenderWindow& window) const {
 
   drawBevelSlot3D(window, m_bounds_next, hovNext);
   drawChevron(window, m_bounds_next, /*left=*/false, hovNext);
+
+  // --- Tooltips over hovered controls ---
+  auto centerOf = [](const sf::FloatRect& r) {
+    return sf::Vector2f(r.left + r.width * 0.5f, r.top + r.height * 0.5f);
+  };
+  if (hovPrev) drawTooltip(window, centerOf(m_bounds_prev), "Previous move", m_font);
+  if (hovNext) drawTooltip(window, centerOf(m_bounds_next), "Next move", m_font);
+  if (m_game_over) {
+    if (hovNewBot) drawTooltip(window, centerOf(m_bounds_new_bot), "New Bot", m_font);
+    if (hovRematch) drawTooltip(window, centerOf(m_bounds_rematch), "Rematch", m_font);
+  } else {
+    if (hovResign) drawTooltip(window, centerOf(m_bounds_resign), "Resign", m_font);
+  }
+  if (hovFen) {
+    // anchor above the icon (slightly right so it doesn't clash with the title)
+    auto c = centerOf(m_bounds_fen_icon);
+    drawTooltip(window, {c.x + 10.f, c.y}, "Copy FEN", m_font);
+  }
+
+  // --- Click-to-copy FEN + toast (handled locally; no header change) ---
+  {
+    bool leftDown = sf::Mouse::isButtonPressed(sf::Mouse::Left);
+    if (leftDown && !g_prevLeftDown && hovFen) {
+      // Copy to clipboard and show toast
+      sf::Clipboard::setString(m_fen_str);
+      g_toastVisible = true;
+      g_toastClock.restart();
+    }
+    g_prevLeftDown = leftDown;
+  }
+
+  // --- Toast render ("Copied") inside this view ---
+  if (g_toastVisible) {
+    float t = g_toastClock.getElapsedTime().asSeconds();
+    if (t >= kToastDur) {
+      g_toastVisible = false;
+    } else {
+      float alpha = 1.f;
+      if (t > kToastDur - kToastFade) alpha = std::clamp((kToastDur - t) / kToastFade, 0.f, 1.f);
+
+      sf::Text msg("Copied", m_font, 14);
+      auto mb = msg.getLocalBounds();
+      float padX = 14.f, padY = 8.f;
+      sf::Vector2f sz(mb.width + padX * 2.f, mb.height + padY * 2.f);
+
+      // bottom-center of the sidebar panel
+      sf::Vector2f pos(snapf((m_width - sz.x) * 0.5f), snapf(m_height - kFooterH - sz.y - 10.f));
+
+      sf::RectangleShape bg({sz.x, sz.y});
+      bg.setPosition(pos);
+      bg.setFillColor(sf::Color(20, 24, 32, static_cast<sf::Uint8>(alpha * 220)));
+      bg.setOutlineThickness(1.f);
+      bg.setOutlineColor(sf::Color(120, 140, 170, static_cast<sf::Uint8>(alpha * 200)));
+      window.draw(bg);
+
+      msg.setFillColor(sf::Color(255, 255, 255, static_cast<sf::Uint8>(alpha * 255)));
+      msg.setPosition(snapf(pos.x + padX - mb.left), snapf(pos.y + padY - mb.top));
+      window.draw(msg);
+    }
+  }
 
   window.setView(oldView);
 }

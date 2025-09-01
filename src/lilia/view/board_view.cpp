@@ -13,9 +13,12 @@ namespace lilia::view {
 namespace {
 const sf::Color colText(240, 244, 255);
 const sf::Color colAccentHover(120, 205, 255);
+
 const sf::Color colDisc(52, 58, 74, 150);       // base disc (translucent)
 const sf::Color colDiscHover(60, 68, 86, 180);  // hover disc
-const sf::Color colShadow(0, 0, 0, 60);         // micro shadow
+const sf::Color colShadow(0, 0, 0, 90);         // drop shadow (radial)
+const sf::Color colBorder(120, 140, 170, 60);
+const sf::Color colTooltipBG(20, 24, 32, 230);
 
 inline float snapf(float v) {
   return std::round(v);
@@ -29,102 +32,147 @@ inline sf::Color darken(sf::Color c, int d) {
   return lighten(c, -d);
 }
 
-// tiny soft shadow behind a rectangle area
-inline void drawSoftShadowRect(sf::RenderTarget &t, const sf::FloatRect &r) {
-  const float grow = 2.f;
-  sf::RectangleShape s({r.width + 2.f * grow, r.height + 2.f * grow});
-  s.setPosition(snapf(r.left - grow), snapf(r.top - grow));
-  s.setFillColor(colShadow);
-  t.draw(s);
+// Soft radial/elliptical shadow under a circle
+void drawRadialShadow(sf::RenderTarget& t, sf::Vector2f center, float radius) {
+  // Slight vertical squash to read as a drop shadow on the board plane
+  const float squash = 0.75f;
+  const int layers = 8;
+  const float step = 1.8f;    // radius growth per layer
+  const float alpha0 = 48.f;  // starting alpha
+
+  for (int i = 0; i < layers; ++i) {
+    float R = radius + i * step;
+    sf::CircleShape s(R);
+    s.setOrigin(R, R);
+    s.setPosition(snapf(center.x), snapf(center.y + radius * 0.35f));  // offset downward
+    s.setScale(1.f, squash);
+    sf::Color c = colShadow;
+    c.a = static_cast<sf::Uint8>(std::max(0.f, alpha0 * (1.f - i / float(layers))));
+    s.setFillColor(c);
+    t.draw(s);
+  }
 }
 
-void drawFlipIcon(sf::RenderWindow &win, const sf::FloatRect &slot, bool hovered) {
+// Minimal tooltip (same vibe as your sidebar tooltips)
+void drawTooltip(sf::RenderWindow& win, const sf::Vector2f center, const std::string& label) {
+  static sf::Font s_font;
+  static bool s_loaded = false;
+  if (!s_loaded) {
+    s_loaded = s_font.loadFromFile(constant::STR_FILE_PATH_FONT);
+    if (s_loaded) s_font.setSmooth(false);
+  }
+  if (!s_loaded) return;
+
+  constexpr float padX = 8.f, padY = 5.f, arrowH = 6.f;
+  sf::Text t(label, s_font, 13);
+  t.setFillColor(colText);
+  auto b = t.getLocalBounds();
+  const float w = b.width + 2.f * padX;
+  const float h = b.height + 2.f * padY;
+  const float x = snapf(center.x - w * 0.5f);
+  const float y = snapf(center.y - h - arrowH - 6.f);
+
+  // shadow
+  sf::RectangleShape shadow({w, h});
+  shadow.setPosition(x + 2.f, y + 2.f);
+  shadow.setFillColor(sf::Color(0, 0, 0, 60));
+  win.draw(shadow);
+
+  // body
+  sf::RectangleShape body({w, h});
+  body.setPosition(x, y);
+  body.setFillColor(colTooltipBG);
+  body.setOutlineThickness(1.f);
+  body.setOutlineColor(colBorder);
+  win.draw(body);
+
+  // arrow
+  sf::ConvexShape arrow(3);
+  arrow.setPoint(0, {center.x - 6.f, y + h});
+  arrow.setPoint(1, {center.x + 6.f, y + h});
+  arrow.setPoint(2, {center.x, y + h + arrowH});
+  arrow.setFillColor(colTooltipBG);
+  win.draw(arrow);
+
+  // text
+  t.setPosition(snapf(x + padX - b.left), snapf(y + padY - b.top));
+  win.draw(t);
+}
+
+// Clean flip icon: disc + ring + two arrowheads
+void drawFlipIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered) {
   const float size = std::min(slot.width, slot.height);
   const float cx = slot.left + slot.width * 0.5f;
   const float cy = slot.top + slot.height * 0.5f;
 
-  // ---- Background disc with micro-shadow + bevel ----
+  // ---- Shadow (radial/elliptical) ----
+  drawRadialShadow(win, {cx, cy}, size * 0.48f);
+
+  // ---- Background disc with subtle bevel ----
+  const float R = size * 0.50f;
+  sf::CircleShape disc(R);
+  disc.setOrigin(R, R);
+  disc.setPosition(snapf(cx), snapf(cy));
+  disc.setFillColor(hovered ? colDiscHover : colDisc);
+  disc.setOutlineThickness(1.f);
+  disc.setOutlineColor(hovered ? sf::Color(140, 200, 240, 90) : colBorder);
+  win.draw(disc);
+
+  // inner bevel rings
+  sf::CircleShape topHL(R - 1.f);
+  topHL.setOrigin(R - 1.f, R - 1.f);
+  topHL.setPosition(snapf(cx), snapf(cy));
+  topHL.setFillColor(sf::Color::Transparent);
+  topHL.setOutlineThickness(1.f);
+  topHL.setOutlineColor(lighten(disc.getFillColor(), 16));
+  win.draw(topHL);
+
+  sf::CircleShape bottomSH(R - 2.f);
+  bottomSH.setOrigin(R - 2.f, R - 2.f);
+  bottomSH.setPosition(snapf(cx), snapf(cy));
+  bottomSH.setFillColor(sf::Color::Transparent);
+  bottomSH.setOutlineThickness(1.f);
+  bottomSH.setOutlineColor(darken(disc.getFillColor(), 18));
+  win.draw(bottomSH);
+
+  // ---- Ring + arrows ----
+  const float ringR = size * 0.34f;
+  sf::CircleShape ring(ringR);
+  ring.setOrigin(ringR, ringR);
+  ring.setPosition(snapf(cx), snapf(cy));
+  ring.setFillColor(sf::Color::Transparent);
+  ring.setOutlineThickness(2.f);
+  ring.setOutlineColor(hovered ? colAccentHover : colText);
+  win.draw(ring);
+
+  const sf::Color ico = hovered ? colAccentHover : colText;
+  const float triS = size * 0.22f;
+
+  // Arrowheads placed tangentially to ring
+  // upper-right arrow (clockwise)
   {
-    // shadow (very small spread)
-    drawSoftShadowRect(win, slot);
-
-    const float R = size * 0.50f;
-    sf::CircleShape disc(R);
-    disc.setOrigin(R, R);
-    disc.setPosition(snapf(cx), snapf(cy));
-    disc.setFillColor(hovered ? colDiscHover : colDisc);
-    disc.setOutlineThickness(1.f);
-    disc.setOutlineColor(hovered ? sf::Color(140, 200, 240, 90) : sf::Color(120, 140, 170, 60));
-    win.draw(disc);
-
-    // bevel lines (top highlight + bottom shade)
-    sf::CircleShape topHL(R - 1.f);
-    topHL.setOrigin(R - 1.f, R - 1.f);
-    topHL.setPosition(snapf(cx), snapf(cy));
-    topHL.setFillColor(sf::Color::Transparent);
-    topHL.setOutlineThickness(1.f);
-    topHL.setOutlineColor(lighten(disc.getFillColor(), 16));
-    win.draw(topHL);
-
-    sf::CircleShape bottomSH(R - 2.f);
-    bottomSH.setOrigin(R - 2.f, R - 2.f);
-    bottomSH.setPosition(snapf(cx), snapf(cy));
-    bottomSH.setFillColor(sf::Color::Transparent);
-    bottomSH.setOutlineThickness(1.f);
-    bottomSH.setOutlineColor(darken(disc.getFillColor(), 18));
-    win.draw(bottomSH);
+    const float ax = cx + ringR * 0.85f;
+    const float ay = cy - ringR * 0.85f;
+    sf::ConvexShape a(3);
+    a.setPoint(0, {ax + triS * 0.00f, ay - triS * 0.55f});
+    a.setPoint(1, {ax + triS * 0.42f, ay - triS * 0.30f});
+    a.setPoint(2, {ax + triS * 0.06f, ay - triS * 0.05f});
+    a.setFillColor(ico);
+    win.draw(a);
   }
-
-  // ---- Twin arrows around the ring (cleaner, centered) ----
+  // lower-left arrow (counter-clockwise)
   {
-    const float ringR = size * 0.38f;
-    sf::CircleShape ring(ringR);
-    ring.setOrigin(ringR, ringR);
-    ring.setPosition(snapf(cx), snapf(cy));
-    ring.setFillColor(sf::Color::Transparent);
-    ring.setOutlineThickness(2.f);
-    ring.setOutlineColor(hovered ? colAccentHover : colText);
-    win.draw(ring);
-
-    const sf::Color ico = hovered ? colAccentHover : colText;
-    const float triS = size * 0.22f;
-
-    // upper-right arrow
-    sf::ConvexShape a1(3);
-    a1.setPoint(0, {cx + triS * 0.00f, cy - triS * 0.65f});
-    a1.setPoint(1, {cx + triS * 0.42f, cy - triS * 0.36f});
-    a1.setPoint(2, {cx + triS * 0.10f, cy - triS * 0.18f});
-    a1.setFillColor(ico);
-    win.draw(a1);
-
-    // lower-left arrow
-    sf::ConvexShape a2(3);
-    a2.setPoint(0, {cx - triS * 0.00f, cy + triS * 0.65f});
-    a2.setPoint(1, {cx - triS * 0.42f, cy + triS * 0.36f});
-    a2.setPoint(2, {cx - triS * 0.10f, cy + triS * 0.18f});
-    a2.setFillColor(ico);
-    win.draw(a2);
-  }
-
-  // ---- Caption "Flip" (optional; appears just below the icon) ----
-  {
-    static sf::Font s_font;
-    static bool s_loaded = false;
-    if (!s_loaded) {
-      s_loaded = s_font.loadFromFile(constant::STR_FILE_PATH_FONT);
-      if (s_loaded) s_font.setSmooth(false);
-    }
-    if (s_loaded) {
-      sf::Text cap("Flip", s_font, 12);
-      cap.setFillColor(hovered ? colAccentHover : colText);
-      auto b = cap.getLocalBounds();
-      cap.setOrigin(b.left + b.width / 2.f, b.top + b.height / 2.f);
-      // place just under the slot; tiny lift so it doesn't collide visually
-      cap.setPosition(snapf(cx), snapf(slot.top + slot.height + 10.f));
-      win.draw(cap);
-    }
+    const float bx = cx - ringR * 0.85f;
+    const float by = cy + ringR * 0.85f;
+    sf::ConvexShape a(3);
+    a.setPoint(0, {bx - triS * 0.00f, by + triS * 0.55f});
+    a.setPoint(1, {bx - triS * 0.42f, by + triS * 0.30f});
+    a.setPoint(2, {bx - triS * 0.06f, by + triS * 0.05f});
+    a.setFillColor(ico);
+    win.draw(a);
   }
 }
+
 }  // namespace
 
 BoardView::BoardView()
@@ -140,15 +188,26 @@ void BoardView::init() {
   setPosition(getPosition());
 }
 
-void BoardView::renderBoard(sf::RenderWindow &window) {
+void BoardView::renderBoard(sf::RenderWindow& window) {
   m_board.draw(window);
+
   sf::Vector2i mousePx = sf::Mouse::getPosition(window);
   sf::Vector2f mouse = window.mapPixelToCoords(mousePx);
+
   sf::FloatRect slot(m_flip_pos.x - m_flip_size / 2.f, m_flip_pos.y - m_flip_size / 2.f,
                      m_flip_size, m_flip_size);
   bool hovered = slot.contains(mouse.x, mouse.y);
+
   drawFlipIcon(window, slot, hovered);
+
+  if (hovered) {
+    // Tooltip above icon (consistent with other hovers)
+    const float cx = slot.left + slot.width * 0.5f;
+    const float cy = slot.top + slot.height * 0.5f;
+    drawTooltip(window, {cx, cy}, "Flip board");
+  }
 }
+
 [[nodiscard]] Entity::Position BoardView::getSquareScreenPos(core::Square sq) const {
   if (m_flipped) {
     return m_board.getPosOfSquare(
@@ -171,7 +230,7 @@ void BoardView::setFlipped(bool flipped) {
   return m_flipped;
 }
 
-void BoardView::setPosition(const Entity::Position &pos) {
+void BoardView::setPosition(const Entity::Position& pos) {
   m_board.setPosition(pos);
   float iconOffset = constant::SQUARE_PX_SIZE * 0.2f;
   m_flip_size = constant::SQUARE_PX_SIZE * 0.3f;
@@ -196,7 +255,6 @@ static inline int normalizeUnsignedToSigned(unsigned int u) {
   if (u <= static_cast<unsigned int>(std::numeric_limits<int>::max())) return static_cast<int>(u);
   return -static_cast<int>((std::numeric_limits<unsigned int>::max() - u) + 1u);
 }
-
 constexpr int clampInt(int v, int lo, int hi) noexcept {
   return (v < lo) ? lo : (v > hi ? hi : v);
 }
