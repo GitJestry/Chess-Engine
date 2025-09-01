@@ -271,6 +271,12 @@ bool GameView::isOnEvalToggle(core::MousePos mousePos) const {
   return m_eval_bar.isOnToggle(mousePos);
 }
 
+void GameView::resetEvalBar() { m_eval_bar.reset(); }
+
+void GameView::setEvalResult(const std::string &result) {
+  m_eval_bar.setResult(result);
+}
+
 // ---------- Pieces / Highlights ----------
 bool GameView::hasPieceOnSquare(core::Square pos) const {
   return m_piece_manager.hasPieceOnSquare(pos);

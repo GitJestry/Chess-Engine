@@ -22,6 +22,20 @@ namespace lilia::controller {
 
 namespace {
 inline bool isValid(core::Square sq) { return sq != core::NO_SQUARE; }
+
+inline std::string resultToString(core::GameResult res, core::Color sideToMove) {
+  switch (res) {
+  case core::GameResult::CHECKMATE:
+    return (sideToMove == core::Color::White) ? "0-1" : "1-0";
+  case core::GameResult::REPETITION:
+  case core::GameResult::MOVERULE:
+  case core::GameResult::STALEMATE:
+  case core::GameResult::INSUFFICIENT:
+    return "1/2-1/2";
+  default:
+    return "";
+  }
+}
 } // namespace
 
 GameController::GameController(view::GameView &gView, model::ChessGame &game)
@@ -195,6 +209,16 @@ void GameController::handleEvent(const sf::Event &event) {
     std::size_t idx = m_game_view.getMoveIndexAt(
         core::MousePos(event.mouseButton.x, event.mouseButton.y));
     if (idx != static_cast<std::size_t>(-1)) {
+      const bool leavingFinalState =
+          (m_chess_game.getResult() != core::GameResult::ONGOING &&
+           m_fen_index == m_fen_history.size() - 1 &&
+           idx + 1 != m_fen_history.size() - 1);
+      const bool enteringFinalState =
+          (m_chess_game.getResult() != core::GameResult::ONGOING &&
+           idx + 1 == m_fen_history.size() - 1);
+
+      if (leavingFinalState) m_game_view.resetEvalBar();
+
       m_fen_index = idx + 1;
       m_game_view.setBoardFen(m_fen_history[m_fen_index]);
       m_game_view.selectMove(idx);
@@ -205,6 +229,11 @@ void GameController::handleEvent(const sf::Event &event) {
       m_sound_manager.playEffect(info.sound);
       m_eval_cp.store(m_eval_history[m_fen_index]);
       m_game_view.updateEval(m_eval_history[m_fen_index]);
+      if (enteringFinalState) {
+        m_game_view.setEvalResult(resultToString(
+            m_chess_game.getResult(),
+            m_chess_game.getGameState().sideToMove));
+      }
       syncCapturedPieces();
       return;
     }
@@ -880,6 +909,10 @@ void GameController::syncCapturedPieces() {
 
 void GameController::stepBackward() {
   if (m_fen_index > 0) {
+    const bool leavingFinalState =
+        (m_chess_game.getResult() != core::GameResult::ONGOING &&
+         m_fen_index == m_fen_history.size() - 1);
+
     m_game_view.setBoardFen(m_fen_history[m_fen_index]);
     const MoveView &info = m_move_history[m_fen_index - 1];
     core::Square epVictim = core::NO_SQUARE;
@@ -919,6 +952,7 @@ void GameController::stepBackward() {
     highlightLastMove();
     m_sound_manager.playEffect(info.sound);
     m_eval_cp.store(m_eval_history[m_fen_index]);
+    if (leavingFinalState) m_game_view.resetEvalBar();
     m_game_view.updateEval(m_eval_history[m_fen_index]);
     m_game_view.updateFen(m_fen_history[m_fen_index]);
     syncCapturedPieces();
@@ -927,6 +961,10 @@ void GameController::stepBackward() {
 
 void GameController::stepForward() {
   if (m_fen_index < m_move_history.size()) {
+    const bool enteringFinalState =
+        (m_chess_game.getResult() != core::GameResult::ONGOING &&
+         m_fen_index + 1 == m_fen_history.size() - 1);
+
     m_game_view.setBoardFen(m_fen_history[m_fen_index]);
     const MoveView &info = m_move_history[m_fen_index];
     core::Square epVictim = core::NO_SQUARE;
@@ -958,6 +996,10 @@ void GameController::stepForward() {
     m_sound_manager.playEffect(info.sound);
     m_eval_cp.store(m_eval_history[m_fen_index]);
     m_game_view.updateEval(m_eval_history[m_fen_index]);
+    if (enteringFinalState) {
+      m_game_view.setEvalResult(resultToString(
+          m_chess_game.getResult(), m_chess_game.getGameState().sideToMove));
+    }
     m_game_view.updateFen(m_fen_history[m_fen_index]);
     syncCapturedPieces();
   }
