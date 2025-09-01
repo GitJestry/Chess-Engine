@@ -463,6 +463,12 @@ void GameController::update(float dt) {
     const auto st = m_chess_game.getGameState();
     if (m_game_manager && m_game_manager->isHuman(st.sideToMove) &&
         hasCurrentLegalMove(m_pending_from, m_pending_to)) {
+      // Update capture info using the current board state; fall back to
+      // previously stored type (e.g. en-passant) if the square is empty.
+      if (auto cap = m_chess_game.getPiece(m_pending_to); cap.type != core::PieceType::None) {
+        m_pending_capture_type = cap.type;
+      }
+
       // Consume only the first ghost; keep the rest visible
       m_game_view.consumePremoveGhost(m_pending_from, m_pending_to);
 
@@ -475,7 +481,6 @@ void GameController::update(float dt) {
     }
     m_has_pending_auto_move = false;
     m_pending_from = m_pending_to = core::NO_SQUARE;
-    m_pending_capture_type = core::PieceType::None;
   }
 }
 
