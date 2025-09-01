@@ -50,6 +50,7 @@ sf::Color colButtonActive(92, 98, 120);
 sf::Color colAccent(100, 190, 255);
 sf::Color colText(240, 244, 255);
 sf::Color colSubtle(180, 186, 205);
+sf::Color colTimeOff(150, 80, 120);
 
 sf::Color colInput(44, 50, 66);
 sf::Color colInputBorder(120, 140, 180);
@@ -393,6 +394,13 @@ void StartScreen::setupUI() {
   const float timeX = x0 + (PANEL_W - TIME_W) * 0.5f;
   const float timeY = y0 + (PANEL_H - TIME_H) * 0.5f;
 
+  m_timeToggleBtn.setSize({TIME_W, 32.f});
+  m_timeToggleBtn.setPosition(snap({timeX, timeY - 44.f}));
+  m_timeToggleBtn.setOutlineThickness(1.f);
+  m_timeToggleBtn.setOutlineColor(colPanelBorder);
+  m_timeToggleText.setFont(m_font);
+  m_timeToggleText.setCharacterSize(16);
+
   m_timePanel.setSize({TIME_W, TIME_H});
   m_timePanel.setPosition(snap({timeX, timeY}));
   m_timePanel.setFillColor(sf::Color(42, 48, 63));
@@ -521,7 +529,21 @@ void StartScreen::setupUI() {
   // initialize text strings and layout
   m_timeMain.setString(formatHMS(m_baseSeconds));
   m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+  updateTimeToggle();
   layoutTimeControls();
+}
+
+void StartScreen::updateTimeToggle() {
+  if (m_timeEnabled) {
+    m_timeToggleBtn.setFillColor(colAccent);
+    m_timeToggleText.setFillColor(sf::Color::Black);
+    m_timeToggleText.setString("TIME ON");
+  } else {
+    m_timeToggleBtn.setFillColor(colTimeOff);
+    m_timeToggleText.setFillColor(colText);
+    m_timeToggleText.setString("TIME OFF");
+  }
+  centerText(m_timeToggleText, m_timeToggleBtn.getGlobalBounds());
 }
 
 // rectangular panel with soft shadow and border
@@ -588,15 +610,17 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
   }
 
   // presets (time) — handled here for click; hold steppers handled in run()
-  for (std::size_t i = 0; i < m_presets.size(); ++i) {
-    auto& chip = m_presets[i];
-    if (contains(chip.box.getGlobalBounds(), pos)) {
-      m_presetSelection = static_cast<int>(i);
-      m_baseSeconds = clampBaseSeconds(chip.base);
-      m_incrementSeconds = clampIncSeconds(chip.inc);
-      m_timeMain.setString(formatHMS(m_baseSeconds));
-      m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
-      return false;
+  if (m_timeEnabled) {
+    for (std::size_t i = 0; i < m_presets.size(); ++i) {
+      auto& chip = m_presets[i];
+      if (contains(chip.box.getGlobalBounds(), pos)) {
+        m_presetSelection = static_cast<int>(i);
+        m_baseSeconds = clampBaseSeconds(chip.base);
+        m_incrementSeconds = clampIncSeconds(chip.inc);
+        m_timeMain.setString(formatHMS(m_baseSeconds));
+        m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+        return false;
+      }
     }
   }
 
@@ -646,6 +670,7 @@ StartConfig StartScreen::run() {
   cfg.fen = m_fenString;  // default prefill
   cfg.timeBaseSeconds = m_baseSeconds;
   cfg.timeIncrementSeconds = m_incrementSeconds;
+  cfg.timeEnabled = m_timeEnabled;
 
   // hover visuals
   auto hoverButton = [&](sf::RectangleShape& btn, sf::Vector2f mouse) {
@@ -760,8 +785,16 @@ StartConfig StartScreen::run() {
     if (m_showWhiteBotList) drawBotList(m_whiteBotOptions, m_whiteBotSelection);
     if (m_showBlackBotList) drawBotList(m_blackBotOptions, m_blackBotSelection);
 
-    // --- Time Panel (compact, centered) ---
+    // --- Time Toggle ---
     {
+      auto gb = m_timeToggleBtn.getGlobalBounds();
+      drawSoftShadowRect(m_window, gb);
+      m_window.draw(m_timeToggleBtn);
+      centerText(m_timeToggleText, gb);
+      m_window.draw(m_timeToggleText);
+    }
+
+    if (m_timeEnabled) {
       auto gb = m_timePanel.getGlobalBounds();
       drawSoftShadowRect(m_window, gb);
       m_window.draw(m_timePanel);
@@ -915,21 +948,22 @@ StartConfig StartScreen::run() {
             m_showFenPopup = true;
             fenInputActive = true;
             m_fenInputText.setString(m_fenString);
-          } else if (e.key.code == sf::Keyboard::Left) {
+          } else if (m_timeEnabled && e.key.code == sf::Keyboard::Left) {
             m_baseSeconds = clampBaseSeconds(m_baseSeconds - (e.key.shift ? 300 : 60));
             m_timeMain.setString(formatHMS(m_baseSeconds));
-          } else if (e.key.code == sf::Keyboard::Right) {
+          } else if (m_timeEnabled && e.key.code == sf::Keyboard::Right) {
             m_baseSeconds = clampBaseSeconds(m_baseSeconds + (e.key.shift ? 300 : 60));
             m_timeMain.setString(formatHMS(m_baseSeconds));
-          } else if (e.key.code == sf::Keyboard::Down) {
+          } else if (m_timeEnabled && e.key.code == sf::Keyboard::Down) {
             m_incrementSeconds = clampIncSeconds(m_incrementSeconds - 1);
             m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
-          } else if (e.key.code == sf::Keyboard::Up) {
+          } else if (m_timeEnabled && e.key.code == sf::Keyboard::Up) {
             m_incrementSeconds = clampIncSeconds(m_incrementSeconds + 1);
             m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
           } else if (e.key.code == sf::Keyboard::Enter) {
             cfg.timeBaseSeconds = m_baseSeconds;
             cfg.timeIncrementSeconds = m_incrementSeconds;
+            cfg.timeEnabled = m_timeEnabled;
             return cfg;
           }
         }
@@ -938,35 +972,41 @@ StartConfig StartScreen::run() {
           sf::Vector2f mp(static_cast<float>(e.mouseButton.x), static_cast<float>(e.mouseButton.y));
 
           // steppers: immediate step + arm hold repeater
-          if (contains(m_timeMinusBtn.getGlobalBounds(), mp)) {
+          if (m_timeEnabled && contains(m_timeMinusBtn.getGlobalBounds(), mp)) {
             m_baseSeconds = clampBaseSeconds(m_baseSeconds - 60);
             m_timeMain.setString(formatHMS(m_baseSeconds));
             m_holdBaseMinus.active = true;
             m_holdBaseMinus.clock.restart();
             m_holdBaseMinus.fired = 0;
-          } else if (contains(m_timePlusBtn.getGlobalBounds(), mp)) {
+          } else if (m_timeEnabled && contains(m_timePlusBtn.getGlobalBounds(), mp)) {
             m_baseSeconds = clampBaseSeconds(m_baseSeconds + 60);
             m_timeMain.setString(formatHMS(m_baseSeconds));
             m_holdBasePlus.active = true;
             m_holdBasePlus.clock.restart();
             m_holdBasePlus.fired = 0;
-          } else if (contains(m_incMinusBtn.getGlobalBounds(), mp)) {
+          } else if (m_timeEnabled && contains(m_incMinusBtn.getGlobalBounds(), mp)) {
             m_incrementSeconds = clampIncSeconds(m_incrementSeconds - 1);
             m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
             m_holdIncMinus.active = true;
             m_holdIncMinus.clock.restart();
             m_holdIncMinus.fired = 0;
-          } else if (contains(m_incPlusBtn.getGlobalBounds(), mp)) {
+          } else if (m_timeEnabled && contains(m_incPlusBtn.getGlobalBounds(), mp)) {
             m_incrementSeconds = clampIncSeconds(m_incrementSeconds + 1);
             m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
             m_holdIncPlus.active = true;
             m_holdIncPlus.clock.restart();
             m_holdIncPlus.fired = 0;
+          } else if (contains(m_timeToggleBtn.getGlobalBounds(), mp)) {
+            m_timeEnabled = !m_timeEnabled;
+            updateTimeToggle();
+            m_holdBaseMinus.active = m_holdBasePlus.active = m_holdIncMinus.active =
+                m_holdIncPlus.active = false;
           } else {
             // delegate to general handler (sides, presets, start)
             if (handleMouse(mp, cfg)) {
               cfg.timeBaseSeconds = m_baseSeconds;
               cfg.timeIncrementSeconds = m_incrementSeconds;
+              cfg.timeEnabled = m_timeEnabled;
               return cfg;
             }
           }
@@ -1034,22 +1074,24 @@ StartConfig StartScreen::run() {
     }
 
     // ---- Press&Hold auto-repeat processing (every frame) ----
-    processHoldRepeater(m_holdBaseMinus, m_timeMinusBtn.getGlobalBounds(), m_mousePos, [&] {
-      m_baseSeconds = clampBaseSeconds(m_baseSeconds - 60);
-      m_timeMain.setString(formatHMS(m_baseSeconds));
-    });
-    processHoldRepeater(m_holdBasePlus, m_timePlusBtn.getGlobalBounds(), m_mousePos, [&] {
-      m_baseSeconds = clampBaseSeconds(m_baseSeconds + 60);
-      m_timeMain.setString(formatHMS(m_baseSeconds));
-    });
-    processHoldRepeater(m_holdIncMinus, m_incMinusBtn.getGlobalBounds(), m_mousePos, [&] {
-      m_incrementSeconds = clampIncSeconds(m_incrementSeconds - 1);
-      m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
-    });
-    processHoldRepeater(m_holdIncPlus, m_incPlusBtn.getGlobalBounds(), m_mousePos, [&] {
-      m_incrementSeconds = clampIncSeconds(m_incrementSeconds + 1);
-      m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
-    });
+    if (m_timeEnabled) {
+      processHoldRepeater(m_holdBaseMinus, m_timeMinusBtn.getGlobalBounds(), m_mousePos, [&] {
+        m_baseSeconds = clampBaseSeconds(m_baseSeconds - 60);
+        m_timeMain.setString(formatHMS(m_baseSeconds));
+      });
+      processHoldRepeater(m_holdBasePlus, m_timePlusBtn.getGlobalBounds(), m_mousePos, [&] {
+        m_baseSeconds = clampBaseSeconds(m_baseSeconds + 60);
+        m_timeMain.setString(formatHMS(m_baseSeconds));
+      });
+      processHoldRepeater(m_holdIncMinus, m_incMinusBtn.getGlobalBounds(), m_mousePos, [&] {
+        m_incrementSeconds = clampIncSeconds(m_incrementSeconds - 1);
+        m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+      });
+      processHoldRepeater(m_holdIncPlus, m_incPlusBtn.getGlobalBounds(), m_mousePos, [&] {
+        m_incrementSeconds = clampIncSeconds(m_incrementSeconds + 1);
+        m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+      });
+    }
 
     // draw
     m_window.clear();
@@ -1058,6 +1100,9 @@ StartConfig StartScreen::run() {
     m_window.display();
   }
 
+  cfg.timeBaseSeconds = m_baseSeconds;
+  cfg.timeIncrementSeconds = m_incrementSeconds;
+  cfg.timeEnabled = m_timeEnabled;
   return cfg;  // window closed
 }
 

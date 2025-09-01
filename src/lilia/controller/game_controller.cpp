@@ -111,7 +111,7 @@ GameController::~GameController() = default;
 void GameController::startGame(const std::string &fen, bool whiteIsBot,
                                bool blackIsBot, int whiteThinkTimeMs,
                                int whiteDepth, int blackThinkTimeMs,
-                               int blackDepth, int baseSeconds,
+                               int blackDepth, bool useTimer, int baseSeconds,
                                int incrementSeconds) {
   m_sound_manager.playEffect(view::sound::Effect::GameBegins);
   m_game_view.hideResignPopup();
@@ -122,12 +122,18 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
   m_game_manager->startGame(fen, whiteIsBot, blackIsBot, whiteThinkTimeMs,
                             whiteDepth, blackThinkTimeMs, blackDepth);
 
-  m_time_controller =
-      std::make_unique<TimeController>(baseSeconds, incrementSeconds);
-  core::Color stm = m_chess_game.getGameState().sideToMove;
-  m_time_controller->start(stm);
-  m_game_view.updateClock(core::Color::White, static_cast<float>(baseSeconds));
-  m_game_view.updateClock(core::Color::Black, static_cast<float>(baseSeconds));
+  if (useTimer) {
+    m_time_controller =
+        std::make_unique<TimeController>(baseSeconds, incrementSeconds);
+    core::Color stm = m_chess_game.getGameState().sideToMove;
+    m_time_controller->start(stm);
+    m_game_view.setClocksVisible(true);
+    m_game_view.updateClock(core::Color::White, static_cast<float>(baseSeconds));
+    m_game_view.updateClock(core::Color::Black, static_cast<float>(baseSeconds));
+  } else {
+    m_time_controller.reset();
+    m_game_view.setClocksVisible(false);
+  }
 
   m_fen_history.clear();
   m_eval_history.clear();

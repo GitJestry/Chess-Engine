@@ -18,6 +18,7 @@ struct StartConfig {
   std::string fen{core::START_FEN};
   int timeBaseSeconds{300};     // default 5 minutes
   int timeIncrementSeconds{0};  // default 0s increment
+  bool timeEnabled{true};       // whether clocks are used
 };
 
 struct BotOption {
@@ -80,8 +81,11 @@ class StartScreen {
   // time control state
   int m_baseSeconds{300};
   int m_incrementSeconds{0};
+  bool m_timeEnabled{true};
 
   // time control UI
+  sf::RectangleShape m_timeToggleBtn;
+  sf::Text m_timeToggleText;
   sf::RectangleShape m_timePanel;
   sf::Text m_timeTitle;
   sf::Text m_timeMain;  // "HH:MM:SS"
@@ -113,6 +117,7 @@ class StartScreen {
   bool handleMouse(sf::Vector2f pos, StartConfig &cfg);
   bool handleFenMouse(sf::Vector2f pos, StartConfig &cfg);
   bool isValidFen(const std::string &fen);
+  void updateTimeToggle();
   void processHoldRepeater(HoldRepeater &r, const sf::FloatRect &bounds, sf::Vector2f mouse,
                            std::function<void()> stepFn, float initialDelay = 0.35f,
                            float repeatRate = 0.06f);

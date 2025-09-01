@@ -99,8 +99,10 @@ void GameView::render() {
   m_piece_manager.renderPieces(m_window, m_chess_animator);
   m_highlight_manager.renderAttack(m_window);
   m_chess_animator.render(m_window);
-  m_top_clock.render(m_window);
-  m_bottom_clock.render(m_window);
+  if (m_show_clocks) {
+    m_top_clock.render(m_window);
+    m_bottom_clock.render(m_window);
+  }
 
   // right stack
   m_move_list.render(m_window);
@@ -300,6 +302,10 @@ void GameView::updateClock(core::Color color, float seconds) {
 void GameView::setClockActive(std::optional<core::Color> active) {
   if (m_white_clock) m_white_clock->setActive(active && *active == core::Color::White);
   if (m_black_clock) m_black_clock->setActive(active && *active == core::Color::Black);
+}
+
+void GameView::setClocksVisible(bool visible) {
+  m_show_clocks = visible;
 }
 
 // ---------- Pieces / Highlights ----------

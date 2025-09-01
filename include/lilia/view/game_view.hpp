@@ -123,6 +123,7 @@ class GameView {
 
   void updateClock(core::Color color, float seconds);
   void setClockActive(std::optional<core::Color> active);
+  void setClocksVisible(bool visible);
 
  private:
   void layout(unsigned int width, unsigned int height);
@@ -151,6 +152,7 @@ class GameView {
   Clock m_bottom_clock;
   Clock* m_white_clock{};
   Clock* m_black_clock{};
+  bool m_show_clocks{true};
   ModalView m_modal;  // ← replaces ad-hoc popup fields
 
   // FX

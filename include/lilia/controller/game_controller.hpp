@@ -65,7 +65,8 @@ public:
                  bool whiteIsBot = false, bool blackIsBot = true,
                  int whiteThinkTimeMs = 1000, int whiteDepth = 5,
                  int blackThinkTimeMs = 1000, int blackDepth = 5,
-                 int baseSeconds = 0, int incrementSeconds = 0);
+                 bool useTimer = true, int baseSeconds = 0,
+                 int incrementSeconds = 0);
 
   enum class NextAction { None, NewBot, Rematch };
   [[nodiscard]] NextAction getNextAction() const;
