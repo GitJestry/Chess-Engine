@@ -477,6 +477,7 @@ void GameController::update(float dt) {
     const auto st = m_chess_game.getGameState();
     if (m_game_manager && m_game_manager->isHuman(st.sideToMove) &&
         hasCurrentLegalMove(m_pending_from, m_pending_to)) {
+      m_game_view.clearPremovePieces();
       m_game_view.movePiece(m_pending_from, m_pending_to);
       (void)m_game_manager->requestUserMove(m_pending_from, m_pending_to,
                                             /*onClick*/ true);
@@ -554,11 +555,6 @@ void GameController::clearPremove() {
 void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMove, bool onClick) {
   const core::Square from = move.from;
   const core::Square to = move.to;
-
-  // Ensure any premove preview piece is hidden before the real move animates.
-  // Otherwise both the preview ghost and the actual piece would be visible
-  // simultaneously while the move animation is playing.
-  m_game_view.clearPremovePieces();
 
   // 1) Drag-Konflikt defensiv auflösen
   if (m_dragging && m_drag_from == from) {
@@ -703,20 +699,34 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
   if (!isValid(pieceSQ)) return att;
 
   model::Position pos = getPositionAfterPremoves();
-  auto pc = pos.getBoard().getPiece(pieceSQ);
-  if (!pc) return att;
+  auto pcOpt = pos.getBoard().getPiece(pieceSQ);
+  if (!pcOpt) return att;
 
-  // Visualisierung immer aus Sicht der Figurenfarbe – unabhängig vom Zugrecht.
-  pos.getState().sideToMove = pc->color;
+  bool forPremove = (m_chess_game.getGameState().sideToMove != pcOpt->color);
+  model::Board board = pos.getBoard();
+  model::GameState st = pos.getState();
+  st.sideToMove = pcOpt->color;
+  if (forPremove) {
+    board.clear();
+    board.setPiece(pieceSQ, *pcOpt);
+    st.castlingRights = 0;
+    st.enPassantSquare = core::NO_SQUARE;
+  }
 
   model::MoveGenerator gen;
   std::vector<model::Move> pseudo;
-  gen.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), pseudo);
+  gen.generatePseudoLegalMoves(board, st, pseudo);
 
-  for (const auto &m : pseudo) {
-    if (m.from == pieceSQ && pos.doMove(m)) {
-      att.push_back(m.to);
-      pos.undoMove();
+  if (forPremove) {
+    for (const auto &m : pseudo) {
+      if (m.from == pieceSQ) att.push_back(m.to);
+    }
+  } else {
+    for (const auto &m : pseudo) {
+      if (m.from == pieceSQ && pos.doMove(m)) {
+        att.push_back(m.to);
+        pos.undoMove();
+      }
     }
   }
   return att;
@@ -985,12 +995,18 @@ bool GameController::hasVirtualPiece(core::Square sq) const {
 bool GameController::isPseudoLegalPremove(core::Square from, core::Square to) const {
   if (!isValid(from) || !isValid(to)) return false;
   model::Position pos = getPositionAfterPremoves();
-  auto pc = pos.getBoard().getPiece(from);
-  if (!pc) return false;
-  pos.getState().sideToMove = pc->color;
+  auto pcOpt = pos.getBoard().getPiece(from);
+  if (!pcOpt) return false;
+  model::Board empty;
+  empty.clear();
+  empty.setPiece(from, *pcOpt);
+  model::GameState st{};
+  st.sideToMove = pcOpt->color;
+  st.castlingRights = 0;
+  st.enPassantSquare = core::NO_SQUARE;
   model::MoveGenerator gen;
   std::vector<model::Move> pseudo;
-  gen.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), pseudo);
+  gen.generatePseudoLegalMoves(empty, st, pseudo);
   for (const auto &m : pseudo) {
     if (m.from == from && m.to == to) return true;
   }
