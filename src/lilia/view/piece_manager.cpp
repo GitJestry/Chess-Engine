@@ -211,17 +211,29 @@ void PieceManager::renderPiece(core::Square pos, sf::RenderWindow& window) {
 }
 
 void PieceManager::setPremovePiece(core::Square from, core::Square to) {
-  auto it = m_pieces.find(from);
-  if (it == m_pieces.end()) return;
-  Piece ghost = it->second;  // copy to preserve original
+  // When chaining multiple premoves, pieces might already exist in the
+  // premove map. If so, move that ghost instead of copying from the board.
+  Piece ghost;
+  auto existing = m_premove_pieces.find(from);
+  if (existing != m_premove_pieces.end()) {
+    ghost = std::move(existing->second);
+    m_premove_pieces.erase(existing);
+  } else {
+    auto it = m_pieces.find(from);
+    if (it == m_pieces.end()) return;
+    ghost = it->second;  // copy to preserve original
+    m_hidden_squares.insert(from);
+  }
+
   ghost.setPosition(createPiecePositon(to));
-  m_premove_pieces.clear();
+
+  // Remove any previous ghost on the destination square to avoid cloning.
+  m_premove_pieces.erase(to);
   m_premove_pieces[to] = std::move(ghost);
-  // Keep the original piece hidden as long as a premove is pending. Avoid
-  // clearing previously hidden squares so the real piece never pops back into
-  // view when chaining multiple premoves.
-  m_hidden_squares.insert(from);
-  if (m_pieces.find(to) != m_pieces.end()) m_hidden_squares.insert(to);
+
+  // Hide the destination square to ensure the real piece (or captured
+  // opponent piece) does not appear underneath the premove ghost.
+  m_hidden_squares.insert(to);
 }
 
 void PieceManager::clearPremovePieces() {
