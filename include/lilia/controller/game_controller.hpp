@@ -102,7 +102,7 @@ private:
   void dehoverSquare();
   void clearPremove();
   void enqueuePremove(core::Square from, core::Square to);
-  void restorePremoves();
+  [[nodiscard]] bool isPseudoLegalPremove(core::Square from, core::Square to) const;
 
   void movePieceAndClear(const model::Move &move, bool isPlayerMove,
                          bool onClick);
