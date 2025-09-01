@@ -63,6 +63,12 @@ void HighlightManager::clearAllHighlights() {
   m_hl_hover_squares.clear();
   m_hl_premove_squares.clear();
 }
+void HighlightManager::clearNonPremoveHighlights() {
+  m_hl_select_squares.clear();
+  m_hl_attack_squares.clear();
+  m_hl_hover_squares.clear();
+}
+void HighlightManager::clearAttackHighlights() { m_hl_attack_squares.clear(); }
 void HighlightManager::clearHighlightSquare(core::Square pos) {
   m_hl_select_squares.erase(pos);
 }

@@ -95,6 +95,8 @@ class GameView {
   void clearHighlightPremoveSquare(core::Square pos);
   void clearPremoveHighlights();
   void clearAllHighlights();
+  void clearNonPremoveHighlights();
+  void clearAttackHighlights();
 
   void warningKingSquareAnim(core::Square ksq);
   void animationSnapAndReturn(core::Square sq, core::MousePos mousePos);
