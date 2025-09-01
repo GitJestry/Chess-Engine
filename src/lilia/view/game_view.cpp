@@ -408,8 +408,8 @@ void GameView::showPremovePiece(core::Square from, core::Square to) {
   m_piece_manager.setPremovePiece(from, to);
 }
 
-void GameView::clearPremovePieces() {
-  m_piece_manager.clearPremovePieces();
+void GameView::clearPremovePieces(bool restore) {
+  m_piece_manager.clearPremovePieces(restore);
 }
 
 
