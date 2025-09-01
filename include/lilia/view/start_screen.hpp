@@ -1,6 +1,7 @@
 #pragma once
 
 #include <SFML/Graphics.hpp>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -15,7 +16,8 @@ struct StartConfig {
   bool blackIsBot{true};
   BotType blackBot{BotType::Lilia};
   std::string fen{core::START_FEN};
-
+  int timeBaseSeconds{300};     // default 5 minutes
+  int timeIncrementSeconds{0};  // default 0s increment
 };
 
 struct BotOption {
@@ -75,10 +77,44 @@ class StartScreen {
   sf::Clock m_errorClock;
   bool m_showError{false};
 
+  // time control state
+  int m_baseSeconds{300};
+  int m_incrementSeconds{0};
+
+  // time control UI
+  sf::RectangleShape m_timePanel;
+  sf::Text m_timeTitle;
+  sf::Text m_timeMain;  // "HH:MM:SS"
+  sf::Text m_incLabel;  // "Increment"
+  sf::Text m_incValue;  // "+00s … +30s"
+  sf::RectangleShape m_timeMinusBtn, m_timePlusBtn;
+  sf::RectangleShape m_incMinusBtn, m_incPlusBtn;
+  sf::Text m_minusTxt, m_plusTxt, m_incMinusTxt, m_incPlusTxt;
+
+  struct PresetChip {
+    sf::RectangleShape box;
+    sf::Text label;
+    int base;
+    int inc;
+  };
+  std::vector<PresetChip> m_presets;
+
+  struct HoldRepeater {
+    bool active{false};
+    sf::Clock clock;
+    int fired{0};
+  };
+  HoldRepeater m_holdBaseMinus, m_holdBasePlus, m_holdIncMinus, m_holdIncPlus;
+  // mouse (for hover + in-bounds while holding)
+  sf::Vector2f m_mousePos{0.f, 0.f};
+
   void setupUI();
   bool handleMouse(sf::Vector2f pos, StartConfig &cfg);
   bool handleFenMouse(sf::Vector2f pos, StartConfig &cfg);
   bool isValidFen(const std::string &fen);
+  void processHoldRepeater(HoldRepeater &r, const sf::FloatRect &bounds, sf::Vector2f mouse,
+                           std::function<void()> stepFn, float initialDelay = 0.35f,
+                           float repeatRate = 0.06f);
 };
 
 }  // namespace lilia::view

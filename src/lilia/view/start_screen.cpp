@@ -29,11 +29,17 @@ constexpr float POPUP_H = 240.f;
 
 constexpr float ERROR_FADE_SEC = 1.6f;
 
+// --- Time panel (smaller + centered) ---
+constexpr float TIME_W = 200.f;  // ~half the previous width
+constexpr float TIME_H = 120.f;  // compact height
+constexpr float CHIP_H = 24.f;
+constexpr float CHIP_GAP = 10.f;
+
 sf::Color colBGTop(24, 29, 38);
 sf::Color colBGBottom(16, 19, 26);
 
 // Glass panel + border (rectangular)
-sf::Color colPanel(36, 41, 54, 160);
+sf::Color colPanel(36, 41, 54, 150);
 sf::Color colTextPanel(36, 41, 54);
 sf::Color colPanelBorder(180, 186, 205, 50);
 sf::Color colShadow(0, 0, 0, 90);
@@ -48,7 +54,7 @@ sf::Color colSubtle(180, 186, 205);
 sf::Color colInput(44, 50, 66);
 sf::Color colInputBorder(120, 140, 180);
 
-// --- pixel snapping (crisp text & edges) ---
+// --- pixel snapping ---
 inline float snapf(float v) {
   return std::round(v);
 }
@@ -61,7 +67,6 @@ inline void centerText(sf::Text& t, const sf::FloatRect& box, float dy = 0.f) {
   t.setOrigin(b.left + b.width / 2.f, b.top + b.height / 2.f);
   t.setPosition(snapf(box.left + box.width / 2.f), snapf(box.top + box.height / 2.f + dy));
 }
-
 inline void leftCenterText(sf::Text& t, const sf::FloatRect& box, float padX, float dy = 0.f) {
   auto b = t.getLocalBounds();
   t.setOrigin(b.left, b.top + b.height / 2.f);
@@ -80,9 +85,8 @@ void drawVerticalGradient(sf::RenderWindow& window, sf::Color top, sf::Color bot
   window.draw(va);
 }
 
-// ---- rectangular soft shadow (fake blur, no rounded corners) ----
+// rectangular soft shadow
 inline void drawSoftShadowRect(sf::RenderTarget& t, const sf::FloatRect& r) {
-  // three expanded layers
   for (int i = 3; i >= 1; --i) {
     float grow = static_cast<float>(i) * 6.f;
     sf::RectangleShape s({r.width + 2.f * grow, r.height + 2.f * grow});
@@ -100,30 +104,22 @@ bool contains(const sf::Rect<T>& r, sf::Vector2f p) {
 }
 
 std::vector<BotType> availableBots() {
-  // If you add more engines later, list them here.
   return {BotType::Lilia};
 }
-
 std::string botDisplayName(BotType t) {
-  return getBotConfig(t).info.name;  // assumes BotInfo has .name (e.g., "Lilia Engine")
+  return getBotConfig(t).info.name;
 }
 
-// very small FEN validator (enough for UX feedback)
+// tiny FEN validator
 bool basicFenCheck(const std::string& fen) {
-  // fields
   std::istringstream ss(fen);
   std::string fields[6];
-  for (int i = 0; i < 6; ++i) {
+  for (int i = 0; i < 6; ++i)
     if (!(ss >> fields[i])) return false;
-  }
-  // extra tokens not allowed
   std::string extra;
   if (ss >> extra) return false;
-
-  // board (8 ranks, totals to 8 each)
   {
-    int rankCount = 0;
-    int i = 0;
+    int rankCount = 0, i = 0;
     while (i < static_cast<int>(fields[0].size())) {
       int fileSum = 0;
       while (i < static_cast<int>(fields[0].size()) && fields[0][i] != '/') {
@@ -160,21 +156,13 @@ bool basicFenCheck(const std::string& fen) {
     }
     if (rankCount != 8) return false;
   }
-
-  // side to move
   if (!(fields[1] == "w" || fields[1] == "b")) return false;
-
-  // castling
   if (!(fields[2] == "-" || fields[2].find_first_not_of("KQkq") == std::string::npos)) return false;
-
-  // en-passant: "-" or [a-h][36]
   if (!(fields[3] == "-")) {
     if (fields[3].size() != 2) return false;
     if (fields[3][0] < 'a' || fields[3][0] > 'h') return false;
     if (!(fields[3][1] == '3' || fields[3][1] == '6')) return false;
   }
-
-  // halfmove, fullmove
   auto isNonNegInt = [](const std::string& s) {
     if (s.empty()) return false;
     for (char c : s)
@@ -184,22 +172,37 @@ bool basicFenCheck(const std::string& fen) {
   if (!isNonNegInt(fields[4])) return false;
   if (!isNonNegInt(fields[5])) return false;
   if (std::stoi(fields[5]) <= 0) return false;
-
   return true;
 }
 
-// Ellipsize long FENs so text never overflows the input.
-// Keeps the tail (often the most useful part).
 std::string ellipsizeRightKeepTail(const std::string& s, sf::Text& probe, float maxW) {
   probe.setString(s);
   if (probe.getLocalBounds().width <= maxW) return s;
   for (std::size_t cut = 0; cut < s.size(); ++cut) {
-    std::string view = "..." + s.substr(cut);  // ASCII ellipsis
+    std::string view = "..." + s.substr(cut);
     probe.setString(view);
     if (probe.getLocalBounds().width <= maxW) return view;
   }
   return s;
 }
+
+// --- Time helpers ---
+inline std::string formatHMS(int totalSeconds) {
+  totalSeconds = std::max(0, totalSeconds);
+  int h = totalSeconds / 3600;
+  int m = (totalSeconds % 3600) / 60;
+  int s = totalSeconds % 60;
+  std::ostringstream ss;
+  ss << (h < 10 ? "0" : "") << h << ":" << (m < 10 ? "0" : "") << m << ":" << (s < 10 ? "0" : "")
+     << s;
+  return ss.str();
+}
+inline int clampBaseSeconds(int sec) {
+  return std::clamp(sec, 60, 2 * 60 * 60);
+}  // 1m..2h
+inline int clampIncSeconds(int sec) {
+  return std::clamp(sec, 0, 30);
+}  // 0..30s
 
 }  // namespace
 
@@ -213,6 +216,10 @@ StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
 
   // Default FEN
   m_fenString = core::START_FEN;
+
+  // Time defaults (5|0)
+  m_baseSeconds = 300;
+  m_incrementSeconds = 0;
 
   setupUI();
 }
@@ -304,12 +311,12 @@ void StartScreen::setupUI() {
   m_blackPlayerBtn.setPosition(snapf(x0 + PANEL_W - 60.f - BTN_W), snapf(y0 + 150.f));
   m_blackBotBtn.setPosition(snapf(x0 + PANEL_W - 60.f - BTN_W), snapf(y0 + 208.f));
 
-  // Start button (center)
+  // Start button (center-bottom)
   m_startBtn.setPosition(snapf(x0 + (PANEL_W - m_startBtn.getSize().x) / 2.f),
                          snapf(y0 + PANEL_H - 120.f));
   centerText(m_startText, m_startBtn.getGlobalBounds(), 0.f);
 
-  // Tip position (panel bottom-left)
+  // Tip (panel bottom-left)
   m_creditText.setPosition(snapf(x0 + 24.f), snapf(y0 + PANEL_H - 40.f));
 
   // FEN popup (rectangular glass)
@@ -377,23 +384,154 @@ void StartScreen::setupUI() {
       out.push_back(opt);
     }
   };
-
   buildList(m_whiteBotOptions, m_whiteBotBtn.getPosition().x,
             m_whiteBotBtn.getPosition().y + BTN_H + 8.f);
   buildList(m_blackBotOptions, m_blackBotBtn.getPosition().x,
             m_blackBotBtn.getPosition().y + BTN_H + 8.f);
+
+  // --- Time Control UI (center of main panel) ---
+  const float timeX = x0 + (PANEL_W - TIME_W) * 0.5f;
+  const float timeY = y0 + (PANEL_H - TIME_H) * 0.5f;
+
+  m_timePanel.setSize({TIME_W, TIME_H});
+  m_timePanel.setPosition(snap({timeX, timeY}));
+  m_timePanel.setFillColor(sf::Color(42, 48, 63));
+  m_timePanel.setOutlineThickness(1.f);
+  m_timePanel.setOutlineColor(colPanelBorder);
+
+  m_timeTitle.setFont(m_font);
+  m_timeTitle.setCharacterSize(14);
+  m_timeTitle.setFillColor(colSubtle);
+  m_timeTitle.setString("Time Control");
+  m_timeTitle.setPosition(snap({timeX + 10.f, timeY + 8.f}));
+
+  // main time display
+  m_timeMain.setFont(m_font);
+  m_timeMain.setCharacterSize(22);
+  m_timeMain.setFillColor(colText);
+  m_timeMain.setString(formatHMS(m_baseSeconds));
+
+  // base steppers
+  m_timeMinusBtn.setSize({28.f, 26.f});
+  m_timePlusBtn.setSize({28.f, 26.f});
+  m_timeMinusBtn.setFillColor(colButton);
+  m_timePlusBtn.setFillColor(colButton);
+
+  m_minusTxt.setFont(m_font);
+  m_minusTxt.setCharacterSize(18);
+  m_minusTxt.setFillColor(colText);
+  m_minusTxt.setString("-");
+  m_plusTxt = m_minusTxt;
+  m_plusTxt.setString("+");
+
+  // increment row
+  m_incLabel.setFont(m_font);
+  m_incLabel.setCharacterSize(12);
+  m_incLabel.setFillColor(colSubtle);
+  m_incLabel.setString("Increment");
+
+  m_incValue.setFont(m_font);
+  m_incValue.setCharacterSize(16);
+  m_incValue.setFillColor(colText);
+  m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+
+  m_incMinusBtn.setSize({24.f, 22.f});
+  m_incPlusBtn.setSize({24.f, 22.f});
+  m_incMinusBtn.setFillColor(colButton);
+  m_incPlusBtn.setFillColor(colButton);
+
+  m_incMinusTxt.setFont(m_font);
+  m_incMinusTxt.setCharacterSize(16);
+  m_incMinusTxt.setFillColor(colText);
+  m_incMinusTxt.setString("-");
+  m_incPlusTxt = m_incMinusTxt;
+  m_incPlusTxt.setString("+");
+
+  // Preset chips (below the compact box)
+  m_presets.clear();
+  auto makeChip = [&](const char* label, int base, int inc) {
+    PresetChip c;
+    float chipW = 74.f;  // compact width to fit three nicely
+    c.box.setSize({chipW, CHIP_H});
+    c.box.setFillColor(colButton);
+    c.box.setOutlineThickness(1.f);
+    c.box.setOutlineColor(colPanelBorder);
+    c.label.setFont(m_font);
+    c.label.setCharacterSize(13);
+    c.label.setFillColor(colText);
+    c.label.setString(label);
+    c.base = base;
+    c.inc = inc;
+    m_presets.push_back(std::move(c));
+  };
+  makeChip("Bullet", 60, 0);
+  makeChip("Blitz", 180, 2);
+  makeChip("Rapid", 600, 0);
+
+  // layout internals
+  auto layoutTimeControls = [&]() {
+    const sf::Vector2f p = m_timePanel.getPosition();
+
+    // Row 1: [-]  HH:MM:SS  [+]
+    float row1Y = p.y + 42.f;
+    const float gap = 10.f;
+    const float mw = m_timeMinusBtn.getSize().x;
+    const float pw = m_timePlusBtn.getSize().x;
+    auto mb = m_timeMain.getLocalBounds();
+    float totalW = mw + gap + mb.width + gap + pw;
+    float left = p.x + (TIME_W - totalW) * 0.5f;
+
+    m_timeMinusBtn.setPosition(snap({left, row1Y - m_timeMinusBtn.getSize().y * 0.5f}));
+    m_timePlusBtn.setPosition(
+        snap({left + mw + gap + mb.width + gap, row1Y - m_timePlusBtn.getSize().y * 0.5f}));
+
+    sf::FloatRect minusGB = m_timeMinusBtn.getGlobalBounds();
+    sf::FloatRect plusGB = m_timePlusBtn.getGlobalBounds();
+    sf::FloatRect midBox(minusGB.left + minusGB.width + gap, row1Y - 14.f, mb.width, 28.f);
+    centerText(m_timeMain, midBox);
+    centerText(m_minusTxt, m_timeMinusBtn.getGlobalBounds());
+    centerText(m_plusTxt, m_timePlusBtn.getGlobalBounds());
+
+    // Row 2: Increment label + value [+/-] on the right
+    float row2Y = p.y + 80.f;
+    m_incLabel.setPosition(snap({p.x + 10.f, row2Y - 9.f}));
+
+    const float incRight = p.x + TIME_W - 10.f;
+    m_incPlusBtn.setPosition(
+        snap({incRight - m_incPlusBtn.getSize().x, row2Y - m_incPlusBtn.getSize().y * 0.5f}));
+    m_incMinusBtn.setPosition(snap({m_incPlusBtn.getPosition().x - 6.f - m_incMinusBtn.getSize().x,
+                                    row2Y - m_incMinusBtn.getSize().y * 0.5f}));
+
+    sf::FloatRect incValBox(m_incMinusBtn.getPosition().x - 6.f - 58.f, row2Y - 12.f, 58.f, 24.f);
+    centerText(m_incValue, incValBox);
+    centerText(m_incMinusTxt, m_incMinusBtn.getGlobalBounds());
+    centerText(m_incPlusTxt, m_incPlusBtn.getGlobalBounds());
+
+    // Presets row under the box, centered
+    float yChips = p.y + TIME_H + 12.f;
+    float chipsTotalW = 3.f * m_presets[0].box.getSize().x + 2.f * CHIP_GAP;
+    float chipsLeft = p.x + (TIME_W - chipsTotalW) * 0.5f;
+    for (std::size_t i = 0; i < m_presets.size(); ++i) {
+      float x = chipsLeft + i * (m_presets[i].box.getSize().x + CHIP_GAP);
+      m_presets[i].box.setPosition(snap({x, yChips}));
+      centerText(m_presets[i].label, m_presets[i].box.getGlobalBounds(), -1.f);
+    }
+  };
+
+  // initialize text strings and layout
+  m_timeMain.setString(formatHMS(m_baseSeconds));
+  m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+  layoutTimeControls();
 }
 
 // rectangular panel with soft shadow and border
 static void drawPanelWithShadow(sf::RenderWindow& win, const sf::Vector2f& topLeft) {
   sf::FloatRect rect(topLeft.x, topLeft.y, PANEL_W, PANEL_H);
   drawSoftShadowRect(win, rect);
-  // border
   sf::RectangleShape border({rect.width + 2.f, rect.height + 2.f});
   border.setPosition(snapf(rect.left - 1.f), snapf(rect.top - 1.f));
   border.setFillColor(colPanelBorder);
   win.draw(border);
-  // body
   sf::RectangleShape panel({rect.width, rect.height});
   panel.setPosition(snapf(rect.left), snapf(rect.top));
   panel.setFillColor(colPanel);
@@ -449,6 +587,23 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
     }
   }
 
+  // presets (time) — handled here for click; hold steppers handled in run()
+  for (auto& chip : m_presets) {
+    const bool hit = contains(chip.box.getGlobalBounds(), pos);
+    if (hit) {
+      chip.box.setFillColor(colButtonActive);
+      chip.box.setOutlineColor(colAccent);
+      m_baseSeconds = clampBaseSeconds(chip.base);
+      m_incrementSeconds = clampIncSeconds(chip.inc);
+      m_timeMain.setString(formatHMS(m_baseSeconds));
+      m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+      return false;
+    } else {
+      chip.box.setFillColor(colButton);
+      chip.box.setOutlineColor(colPanelBorder);
+    }
+  }
+
   // start
   if (contains(m_startBtn.getGlobalBounds(), pos)) {
     return true;
@@ -471,6 +626,21 @@ bool StartScreen::isValidFen(const std::string& fen) {
   return basicFenCheck(fen);
 }
 
+// --- helper: process press&hold repeating ---
+void StartScreen::processHoldRepeater(HoldRepeater& r, const sf::FloatRect& bounds,
+                                      sf::Vector2f mouse, std::function<void()> stepFn,
+                                      float initialDelay, float repeatRate) {
+  if (!r.active) return;
+  if (!bounds.contains(mouse)) return;  // only repeat while cursor stays over the control
+  float t = r.clock.getElapsedTime().asSeconds();
+  if (t < initialDelay) return;
+  int ticks = static_cast<int>((t - initialDelay) / repeatRate);
+  while (r.fired < ticks) {
+    stepFn();
+    r.fired++;
+  }
+}
+
 StartConfig StartScreen::run() {
   StartConfig cfg;
   cfg.whiteIsBot = false;
@@ -478,54 +648,48 @@ StartConfig StartScreen::run() {
   cfg.whiteBot = BotType::Lilia;
   cfg.blackBot = BotType::Lilia;
   cfg.fen = m_fenString;  // default prefill
+  cfg.timeBaseSeconds = m_baseSeconds;
+  cfg.timeIncrementSeconds = m_incrementSeconds;
 
   // hover visuals
   auto hoverButton = [&](sf::RectangleShape& btn, sf::Vector2f mouse) {
     btn.setFillColor(contains(btn.getGlobalBounds(), mouse) ? colButtonHover : colButton);
   };
 
-  // Toast state (local to this run)
+  // Toast (unused now but kept if you want it later)
   bool toastVisible = false;
   sf::Clock toastClock;
   std::string toastMsg = "Using standard start position";
-
   auto showToast = [&]() {
     toastVisible = true;
     toastClock.restart();
   };
 
-  // local lambda to draw main panel UI
   auto drawUI = [&]() {
     drawVerticalGradient(m_window, colBGTop, colBGBottom);
 
-    // --- Top-right logo watermark (no rotation) ---
+    // faint logo top-right, no rotation
     if (m_logoTex.getSize().x > 0 && m_logoTex.getSize().y > 0) {
       sf::Sprite logoBG(m_logoTex);
       const auto ws = m_window.getSize();
-
-      // Scale by height so it hugs the corner without overwhelming the UI.
-      const float desiredH = ws.y * 0.90f;  // tweak 0.75–0.95 to taste
+      const float desiredH = ws.y * 0.90f;
       const float s = desiredH / static_cast<float>(m_logoTex.getSize().y);
       logoBG.setScale(s, s);
-
-      // Anchor to top-right so positioning is easy.
       const sf::FloatRect lb = logoBG.getLocalBounds();
-      logoBG.setOrigin(lb.width, 0.f);  // (right, top)
-
-      const float pad = 24.f;  // corner padding
+      logoBG.setOrigin(lb.width, 0.f);
+      const float pad = 24.f;
       logoBG.setPosition(snapf(static_cast<float>(ws.x) - pad), snapf(pad));
-
-      logoBG.setRotation(0.f);                        // explicit: no rotation
-      logoBG.setColor(sf::Color(150, 120, 255, 50));  // subtle
+      logoBG.setRotation(0.f);
+      logoBG.setColor(sf::Color(150, 120, 255, 50));
       m_window.draw(logoBG, sf::RenderStates(sf::BlendAlpha));
     }
 
-    // panel + shadow
+    // main panel
     sf::Vector2f panelPos((m_window.getSize().x - PANEL_W) * 0.5f,
                           (m_window.getSize().y - PANEL_H) * 0.5f);
     drawPanelWithShadow(m_window, panelPos);
 
-    // Clean header
+    // header
     sf::Text title("Lilia Engine - Bot Sandbox", m_font, 28);
     title.setFillColor(colText);
     title.setPosition(snapf(panelPos.x + 24.f), snapf(panelPos.y + 18.f));
@@ -540,7 +704,7 @@ StartConfig StartScreen::run() {
     m_window.draw(m_whiteLabel);
     m_window.draw(m_blackLabel);
 
-    // Selected state styling: Human vs Bot
+    // Selected state styling
     auto applyToggleStyle = [&](sf::RectangleShape& humanBtn, sf::RectangleShape& botBtn,
                                 bool isBot) {
       humanBtn.setOutlineThickness(1.f);
@@ -562,7 +726,7 @@ StartConfig StartScreen::run() {
     applyToggleStyle(m_whitePlayerBtn, m_whiteBotBtn, cfg.whiteIsBot);
     applyToggleStyle(m_blackPlayerBtn, m_blackBotBtn, cfg.blackIsBot);
 
-    // White buttons
+    // White column
     m_window.draw(m_whitePlayerBtn);
     m_window.draw(m_whiteBotBtn);
     centerText(m_whitePlayerText, m_whitePlayerBtn.getGlobalBounds());
@@ -570,7 +734,7 @@ StartConfig StartScreen::run() {
     m_window.draw(m_whitePlayerText);
     m_window.draw(m_whiteBotText);
 
-    // Black buttons
+    // Black column
     m_window.draw(m_blackPlayerBtn);
     m_window.draw(m_blackBotBtn);
     centerText(m_blackPlayerText, m_blackPlayerBtn.getGlobalBounds());
@@ -578,7 +742,7 @@ StartConfig StartScreen::run() {
     m_window.draw(m_blackPlayerText);
     m_window.draw(m_blackBotText);
 
-    // Bot dropdown lists with selection highlight
+    // Bot dropdown lists
     auto drawBotList = [&](const std::vector<BotOption>& list, std::size_t selIdx) {
       for (std::size_t i = 0; i < list.size(); ++i) {
         const auto& opt = list[i];
@@ -592,7 +756,6 @@ StartConfig StartScreen::run() {
           box.setOutlineThickness(0.f);
         }
         m_window.draw(box);
-
         sf::Text label = opt.label;
         leftCenterText(label, box.getGlobalBounds(), 10.f);
         m_window.draw(label);
@@ -601,7 +764,50 @@ StartConfig StartScreen::run() {
     if (m_showWhiteBotList) drawBotList(m_whiteBotOptions, m_whiteBotSelection);
     if (m_showBlackBotList) drawBotList(m_blackBotOptions, m_blackBotSelection);
 
-    // --- Start button as a rectangle with soft shadow ---
+    // --- Time Panel (compact, centered) ---
+    {
+      auto gb = m_timePanel.getGlobalBounds();
+      drawSoftShadowRect(m_window, gb);
+      m_window.draw(m_timePanel);
+      m_window.draw(m_timeTitle);
+
+      // hover fill for steppers
+      auto hoverColorize = [&](sf::RectangleShape& r) {
+        bool hov = contains(r.getGlobalBounds(), m_mousePos);
+        r.setFillColor(hov ? colButtonHover : colButton);
+      };
+      hoverColorize(m_timeMinusBtn);
+      hoverColorize(m_timePlusBtn);
+      hoverColorize(m_incMinusBtn);
+      hoverColorize(m_incPlusBtn);
+
+      // draw time controls
+      m_window.draw(m_timeMinusBtn);
+      m_window.draw(m_timePlusBtn);
+      m_window.draw(m_minusTxt);
+      m_window.draw(m_plusTxt);
+      m_window.draw(m_timeMain);
+
+      // increment row
+      m_window.draw(m_incLabel);
+      m_window.draw(m_incMinusBtn);
+      m_window.draw(m_incPlusBtn);
+      m_window.draw(m_incMinusTxt);
+      m_window.draw(m_incPlusTxt);
+      m_window.draw(m_incValue);
+
+      // presets
+      for (auto& c : m_presets) {
+        // subtle hover raise
+        bool hov = contains(c.box.getGlobalBounds(), m_mousePos);
+        if (!c.box.getGlobalBounds().contains(m_mousePos)) c.box.setFillColor(colButton);
+        if (hov) c.box.setFillColor(colButtonHover);
+        m_window.draw(c.box);
+        m_window.draw(c.label);
+      }
+    }
+
+    // Start button (shadow + body)
     {
       const sf::FloatRect gb = m_startBtn.getGlobalBounds();
       drawSoftShadowRect(m_window, {gb.left, gb.top, gb.width, gb.height});
@@ -613,143 +819,67 @@ StartConfig StartScreen::run() {
       m_window.draw(m_startText);
     }
 
-    // Tip (panel bottom-left)
+    // Tip
     m_window.draw(m_creditText);
-
-    // Developer credit bottom-right of the window
-    sf::Text devBy("@Developed by Julian Meyer", m_font, 14);
-    devBy.setFillColor(colSubtle);
-    auto b = devBy.getLocalBounds();
-    devBy.setOrigin(b.left + b.width, b.top);
-    devBy.setPosition(snapf(static_cast<float>(m_window.getSize().x) - 16.f),
-                      snapf(static_cast<float>(m_window.getSize().y) - 24.f));
-    m_window.draw(devBy);
-
-    // Toast (bottom-center)
-    if (toastVisible) {
-      const float DUR = 2.6f;   // total lifetime
-      const float FADE = 0.6f;  // last 0.6s fade out
-      float t = toastClock.getElapsedTime().asSeconds();
-      if (t >= DUR) {
-        toastVisible = false;
-      } else {
-        float alpha = 1.f;
-        if (t > DUR - FADE) {
-          alpha = std::clamp((DUR - t) / FADE, 0.f, 1.f);
-        }
-        sf::Text tt(toastMsg, m_font, 16);
-        tt.setFillColor(sf::Color(255, 255, 255, static_cast<sf::Uint8>(alpha * 255)));
-        auto tb = tt.getLocalBounds();
-        float padX = 16.f, padY = 10.f;
-        sf::Vector2f sz(tb.width + padX * 2.f, tb.height + padY * 2.f);
-        sf::Vector2f pos(snapf((m_window.getSize().x - sz.x) * 0.5f),
-                         snapf(static_cast<float>(m_window.getSize().y) - sz.y - 24.f));
-
-        sf::RectangleShape bg(sz);
-        bg.setPosition(pos);
-        bg.setFillColor(sf::Color(20, 24, 32, static_cast<sf::Uint8>(alpha * 200)));
-        bg.setOutlineThickness(1.f);
-        bg.setOutlineColor(sf::Color(120, 140, 170, static_cast<sf::Uint8>(alpha * 200)));
-        m_window.draw(bg);
-
-        tt.setPosition(snapf(pos.x + padX), snapf(pos.y + padY - 1.f));
-        m_window.draw(tt);
-      }
-    }
   };
 
-  // Popup drawing
+  // Popup drawing (unchanged except placeholder text fix kept earlier)
   auto drawFenPopup = [&]() {
-    // darken background
     sf::RectangleShape overlay(
         {static_cast<float>(m_window.getSize().x), static_cast<float>(m_window.getSize().y)});
     overlay.setPosition(0.f, 0.f);
     overlay.setFillColor(sf::Color(0, 0, 0, 180));
     m_window.draw(overlay);
 
-    // panel + shadow (rectangular glass)
     sf::Vector2f p = m_fenPopup.getPosition();
     sf::FloatRect rect(p.x, p.y, POPUP_W, POPUP_H);
     drawSoftShadowRect(m_window, rect);
 
-    // border
     sf::RectangleShape border({rect.width + 2.f, rect.height + 2.f});
     border.setPosition(snapf(rect.left - 1.f), snapf(rect.top - 1.f));
     border.setFillColor(colPanelBorder);
     m_window.draw(border);
 
-    // body
     sf::RectangleShape body({rect.width, rect.height});
     body.setPosition(snapf(rect.left), snapf(rect.top));
     body.setFillColor(colTextPanel);
     m_window.draw(body);
 
-    // title
     sf::Text title("Custom Position", m_font, 22);
     title.setFillColor(colText);
     title.setPosition(snapf(p.x + 20.f), snapf(p.y + 18.f));
     m_window.draw(title);
 
-    // label "FEN:"
     sf::Text label("FEN:", m_font, 18);
     label.setFillColor(colSubtle);
     label.setPosition(snapf(p.x + 20.f), snapf(m_fenInputBox.getPosition().y + 10.f));
     m_window.draw(label);
 
-    // input focus ring box
     m_window.draw(m_fenInputBox);
 
-    // input
     const float padX = 10.f;
     const float usableW = m_fenInputBox.getSize().x - (padX * 2.f);
 
     std::string toShow;
     bool isEmpty = m_fenString.empty();
-    if (!isEmpty) {
-      toShow = ellipsizeRightKeepTail(m_fenString, m_fenInputText, usableW);
-    }
+    if (!isEmpty) toShow = ellipsizeRightKeepTail(m_fenString, m_fenInputText, usableW);
 
     m_fenInputText.setFillColor(isEmpty ? colSubtle : colText);
-    // ASCII-only placeholder fixes the glyph issue on some fonts
     m_fenInputText.setString(isEmpty ? "Paste or type a FEN..." : toShow);
     leftCenterText(m_fenInputText, m_fenInputBox.getGlobalBounds(), padX);
     m_window.draw(m_fenInputText);
 
-    // buttons
     centerText(m_fenBackText, m_fenBackBtn.getGlobalBounds());
     centerText(m_fenContinueText, m_fenContinueBtn.getGlobalBounds());
     m_window.draw(m_fenBackBtn);
     m_window.draw(m_fenBackText);
     m_window.draw(m_fenContinueBtn);
     m_window.draw(m_fenContinueText);
-
-    // error fade (kept for completeness)
-    if (m_showError) {
-      float t = m_errorClock.getElapsedTime().asSeconds();
-      float a = 1.f - (t / ERROR_FADE_SEC);
-      if (a <= 0.f) {
-        m_showError = false;
-        a = 0.f;
-      }
-      sf::Color c = m_fenErrorText.getFillColor();
-      c.a = static_cast<sf::Uint8>(std::clamp(a, 0.f, 1.f) * 255.f);
-      m_fenErrorText.setFillColor(c);
-      m_window.draw(m_fenErrorText);
-    }
-
-    // always-visible indicator below the error line
-    sf::Text fenInfo("Empty or invalid FEN -> the standard starting position will be used.", m_font,
-                     14);
-    fenInfo.setFillColor(colSubtle);
-    fenInfo.setPosition(snapf(m_fenInputBox.getPosition().x),
-                        snapf(m_fenInputBox.getPosition().y + 60.f));
-    m_window.draw(fenInfo);
   };
 
   // Input focus for popup
   static bool fenInputActive = false;
-  bool fenInputActive_extern_hack = fenInputActive;
-  (void)fenInputActive_extern_hack;
+  (void)fenInputActive;
 
   // loop
   while (m_window.isOpen()) {
@@ -762,42 +892,95 @@ StartConfig StartScreen::run() {
       if (e.type == sf::Event::Resized) {
         setupUI();  // re-layout
       }
+
+      if (e.type == sf::Event::MouseMoved) {
+        m_mousePos = {static_cast<float>(e.mouseMove.x), static_cast<float>(e.mouseMove.y)};
+        // basic button hovers
+        hoverButton(m_whitePlayerBtn, m_mousePos);
+        hoverButton(m_whiteBotBtn, m_mousePos);
+        hoverButton(m_blackPlayerBtn, m_mousePos);
+        hoverButton(m_blackBotBtn, m_mousePos);
+        if (contains(m_startBtn.getGlobalBounds(), m_mousePos)) {
+          m_startBtn.setFillColor(sf::Color(80, 205, 255));
+        } else {
+          m_startBtn.setFillColor(colAccent);
+        }
+      }
+
       if (!m_showFenPopup) {
         // normal screen input
-        if (e.type == sf::Event::KeyPressed && e.key.code == sf::Keyboard::F) {
-          // open FEN popup
-          m_showFenPopup = true;
-          fenInputActive = true;
-          m_fenInputText.setString(m_fenString);
-        }
-        if (e.type == sf::Event::MouseMoved) {
-          sf::Vector2f mp(static_cast<float>(e.mouseMove.x), static_cast<float>(e.mouseMove.y));
-          hoverButton(m_whitePlayerBtn, mp);
-          hoverButton(m_whiteBotBtn, mp);
-          hoverButton(m_blackPlayerBtn, mp);
-          hoverButton(m_blackBotBtn, mp);
-          // start hover (accent has no hover color; brighten slightly)
-          if (contains(m_startBtn.getGlobalBounds(), mp)) {
-            m_startBtn.setFillColor(sf::Color(80, 205, 255));
-          } else {
-            m_startBtn.setFillColor(colAccent);
-          }
-        }
-        if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
-          sf::Vector2f mp(static_cast<float>(e.mouseButton.x), static_cast<float>(e.mouseButton.y));
-          if (handleMouse(mp, cfg)) {
-            // start game
+        if (e.type == sf::Event::KeyPressed) {
+          if (e.key.code == sf::Keyboard::F) {
+            m_showFenPopup = true;
+            fenInputActive = true;
+            m_fenInputText.setString(m_fenString);
+          } else if (e.key.code == sf::Keyboard::Left) {
+            m_baseSeconds = clampBaseSeconds(m_baseSeconds - (e.key.shift ? 300 : 60));
+            m_timeMain.setString(formatHMS(m_baseSeconds));
+          } else if (e.key.code == sf::Keyboard::Right) {
+            m_baseSeconds = clampBaseSeconds(m_baseSeconds + (e.key.shift ? 300 : 60));
+            m_timeMain.setString(formatHMS(m_baseSeconds));
+          } else if (e.key.code == sf::Keyboard::Down) {
+            m_incrementSeconds = clampIncSeconds(m_incrementSeconds - 1);
+            m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+          } else if (e.key.code == sf::Keyboard::Up) {
+            m_incrementSeconds = clampIncSeconds(m_incrementSeconds + 1);
+            m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+          } else if (e.key.code == sf::Keyboard::Enter) {
+            cfg.timeBaseSeconds = m_baseSeconds;
+            cfg.timeIncrementSeconds = m_incrementSeconds;
             return cfg;
           }
         }
-        if (e.type == sf::Event::KeyPressed && e.key.code == sf::Keyboard::Enter) {
-          return cfg;
+
+        if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
+          sf::Vector2f mp(static_cast<float>(e.mouseButton.x), static_cast<float>(e.mouseButton.y));
+
+          // steppers: immediate step + arm hold repeater
+          if (contains(m_timeMinusBtn.getGlobalBounds(), mp)) {
+            m_baseSeconds = clampBaseSeconds(m_baseSeconds - 60);
+            m_timeMain.setString(formatHMS(m_baseSeconds));
+            m_holdBaseMinus.active = true;
+            m_holdBaseMinus.clock.restart();
+            m_holdBaseMinus.fired = 0;
+          } else if (contains(m_timePlusBtn.getGlobalBounds(), mp)) {
+            m_baseSeconds = clampBaseSeconds(m_baseSeconds + 60);
+            m_timeMain.setString(formatHMS(m_baseSeconds));
+            m_holdBasePlus.active = true;
+            m_holdBasePlus.clock.restart();
+            m_holdBasePlus.fired = 0;
+          } else if (contains(m_incMinusBtn.getGlobalBounds(), mp)) {
+            m_incrementSeconds = clampIncSeconds(m_incrementSeconds - 1);
+            m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+            m_holdIncMinus.active = true;
+            m_holdIncMinus.clock.restart();
+            m_holdIncMinus.fired = 0;
+          } else if (contains(m_incPlusBtn.getGlobalBounds(), mp)) {
+            m_incrementSeconds = clampIncSeconds(m_incrementSeconds + 1);
+            m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+            m_holdIncPlus.active = true;
+            m_holdIncPlus.clock.restart();
+            m_holdIncPlus.fired = 0;
+          } else {
+            // delegate to general handler (sides, presets, start)
+            if (handleMouse(mp, cfg)) {
+              cfg.timeBaseSeconds = m_baseSeconds;
+              cfg.timeIncrementSeconds = m_incrementSeconds;
+              return cfg;
+            }
+          }
         }
+
+        if (e.type == sf::Event::MouseButtonReleased && e.mouseButton.button == sf::Mouse::Left) {
+          // stop all repeaters
+          m_holdBaseMinus.active = m_holdBasePlus.active = m_holdIncMinus.active =
+              m_holdIncPlus.active = false;
+        }
+
       } else {
         // popup input
         if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
           sf::Vector2f mp(static_cast<float>(e.mouseButton.x), static_cast<float>(e.mouseButton.y));
-
           bool clickedBack = contains(m_fenBackBtn.getGlobalBounds(), mp);
           bool clickedContinue = contains(m_fenContinueBtn.getGlobalBounds(), mp);
           bool clickedInput = contains(m_fenInputBox.getGlobalBounds(), mp);
@@ -808,10 +991,9 @@ StartConfig StartScreen::run() {
             fenInputActive = false;
           } else if (clickedContinue) {
             if (m_fenString.empty() || !isValidFen(m_fenString)) {
-              cfg.fen = core::START_FEN;  // fallback
+              cfg.fen = core::START_FEN;
               m_showFenPopup = false;
               fenInputActive = false;
-              showToast();
             } else {
               cfg.fen = m_fenString;
               m_showFenPopup = false;
@@ -820,7 +1002,6 @@ StartConfig StartScreen::run() {
           } else if (clickedInput) {
             fenInputActive = true;
           } else if (!clickedInsidePopup) {
-            // click outside the popup -> just defocus input
             fenInputActive = false;
           }
         }
@@ -830,10 +1011,9 @@ StartConfig StartScreen::run() {
             fenInputActive = false;
           } else if (e.key.code == sf::Keyboard::Enter) {
             if (m_fenString.empty() || !isValidFen(m_fenString)) {
-              cfg.fen = core::START_FEN;  // fallback
+              cfg.fen = core::START_FEN;
               m_showFenPopup = false;
               fenInputActive = false;
-              showToast();
             } else {
               cfg.fen = m_fenString;
               m_showFenPopup = false;
@@ -852,18 +1032,28 @@ StartConfig StartScreen::run() {
       }
     }
 
+    // ---- Press&Hold auto-repeat processing (every frame) ----
+    processHoldRepeater(m_holdBaseMinus, m_timeMinusBtn.getGlobalBounds(), m_mousePos, [&] {
+      m_baseSeconds = clampBaseSeconds(m_baseSeconds - 60);
+      m_timeMain.setString(formatHMS(m_baseSeconds));
+    });
+    processHoldRepeater(m_holdBasePlus, m_timePlusBtn.getGlobalBounds(), m_mousePos, [&] {
+      m_baseSeconds = clampBaseSeconds(m_baseSeconds + 60);
+      m_timeMain.setString(formatHMS(m_baseSeconds));
+    });
+    processHoldRepeater(m_holdIncMinus, m_incMinusBtn.getGlobalBounds(), m_mousePos, [&] {
+      m_incrementSeconds = clampIncSeconds(m_incrementSeconds - 1);
+      m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+    });
+    processHoldRepeater(m_holdIncPlus, m_incPlusBtn.getGlobalBounds(), m_mousePos, [&] {
+      m_incrementSeconds = clampIncSeconds(m_incrementSeconds + 1);
+      m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
+    });
+
     // draw
     m_window.clear();
-
-    // main UI
     drawUI();
-
-    // popup if open (apply focus outline color just before drawing)
-    if (m_showFenPopup) {
-      m_fenInputBox.setOutlineColor(fenInputActive ? colAccent : colInputBorder);
-      drawFenPopup();
-    }
-
+    if (m_showFenPopup) drawFenPopup();
     m_window.display();
   }
 
