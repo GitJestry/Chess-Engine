@@ -30,6 +30,9 @@ void HighlightManager::renderHover(sf::RenderWindow& window) {
 void HighlightManager::renderSelect(sf::RenderWindow& window) {
   renderEntitiesToBoard(m_hl_select_squares, window);
 }
+void HighlightManager::renderPremove(sf::RenderWindow& window) {
+  renderEntitiesToBoard(m_hl_premove_squares, window);
+}
 
 void HighlightManager::highlightSquare(core::Square pos) {
   Entity newSelectHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_SELECTHLIGHT));
@@ -49,16 +52,28 @@ void HighlightManager::highlightHoverSquare(core::Square pos) {
   Entity newHoverHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_HOVERHLIGHT));
   m_hl_hover_squares[pos] = std::move(newHoverHlight);
 }
+void HighlightManager::highlightPremoveSquare(core::Square pos) {
+  Entity newPremove(TextureTable::getInstance().get(constant::STR_TEXTURE_PREMOVEHLIGHT));
+  newPremove.setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
+  m_hl_premove_squares[pos] = std::move(newPremove);
+}
 void HighlightManager::clearAllHighlights() {
   m_hl_select_squares.clear();
   m_hl_attack_squares.clear();
   m_hl_hover_squares.clear();
+  m_hl_premove_squares.clear();
 }
 void HighlightManager::clearHighlightSquare(core::Square pos) {
   m_hl_select_squares.erase(pos);
 }
 void HighlightManager::clearHighlightHoverSquare(core::Square pos) {
   m_hl_hover_squares.erase(pos);
+}
+void HighlightManager::clearHighlightPremoveSquare(core::Square pos) {
+  m_hl_premove_squares.erase(pos);
+}
+void HighlightManager::clearPremoveHighlights() {
+  m_hl_premove_squares.clear();
 }
 
 }  // namespace lilia::view

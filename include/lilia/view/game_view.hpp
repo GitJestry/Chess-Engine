@@ -67,6 +67,8 @@ class GameView {
                                                Entity::Position pieceSize = {0.f, 0.f}) const;
   void setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos);
   void setPieceToSquareScreenPos(core::Square from, core::Square to);
+  void movePiece(core::Square from, core::Square to,
+                 core::PieceType promotion = core::PieceType::None);
 
   [[nodiscard]] sf::Vector2u getWindowSize() const;
   [[nodiscard]] Entity::Position getPieceSize(core::Square pos) const;
@@ -87,8 +89,11 @@ class GameView {
   void highlightAttackSquare(core::Square pos);
   void highlightCaptureSquare(core::Square pos);
   void highlightHoverSquare(core::Square pos);
+  void highlightPremoveSquare(core::Square pos);
   void clearHighlightSquare(core::Square pos);
   void clearHighlightHoverSquare(core::Square pos);
+  void clearHighlightPremoveSquare(core::Square pos);
+  void clearPremoveHighlights();
   void clearAllHighlights();
 
   void warningKingSquareAnim(core::Square ksq);
