@@ -47,19 +47,33 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
       bottomIsBot ? getBotConfig(BotType::Lilia).info
                   : PlayerInfo{"Challenger", 0, constant::STR_FILE_PATH_ICON_CHALLENGER};
 
-  m_top_player.setInfo(topInfo);
-  m_bottom_player.setInfo(bottomInfo);
-  m_top_player.setPlayerColor(core::Color::Black);
-  m_bottom_player.setPlayerColor(core::Color::White);
-  m_black_player = &m_top_player;
-  m_white_player = &m_bottom_player;
-  m_top_clock.setPlayerColor(core::Color::Black);
-  m_bottom_clock.setPlayerColor(core::Color::White);
-  m_black_clock = &m_top_clock;
-  m_white_clock = &m_bottom_clock;
+  bool flipped = bottomIsBot && !topIsBot;
+  if (flipped) {
+    m_top_player.setInfo(bottomInfo);
+    m_bottom_player.setInfo(topInfo);
+    m_top_player.setPlayerColor(core::Color::White);
+    m_bottom_player.setPlayerColor(core::Color::Black);
+    m_white_player = &m_top_player;
+    m_black_player = &m_bottom_player;
+    m_top_clock.setPlayerColor(core::Color::White);
+    m_bottom_clock.setPlayerColor(core::Color::Black);
+    m_white_clock = &m_top_clock;
+    m_black_clock = &m_bottom_clock;
+  } else {
+    m_top_player.setInfo(topInfo);
+    m_bottom_player.setInfo(bottomInfo);
+    m_top_player.setPlayerColor(core::Color::Black);
+    m_bottom_player.setPlayerColor(core::Color::White);
+    m_black_player = &m_top_player;
+    m_white_player = &m_bottom_player;
+    m_top_clock.setPlayerColor(core::Color::Black);
+    m_bottom_clock.setPlayerColor(core::Color::White);
+    m_black_clock = &m_top_clock;
+    m_white_clock = &m_bottom_clock;
+  }
 
   // board orientation
-  m_board_view.setFlipped(bottomIsBot && !topIsBot);
+  m_board_view.setFlipped(flipped);
 
   // initial layout
   layout(m_window.getSize().x, m_window.getSize().y);

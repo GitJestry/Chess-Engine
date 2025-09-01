@@ -477,11 +477,13 @@ void GameController::update(float dt) {
     const auto st = m_chess_game.getGameState();
     if (m_game_manager && m_game_manager->isHuman(st.sideToMove) &&
         hasCurrentLegalMove(m_pending_from, m_pending_to)) {
+      m_game_view.movePiece(m_pending_from, m_pending_to);
       (void)m_game_manager->requestUserMove(m_pending_from, m_pending_to,
                                             /*onClick*/ true);
     }
     m_has_pending_auto_move = false;
     m_pending_from = m_pending_to = core::NO_SQUARE;
+    m_pending_capture_type = core::PieceType::None;
   }
 }
 
@@ -519,30 +521,20 @@ void GameController::dehoverSquare() {
 }
 
 void GameController::enqueuePremove(core::Square from, core::Square to) {
+  if (!isPseudoLegalPremove(from, to)) return;
+
   Premove pm{from, to, core::PieceType::None, core::Color::White};
   if (m_game_view.hasPieceOnSquare(to)) {
     pm.capturedType = m_game_view.getPieceType(to);
     pm.capturedColor = m_game_view.getPieceColor(to);
-    m_game_view.removePiece(to);
   }
-  m_game_view.movePiece(from, to);
   m_game_view.highlightPremoveSquare(from);
   m_game_view.highlightPremoveSquare(to);
   m_premove_queue.push_back(pm);
 }
 
-void GameController::restorePremoves() {
-  for (auto it = m_premove_queue.rbegin(); it != m_premove_queue.rend(); ++it) {
-    m_game_view.movePiece(it->to, it->from);
-    if (it->capturedType != core::PieceType::None) {
-      m_game_view.addPiece(it->capturedType, it->capturedColor, it->to);
-    }
-  }
-}
-
 void GameController::clearPremove() {
   if (!m_premove_queue.empty()) {
-    restorePremoves();
     m_premove_queue.clear();
     m_game_view.clearPremoveHighlights();
     highlightLastMove();
@@ -637,8 +629,7 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
   // 7) Sichere Premove-Verarbeitung mit Queue
   if (!m_premove_queue.empty() && m_game_manager && m_game_manager->isHuman(sideToMoveNow)) {
     Premove pm = m_premove_queue.front();
-    m_game_view.clearHighlightPremoveSquare(pm.from);
-    m_game_view.clearHighlightPremoveSquare(pm.to);
+    m_premove_queue.pop_front();
 
     if (hasCurrentLegalMove(pm.from, pm.to)) {
       m_has_pending_auto_move = true;
@@ -646,12 +637,14 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
       m_pending_to = pm.to;
       m_pending_capture_type = pm.capturedType;
       m_skip_next_move_animation = true;
-      m_premove_queue.pop_front();
     } else {
-      restorePremoves();
-      m_premove_queue.clear();
-      m_game_view.clearPremoveHighlights();
-      highlightLastMove();
+      clearPremove();
+    }
+
+    m_game_view.clearPremoveHighlights();
+    for (const auto &remaining : m_premove_queue) {
+      m_game_view.highlightPremoveSquare(remaining.from);
+      m_game_view.highlightPremoveSquare(remaining.to);
     }
   }
 }
@@ -913,6 +906,24 @@ bool GameController::hasCurrentLegalMove(core::Square from, core::Square to) con
   if (pc.type == core::PieceType::None || pc.color != st.sideToMove) return false;
 
   for (const auto &m : m_chess_game.generateLegalMoves()) {
+    if (m.from == from && m.to == to) return true;
+  }
+  return false;
+}
+
+bool GameController::isPseudoLegalPremove(core::Square from, core::Square to) const {
+  if (!isValid(from) || !isValid(to)) return false;
+  auto pc = m_chess_game.getPiece(from);
+  if (pc.type == core::PieceType::None) return false;
+
+  model::Position pos = m_chess_game.getPositionRefForBot();
+  pos.getState().sideToMove = pc.color;
+
+  model::MoveGenerator gen;
+  std::vector<model::Move> pseudo;
+  gen.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), pseudo);
+
+  for (const auto &m : pseudo) {
     if (m.from == from && m.to == to) return true;
   }
   return false;
