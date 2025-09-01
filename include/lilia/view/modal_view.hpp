@@ -50,6 +50,11 @@ class ModalView {
   // geometry
   sf::Vector2u m_windowSize{};
   sf::Vector2f m_boardCenter{};
+  sf::RectangleShape m_btnClose;
+  sf::Text m_lblClose;
+  sf::FloatRect m_hitClose;
+
+  bool hitClose(sf::Vector2f p) const;
 
   // state
   bool m_openResign = false;

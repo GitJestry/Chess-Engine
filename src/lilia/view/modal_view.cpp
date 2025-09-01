@@ -1,5 +1,6 @@
 #include "lilia/view/modal_view.hpp"
 
+#include <SFML/Graphics.hpp>
 #include <algorithm>
 #include <cmath>
 #include <sstream>
@@ -25,7 +26,7 @@ inline sf::Color darken(sf::Color c, int d) {
   return lighten(c, -d);
 }
 
-// --- Soft shadow for rectangular panels ---
+// --- Soft shadow for rectangular panels (subtle, layered) ---
 inline void drawSoftShadowRect(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color base,
                                int layers = 3, float step = 6.f) {
   for (int i = layers; i >= 1; --i) {
@@ -39,37 +40,42 @@ inline void drawSoftShadowRect(sf::RenderTarget& t, const sf::FloatRect& r, sf::
   }
 }
 
-// --- Beveled button (no rounded corners) ---
-inline void drawBevelButton3D(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color base) {
-  // subtle drop shadow
+// --- Beveled 3D button with hover/press states (no rounded corners) ---
+inline void drawBevelButton3D(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color base,
+                              bool hovered, bool pressed) {
+  // Drop shadow
   sf::RectangleShape shadow({r.width, r.height});
   shadow.setPosition(snapf(r.left), snapf(r.top + 2.f));
   shadow.setFillColor(sf::Color(0, 0, 0, 90));
   t.draw(shadow);
 
-  // body
+  // Body color variations
+  sf::Color bodyCol = base;
+  if (hovered && !pressed) bodyCol = lighten(bodyCol, 8);
+  if (pressed) bodyCol = darken(bodyCol, 6);
+
   sf::RectangleShape body({r.width, r.height});
   body.setPosition(snapf(r.left), snapf(r.top));
-  body.setFillColor(base);
+  body.setFillColor(bodyCol);
   t.draw(body);
 
-  // bevel lines
+  // Bevel lines
   sf::RectangleShape topLine({r.width, 1.f});
   topLine.setPosition(snapf(r.left), snapf(r.top));
-  topLine.setFillColor(lighten(base, 24));
+  topLine.setFillColor(lighten(bodyCol, 24));
   t.draw(topLine);
 
   sf::RectangleShape bottomLine({r.width, 1.f});
   bottomLine.setPosition(snapf(r.left), snapf(r.top + r.height - 1.f));
-  bottomLine.setFillColor(darken(base, 26));
+  bottomLine.setFillColor(darken(bodyCol, 26));
   t.draw(bottomLine);
 
-  // thin inset stroke to crisp edges
+  // Thin inset stroke to crisp edges
   sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
   inset.setPosition(snapf(r.left + 1.f), snapf(r.top + 1.f));
   inset.setFillColor(sf::Color(0, 0, 0, 0));
   inset.setOutlineThickness(1.f);
-  inset.setOutlineColor(darken(base, 18));
+  inset.setOutlineColor(darken(bodyCol, 18));
   t.draw(inset);
 }
 
@@ -110,13 +116,33 @@ inline void wrapTextToWidth(sf::Text& text, const sf::FloatRect& maxBox) {
   text.setString(out);
 }
 
+// --- Vector "X" glyph for the close button (no font dependency) ---
+inline void drawCloseGlyph(sf::RenderTarget& t, const sf::FloatRect& r, bool hovered,
+                           bool pressed) {
+  const float cx = r.left + r.width * 0.5f;
+  const float cy = r.top + r.height * 0.5f;
+  const float len = std::min(r.width, r.height) * (pressed ? 0.52f : 0.60f);
+  const float thick = 2.0f;
+
+  sf::Color col = sf::Color::White;  // accent on hover
+  if (pressed) col = darken(col, 24);
+
+  sf::RectangleShape bar({len, thick});
+  bar.setOrigin(len * 0.5f, thick * 0.5f);
+  bar.setPosition(snapf(cx), snapf(cy));
+  bar.setFillColor(col);
+
+  bar.setRotation(45.f);
+  t.draw(bar);
+  bar.setRotation(-45.f);
+  t.draw(bar);
+}
+
 }  // namespace
 
 // ------------------ Class impl ------------------
 
 ModalView::ModalView() {
-  // Base colors come from theme constants declared in the header (colPanel, colBorder, colOverlay,
-  // ...)
   m_panel.setFillColor(colPanel);
   m_border.setFillColor(colBorder);
   m_overlay.setFillColor(colOverlay);
@@ -131,9 +157,13 @@ ModalView::ModalView() {
   m_btnLeft.setSize({120.f, 36.f});
   m_btnRight.setSize({120.f, 36.f});
 
-  // Labels default
+  // Labels default (fonts attached in loadFont)
   m_lblLeft.setCharacterSize(16);
   m_lblRight.setCharacterSize(16);
+
+  // Close button (vector glyph will be drawn; keep text object unused)
+  m_lblClose.setCharacterSize(16);
+  m_lblClose.setString("");
 }
 
 void ModalView::loadFont(const std::string& fontPath) {
@@ -144,6 +174,7 @@ void ModalView::loadFont(const std::string& fontPath) {
       m_msg.setFont(m_font);
       m_lblLeft.setFont(m_font);
       m_lblRight.setFont(m_font);
+      m_lblClose.setFont(m_font);  // harmless; glyph not used
     }
   }
 }
@@ -151,7 +182,6 @@ void ModalView::loadFont(const std::string& fontPath) {
 void ModalView::onResize(const sf::Vector2u& windowSize, sf::Vector2f boardCenter) {
   m_windowSize = windowSize;
   m_boardCenter = boardCenter;
-  // keep panels centered on their respective anchors
   if (m_openResign) layoutCommon({windowSize.x * 0.5f, windowSize.y * 0.5f}, {360.f, 180.f});
   if (m_openGameOver) layoutCommon(boardCenter, {380.f, 190.f});
 }
@@ -163,7 +193,7 @@ void ModalView::layoutCommon(sf::Vector2f center, sf::Vector2f panelSize) {
   m_overlay.setSize({static_cast<float>(m_windowSize.x), static_cast<float>(m_windowSize.y)});
   m_overlay.setPosition(0.f, 0.f);
 
-  // panel & border (hairline)
+  // panel & hairline border
   const float left = snapf(center.x - W * 0.5f);
   const float top = snapf(center.y - H * 0.5f);
 
@@ -176,47 +206,54 @@ void ModalView::layoutCommon(sf::Vector2f center, sf::Vector2f panelSize) {
   // title
   m_title.setPosition(snapf(left + 16.f), snapf(top + 16.f - m_title.getLocalBounds().top));
 
-  // message (wrap to inner width)
+  // message (wrapped inside padded content box)
   const float padX = 16.f;
   const float msgTop = top + 56.f;
   const sf::FloatRect msgBox(left + padX, msgTop, W - 2.f * padX, H - 120.f);
   m_msg.setPosition(snap({msgBox.left, msgBox.top - m_msg.getLocalBounds().top}));
-  wrapTextToWidth(m_msg, msgBox);  // reflow based on current string & font
+  wrapTextToWidth(m_msg, msgBox);
 
-  // buttons along bottom
+  // action buttons along bottom
   const float by = snapf(top + H - 52.f);
   const float gap = 16.f;
 
-  // left & right buttons symmetrically around center
   float leftBtnX = snapf(left + W * 0.5f - gap - m_btnLeft.getSize().x);
   float rightBtnX = snapf(left + W * 0.5f + gap);
 
   m_btnLeft.setPosition(leftBtnX, by);
   m_btnRight.setPosition(rightBtnX, by);
 
-  // center labels inside buttons
+  // label centers
   auto lb = m_lblLeft.getLocalBounds();
   m_lblLeft.setPosition(snapf(leftBtnX + (m_btnLeft.getSize().x - lb.width) * 0.5f - lb.left),
                         snapf(by + (m_btnLeft.getSize().y - lb.height) * 0.5f - lb.top));
-
   auto rb = m_lblRight.getLocalBounds();
   m_lblRight.setPosition(snapf(rightBtnX + (m_btnRight.getSize().x - rb.width) * 0.5f - rb.left),
                          snapf(by + (m_btnRight.getSize().y - rb.height) * 0.5f - rb.top));
 
-  // hit rects (match visual buttons)
+  // hit rects
   m_hitLeft = m_btnLeft.getGlobalBounds();
   m_hitRight = m_btnRight.getGlobalBounds();
+
+  // Close button area (square; beveled)
+  const float closeSize = 28.f;
+  const float cx = left + W - closeSize - 10.f;
+  const float cy = top + 10.f;
+
+  m_btnClose.setSize({closeSize, closeSize});
+  m_btnClose.setPosition(cx, cy);
+  m_btnClose.setFillColor(colHeader);  // matches your header color
+
+  m_hitClose = m_btnClose.getGlobalBounds();
 }
 
 void ModalView::stylePrimaryButton(sf::RectangleShape& btn, sf::Text& lbl) {
-  // Keep for compatibility; actual draw uses bevel with this color as base.
   btn.setFillColor(colAccent);
   btn.setOutlineThickness(0.f);
   lbl.setFillColor(sf::Color::Black);
 }
 
 void ModalView::styleSecondaryButton(sf::RectangleShape& btn, sf::Text& lbl) {
-  // Use header color (darker panel) as base for bevel.
   btn.setFillColor(colHeader);
   btn.setOutlineThickness(0.f);
   lbl.setFillColor(colText);
@@ -233,8 +270,8 @@ void ModalView::showResign(const sf::Vector2u& ws, sf::Vector2f centerOnBoard) {
   m_msg.setString("Do you really want to resign?");
   m_lblLeft.setString("Yes");
   m_lblRight.setString("No");
-  stylePrimaryButton(m_btnLeft, m_lblLeft);  // Yes = primary (accent)
-  styleSecondaryButton(m_btnRight, m_lblRight);
+  stylePrimaryButton(m_btnLeft, m_lblLeft);      // Yes = primary
+  styleSecondaryButton(m_btnRight, m_lblRight);  // No  = secondary
 
   layoutCommon(centerOnBoard, {360.f, 180.f});
 }
@@ -257,7 +294,7 @@ void ModalView::showGameOver(const std::string& msg, sf::Vector2f centerOnBoard)
   m_lblLeft.setString("New Bot");
   m_lblRight.setString("Rematch");
   styleSecondaryButton(m_btnLeft, m_lblLeft);
-  stylePrimaryButton(m_btnRight, m_lblRight);  // Rematch = primary
+  stylePrimaryButton(m_btnRight, m_lblRight);
 
   layoutCommon(centerOnBoard, {380.f, 190.f});
 }
@@ -272,40 +309,56 @@ bool ModalView::isGameOverOpen() const {
 // -------- Rendering / Hit tests --------
 void ModalView::drawOverlay(sf::RenderWindow& win) const {
   if (!(m_openResign || m_openGameOver)) return;
-  win.draw(m_overlay);
+  win.draw(m_overlay);  // NOTE: overlay draws only; we do NOT close on overlay clicks
 }
 
 void ModalView::drawPanel(sf::RenderWindow& win) const {
   if (!(m_openResign || m_openGameOver)) return;
 
-  // Panel soft shadow + border + body
+  // Soft shadow behind panel
   const sf::FloatRect panelRect = m_panel.getGlobalBounds();
   drawSoftShadowRect(win, panelRect, sf::Color(0, 0, 0, 90));
 
-  // hairline border (existing)
+  // Frame + panel body
   win.draw(m_border);
-  // body
   win.draw(m_panel);
 
   // Title + message
   win.draw(m_title);
   win.draw(m_msg);
 
-  // Buttons: draw beveled using each button’s global bounds; then labels
+  // Hover/press state from mouse
+  sf::Vector2i mp = sf::Mouse::getPosition(win);
+  sf::Vector2f mpos = win.mapPixelToCoords(mp);
+  const bool mouseDown = sf::Mouse::isButtonPressed(sf::Mouse::Left);
+
   const sf::FloatRect leftR = m_btnLeft.getGlobalBounds();
   const sf::FloatRect rightR = m_btnRight.getGlobalBounds();
+  const sf::FloatRect closeR = m_btnClose.getGlobalBounds();
 
-  // Use each button's fill as base color (set by stylePrimary/Secondary)
-  drawBevelButton3D(win, leftR, m_btnLeft.getFillColor());
-  drawBevelButton3D(win, rightR, m_btnRight.getFillColor());
+  const bool hovLeft = leftR.contains(mpos);
+  const bool hovRight = rightR.contains(mpos);
+  const bool hovClose = closeR.contains(mpos);
 
-  // Accent inset on the primary button (accent == primary color)
+  const bool pressLeft = hovLeft && mouseDown;
+  const bool pressRight = hovRight && mouseDown;
+  const bool pressClose = hovClose && mouseDown;
+
+  // Beveled buttons with hover/pressed
+  drawBevelButton3D(win, leftR, m_btnLeft.getFillColor(), hovLeft, pressLeft);
+  drawBevelButton3D(win, rightR, m_btnRight.getFillColor(), hovRight, pressRight);
+  drawBevelButton3D(win, closeR, colHeader, hovClose, pressClose);
+
+  // Accent inset on whichever is primary (filled with colAccent)
   if (m_btnLeft.getFillColor() == colAccent) drawAccentInset(win, leftR, sf::Color::White);
   if (m_btnRight.getFillColor() == colAccent) drawAccentInset(win, rightR, sf::Color::White);
 
-  // Labels
+  // Labels for the main buttons
   win.draw(m_lblLeft);
   win.draw(m_lblRight);
+
+  // Vector close glyph (replaces font glyph; always renders cleanly)
+  drawCloseGlyph(win, closeR, hovClose, pressClose);
 }
 
 bool ModalView::hitResignYes(sf::Vector2f p) const {
@@ -319,6 +372,9 @@ bool ModalView::hitNewBot(sf::Vector2f p) const {
 }
 bool ModalView::hitRematch(sf::Vector2f p) const {
   return m_openGameOver && m_hitRight.contains(p);
+}
+bool ModalView::hitClose(sf::Vector2f p) const {
+  return (m_openResign || m_openGameOver) && m_hitClose.contains(p);
 }
 
 }  // namespace lilia::view
