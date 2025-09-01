@@ -27,6 +27,8 @@ inline std::string resultToString(core::GameResult res, core::Color sideToMove) 
   switch (res) {
   case core::GameResult::CHECKMATE:
     return (sideToMove == core::Color::White) ? "0-1" : "1-0";
+  case core::GameResult::TIMEOUT:
+    return (sideToMove == core::Color::White) ? "0-1" : "1-0";
   case core::GameResult::REPETITION:
   case core::GameResult::MOVERULE:
   case core::GameResult::STALEMATE:
@@ -87,6 +89,11 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
         this->m_game_view.selectMove(this->m_fen_index
                                            ? this->m_fen_index - 1
                                            : static_cast<std::size_t>(-1));
+        if (this->m_time_controller) {
+          core::Color mover =
+              ~this->m_chess_game.getGameState().sideToMove;
+          this->m_time_controller->onMove(mover);
+        }
       });
 
   m_game_manager->setOnPromotionRequested([this](core::Square sq) {
@@ -104,7 +111,8 @@ GameController::~GameController() = default;
 void GameController::startGame(const std::string &fen, bool whiteIsBot,
                                bool blackIsBot, int whiteThinkTimeMs,
                                int whiteDepth, int blackThinkTimeMs,
-                               int blackDepth) {
+                               int blackDepth, int baseSeconds,
+                               int incrementSeconds) {
   m_sound_manager.playEffect(view::sound::Effect::GameBegins);
   m_game_view.hideResignPopup();
   m_game_view.hideGameOverPopup();
@@ -113,6 +121,13 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
   m_game_view.setBotMode(whiteIsBot || blackIsBot);
   m_game_manager->startGame(fen, whiteIsBot, blackIsBot, whiteThinkTimeMs,
                             whiteDepth, blackThinkTimeMs, blackDepth);
+
+  m_time_controller =
+      std::make_unique<TimeController>(baseSeconds, incrementSeconds);
+  core::Color stm = m_chess_game.getGameState().sideToMove;
+  m_time_controller->start(stm);
+  m_game_view.updateClock(core::Color::White, static_cast<float>(baseSeconds));
+  m_game_view.updateClock(core::Color::Black, static_cast<float>(baseSeconds));
 
   m_fen_history.clear();
   m_eval_history.clear();
@@ -394,6 +409,21 @@ void GameController::update(float dt) {
   // the view
   if (m_chess_game.getResult() != core::GameResult::ONGOING)
     return;
+
+  if (m_time_controller) {
+    m_time_controller->update(dt);
+    m_game_view.updateClock(core::Color::White,
+                            m_time_controller->getTime(core::Color::White));
+    m_game_view.updateClock(core::Color::Black,
+                            m_time_controller->getTime(core::Color::Black));
+    if (auto flag = m_time_controller->getFlagged()) {
+      m_chess_game.setResult(core::GameResult::TIMEOUT);
+      if (m_game_manager)
+        m_game_manager->stopGame();
+      showGameOver(core::GameResult::TIMEOUT, *flag);
+      return;
+    }
+  }
 
   // Game logic continues only while ongoing
   if (m_game_manager)
@@ -876,6 +906,12 @@ void GameController::showGameOver(core::GameResult res,
     resultStr = (sideToMove == core::Color::White) ? "0-1" : "1-0";
     m_game_view.showGameOverPopup(
         sideToMove == core::Color::White ? "Black won" : "White won");
+    break;
+  case core::GameResult::TIMEOUT:
+    resultStr = (sideToMove == core::Color::White) ? "0-1" : "1-0";
+    m_game_view.showGameOverPopup(sideToMove == core::Color::White
+                                      ? "Black wins on time"
+                                      : "White wins on time");
     break;
   case core::GameResult::REPETITION:
     resultStr = "1/2-1/2";

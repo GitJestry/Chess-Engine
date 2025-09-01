@@ -18,6 +18,7 @@ class Event;
 #include "../view/audio/sound_manager.hpp"
 #include "../view/game_view.hpp"
 #include "input_manager.hpp"
+#include "time_controller.hpp"
 
 namespace lilia::model {
 class ChessGame;
@@ -63,7 +64,8 @@ public:
   void startGame(const std::string &fen = core::START_FEN,
                  bool whiteIsBot = false, bool blackIsBot = true,
                  int whiteThinkTimeMs = 1000, int whiteDepth = 5,
-                 int blackThinkTimeMs = 1000, int blackDepth = 5);
+                 int blackThinkTimeMs = 1000, int blackDepth = 5,
+                 int baseSeconds = 0, int incrementSeconds = 0);
 
   enum class NextAction { None, NewBot, Rematch };
   [[nodiscard]] NextAction getNextAction() const;
@@ -137,6 +139,7 @@ private:
 
   // ---------------- New: GameManager ----------------
   std::unique_ptr<GameManager> m_game_manager;
+  std::unique_ptr<TimeController> m_time_controller;
   std::atomic<int> m_eval_cp{0};
 
   std::vector<std::string> m_fen_history;
