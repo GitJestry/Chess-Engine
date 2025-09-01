@@ -49,6 +49,8 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
   m_bottom_player.setInfo(bottomInfo);
   m_top_player.setPlayerColor(core::Color::Black);
   m_bottom_player.setPlayerColor(core::Color::White);
+  m_black_player = &m_top_player;
+  m_white_player = &m_bottom_player;
 
   // board orientation
   m_board_view.setFlipped(bottomIsBot && !topIsBot);
@@ -254,6 +256,9 @@ Entity::Position GameView::getPieceSize(core::Square pos) const {
 
 void GameView::toggleBoardOrientation() {
   m_board_view.toggleFlipped();
+  std::swap(m_top_player, m_bottom_player);
+  std::swap(m_white_player, m_black_player);
+  layout(m_window.getSize().x, m_window.getSize().y);
 }
 
 bool GameView::isOnFlipIcon(core::MousePos mousePos) const {
@@ -292,14 +297,14 @@ void GameView::removePiece(core::Square pos) {
 }
 
 void GameView::addCapturedPiece(core::Color capturer, core::PieceType type) {
-  PlayerInfoView& view = (capturer == core::Color::White) ? m_bottom_player
-                                                         : m_top_player;
+  PlayerInfoView& view =
+      (capturer == core::Color::White) ? *m_white_player : *m_black_player;
   view.addCapturedPiece(type, ~capturer);
 }
 
 void GameView::removeCapturedPiece(core::Color capturer) {
-  PlayerInfoView& view = (capturer == core::Color::White) ? m_bottom_player
-                                                         : m_top_player;
+  PlayerInfoView& view =
+      (capturer == core::Color::White) ? *m_white_player : *m_black_player;
   view.removeCapturedPiece();
 }
 
