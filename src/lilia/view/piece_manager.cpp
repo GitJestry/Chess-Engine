@@ -55,15 +55,25 @@ void PieceManager::initFromFen(const std::string& fen) {
 
 [[nodiscard]] Entity::ID_type PieceManager::getPieceID(core::Square pos) const {
   if (pos == core::NO_SQUARE) return 0;
+  auto ghost = m_premove_pieces.find(pos);
+  if (ghost != m_premove_pieces.end()) return ghost->second.getId();
+  if (m_hidden_squares.count(pos) > 0) return 0;
   auto it = m_pieces.find(pos);
   return it != m_pieces.end() ? it->second.getId() : 0;
 }
 
 [[nodiscard]] bool PieceManager::isSameColor(core::Square sq1, core::Square sq2) const {
-  auto it1 = m_pieces.find(sq1);
-  auto it2 = m_pieces.find(sq2);
-  if (it1 == m_pieces.end() || it2 == m_pieces.end()) return false;
-  return it1->second.getColor() == it2->second.getColor();
+  auto getPiece = [this](core::Square sq) -> const Piece * {
+    auto ghost = m_premove_pieces.find(sq);
+    if (ghost != m_premove_pieces.end()) return &ghost->second;
+    if (m_hidden_squares.count(sq) > 0) return nullptr;
+    auto it = m_pieces.find(sq);
+    return it != m_pieces.end() ? &it->second : nullptr;
+  };
+  const Piece *p1 = getPiece(sq1);
+  const Piece *p2 = getPiece(sq2);
+  if (!p1 || !p2) return false;
+  return p1->getColor() == p2->getColor();
 }
 
 Entity::Position PieceManager::createPiecePositon(core::Square pos) {
@@ -106,20 +116,31 @@ void PieceManager::removeAll() {
 }
 
 core::PieceType PieceManager::getPieceType(core::Square pos) const {
+  auto ghost = m_premove_pieces.find(pos);
+  if (ghost != m_premove_pieces.end()) return ghost->second.getType();
+  if (m_hidden_squares.count(pos) > 0) return core::PieceType::None;
   auto it = m_pieces.find(pos);
   return it != m_pieces.end() ? it->second.getType() : core::PieceType::None;
 }
 
 core::Color PieceManager::getPieceColor(core::Square pos) const {
+  auto ghost = m_premove_pieces.find(pos);
+  if (ghost != m_premove_pieces.end()) return ghost->second.getColor();
+  if (m_hidden_squares.count(pos) > 0) return core::Color::White;
   auto it = m_pieces.find(pos);
   return it != m_pieces.end() ? it->second.getColor() : core::Color::White;
 }
 
 [[nodiscard]] bool PieceManager::hasPieceOnSquare(core::Square pos) const {
+  if (m_premove_pieces.find(pos) != m_premove_pieces.end()) return true;
+  if (m_hidden_squares.count(pos) > 0) return false;
   return m_pieces.find(pos) != m_pieces.end();
 }
 
 Entity::Position PieceManager::getPieceSize(core::Square pos) const {
+  auto ghost = m_premove_pieces.find(pos);
+  if (ghost != m_premove_pieces.end()) return ghost->second.getCurrentSize();
+  if (m_hidden_squares.count(pos) > 0) return {0.f, 0.f};
   auto it = m_pieces.find(pos);
   if (it == m_pieces.end()) return {0.f, 0.f};
   return it->second.getCurrentSize();
@@ -130,21 +151,36 @@ Entity::Position PieceManager::getPieceSize(core::Square pos) const {
 }
 
 void PieceManager::setPieceToSquareScreenPos(core::Square from, core::Square to) {
+  auto ghost = m_premove_pieces.find(from);
+  if (ghost != m_premove_pieces.end()) {
+    ghost->second.setPosition(createPiecePositon(to));
+    return;
+  }
   auto it = m_pieces.find(from);
-  if (it != m_pieces.end()) {
+  if (it != m_pieces.end() && m_hidden_squares.count(from) == 0) {
     it->second.setPosition(createPiecePositon(to));
   }
 }
 
 void PieceManager::setPieceToScreenPos(core::Square pos, core::MousePos mousePos) {
+  auto ghost = m_premove_pieces.find(pos);
+  if (ghost != m_premove_pieces.end()) {
+    ghost->second.setPosition(mouseToEntityPos(mousePos));
+    return;
+  }
   auto it = m_pieces.find(pos);
-  if (it != m_pieces.end()) {
+  if (it != m_pieces.end() && m_hidden_squares.count(pos) == 0) {
     it->second.setPosition(mouseToEntityPos(mousePos));
   }
 }
 void PieceManager::setPieceToScreenPos(core::Square pos, Entity::Position entityPos) {
+  auto ghost = m_premove_pieces.find(pos);
+  if (ghost != m_premove_pieces.end()) {
+    ghost->second.setPosition(entityPos);
+    return;
+  }
   auto it = m_pieces.find(pos);
-  if (it != m_pieces.end()) {
+  if (it != m_pieces.end() && m_hidden_squares.count(pos) == 0) {
     it->second.setPosition(entityPos);
   }
 }
@@ -183,6 +219,7 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to) {
   m_premove_pieces[to] = std::move(ghost);
   m_hidden_squares.clear();
   m_hidden_squares.insert(from);
+  if (m_pieces.find(to) != m_pieces.end()) m_hidden_squares.insert(to);
 }
 
 void PieceManager::clearPremovePieces() {
