@@ -555,6 +555,11 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
   const core::Square from = move.from;
   const core::Square to = move.to;
 
+  // Ensure any premove preview piece is hidden before the real move animates.
+  // Otherwise both the preview ghost and the actual piece would be visible
+  // simultaneously while the move animation is playing.
+  m_game_view.clearPremovePieces();
+
   // 1) Drag-Konflikt defensiv auflösen
   if (m_dragging && m_drag_from == from) {
     m_dragging = false;
