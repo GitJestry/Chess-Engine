@@ -41,6 +41,8 @@ int App::run() {
     bool m_white_is_bot = cfg.whiteIsBot;
     bool m_black_is_bot = cfg.blackIsBot;
     std::string m_start_fen = cfg.fen;
+    int baseSeconds = cfg.timeBaseSeconds;
+    int incrementSeconds = cfg.timeIncrementSeconds;
 
     auto whiteCfg = getBotConfig(cfg.whiteBot);
     auto blackCfg = getBotConfig(cfg.blackBot);
@@ -60,7 +62,7 @@ int App::run() {
 
       gameController.startGame(m_start_fen, m_white_is_bot, m_black_is_bot,
                                whiteThinkMs, whiteDepth, blackThinkMs,
-                               blackDepth);
+                               blackDepth, baseSeconds, incrementSeconds);
 
       sf::Clock clock;
       while (window.isOpen() &&

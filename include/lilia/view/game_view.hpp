@@ -20,6 +20,7 @@
 #include "piece_manager.hpp"
 #include "player_info_view.hpp"
 #include "promotion_manager.hpp"
+#include "clock.hpp"
 
 namespace lilia::view {
 
@@ -119,6 +120,8 @@ class GameView {
   void resetEvalBar();
   void setEvalResult(const std::string &result);
 
+  void updateClock(core::Color color, float seconds);
+
  private:
   void layout(unsigned int width, unsigned int height);
 
@@ -142,6 +145,10 @@ class GameView {
   PlayerInfoView m_bottom_player;
   PlayerInfoView* m_white_player{};
   PlayerInfoView* m_black_player{};
+  Clock m_top_clock;
+  Clock m_bottom_clock;
+  Clock* m_white_clock{};
+  Clock* m_black_clock{};
   ModalView m_modal;  // ← replaces ad-hoc popup fields
 
   // FX

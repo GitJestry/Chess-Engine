@@ -20,6 +20,8 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
       m_move_list(),
       m_top_player(),
       m_bottom_player(),
+      m_top_clock(),
+      m_bottom_clock(),
       m_modal(),
       m_particles() {
   // cursors
@@ -51,6 +53,10 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
   m_bottom_player.setPlayerColor(core::Color::White);
   m_black_player = &m_top_player;
   m_white_player = &m_bottom_player;
+  m_top_clock.setPlayerColor(core::Color::Black);
+  m_bottom_clock.setPlayerColor(core::Color::White);
+  m_black_clock = &m_top_clock;
+  m_white_clock = &m_bottom_clock;
 
   // board orientation
   m_board_view.setFlipped(bottomIsBot && !topIsBot);
@@ -94,6 +100,8 @@ void GameView::render() {
   m_piece_manager.renderPieces(m_window, m_chess_animator);
   m_highlight_manager.renderAttack(m_window);
   m_chess_animator.render(m_window);
+  m_top_clock.render(m_window);
+  m_bottom_clock.render(m_window);
 
   // right stack
   m_move_list.render(m_window);
@@ -258,6 +266,8 @@ void GameView::toggleBoardOrientation() {
   m_board_view.toggleFlipped();
   std::swap(m_top_player, m_bottom_player);
   std::swap(m_white_player, m_black_player);
+  std::swap(m_top_clock, m_bottom_clock);
+  std::swap(m_white_clock, m_black_clock);
   layout(m_window.getSize().x, m_window.getSize().y);
 }
 
@@ -275,6 +285,11 @@ void GameView::resetEvalBar() { m_eval_bar.reset(); }
 
 void GameView::setEvalResult(const std::string &result) {
   m_eval_bar.setResult(result);
+}
+
+void GameView::updateClock(core::Color color, float seconds) {
+  Clock &clk = (color == core::Color::White) ? *m_white_clock : *m_black_clock;
+  clk.setTime(seconds);
 }
 
 // ---------- Pieces / Highlights ----------
@@ -407,6 +422,11 @@ void GameView::layout(unsigned int width, unsigned int height) {
   m_bottom_player.setPositionClamped(
       {boardLeft + 5.f, boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 15.f},
       m_window.getSize());
+
+  float clockX = boardLeft + static_cast<float>(constant::WINDOW_PX_SIZE) - Clock::WIDTH;
+  m_top_clock.setPosition({clockX, boardTop - Clock::HEIGHT - 5.f});
+  m_bottom_clock.setPosition(
+      {clockX, boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 5.f});
 
   // keep modal centered on window/board changes
   m_modal.onResize(m_window.getSize(), m_board_view.getPosition());
