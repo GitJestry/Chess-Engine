@@ -116,6 +116,9 @@ class GameView {
   void toggleEvalBarVisibility();
   [[nodiscard]] bool isOnEvalToggle(core::MousePos mousePos) const;
 
+  void resetEvalBar();
+  void setEvalResult(const std::string &result);
+
  private:
   void layout(unsigned int width, unsigned int height);
 
