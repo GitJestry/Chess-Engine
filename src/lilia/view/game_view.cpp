@@ -298,10 +298,8 @@ void GameView::updateClock(core::Color color, float seconds) {
 }
 
 void GameView::setClockActive(std::optional<core::Color> active) {
-  if (m_white_clock)
-    m_white_clock->setActive(active && *active == core::Color::White);
-  if (m_black_clock)
-    m_black_clock->setActive(active && *active == core::Color::Black);
+  if (m_white_clock) m_white_clock->setActive(active && *active == core::Color::White);
+  if (m_black_clock) m_black_clock->setActive(active && *active == core::Color::Black);
 }
 
 // ---------- Pieces / Highlights ----------
