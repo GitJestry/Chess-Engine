@@ -101,6 +101,7 @@ void drawSoftShadowRect(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color b
     s.setPosition(snapf(r.left - grow), snapf(r.top - grow));
     sf::Color c = base;
     c.a = static_cast<sf::Uint8>(std::clamp(30 * i, 0, 255));
+    s.setFillColor(c);
     t.draw(s);
   }
 }
@@ -520,10 +521,13 @@ void MoveListView::render(sf::RenderWindow& window) const {
   fenTxt.setPosition(snapf(textX), snapf(kHeaderH + (kFenH - fb.height) / 2.f - fb.top - 2.f));
   window.draw(fenTxt);
 
-  // Clip scrolling content to the list area
-  sf::View listView(sf::FloatRect(0.f, topY, static_cast<float>(m_width),
-                                  listH - topY));
-  listView.setViewport(view.getViewport());
+  // Clip scrolling content to the list area (map only that band to screen)
+  sf::View listView(sf::FloatRect(0.f, topY, static_cast<float>(m_width), listH - topY));
+  const auto winSize = window.getSize();
+  listView.setViewport(sf::FloatRect(m_position.x / static_cast<float>(winSize.x),
+                                     (m_position.y + topY) / static_cast<float>(winSize.y),
+                                     static_cast<float>(m_width) / static_cast<float>(winSize.x),
+                                     (listH - topY) / static_cast<float>(winSize.y)));
   window.setView(listView);
 
   // --- Alternating rows + selection highlight ---
@@ -765,14 +769,20 @@ void MoveListView::setCurrentMove(std::size_t moveIndex) {
 }
 
 std::size_t MoveListView::getMoveIndexAt(const Entity::Position& pos) const {
-  const float localX = pos.x - m_position.x;
-  const float localY = pos.y - m_position.y + m_scroll_offset;
+  const float localX = pos.x - m_position.x;  // panel-local X
+  const float yPanel = pos.y - m_position.y;  // panel-local Y (on screen)
   const float listH = listHeight(static_cast<float>(m_height), m_option_height);
-  if (localX < 0.f || localY < 0.f || localX > static_cast<float>(m_width) || localY > listH)
+  const float topY = contentTop(static_cast<float>(m_height), m_option_height);
+
+  // Only accept hits inside the visible list band
+  if (localX < 0.f || yPanel < topY || localX > static_cast<float>(m_width) || yPanel > listH)
     return static_cast<std::size_t>(-1);
 
+  // Convert screen Y within the band to content-space Y by adding scroll offset
+  const float contentY = yPanel + m_scroll_offset;
+
   for (std::size_t i = 0; i < m_move_bounds.size(); ++i) {
-    if (m_move_bounds[i].contains(localX, localY)) return i;
+    if (m_move_bounds[i].contains(localX, contentY)) return i;
   }
   return static_cast<std::size_t>(-1);
 }
