@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <string>
 #include <iostream>
+#include <SFML/Window/Clipboard.hpp>
 
 #include "lilia/controller/bot_player.hpp"
 #include "lilia/controller/game_manager.hpp"
@@ -236,7 +237,9 @@ void GameController::handleEvent(const sf::Event &event) {
       m_next_action = NextAction::Rematch;
       return;
     case view::MoveListView::Option::ShowFen:
-      std::cout << "FEN: " << m_fen_history[m_fen_index] << std::endl;
+      sf::Clipboard::setString(m_fen_history[m_fen_index]);
+      std::cout << "FEN copied to clipboard: " << m_fen_history[m_fen_index]
+                << std::endl;
       return;
     default:
       break;

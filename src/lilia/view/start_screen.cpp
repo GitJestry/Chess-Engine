@@ -1,6 +1,7 @@
 #include "lilia/view/start_screen.hpp"
 
 #include <SFML/Graphics.hpp>
+#include <SFML/Window/Clipboard.hpp>
 #include <algorithm>  // for std::clamp, std::max
 #include <cctype>
 #include <cmath>
@@ -1079,7 +1080,14 @@ StartConfig StartScreen::run() {
           }
         }
         if (e.type == sf::Event::KeyPressed) {
-          if (e.key.code == sf::Keyboard::Escape) {
+          if (fenInputActive && (e.key.control || e.key.system) &&
+              e.key.code == sf::Keyboard::V) {
+            auto clip = sf::Clipboard::getString().toAnsiString();
+            clip.erase(std::remove(clip.begin(), clip.end(), '\n'), clip.end());
+            clip.erase(std::remove(clip.begin(), clip.end(), '\r'), clip.end());
+            m_fenString = clip;
+            m_fenInputText.setString(m_fenString);
+          } else if (e.key.code == sf::Keyboard::Escape) {
             m_showFenPopup = false;
             fenInputActive = false;
           } else if (e.key.code == sf::Keyboard::Enter) {
