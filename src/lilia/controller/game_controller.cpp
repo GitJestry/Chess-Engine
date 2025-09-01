@@ -169,31 +169,38 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
 }
 
 void GameController::handleEvent(const sf::Event &event) {
+  // Block all input while a modal popup is open to avoid interacting with
+  // pieces beneath it and ensure the cursor resets properly.
+  if (m_game_view.isResignPopupOpen() || m_game_view.isGameOverPopupOpen()) {
+    m_mouse_down = false;
+    m_dragging = false;
+    m_game_view.setDefaultCursor();
+
+    if (event.type == sf::Event::MouseButtonPressed &&
+        event.mouseButton.button == sf::Mouse::Left) {
+      core::MousePos mp(event.mouseButton.x, event.mouseButton.y);
+
+      if (m_game_view.isResignPopupOpen()) {
+        if (m_game_view.isOnResignYes(mp)) {
+          resign();
+        }
+        m_game_view.hideResignPopup();
+      } else if (m_game_view.isGameOverPopupOpen()) {
+        if (m_game_view.isOnNewBot(mp)) {
+          m_next_action = NextAction::NewBot;
+        } else if (m_game_view.isOnRematch(mp)) {
+          m_next_action = NextAction::Rematch;
+        }
+        m_game_view.hideGameOverPopup();
+      }
+    }
+    // Swallow all events while a modal is active
+    return;
+  }
+
   if (event.type == sf::Event::MouseButtonPressed &&
       event.mouseButton.button == sf::Mouse::Left) {
     core::MousePos mp(event.mouseButton.x, event.mouseButton.y);
-
-    if (m_game_view.isResignPopupOpen()) {
-      if (m_game_view.isOnResignYes(mp)) {
-        resign();
-      }
-      m_game_view.hideResignPopup();
-      return;
-    }
-    if (m_game_view.isGameOverPopupOpen()) {
-      if (m_game_view.isOnNewBot(mp)) {
-        m_next_action = NextAction::NewBot;
-        m_game_view.hideGameOverPopup();
-        return;
-      }
-      if (m_game_view.isOnRematch(mp)) {
-        m_next_action = NextAction::Rematch;
-        m_game_view.hideGameOverPopup();
-        return;
-      }
-      m_game_view.hideGameOverPopup();
-      return;
-    }
 
     if (m_game_view.isOnEvalToggle(mp)) {
       m_game_view.toggleEvalBarVisibility();
@@ -209,6 +216,9 @@ void GameController::handleEvent(const sf::Event &event) {
     switch (opt) {
     case view::MoveListView::Option::Resign:
       m_game_view.showResignPopup();
+      m_mouse_down = false;
+      m_dragging = false;
+      m_game_view.setDefaultCursor();
       return;
     case view::MoveListView::Option::Prev:
       stepBackward();
@@ -305,6 +315,12 @@ void GameController::handleEvent(const sf::Event &event) {
   case sf::Event::MouseButtonReleased:
     if (event.mouseButton.button == sf::Mouse::Left)
       onMouseReleased(core::MousePos(event.mouseButton.x, event.mouseButton.y));
+    break;
+  case sf::Event::LostFocus:
+  case sf::Event::MouseLeft:
+    m_mouse_down = false;
+    m_dragging = false;
+    m_game_view.setDefaultCursor();
     break;
   default:
     break;
@@ -906,6 +922,11 @@ bool GameController::hasCurrentLegalMove(core::Square from,
 
 void GameController::showGameOver(core::GameResult res,
                                   core::Color sideToMove) {
+  // Reset any dragging state and cursor to avoid leftover interactions
+  m_mouse_down = false;
+  m_dragging = false;
+  m_game_view.setDefaultCursor();
+
   m_sound_manager.playEffect(view::sound::Effect::GameEnds);
   std::string resultStr;
   switch (res) {
