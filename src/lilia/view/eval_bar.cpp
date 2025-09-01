@@ -3,6 +3,7 @@
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Text.hpp>
+#include <SFML/Graphics/VertexArray.hpp>
 #include <SFML/Window/Mouse.hpp>
 #include <algorithm>
 #include <cmath>
@@ -16,91 +17,200 @@
 #include "lilia/view/texture_table.hpp"
 
 namespace {
+
+// Theme (kept in sync with the rest of the UI)
+const sf::Color colPanelBG(42, 48, 63);
+const sf::Color colListBG(33, 38, 50);
 const sf::Color colHeaderBG(42, 48, 63);
 const sf::Color colHoverBG(58, 66, 84);
 const sf::Color colBorder(120, 140, 170, 50);
 const sf::Color colText(240, 244, 255);
+const sf::Color colMuted(180, 186, 205);
+const sf::Color colAccent(100, 190, 255);
 const sf::Color colAccentHover(120, 205, 255);
+
+// Micro shadow
+const sf::Color colShadow(0, 0, 0, 60);
+
+inline float snapf(float v) {
+  return std::round(v);
+}
+
+inline sf::Color lighten(sf::Color c, int d) {
+  auto clip = [](int x) { return std::clamp(x, 0, 255); };
+  return sf::Color(clip(c.r + d), clip(c.g + d), clip(c.b + d), c.a);
+}
+inline sf::Color darken(sf::Color c, int d) {
+  return lighten(c, -d);
+}
+
+// Soft 1–2px spread rectangle shadow
+inline void drawSoftShadowRect(sf::RenderTarget& t, const sf::FloatRect& r, int layers = 1,
+                               float step = 2.f) {
+  for (int i = layers; i >= 1; --i) {
+    float grow = static_cast<float>(i) * step;
+    sf::RectangleShape s({r.width + 2.f * grow, r.height + 2.f * grow});
+    s.setPosition(snapf(r.left - grow), snapf(r.top - grow));
+    sf::Color sc = colShadow;
+    sc.a = static_cast<sf::Uint8>(22 * i);
+    s.setFillColor(sc);
+    t.draw(s);
+  }
+}
+
+// Simple top→bottom vertical gradient fill
+inline void drawVerticalGradientRect(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color top,
+                                     sf::Color bottom) {
+  sf::VertexArray va(sf::TriangleStrip, 4);
+  va[0].position = {r.left, r.top};
+  va[1].position = {r.left + r.width, r.top};
+  va[2].position = {r.left, r.top + r.height};
+  va[3].position = {r.left + r.width, r.top + r.height};
+  va[0].color = va[1].color = top;
+  va[2].color = va[3].color = bottom;
+  t.draw(va);
+}
+
+// Thin bevel ring (subtle)
+inline void drawBevelAround(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color base) {
+  sf::RectangleShape top({r.width, 1.f});
+  top.setPosition(snapf(r.left), snapf(r.top));
+  top.setFillColor(lighten(base, 10));
+  t.draw(top);
+
+  sf::RectangleShape bottom({r.width, 1.f});
+  bottom.setPosition(snapf(r.left), snapf(r.top + r.height - 1.f));
+  bottom.setFillColor(darken(base, 12));
+  t.draw(bottom);
+
+  // hairline inside
+  sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
+  inset.setPosition(snapf(r.left + 1.f), snapf(r.top + 1.f));
+  inset.setFillColor(sf::Color(0, 0, 0, 0));
+  inset.setOutlineThickness(1.f);
+  inset.setOutlineColor(sf::Color(120, 140, 170, 40));
+  t.draw(inset);
+}
+
 }  // namespace
 
 namespace lilia::view {
 
 EvalBar::EvalBar() : EvalBar::Entity() {
+  // base invisible sprite (kept)
   setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_TRANSPARENT));
   setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
   setOriginToCenter();
+
+  // background & white fill textures (kept)
   m_black_background.setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_BLACK));
   m_white_fill_eval.setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_WHITE));
   m_black_background.setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
   m_white_fill_eval.setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
   m_black_background.setOriginToCenter();
   m_white_fill_eval.setOriginToCenter();
+
+  // font & labels
   m_font.loadFromFile(constant::STR_FILE_PATH_FONT);
   m_font.setSmooth(false);
+
   m_score_text.setFont(m_font);
   m_score_text.setCharacterSize(constant::EVAL_BAR_FONT_SIZE);
+  m_score_text.setFillColor(sf::Color::Black);  // default (balanced → white side)
+
   m_toggle_text.setFont(m_font);
-  m_toggle_text.setCharacterSize(16);
-  // Default evaluation is 0.0 (balanced), which appears on the white side,
-  // so draw the text in black for better visibility.
-  m_score_text.setFillColor(sf::Color::Black);
+  m_toggle_text.setCharacterSize(15);
 }
 
-void EvalBar::setPosition(const Entity::Position &pos) {
+void EvalBar::setPosition(const Entity::Position& pos) {
   Entity::setPosition(pos);
   m_black_background.setPosition(getPosition());
   m_white_fill_eval.setPosition(getPosition());
 
-  float btnW = static_cast<float>(constant::EVAL_BAR_WIDTH);
-  float btnH = 26.f;
-  float toggleY = pos.y + static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f +
-                  (static_cast<float>(constant::SIDE_MARGIN) - btnH) / 2.f;
-  m_toggle_bounds =
-      sf::FloatRect(pos.x - btnW / 2.f, toggleY, btnW, btnH);
+  // compact pill centered below the bar
+  const float btnW = static_cast<float>(constant::EVAL_BAR_WIDTH) * 0.90f;
+  const float btnH = 24.f;
+  const float toggleY = pos.y + static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f +
+                        (static_cast<float>(constant::SIDE_MARGIN) - btnH) * 0.5f;
+  m_toggle_bounds = sf::FloatRect(pos.x - btnW * 0.5f, toggleY, btnW, btnH);
 }
 
-void EvalBar::render(sf::RenderWindow &window) {
-  if (m_visible) {
-    draw(window);                     // base (transparent)
-    m_black_background.draw(window);  // dark background
-    m_white_fill_eval.draw(window);   // white fill (scaled to eval)
+void EvalBar::render(sf::RenderWindow& window) {
+  // --- Toggle button (always visible) with 3D pill look ---
+  {
+    sf::Vector2i mp = sf::Mouse::getPosition(window);
+    sf::Vector2f mpos = window.mapPixelToCoords(mp);
+    const bool hov = m_toggle_bounds.contains(mpos.x, mpos.y);
 
-    // --- hairline frame to blend with the UI panels ---
-    const float W = static_cast<float>(constant::EVAL_BAR_WIDTH);
-    const float H = static_cast<float>(constant::EVAL_BAR_HEIGHT);
-    const float left = std::round(getPosition().x - W * 0.5f);
-    const float top = std::round(getPosition().y - H * 0.5f);
+    // tiny shadow + gradient body
+    drawSoftShadowRect(window, m_toggle_bounds, /*layers=*/1, /*step=*/2.f);
 
-    sf::RectangleShape frame({W, H});
-    frame.setPosition(left, top);
-    frame.setFillColor(sf::Color::Transparent);
-    frame.setOutlineThickness(1.f);
-    frame.setOutlineColor(sf::Color(120, 140, 170, 60));  // same hairline we used in sidebar
-    window.draw(frame);
+    sf::Color top = m_visible ? lighten(colAccent, 30) : lighten(colHeaderBG, 10);
+    sf::Color bot = m_visible ? darken(colAccent, 25) : darken(colHeaderBG, 12);
+    if (hov) {
+      top = lighten(top, 12);
+      bot = lighten(bot, 8);
+    }
+    drawVerticalGradientRect(window, m_toggle_bounds, top, bot);
 
-    window.draw(m_score_text);
+    // bevel ring
+    drawBevelAround(window, m_toggle_bounds, m_visible ? colAccent : colHeaderBG);
+
+    // label
+    m_toggle_text.setString(m_visible ? "ON" : "OFF");
+    auto tb = m_toggle_text.getLocalBounds();
+    m_toggle_text.setOrigin(tb.left + tb.width / 2.f, tb.top + tb.height / 2.f);
+    m_toggle_text.setFillColor(hov ? colText : (m_visible ? sf::Color::Black : colText));
+    m_toggle_text.setPosition(snapf(m_toggle_bounds.left + m_toggle_bounds.width / 2.f),
+                              snapf(m_toggle_bounds.top + m_toggle_bounds.height / 2.f - 1.f));
+    window.draw(m_toggle_text);
   }
 
-  // toggle button always rendered
-  sf::Vector2i mp = sf::Mouse::getPosition(window);
-  sf::Vector2f mpos = window.mapPixelToCoords(mp);
-  bool hov = m_toggle_bounds.contains(mpos.x, mpos.y);
+  if (!m_visible) return;
 
-  sf::RectangleShape bg({m_toggle_bounds.width, m_toggle_bounds.height});
-  bg.setPosition(m_toggle_bounds.left, m_toggle_bounds.top);
-  bg.setFillColor(hov ? colHoverBG : colHeaderBG);
-  bg.setOutlineThickness(1.f);
-  bg.setOutlineColor(hov ? sf::Color(140, 200, 240, 90) : colBorder);
-  window.draw(bg);
+  // --- Eval bar with micro-shadow, textures, zero-line, bevel & accents ---
+  const float W = static_cast<float>(constant::EVAL_BAR_WIDTH);
+  const float H = static_cast<float>(constant::EVAL_BAR_HEIGHT);
+  const float left = snapf(getPosition().x - W * 0.5f);
+  const float top = snapf(getPosition().y - H * 0.5f);
+  const sf::FloatRect barRect(left, top, W, H);
 
-  m_toggle_text.setString(m_visible ? "Hide" : "Show");
-  m_toggle_text.setFillColor(hov ? colAccentHover : colText);
-  auto tb = m_toggle_text.getLocalBounds();
-  m_toggle_text.setOrigin(tb.left + tb.width / 2.f, tb.top + tb.height / 2.f);
-  m_toggle_text.setPosition(m_toggle_bounds.left + m_toggle_bounds.width / 2.f,
-                            m_toggle_bounds.top + m_toggle_bounds.height / 2.f);
-  window.draw(m_toggle_text);
+  // soft shadow behind the bar
+  drawSoftShadowRect(window, barRect, /*layers=*/1, /*step=*/2.f);
+
+  // textured body
+  draw(window);                     // base (transparent)
+  m_black_background.draw(window);  // dark background
+  m_white_fill_eval.draw(window);   // white fill scaled to eval
+
+  // faint zero-line (center) for reference
+  {
+    sf::RectangleShape mid({W, 1.f});
+    mid.setPosition(left, snapf(top + H * 0.5f));
+    mid.setFillColor(sf::Color(120, 140, 170, 60));
+    window.draw(mid);
+  }
+
+  // advantage accent strip (3px) on the advantaged side
+  {
+    const bool whiteAdv = (m_display_eval >= 0.f);
+    sf::RectangleShape strip({W, 3.f});
+    strip.setFillColor(whiteAdv ? sf::Color(255, 255, 255, 70) : sf::Color(255, 255, 255, 30));
+    if (whiteAdv) {
+      strip.setPosition(left, snapf(top + H - 3.f));
+    } else {
+      strip.setPosition(left, snapf(top));
+    }
+    window.draw(strip);
+  }
+
+  // subtle bevel ring
+  drawBevelAround(window, barRect, colPanelBG);
+
+  // score text (already positioned/colored in update())
+  window.draw(m_score_text);
 }
+
 void EvalBar::update(int eval) {
   if (!m_has_result) {
     m_target_eval = static_cast<float>(eval);
@@ -108,14 +218,14 @@ void EvalBar::update(int eval) {
   }
   scaleToEval(m_display_eval);
 
+  // score string
   if (m_has_result) {
     m_score_text.setString(m_result);
   } else {
     int absEval = std::abs(static_cast<int>(m_display_eval));
     if (absEval >= engine::MATE_THR) {
       int moves = (engine::MATE - absEval) / 2;
-      std::string prefix = "M";
-      m_score_text.setString(prefix + std::to_string(moves));
+      m_score_text.setString(std::string("M") + std::to_string(moves));
     } else {
       double val = std::abs(m_display_eval / 100.0);
       std::ostringstream ss;
@@ -124,33 +234,32 @@ void EvalBar::update(int eval) {
       m_score_text.setString(ss.str());
     }
   }
-  // Recompute origin after updating the text string
+
   auto b = m_score_text.getLocalBounds();
   m_score_text.setOrigin(b.width / 2.f, b.height / 2.f);
 
-  // Place the score text on the side that currently has the advantage.
-  // If the evaluation favors White (>= 0), position the text at the bottom
-  // (white side) and draw it in black for contrast. Otherwise, position it
-  // at the top (black side) and draw it in white.
-  const float offset = 10.f;  // small margin from the edge of the bar
-  const float barHalfHeight = static_cast<float>(constant::EVAL_BAR_HEIGHT) / 2.f;
+  // place/contrast: white advantage → bottom (dark text), black → top (light text + tiny outline)
+  const float offset = 10.f;
+  const float barHalfHeight = static_cast<float>(constant::EVAL_BAR_HEIGHT) * 0.5f;
 
   float xPos = getPosition().x;
   float yPos = getPosition().y;
+
   if (m_display_eval >= 0.f) {
-    m_score_text.setFillColor(sf::Color::Black);
-    yPos += barHalfHeight - offset * 1.5;  // *1.5 because of font origin position
+    m_score_text.setFillColor(sf::Color(20, 20, 26));  // slightly darker than pure black
+    yPos += barHalfHeight - offset * 1.5f;             // compensate baseline
   } else {
-    m_score_text.setFillColor(sf::Color::White);
+    m_score_text.setFillColor(sf::Color(230, 238, 255));
     yPos -= barHalfHeight - offset;
   }
-  // Round to avoid blurry text caused by subpixel positioning
-  m_score_text.setPosition(std::round(xPos), std::round(yPos));
+
+  m_score_text.setPosition(snapf(xPos), snapf(yPos));
 }
 
 static float evalToWhitePct(float cp) {
-  constexpr float k = 1000.0f;             // langsamere Sättigung
-  return 0.5f + 0.5f * std::tanh(cp / k);  // 0.5 = ausgeglichen
+  // smoother saturation so the bar doesn’t slam to extremes
+  constexpr float k = 1000.0f;
+  return 0.5f + 0.5f * std::tanh(cp / k);
 }
 
 void EvalBar::scaleToEval(float e) {
@@ -160,22 +269,19 @@ void EvalBar::scaleToEval(float e) {
   const float pctWhite = evalToWhitePct(e);
   const float whitePx = std::clamp(pctWhite * H, 0.0f, H);
 
-  // Sicherstellen, dass wir die Original-Texturgröße kennen
   auto whiteOrig = m_white_fill_eval.getOriginalSize();
   if (whiteOrig.x <= 0.f || whiteOrig.y <= 0.f) return;
 
-  // Absolutgröße in Pixel => Skalierungsfaktoren = gewünschtePixel /
-  // OriginalPixel
+  // desired pixels / original pixels
   const float sx = W / whiteOrig.x;
   const float sy = whitePx / whiteOrig.y;
   m_white_fill_eval.setScale(sx, sy);
 
-  // Weiß unten „anheften“, damit 50% exakt Mitte ist (Origin = Center)
+  // keep white anchored to the bottom (origin is center)
   const auto p = getPosition();
   m_white_fill_eval.setPosition(Entity::Position{p.x, p.y + (H - whitePx) * 0.5f});
 
-  // (Optional) Hintergrund sicher auf volle Größe bringen – einmalig im Ctor
-  // reicht, aber falls du es hier robust machen willst:
+  // make sure background hugs full bar
   auto bgOrig = m_black_background.getOriginalSize();
   if (bgOrig.x > 0.f && bgOrig.y > 0.f) {
     m_black_background.setScale(W / bgOrig.x, H / bgOrig.y);
@@ -183,7 +289,7 @@ void EvalBar::scaleToEval(float e) {
   }
 }
 
-void EvalBar::setResult(const std::string &result) {
+void EvalBar::setResult(const std::string& result) {
   m_has_result = true;
   m_result = result;
   if (result == "1-0") {
@@ -207,11 +313,12 @@ void EvalBar::reset() {
   scaleToEval(0.f);
 }
 
-void EvalBar::toggleVisibility() { m_visible = !m_visible; }
+void EvalBar::toggleVisibility() {
+  m_visible = !m_visible;
+}
 
 bool EvalBar::isOnToggle(core::MousePos mousePos) const {
-  return m_toggle_bounds.contains(static_cast<float>(mousePos.x),
-                                  static_cast<float>(mousePos.y));
+  return m_toggle_bounds.contains(static_cast<float>(mousePos.x), static_cast<float>(mousePos.y));
 }
 
 }  // namespace lilia::view
