@@ -69,11 +69,11 @@ PlayerInfoView::PlayerInfoView() {
 void PlayerInfoView::setPlayerColor(core::Color color) {
   m_playerColor = color;
   if (m_playerColor == core::Color::White) {
-    m_captureBox.setFillColor(kBoxDark);
-    m_noCaptures.setFillColor(kEloColor);
-  } else {
     m_captureBox.setFillColor(kBoxLight);
     m_noCaptures.setFillColor(kFrameFill);
+  } else {
+    m_captureBox.setFillColor(kBoxDark);
+    m_noCaptures.setFillColor(kEloColor);
   }
 }
 
@@ -212,7 +212,6 @@ void PlayerInfoView::layoutCaptured() {
   // Scale each piece to fit capH with padding, then place them L→R with slight overlap
   const float targetH = capH - 2.f * kCapPad;
   float x = kCapPad;
-  float maxH = 0.f;
 
   for (auto& piece : m_capturedPieces) {
     const auto orig = piece.getOriginalSize();
@@ -224,10 +223,10 @@ void PlayerInfoView::layoutCaptured() {
     const float w = orig.x * s;
     const float h = orig.y * s;
 
-    piece.setPosition(snap({baseX * 1.04f + x, baseY * 1.7f + kCapPad}));
+    const float px = baseX + x;
+    const float py = baseY + (capH - h) * 0.5f;
+    piece.setPosition(snap({px, py}));
     x += w * kPieceAdvance;  // advance slightly less than full width to tuck them
-
-    maxH = std::max(maxH, h);
   }
 
   // Right padding so last piece isn't flush

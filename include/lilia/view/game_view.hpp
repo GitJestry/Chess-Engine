@@ -137,6 +137,8 @@ class GameView {
   MoveListView m_move_list;
   PlayerInfoView m_top_player;
   PlayerInfoView m_bottom_player;
+  PlayerInfoView* m_white_player{};
+  PlayerInfoView* m_black_player{};
   ModalView m_modal;  // ← replaces ad-hoc popup fields
 
   // FX
