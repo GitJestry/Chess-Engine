@@ -42,6 +42,7 @@ class PieceManager {
   // Visual-only helpers for premove previews
   void setPremovePiece(core::Square from, core::Square to);
   void clearPremovePieces(bool restore = true);
+  void consumePremoveGhost(core::Square from, core::Square to);
 
  private:
   Entity::Position createPiecePositon(core::Square pos);

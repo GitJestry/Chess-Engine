@@ -165,9 +165,11 @@ void GameView::resetBoard() {
 bool GameView::isInPromotionSelection() {
   return m_promotion_manager.hasOptions();
 }
+
 core::PieceType GameView::getSelectedPromotion(core::MousePos mousePos) {
   return m_promotion_manager.clickedOnType(static_cast<Entity::Position>(mousePos));
 }
+
 void GameView::removePromotionSelection() {
   m_promotion_manager.removeOptions();
 }
@@ -194,7 +196,7 @@ void GameView::setGameOver(bool over) {
   m_move_list.setGameOver(over);
 }
 
-// ---------- Modals (delegated to ModalView) ----------
+/* ---------- Modals ---------- */
 void GameView::showResignPopup() {
   auto center = m_board_view.getPosition();
   m_modal.showResign(m_window.getSize(), {center.x, center.y});
@@ -241,7 +243,7 @@ bool GameView::isOnRematch(core::MousePos mousePos) const {
   return m_modal.hitRematch({static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)});
 }
 
-// ---------- Input helpers ----------
+/* ---------- Input helpers ---------- */
 core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
   return m_board_view.mousePosToSquare(mousePos);
 }
@@ -264,7 +266,7 @@ void GameView::movePiece(core::Square from, core::Square to, core::PieceType pro
   m_piece_manager.movePiece(from, to, promotion);
 }
 
-// ---------- Cursors ----------
+/* ---------- Cursors ---------- */
 void GameView::setDefaultCursor() {
   m_window.setMouseCursor(m_cursor_default);
 }
@@ -275,7 +277,7 @@ void GameView::setHandClosedCursor() {
   m_window.setMouseCursor(m_cursor_hand_closed);
 }
 
-// ---------- Board info ----------
+/* ---------- Board info ---------- */
 sf::Vector2u GameView::getWindowSize() const {
   return m_window.getSize();
 }
@@ -327,7 +329,7 @@ void GameView::setClocksVisible(bool visible) {
   m_show_clocks = visible;
 }
 
-// ---------- Pieces / Highlights ----------
+/* ---------- Pieces / Highlights ---------- */
 bool GameView::hasPieceOnSquare(core::Square pos) const {
   return m_piece_manager.hasPieceOnSquare(pos);
 }
@@ -404,6 +406,7 @@ void GameView::clearNonPremoveHighlights() {
 void GameView::clearAttackHighlights() {
   m_highlight_manager.clearAttackHighlights();
 }
+
 void GameView::showPremovePiece(core::Square from, core::Square to) {
   m_piece_manager.setPremovePiece(from, to);
 }
@@ -412,8 +415,11 @@ void GameView::clearPremovePieces(bool restore) {
   m_piece_manager.clearPremovePieces(restore);
 }
 
+void GameView::consumePremoveGhost(core::Square from, core::Square to) {
+  m_piece_manager.consumePremoveGhost(from, to);
+}
 
-// ---------- Animations ----------
+/* ---------- Animations ---------- */
 void GameView::warningKingSquareAnim(core::Square ksq) {
   m_chess_animator.warningAnim(ksq);
   m_chess_animator.declareHighlightLevel(ksq);
@@ -447,7 +453,7 @@ void GameView::endAnimation(core::Square sq) {
   m_chess_animator.end(sq);
 }
 
-// ---------- Layout ----------
+/* ---------- Layout ---------- */
 void GameView::layout(unsigned int width, unsigned int height) {
   float vMargin = std::max(
       0.f, (static_cast<float>(height) - static_cast<float>(constant::WINDOW_PX_SIZE)) / 2.f);
@@ -479,7 +485,7 @@ void GameView::layout(unsigned int width, unsigned int height) {
       {boardLeft + 5.f, boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 15.f},
       m_window.getSize());
 
-  float clockX = boardLeft + static_cast<float>(constant::WINDOW_PX_SIZE) - Clock::WIDTH * 0.85;
+  float clockX = boardLeft + static_cast<float>(constant::WINDOW_PX_SIZE) - Clock::WIDTH * 0.85f;
   m_top_clock.setPosition({clockX, boardTop - Clock::HEIGHT});
   m_bottom_clock.setPosition(
       {clockX, boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 5.f});

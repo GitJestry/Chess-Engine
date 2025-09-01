@@ -4,14 +4,15 @@
 #include <SFML/System/Vector2.hpp>
 #include <SFML/Window/Cursor.hpp>
 #include <functional>
-#include <vector>
 #include <optional>
+#include <vector>
 
 #include "../chess_types.hpp"
 #include "../constants.hpp"
 #include "../controller/mousepos.hpp"
 #include "animation/chess_animator.hpp"
 #include "board_view.hpp"
+#include "clock.hpp"
 #include "entity.hpp"
 #include "eval_bar.hpp"
 #include "highlight_manager.hpp"
@@ -21,7 +22,6 @@
 #include "piece_manager.hpp"
 #include "player_info_view.hpp"
 #include "promotion_manager.hpp"
-#include "clock.hpp"
 
 namespace lilia::view {
 
@@ -84,6 +84,7 @@ class GameView {
   void addCapturedPiece(core::Color capturer, core::PieceType type);
   void removeCapturedPiece(core::Color capturer);
   void clearCapturedPieces();
+  void consumePremoveGhost(core::Square from, core::Square to);
 
   void highlightSquare(core::Square pos);
   void highlightAttackSquare(core::Square pos);
@@ -157,12 +158,12 @@ class GameView {
   MoveListView m_move_list;
   PlayerInfoView m_top_player;
   PlayerInfoView m_bottom_player;
-  PlayerInfoView* m_white_player{};
-  PlayerInfoView* m_black_player{};
+  PlayerInfoView *m_white_player{};
+  PlayerInfoView *m_black_player{};
   Clock m_top_clock;
   Clock m_bottom_clock;
-  Clock* m_white_clock{};
-  Clock* m_black_clock{};
+  Clock *m_white_clock{};
+  Clock *m_black_clock{};
   bool m_show_clocks{true};
   ModalView m_modal;  // ← replaces ad-hoc popup fields
 

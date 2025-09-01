@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <string>
+#include <utility>
 
 #include "lilia/view/animation/chess_animator.hpp"
 #include "lilia/view/render_constants.hpp"
@@ -11,6 +12,7 @@ namespace lilia::view {
 
 PieceManager::PieceManager(const BoardView& boardRef) : m_board_view_ref(boardRef), m_pieces() {}
 
+/* -------------------- FEN -------------------- */
 void PieceManager::initFromFen(const std::string& fen) {
   std::string boardPart = fen.substr(0, fen.find(' '));
   int rank = 7;
@@ -19,12 +21,12 @@ void PieceManager::initFromFen(const std::string& fen) {
     if (ch == '/') {
       rank--;
       file = 0;
-    } else if (std::isdigit(ch)) {
+    } else if (std::isdigit(static_cast<unsigned char>(ch))) {
       file += ch - '0';
     } else {
       int pos = file + rank * constant::BOARD_SIZE;
       core::PieceType type;
-      switch (std::tolower(ch)) {
+      switch (std::tolower(static_cast<unsigned char>(ch))) {
         case 'k':
           type = core::PieceType::King;
           break;
@@ -45,14 +47,16 @@ void PieceManager::initFromFen(const std::string& fen) {
           break;
       }
 
-      addPiece(type, (std::isupper(ch) == 1 ? core::Color::White : core::Color::Black),
-               static_cast<core::Square>(pos));
-
+      addPiece(
+          type,
+          (std::isupper(static_cast<unsigned char>(ch)) ? core::Color::White : core::Color::Black),
+          static_cast<core::Square>(pos));
       file++;
     }
   }
 }
 
+/* -------------------- Query helpers -------------------- */
 [[nodiscard]] Entity::ID_type PieceManager::getPieceID(core::Square pos) const {
   if (pos == core::NO_SQUARE) return 0;
   auto ghost = m_premove_pieces.find(pos);
@@ -63,19 +67,20 @@ void PieceManager::initFromFen(const std::string& fen) {
 }
 
 [[nodiscard]] bool PieceManager::isSameColor(core::Square sq1, core::Square sq2) const {
-  auto getPiece = [this](core::Square sq) -> const Piece * {
+  auto getPiece = [this](core::Square sq) -> const Piece* {
     auto ghost = m_premove_pieces.find(sq);
     if (ghost != m_premove_pieces.end()) return &ghost->second;
     if (m_hidden_squares.count(sq) > 0) return nullptr;
     auto it = m_pieces.find(sq);
     return it != m_pieces.end() ? &it->second : nullptr;
   };
-  const Piece *p1 = getPiece(sq1);
-  const Piece *p2 = getPiece(sq2);
+  const Piece* p1 = getPiece(sq1);
+  const Piece* p2 = getPiece(sq2);
   if (!p1 || !p2) return false;
   return p1->getColor() == p2->getColor();
 }
 
+/* -------------------- Placement -------------------- */
 Entity::Position PieceManager::createPiecePositon(core::Square pos) {
   return m_board_view_ref.getSquareScreenPos(pos) +
          Entity::Position{0.f, constant::SQUARE_PX_SIZE * 0.02f};
@@ -107,6 +112,7 @@ void PieceManager::movePiece(core::Square from, core::Square to, core::PieceType
     m_pieces[to] = std::move(movingPiece);
   }
 }
+
 void PieceManager::removePiece(core::Square pos) {
   m_pieces.erase(pos);
 }
@@ -115,6 +121,7 @@ void PieceManager::removeAll() {
   m_pieces.clear();
 }
 
+/* -------------------- Piece info -------------------- */
 core::PieceType PieceManager::getPieceType(core::Square pos) const {
   auto ghost = m_premove_pieces.find(pos);
   if (ghost != m_premove_pieces.end()) return ghost->second.getType();
@@ -146,6 +153,7 @@ Entity::Position PieceManager::getPieceSize(core::Square pos) const {
   return it->second.getCurrentSize();
 }
 
+/* -------------------- Movement helpers -------------------- */
 [[nodiscard]] inline Entity::Position mouseToEntityPos(core::MousePos mousePos) {
   return static_cast<Entity::Position>(mousePos);
 }
@@ -173,6 +181,7 @@ void PieceManager::setPieceToScreenPos(core::Square pos, core::MousePos mousePos
     it->second.setPosition(mouseToEntityPos(mousePos));
   }
 }
+
 void PieceManager::setPieceToScreenPos(core::Square pos, Entity::Position entityPos) {
   auto ghost = m_premove_pieces.find(pos);
   if (ghost != m_premove_pieces.end()) {
@@ -185,8 +194,10 @@ void PieceManager::setPieceToScreenPos(core::Square pos, Entity::Position entity
   }
 }
 
+/* -------------------- Rendering -------------------- */
 void PieceManager::renderPieces(sf::RenderWindow& window,
                                 const animation::ChessAnimator& chessAnimRef) {
+  // Base layer: non-animating pieces that are not hidden
   for (auto& pair : m_pieces) {
     const auto& pos = pair.first;
     auto& piece = pair.second;
@@ -196,7 +207,7 @@ void PieceManager::renderPieces(sf::RenderWindow& window,
       piece.draw(window);
     }
   }
-  // Draw premove preview pieces on top of regular pieces
+  // Top layer: premove ghosts always on top
   for (auto& pair : m_premove_pieces) {
     pair.second.draw(window);
   }
@@ -210,9 +221,9 @@ void PieceManager::renderPiece(core::Square pos, sf::RenderWindow& window) {
   }
 }
 
+/* -------------------- Premove (ghost pieces) -------------------- */
 void PieceManager::setPremovePiece(core::Square from, core::Square to) {
-  // When chaining multiple premoves, pieces might already exist in the
-  // premove map. If so, move that ghost instead of copying from the board.
+  // If the piece was already a ghost (chained premove), move that ghost
   Piece ghost;
   auto existing = m_premove_pieces.find(from);
   if (existing != m_premove_pieces.end()) {
@@ -225,9 +236,7 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to) {
     m_hidden_squares.insert(from);
   }
 
-  // If the destination square contains an opponent piece, remove it from the
-  // main piece map and store it for potential restoration in case the premove
-  // sequence is canceled.
+  // If destination has a *real* piece, stash it so cancel restores it
   auto captured = m_pieces.find(to);
   if (captured != m_pieces.end()) {
     m_captured_backup[to] = std::move(captured->second);
@@ -236,13 +245,24 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to) {
 
   ghost.setPosition(createPiecePositon(to));
 
-  // Remove any previous ghost on the destination square to avoid cloning.
+  // Replace any previous ghost at 'to' to avoid duplicates
   m_premove_pieces.erase(to);
   m_premove_pieces[to] = std::move(ghost);
 
-  // Hide the destination square to ensure the real piece (or captured
-  // opponent piece) does not appear underneath the premove ghost.
+  // Ensure underlying content never shines through ghosts
   m_hidden_squares.insert(to);
+}
+
+void PieceManager::consumePremoveGhost(core::Square from, core::Square to) {
+  // Remove only the ghost for the *first* premove being executed, keep others
+  auto it = m_premove_pieces.find(to);
+  if (it != m_premove_pieces.end()) m_premove_pieces.erase(it);
+
+  // The move will actually be applied by the caller (real piece drawn),
+  // so unhide involved squares and drop any stashed victim for 'to'
+  m_hidden_squares.erase(from);
+  m_hidden_squares.erase(to);
+  m_captured_backup.erase(to);
 }
 
 void PieceManager::clearPremovePieces(bool restore) {
