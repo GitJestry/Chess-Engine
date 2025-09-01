@@ -1,5 +1,6 @@
 #pragma once
 
+#include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Text.hpp>
@@ -16,6 +17,7 @@ class Clock {
   void setPlayerColor(core::Color color);
   void setPosition(const sf::Vector2f& pos);
   void setTime(float seconds);
+  void setActive(bool active);
   void render(sf::RenderWindow& window);
 
   static constexpr float WIDTH = 120.f;
@@ -23,8 +25,12 @@ class Clock {
 
  private:
   sf::RectangleShape m_box;
+  sf::RectangleShape m_overlay;
   sf::Text m_text;
   sf::Font m_font;
+  bool m_active{false};
+  sf::CircleShape m_icon_circle;
+  sf::RectangleShape m_icon_hand;
 };
 
 }  // namespace lilia::view

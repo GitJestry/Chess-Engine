@@ -297,6 +297,13 @@ void GameView::updateClock(core::Color color, float seconds) {
   clk.setTime(seconds);
 }
 
+void GameView::setClockActive(std::optional<core::Color> active) {
+  if (m_white_clock)
+    m_white_clock->setActive(active && *active == core::Color::White);
+  if (m_black_clock)
+    m_black_clock->setActive(active && *active == core::Color::Black);
+}
+
 // ---------- Pieces / Highlights ----------
 bool GameView::hasPieceOnSquare(core::Square pos) const {
   return m_piece_manager.hasPieceOnSquare(pos);

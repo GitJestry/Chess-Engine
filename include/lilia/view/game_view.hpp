@@ -5,6 +5,7 @@
 #include <SFML/Window/Cursor.hpp>
 #include <functional>
 #include <vector>
+#include <optional>
 
 #include "../chess_types.hpp"
 #include "../constants.hpp"
@@ -121,6 +122,7 @@ class GameView {
   void setEvalResult(const std::string &result);
 
   void updateClock(core::Color color, float seconds);
+  void setClockActive(std::optional<core::Color> active);
 
  private:
   void layout(unsigned int width, unsigned int height);
