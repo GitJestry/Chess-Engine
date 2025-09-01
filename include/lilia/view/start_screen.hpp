@@ -98,6 +98,7 @@ class StartScreen {
     int inc;
   };
   std::vector<PresetChip> m_presets;
+  int m_presetSelection{-1};
 
   struct HoldRepeater {
     bool active{false};

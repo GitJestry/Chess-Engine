@@ -588,19 +588,15 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
   }
 
   // presets (time) — handled here for click; hold steppers handled in run()
-  for (auto& chip : m_presets) {
-    const bool hit = contains(chip.box.getGlobalBounds(), pos);
-    if (hit) {
-      chip.box.setFillColor(colButtonActive);
-      chip.box.setOutlineColor(colAccent);
+  for (std::size_t i = 0; i < m_presets.size(); ++i) {
+    auto& chip = m_presets[i];
+    if (contains(chip.box.getGlobalBounds(), pos)) {
+      m_presetSelection = static_cast<int>(i);
       m_baseSeconds = clampBaseSeconds(chip.base);
       m_incrementSeconds = clampIncSeconds(chip.inc);
       m_timeMain.setString(formatHMS(m_baseSeconds));
       m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
       return false;
-    } else {
-      chip.box.setFillColor(colButton);
-      chip.box.setOutlineColor(colPanelBorder);
     }
   }
 
@@ -797,11 +793,16 @@ StartConfig StartScreen::run() {
       m_window.draw(m_incValue);
 
       // presets
-      for (auto& c : m_presets) {
-        // subtle hover raise
+      for (std::size_t i = 0; i < m_presets.size(); ++i) {
+        auto& c = m_presets[i];
         bool hov = contains(c.box.getGlobalBounds(), m_mousePos);
-        if (!c.box.getGlobalBounds().contains(m_mousePos)) c.box.setFillColor(colButton);
-        if (hov) c.box.setFillColor(colButtonHover);
+        if (m_presetSelection == static_cast<int>(i)) {
+          c.box.setFillColor(colButtonActive);
+          c.box.setOutlineColor(colAccent);
+        } else {
+          c.box.setOutlineColor(colPanelBorder);
+          c.box.setFillColor(hov ? colButtonHover : colButton);
+        }
         m_window.draw(c.box);
         m_window.draw(c.label);
       }
