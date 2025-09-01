@@ -17,6 +17,8 @@ class HighlightManager {
   void highlightHoverSquare(core::Square pos);
   void highlightPremoveSquare(core::Square pos);
   void clearAllHighlights();
+  void clearNonPremoveHighlights();
+  void clearAttackHighlights();
   void clearHighlightSquare(core::Square pos);
   void clearHighlightHoverSquare(core::Square pos);
   void clearHighlightPremoveSquare(core::Square pos);

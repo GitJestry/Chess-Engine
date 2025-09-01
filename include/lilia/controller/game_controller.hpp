@@ -24,6 +24,10 @@ class Event;
 namespace lilia::model {
 class ChessGame;
 struct Move;
+class Position;
+namespace bb {
+struct Piece;
+}
 } // namespace lilia::model
 
 namespace lilia::controller {
@@ -42,6 +46,8 @@ struct Premove {
   core::Square to;
   core::PieceType capturedType;
   core::Color capturedColor;
+};
+
 struct TimeView {
   float white;
   float black;
@@ -103,6 +109,9 @@ private:
   void clearPremove();
   void enqueuePremove(core::Square from, core::Square to);
   [[nodiscard]] bool isPseudoLegalPremove(core::Square from, core::Square to) const;
+  [[nodiscard]] model::Position getPositionAfterPremoves() const;
+  [[nodiscard]] model::bb::Piece getPieceConsideringPremoves(core::Square sq) const;
+  [[nodiscard]] bool hasVirtualPiece(core::Square sq) const;
 
   void movePieceAndClear(const model::Move &move, bool isPlayerMove,
                          bool onClick);

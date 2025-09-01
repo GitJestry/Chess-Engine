@@ -398,6 +398,12 @@ void GameView::clearPremoveHighlights() {
 void GameView::clearAllHighlights() {
   m_highlight_manager.clearAllHighlights();
 }
+void GameView::clearNonPremoveHighlights() {
+  m_highlight_manager.clearNonPremoveHighlights();
+}
+void GameView::clearAttackHighlights() {
+  m_highlight_manager.clearAttackHighlights();
+}
 
 // ---------- Animations ----------
 void GameView::warningKingSquareAnim(core::Square ksq) {
