@@ -223,8 +223,8 @@ void PlayerInfoView::layoutCaptured() {
     const float w = orig.x * s;
     const float h = orig.y * s;
 
-    const float px = baseX + x;
-    const float py = baseY + (capH - h) * 0.5f;
+    const float px = baseX * 1.04 + x;
+    const float py = baseY + (capH - h) * 5;
     piece.setPosition(snap({px, py}));
     x += w * kPieceAdvance;  // advance slightly less than full width to tuck them
   }
