@@ -41,7 +41,7 @@ class PieceManager {
 
   // Visual-only helpers for premove previews
   void setPremovePiece(core::Square from, core::Square to);
-  void clearPremovePieces();
+  void clearPremovePieces(bool restore = true);
 
  private:
   Entity::Position createPiecePositon(core::Square pos);
@@ -52,6 +52,8 @@ class PieceManager {
   std::unordered_map<core::Square, Piece> m_premove_pieces;
   // Squares hidden from the main piece map during premove preview
   std::unordered_set<core::Square> m_hidden_squares;
+  // Backup of pieces temporarily removed due to premove captures
+  std::unordered_map<core::Square, Piece> m_captured_backup;
 };
 
 }  // namespace lilia::view

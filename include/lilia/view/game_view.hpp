@@ -100,7 +100,7 @@ class GameView {
 
   // Preview helpers for premoves
   void showPremovePiece(core::Square from, core::Square to);
-  void clearPremovePieces();
+  void clearPremovePieces(bool restore = true);
 
   void warningKingSquareAnim(core::Square ksq);
   void animationSnapAndReturn(core::Square sq, core::MousePos mousePos);

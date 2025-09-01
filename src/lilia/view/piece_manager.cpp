@@ -225,6 +225,15 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to) {
     m_hidden_squares.insert(from);
   }
 
+  // If the destination square contains an opponent piece, remove it from the
+  // main piece map and store it for potential restoration in case the premove
+  // sequence is canceled.
+  auto captured = m_pieces.find(to);
+  if (captured != m_pieces.end()) {
+    m_captured_backup[to] = std::move(captured->second);
+    m_pieces.erase(captured);
+  }
+
   ghost.setPosition(createPiecePositon(to));
 
   // Remove any previous ghost on the destination square to avoid cloning.
@@ -236,7 +245,14 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to) {
   m_hidden_squares.insert(to);
 }
 
-void PieceManager::clearPremovePieces() {
+void PieceManager::clearPremovePieces(bool restore) {
+  if (restore) {
+    for (auto& pair : m_captured_backup) {
+      m_pieces[pair.first] = std::move(pair.second);
+      m_pieces[pair.first].setPosition(createPiecePositon(pair.first));
+    }
+  }
+  m_captured_backup.clear();
   m_premove_pieces.clear();
   m_hidden_squares.clear();
 }

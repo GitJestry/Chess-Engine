@@ -477,7 +477,7 @@ void GameController::update(float dt) {
     const auto st = m_chess_game.getGameState();
     if (m_game_manager && m_game_manager->isHuman(st.sideToMove) &&
         hasCurrentLegalMove(m_pending_from, m_pending_to)) {
-      m_game_view.clearPremovePieces();
+      m_game_view.clearPremovePieces(false);
       m_game_view.movePiece(m_pending_from, m_pending_to);
       (void)m_game_manager->requestUserMove(m_pending_from, m_pending_to,
                                             /*onClick*/ true);
