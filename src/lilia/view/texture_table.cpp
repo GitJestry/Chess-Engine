@@ -422,6 +422,8 @@ void TextureTable::preLoad() {
   // Overlays
   load(constant::STR_TEXTURE_SELECTHLIGHT,
        sf::Color(100, 190, 255, 170));  // #64BEFF, matches accent
+  load(constant::STR_TEXTURE_PREMOVEHLIGHT,
+       sf::Color(180, 120, 255, 160));  // purple-ish premove highlight
   load(constant::STR_TEXTURE_WARNINGHLIGHT,
        sf::Color(255, 102, 102, 190));  // #FF6666, clear check alert
   load(constant::STR_TEXTURE_HISTORY_OVERLAY,

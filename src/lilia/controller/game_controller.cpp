@@ -150,11 +150,12 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot, bool bla
   m_selection_changed_on_press = false;
 
   // Premove + Auto-Move
-  m_premove_from = core::NO_SQUARE;
-  m_premove_to = core::NO_SQUARE;
+  m_premove_queue.clear();
   m_has_pending_auto_move = false;
   m_pending_from = core::NO_SQUARE;
   m_pending_to = core::NO_SQUARE;
+  m_pending_capture_type = core::PieceType::None;
+  m_skip_next_move_animation = false;
 
   m_game_view.setDefaultCursor();
   m_next_action = NextAction::None;
@@ -342,8 +343,7 @@ void GameController::onMousePressed(core::MousePos pos) {
   const core::Square sq = m_game_view.mousePosToSquare(pos);
   m_selection_changed_on_press = false;
 
-  // Neue Interaktion verwirft angezeigte Premoves
-  if (m_premove_from != core::NO_SQUARE) clearPremove();
+
 
   if (m_game_view.hasPieceOnSquare(sq)) {
     if (!tryMove(m_selected_sq, sq)) m_game_view.setHandClosedCursor();
@@ -476,11 +476,33 @@ void GameController::dehoverSquare() {
   m_hover_sq = core::NO_SQUARE;
 }
 
+void GameController::enqueuePremove(core::Square from, core::Square to) {
+  Premove pm{from, to, core::PieceType::None, core::Color::White};
+  if (m_game_view.hasPieceOnSquare(to)) {
+    pm.capturedType = m_game_view.getPieceType(to);
+    pm.capturedColor = m_game_view.getPieceColor(to);
+    m_game_view.removePiece(to);
+  }
+  m_game_view.movePiece(from, to);
+  m_game_view.highlightPremoveSquare(from);
+  m_game_view.highlightPremoveSquare(to);
+  m_premove_queue.push_back(pm);
+}
+
+void GameController::restorePremoves() {
+  for (auto it = m_premove_queue.rbegin(); it != m_premove_queue.rend(); ++it) {
+    m_game_view.movePiece(it->to, it->from);
+    if (it->capturedType != core::PieceType::None) {
+      m_game_view.addPiece(it->capturedType, it->capturedColor, it->to);
+    }
+  }
+}
+
 void GameController::clearPremove() {
-  if (m_premove_from != core::NO_SQUARE) {
-    m_premove_from = core::NO_SQUARE;
-    m_premove_to = core::NO_SQUARE;
-    m_game_view.clearAllHighlights();
+  if (!m_premove_queue.empty()) {
+    restorePremoves();
+    m_premove_queue.clear();
+    m_game_view.clearPremoveHighlights();
     highlightLastMove();
   }
 }
@@ -519,13 +541,19 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
   if (move.isCapture) {
     core::Square capSq = move.isEnPassant ? epVictimSq : to;
     capturedType = m_game_view.getPieceType(capSq);
+    if (capturedType == core::PieceType::None && m_pending_capture_type != core::PieceType::None)
+      capturedType = m_pending_capture_type;
   }
 
   // 4) Animation (Klick vs. Drop)
-  if (onClick)
-    m_game_view.animationMovePiece(from, to, epVictimSq, move.promotion);
-  else
-    m_game_view.animationDropPiece(from, to, epVictimSq, move.promotion);
+  if (!m_skip_next_move_animation) {
+    if (onClick)
+      m_game_view.animationMovePiece(from, to, epVictimSq, move.promotion);
+    else
+      m_game_view.animationDropPiece(from, to, epVictimSq, move.promotion);
+  }
+  m_skip_next_move_animation = false;
+  m_pending_capture_type = core::PieceType::None;
 
   // 5) Rochade animieren
   if (move.castle != model::CastleSide::None) {
@@ -564,22 +592,24 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
   }
   m_move_history.push_back({move, moverColorBefore, capturedType, effect, m_eval_cp.load()});
 
-  // 7) Sichere Premove-Verarbeitung:
-  //    Statt direkt im Callback zu moven (Re-Entrancy!), prüfen wir Legalität
-  //    und schedulen den Auto-Move für update().
-  if (m_premove_from != core::NO_SQUARE && m_game_manager &&
-      m_game_manager->isHuman(sideToMoveNow)) {
-    core::Square pf = m_premove_from;
-    core::Square pt = m_premove_to;
+  // 7) Sichere Premove-Verarbeitung mit Queue
+  if (!m_premove_queue.empty() && m_game_manager && m_game_manager->isHuman(sideToMoveNow)) {
+    Premove pm = m_premove_queue.front();
+    m_game_view.clearHighlightPremoveSquare(pm.from);
+    m_game_view.clearHighlightPremoveSquare(pm.to);
 
-    // Immer zuerst Premove-Highlights entfernen
-    clearPremove();
-
-    // Nur vormerken, wenn jetzt legal
-    if (hasCurrentLegalMove(pf, pt)) {
+    if (hasCurrentLegalMove(pm.from, pm.to)) {
       m_has_pending_auto_move = true;
-      m_pending_from = pf;
-      m_pending_to = pt;
+      m_pending_from = pm.from;
+      m_pending_to = pm.to;
+      m_pending_capture_type = pm.capturedType;
+      m_skip_next_move_animation = true;
+      m_premove_queue.pop_front();
+    } else {
+      restorePremoves();
+      m_premove_queue.clear();
+      m_game_view.clearPremoveHighlights();
+      highlightLastMove();
     }
   }
 }
@@ -676,26 +706,18 @@ void GameController::onClick(core::MousePos mousePos) {
     const bool ownTurnAndPiece = (st.sideToMove == m_chess_game.getPiece(m_selected_sq).color) &&
                                  (!m_game_manager || m_game_manager->isHuman(st.sideToMove));
     const core::Color humanColor = ~st.sideToMove;
+    const bool canPremove = (m_chess_game.getPiece(m_selected_sq).color == humanColor &&
+                             (!m_game_manager || m_game_manager->isHuman(humanColor)));
 
-    if (tryMove(m_selected_sq, sq)) {
-      if (ownTurnAndPiece) {
-        if (m_game_manager) {
-          (void)m_game_manager->requestUserMove(m_selected_sq, sq,
-                                                /*onClick*/ true);
-        }
-      } else if (m_chess_game.getPiece(m_selected_sq).color == humanColor &&
-                 (!m_game_manager || m_game_manager->isHuman(humanColor))) {
-        // Premove per Click
-        m_premove_from = m_selected_sq;
-        m_premove_to = sq;
-        m_game_view.clearAllHighlights();
-        highlightLastMove();
-        m_game_view.highlightSquare(m_premove_from);
-        if (m_game_view.hasPieceOnSquare(sq))
-          m_game_view.highlightCaptureSquare(sq);
-        else
-          m_game_view.highlightAttackSquare(sq);
+    if (ownTurnAndPiece && tryMove(m_selected_sq, sq)) {
+      if (m_game_manager) {
+        (void)m_game_manager->requestUserMove(m_selected_sq, sq, /*onClick*/ true);
       }
+      m_selected_sq = core::NO_SQUARE;
+      return;  // NICHT umselektieren
+    }
+    if (!ownTurnAndPiece && canPremove) {
+      enqueuePremove(m_selected_sq, sq);
       m_selected_sq = core::NO_SQUARE;
       return;  // NICHT umselektieren
     }
@@ -777,31 +799,23 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
   const core::Color humanNextColor = ~st.sideToMove;
   const bool humanNextIsHuman = (!m_game_manager || m_game_manager->isHuman(humanNextColor));
 
-  if (from != to && tryMove(from, to)) {
-    if (movingOwnTurnPiece) {
+  if (from != to) {
+    if (movingOwnTurnPiece && tryMove(from, to)) {
       if (m_game_manager) {
         accepted = m_game_manager->requestUserMove(from, to, /*onClick*/ false);
       }
     } else if (fromColor == humanNextColor && humanNextIsHuman) {
       // Premove per Drag ablegen, wenn NICHT am Zug
-      m_premove_from = from;
-      m_premove_to = to;
+      enqueuePremove(from, to);
       setPremove = true;
-      m_game_view.clearAllHighlights();
-      highlightLastMove();
-      m_game_view.highlightSquare(m_premove_from);
-      if (m_game_view.hasPieceOnSquare(to))
-        m_game_view.highlightCaptureSquare(to);
-      else
-        m_game_view.highlightAttackSquare(to);
     }
   }
 
   if (!accepted) {
-    // Figur visuell zurücksetzen
-    m_game_view.setPieceToSquareScreenPos(from, from);
-
+    // Figur visuell zurücksetzen, außer wir haben einen Premove gesetzt
     if (!setPremove) {
+      m_game_view.setPieceToSquareScreenPos(from, from);
+
       // Fehlversuch -> zurückschnappen + evtl. Warnung
       if (m_chess_game.isKingInCheck(m_chess_game.getGameState().sideToMove) && m_game_manager &&
           m_game_manager->isHuman(m_chess_game.getGameState().sideToMove) && from != to &&
@@ -828,8 +842,7 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
         if (isHumanPiece(from)) showAttacks(getAttackSquares(from));
       }
     } else {
-      // Bei Premove keine Snap-Animation – wir zeigen bereits die
-      // Premove-Highlights.
+      // Bei Premove keine Snap-Animation – wir zeigen bereits die Premove-Highlights.
       m_selected_sq = core::NO_SQUARE;
     }
   }

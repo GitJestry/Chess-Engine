@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <deque>
 
 // Forward declaration to avoid heavy SFML header
 namespace sf {
@@ -34,6 +35,13 @@ struct MoveView {
   core::PieceType capturedType;
   view::sound::Effect sound;
   int evalCp{};
+};
+
+struct Premove {
+  core::Square from;
+  core::Square to;
+  core::PieceType capturedType;
+  core::Color capturedColor;
 };
 
 class GameController {
@@ -89,6 +97,8 @@ private:
   void hoverSquare(core::Square sq);
   void dehoverSquare();
   void clearPremove();
+  void enqueuePremove(core::Square from, core::Square to);
+  void restorePremoves();
 
   void movePieceAndClear(const model::Move &move, bool isPlayerMove,
                          bool onClick);
@@ -128,10 +138,11 @@ private:
   core::Square m_prev_selected_before_preview = core::NO_SQUARE;
   bool m_selection_changed_on_press = false;
 
-  core::Square m_premove_from = core::NO_SQUARE;
-  core::Square m_premove_to = core::NO_SQUARE;
+  std::deque<Premove> m_premove_queue;
   core::Square m_pending_from = core::NO_SQUARE;
   core::Square m_pending_to = core::NO_SQUARE;
+  core::PieceType m_pending_capture_type = core::PieceType::None;
+  bool m_skip_next_move_animation = false;
 
   core::Square m_selected_sq = core::NO_SQUARE; ///< Currently selected square.
   core::Square m_hover_sq = core::NO_SQUARE;    ///< Currently hovered square.

@@ -47,6 +47,7 @@ const std::string STR_TEXTURE_SELECTHLIGHT = "selectHighlight";
 const std::string STR_TEXTURE_ATTACKHLIGHT = "attackHighlight";
 const std::string STR_TEXTURE_CAPTUREHLIGHT = "captureHighlight";
 const std::string STR_TEXTURE_HOVERHLIGHT = "hoverHighlight";
+const std::string STR_TEXTURE_PREMOVEHLIGHT = "premoveHighlight";
 const std::string STR_TEXTURE_WARNINGHLIGHT = "warningHighlight";
 const std::string STR_TEXTURE_HISTORY_OVERLAY = "historyOverlay";
 
