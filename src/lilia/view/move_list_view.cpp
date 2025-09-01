@@ -520,6 +520,12 @@ void MoveListView::render(sf::RenderWindow& window) const {
   fenTxt.setPosition(snapf(textX), snapf(kHeaderH + (kFenH - fb.height) / 2.f - fb.top - 2.f));
   window.draw(fenTxt);
 
+  // Clip scrolling content to the list area
+  sf::View listView(sf::FloatRect(0.f, topY, static_cast<float>(m_width),
+                                  listH - topY));
+  listView.setViewport(view.getViewport());
+  window.setView(listView);
+
   // --- Alternating rows + selection highlight ---
   const std::size_t totalLines = m_lines.size() + (m_result.empty() ? 0 : 1);
   const float visibleTop = topY;
@@ -618,6 +624,8 @@ void MoveListView::render(sf::RenderWindow& window) const {
       window.draw(r);
     }
   }
+
+  window.setView(view);
 
   // --- Footer / beveled controls ---
   sf::RectangleShape optionBG({static_cast<float>(m_width), m_option_height});
