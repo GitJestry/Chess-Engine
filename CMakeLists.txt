@@ -17,13 +17,17 @@ endif()
 # ---------------------------
 # Options (perf toggles)
 # ---------------------------
-option(LILIA_NATIVE      "Enable native CPU optimizations (-march=native or /arch:AVX2)" ON)
-option(LILIA_FAST_MATH   "Enable fast-math in Release" ON)
-option(LILIA_LTO         "Enable Link-Time Optimization/IPO in Release" ON)
+option(LILIA_NATIVE       "Enable native CPU optimizations (-march=native or /arch:AVX2)" ON)
+option(LILIA_FAST_MATH    "Enable fast-math in Release" ON)
+option(LILIA_LTO          "Enable Link-Time Optimization/IPO in Release" ON)
 option(LILIA_PGO_GENERATE "Build with PGO generate (instrumentation)" OFF)
 option(LILIA_PGO_USE      "Build with PGO use (optimized by profiles)" OFF)
 
-# Hinweis: Exceptions werden in deinem Code genutzt -> KEIN -fno-exceptions!
+# ---------------------------
+# Runtime assets path (shipped next to the exe)
+# ---------------------------
+set(LILIA_ASSETS_DIR "${PROJECT_SOURCE_DIR}/assets"
+    CACHE PATH "Directory with runtime assets (textures, sounds, fonts, etc.)")
 
 # ---------------------------
 # Sources
@@ -101,13 +105,11 @@ target_link_libraries(lilia_app    PRIVATE Threads::Threads)
 # ---------------------------
 function(lilia_set_perf_flags tgt)
   if (MSVC)
-    # Compile
     target_compile_options(${tgt} PRIVATE
-      $<$<CONFIG:Release>:/O2 /Ot /Oi /DNDEBUG /Gy /Gw>   # O2, intrinsics, function/data sections
+      $<$<CONFIG:Release>:/O2 /Ot /Oi /DNDEBUG /Gy /Gw>
       $<$<AND:$<CONFIG:Release>,$<BOOL:${LILIA_FAST_MATH}>>:/fp:fast>
-      $<$<AND:$<CONFIG:Release>,$<BOOL:${LILIA_NATIVE}>>:/arch:AVX2>  # oder /arch:AVX512 wenn sicher
+      $<$<AND:$<CONFIG:Release>,$<BOOL:${LILIA_NATIVE}>>:/arch:AVX2>
     )
-    # Link
     if (LILIA_LTO)
       include(CheckIPOSupported)
       check_ipo_supported(RESULT _ipo_ok OUTPUT _ipo_out)
@@ -117,44 +119,34 @@ function(lilia_set_perf_flags tgt)
         message(STATUS "IPO/LTO not supported: ${_ipo_out}")
       endif()
     endif()
-
-    # PGO (MSVC): nur grob als Hinweis – echte PGO-Pipeline ist VS/MSBuild-spezifisch
     if (LILIA_PGO_GENERATE)
       target_link_options(${tgt} PRIVATE $<$<CONFIG:Release>:/GENPROFILE>)
     endif()
     if (LILIA_PGO_USE)
       target_link_options(${tgt} PRIVATE $<$<CONFIG:Release>:/USEPROFILE>)
     endif()
-
-    # Kleinkram
     target_compile_definitions(${tgt} PRIVATE NOMINMAX)
   else()
-    # Detect GCC vs (Apple)Clang
     if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
       set(IS_GCC TRUE)
     elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
       set(IS_CLANG TRUE)
     endif()
 
-    # Compile
     target_compile_options(${tgt} PRIVATE
       $<$<CONFIG:Release>:-O3 -DNDEBUG -fomit-frame-pointer>
       $<$<AND:$<CONFIG:Release>,$<BOOL:${LILIA_NATIVE}>>:-march=native -mtune=native>
       $<$<AND:$<CONFIG:Release>,$<BOOL:${LILIA_FAST_MATH}>>:-ffast-math>
-      $<$<AND:$<CONFIG:Release>,$<BOOL:${IS_GCC}>>:-fno-plt>       # nur GCC
+      $<$<AND:$<CONFIG:Release>,$<BOOL:${IS_GCC}>>:-fno-plt>
       $<$<AND:$<CONFIG:Release>,$<BOOL:${IS_CLANG}>>:-fstrict-aliasing>
-      # Sichtbarkeit (kleinere Binärgröße, schnellerer Link)
       $<$<CONFIG:Release>:-fvisibility=hidden -fvisibility-inlines-hidden>
     )
-    # Link
     if (LILIA_LTO)
       target_link_options(${tgt} PRIVATE $<$<CONFIG:Release>:-flto>)
       if (IS_GCC)
         target_link_options(${tgt} PRIVATE -Wl,-O2)
       endif()
     endif()
-
-    # PGO (GCC/Clang)
     if (LILIA_PGO_GENERATE)
       target_compile_options(${tgt} PRIVATE $<$<CONFIG:Release>:-fprofile-generate>)
       target_link_options(${tgt}    PRIVATE $<$<CONFIG:Release>:-fprofile-generate>)
@@ -203,6 +195,26 @@ if (WIN32)
 endif()
 
 # ---------------------------
+# Copy assets next to the EXE after build (Option 1)
+# ---------------------------
+function(lilia_copy_assets tgt)
+  if (EXISTS "${LILIA_ASSETS_DIR}")
+    add_custom_command(TARGET ${tgt} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${tgt}>/assets"
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+              "${LILIA_ASSETS_DIR}"
+              "$<TARGET_FILE_DIR:${tgt}>/assets"
+      COMMENT "Copying runtime assets to $<TARGET_FILE_DIR:${tgt}>/assets"
+    )
+  else()
+    message(WARNING "LILIA_ASSETS_DIR not found: ${LILIA_ASSETS_DIR} — assets won't be copied.")
+  endif()
+endfunction()
+
+# copy only for the UI app (engine/uci may not need assets)
+lilia_copy_assets(lilia_app)
+
+# ---------------------------
 # Output dirs
 # ---------------------------
 foreach(target lilia_engine lilia_app)
@@ -213,5 +225,28 @@ foreach(target lilia_engine lilia_app)
   )
 endforeach()
 
-# Optional: erleichtert Flag-Überprüfung bei Make/Ninja
+# ---------------------------
+# Install rules (so cpack/cmake --install also place assets)
+# ---------------------------
+install(TARGETS lilia_app
+  RUNTIME DESTINATION .
+  BUNDLE  DESTINATION .  # future macOS bundle support if enabled
+)
+if (EXISTS "${LILIA_ASSETS_DIR}")
+  install(DIRECTORY "${LILIA_ASSETS_DIR}/" DESTINATION assets)
+endif()
+
+# Minimal packaging convenience (ZIP on Win/Linux, DragNDrop on macOS)
+set(CPACK_PACKAGE_NAME "ChessEngine_Lilia")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+if (WIN32)
+  set(CPACK_GENERATOR "ZIP")
+elseif(APPLE)
+  set(CPACK_GENERATOR "DragNDrop")
+else()
+  set(CPACK_GENERATOR "TGZ")
+endif()
+include(CPack)
+
+# Optional: export compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
