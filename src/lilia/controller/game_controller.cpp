@@ -533,6 +533,7 @@ void GameController::enqueuePremove(core::Square from, core::Square to) {
   m_game_view.highlightPremoveSquare(from);
   m_game_view.highlightPremoveSquare(to);
   m_premove_queue.push_back(pm);
+  m_sound_manager.playEffect(view::sound::Effect::Premove);
   if (!m_premove_queue.empty()) {
     const auto &front = m_premove_queue.front();
     core::Square dest = getFrontPremoveDestination();
@@ -717,6 +718,9 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 }
 
 void GameController::showAttacks(std::vector<core::Square> att) {
+  // Always clear previous attack highlights so stale squares don't linger when
+  // previewing or chaining premoves.
+  m_game_view.clearAttackHighlights();
   for (auto sq : att) {
     if (hasVirtualPiece(sq))
       m_game_view.highlightCaptureSquare(sq);
