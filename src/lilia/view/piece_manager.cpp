@@ -154,6 +154,7 @@ void PieceManager::renderPieces(sf::RenderWindow& window,
   for (auto& pair : m_pieces) {
     const auto& pos = pair.first;
     auto& piece = pair.second;
+    if (m_hidden_squares.count(pos) > 0) continue;
     if (!chessAnimRef.isAnimating(piece.getId())) {
       piece.setPosition(createPiecePositon(pos));
       piece.draw(window);
@@ -166,6 +167,7 @@ void PieceManager::renderPieces(sf::RenderWindow& window,
 }
 
 void PieceManager::renderPiece(core::Square pos, sf::RenderWindow& window) {
+  if (m_hidden_squares.count(pos) > 0) return;
   auto it = m_pieces.find(pos);
   if (it != m_pieces.end()) {
     it->second.draw(window);
@@ -179,8 +181,13 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to) {
   ghost.setPosition(createPiecePositon(to));
   m_premove_pieces.clear();
   m_premove_pieces[to] = std::move(ghost);
+  m_hidden_squares.clear();
+  m_hidden_squares.insert(from);
 }
 
-void PieceManager::clearPremovePieces() { m_premove_pieces.clear(); }
+void PieceManager::clearPremovePieces() {
+  m_premove_pieces.clear();
+  m_hidden_squares.clear();
+}
 
 }  // namespace lilia::view

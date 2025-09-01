@@ -111,6 +111,7 @@ private:
   [[nodiscard]] bool isPseudoLegalPremove(core::Square from, core::Square to) const;
   [[nodiscard]] model::Position getPositionAfterPremoves() const;
   [[nodiscard]] model::bb::Piece getPieceConsideringPremoves(core::Square sq) const;
+  [[nodiscard]] core::Square getFrontPremoveDestination() const;
   [[nodiscard]] bool hasVirtualPiece(core::Square sq) const;
 
   void movePieceAndClear(const model::Move &move, bool isPlayerMove,

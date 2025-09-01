@@ -535,7 +535,8 @@ void GameController::enqueuePremove(core::Square from, core::Square to) {
   m_premove_queue.push_back(pm);
   if (!m_premove_queue.empty()) {
     const auto &front = m_premove_queue.front();
-    m_game_view.showPremovePiece(front.from, front.to);
+    core::Square dest = getFrontPremoveDestination();
+    m_game_view.showPremovePiece(front.from, dest);
   }
 }
 
@@ -655,7 +656,8 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
     }
     if (!m_premove_queue.empty()) {
       const auto &front = m_premove_queue.front();
-      m_game_view.showPremovePiece(front.from, front.to);
+      core::Square dest = getFrontPremoveDestination();
+      m_game_view.showPremovePiece(front.from, dest);
     } else {
       m_game_view.clearPremovePieces();
     }
@@ -953,6 +955,18 @@ model::bb::Piece GameController::getPieceConsideringPremoves(core::Square sq) co
   model::Position pos = getPositionAfterPremoves();
   if (auto virt = pos.getBoard().getPiece(sq)) return *virt;
   return pc;
+}
+
+core::Square GameController::getFrontPremoveDestination() const {
+  if (m_premove_queue.empty()) return core::NO_SQUARE;
+  core::Square dest = m_premove_queue.front().to;
+  for (size_t i = 1; i < m_premove_queue.size(); ++i) {
+    if (m_premove_queue[i].from == dest)
+      dest = m_premove_queue[i].to;
+    else
+      break;
+  }
+  return dest;
 }
 
 bool GameController::hasVirtualPiece(core::Square sq) const {

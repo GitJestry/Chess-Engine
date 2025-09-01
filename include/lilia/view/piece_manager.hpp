@@ -2,6 +2,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "../controller/mousepos.hpp"
 #include "board_view.hpp"
@@ -49,6 +50,8 @@ class PieceManager {
   std::unordered_map<core::Square, Piece> m_pieces;
   // Pieces rendered for premove visualization without affecting board state
   std::unordered_map<core::Square, Piece> m_premove_pieces;
+  // Squares hidden from the main piece map during premove preview
+  std::unordered_set<core::Square> m_hidden_squares;
 };
 
 }  // namespace lilia::view
