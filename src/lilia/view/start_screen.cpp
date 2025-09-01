@@ -953,7 +953,9 @@ StartConfig StartScreen::run() {
 
   // Input focus for popup
   static bool fenInputActive = false;
+  static bool skipNextText = false;
   (void)fenInputActive;
+  (void)skipNextText;
 
   // loop
   while (m_window.isOpen()) {
@@ -977,6 +979,7 @@ StartConfig StartScreen::run() {
           if (e.key.code == sf::Keyboard::F) {
             m_showFenPopup = true;
             fenInputActive = true;
+            skipNextText = true;
             m_fenInputText.setString(m_fenString);
           } else if (m_timeEnabled && e.key.code == sf::Keyboard::Left) {
             m_baseSeconds = clampBaseSeconds(m_baseSeconds - (e.key.shift ? 300 : 60));
@@ -1092,12 +1095,16 @@ StartConfig StartScreen::run() {
           }
         }
         if (fenInputActive && e.type == sf::Event::TextEntered) {
-          if (e.text.unicode == 8) {
-            if (!m_fenString.empty()) m_fenString.pop_back();
-          } else if (e.text.unicode >= 32 && e.text.unicode < 127) {
-            m_fenString.push_back(static_cast<char>(e.text.unicode));
+          if (skipNextText) {
+            skipNextText = false;
+          } else {
+            if (e.text.unicode == 8) {
+              if (!m_fenString.empty()) m_fenString.pop_back();
+            } else if (e.text.unicode >= 32 && e.text.unicode < 127) {
+              m_fenString.push_back(static_cast<char>(e.text.unicode));
+            }
+            m_fenInputText.setString(m_fenString);
           }
-          m_fenInputText.setString(m_fenString);
         }
       }
     }
