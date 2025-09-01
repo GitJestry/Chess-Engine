@@ -680,7 +680,7 @@ StartConfig StartScreen::run() {
       const float pad = 24.f;
       logoBG.setPosition(snapf(static_cast<float>(ws.x) - pad), snapf(pad));
       logoBG.setRotation(0.f);
-      logoBG.setColor(sf::Color(150, 120, 255, 50));
+      logoBG.setColor(sf::Color(150, 120, 255, 70));
       m_window.draw(logoBG, sf::RenderStates(sf::BlendAlpha));
     }
 
