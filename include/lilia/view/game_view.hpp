@@ -98,6 +98,10 @@ class GameView {
   void clearNonPremoveHighlights();
   void clearAttackHighlights();
 
+  // Preview helpers for premoves
+  void showPremovePiece(core::Square from, core::Square to);
+  void clearPremovePieces();
+
   void warningKingSquareAnim(core::Square ksq);
   void animationSnapAndReturn(core::Square sq, core::MousePos mousePos);
   void animationMovePiece(core::Square from, core::Square to,
