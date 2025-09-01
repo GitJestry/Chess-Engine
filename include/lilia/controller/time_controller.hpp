@@ -15,6 +15,7 @@ class TimeController {
 
   [[nodiscard]] float getTime(core::Color color) const;
   [[nodiscard]] std::optional<core::Color> getFlagged() const;
+  [[nodiscard]] std::optional<core::Color> getActive() const;
 
  private:
   float m_white_time;

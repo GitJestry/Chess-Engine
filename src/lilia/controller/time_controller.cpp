@@ -40,5 +40,9 @@ float TimeController::getTime(core::Color color) const {
 
 std::optional<core::Color> TimeController::getFlagged() const { return m_flagged; }
 
+std::optional<core::Color> TimeController::getActive() const {
+  return m_running ? std::optional<core::Color>(m_active) : std::nullopt;
+}
+
 }  // namespace lilia::controller
 

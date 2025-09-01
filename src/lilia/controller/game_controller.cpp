@@ -416,6 +416,7 @@ void GameController::update(float dt) {
                             m_time_controller->getTime(core::Color::White));
     m_game_view.updateClock(core::Color::Black,
                             m_time_controller->getTime(core::Color::Black));
+    m_game_view.setClockActive(m_time_controller->getActive());
     if (auto flag = m_time_controller->getFlagged()) {
       m_chess_game.setResult(core::GameResult::TIMEOUT);
       if (m_game_manager)
