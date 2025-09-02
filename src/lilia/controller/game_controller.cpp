@@ -43,7 +43,7 @@ inline std::string resultToString(core::GameResult res, core::Color sideToMove) 
 }
 
 // chess.com allows multiple queued safe premoves; keep a sane limit
-constexpr std::size_t MAX_PREMOVES = 8;
+constexpr std::size_t MAX_PREMOVES = 200;
 
 }  // namespace
 
@@ -662,18 +662,70 @@ void GameController::clearPremove() {
 }
 
 void GameController::updatePremovePreviews() {
-  // Restore board from any previous preview, then rebuild from queue head->tail
+  // Rebuild ghosts from the *model* head position; never trust transient view state.
   m_game_view.clearPremovePieces(true);
+
+  // Start from the live game position and apply queued premoves virtually,
+  // step by step, so later premoves "see" the earlier ones.
+  model::Position pos = m_chess_game.getPositionRefForBot();
+
   for (const auto &pm : m_premove_queue) {
-    core::PieceType type = m_game_view.getPieceType(pm.from);
+    auto moverOpt = pos.getBoard().getPiece(pm.from);
+    if (!moverOpt) {
+      // If the mover is unexpectedly missing in the virtual chain, skip drawing but
+      // still keep the chain consistent by not crashing.
+      continue;
+    }
+
+    const core::PieceType movingType = moverOpt->type;
+    const core::Color movingCol = moverOpt->color;
+
+    // Draw the ghost for this premove (promotion handled by view).
     m_game_view.showPremovePiece(pm.from, pm.to, pm.promotion);
-    if (type == core::PieceType::King &&
+
+    // Castling: also draw the rook's ghost based on King move semantics.
+    if (movingType == core::PieceType::King &&
         std::abs(static_cast<int>(pm.to) - static_cast<int>(pm.from)) == 2) {
       core::Square rookFrom = (pm.to > pm.from) ? static_cast<core::Square>(pm.to + 1)
                                                 : static_cast<core::Square>(pm.to - 2);
       core::Square rookTo = (pm.to > pm.from) ? static_cast<core::Square>(pm.to - 1)
                                               : static_cast<core::Square>(pm.to + 1);
       m_game_view.showPremovePiece(rookFrom, rookTo);
+    }
+
+    // --- Advance the virtual board for the next premove in the chain ---
+
+    // Remove captured piece (incl. potential en-passant victim).
+    if (pm.capturedType != core::PieceType::None) {
+      if (pos.getBoard().getPiece(pm.to)) {
+        pos.getBoard().removePiece(pm.to);
+      } else if (movingType == core::PieceType::Pawn &&
+                 ((static_cast<int>(pm.from) ^ static_cast<int>(pm.to)) & 7)) {
+        // Diagonal pawn move onto empty square → en-passant capture
+        core::Square epSq = (movingCol == core::Color::White)
+                                ? static_cast<core::Square>(pm.to - 8)
+                                : static_cast<core::Square>(pm.to + 8);
+        pos.getBoard().removePiece(epSq);
+      }
+    }
+
+    // Move the piece and handle promotion.
+    model::bb::Piece moving = *moverOpt;
+    pos.getBoard().removePiece(pm.from);
+    if (pm.promotion != core::PieceType::None) moving.type = pm.promotion;
+    pos.getBoard().setPiece(pm.to, moving);
+
+    // Handle castling rook in the virtual board as well.
+    if (moving.type == core::PieceType::King &&
+        std::abs(static_cast<int>(pm.to) - static_cast<int>(pm.from)) == 2) {
+      core::Square rookFrom = (pm.to > pm.from) ? static_cast<core::Square>(pm.to + 1)
+                                                : static_cast<core::Square>(pm.to - 2);
+      core::Square rookTo = (pm.to > pm.from) ? static_cast<core::Square>(pm.to - 1)
+                                              : static_cast<core::Square>(pm.to + 1);
+      if (auto rook = pos.getBoard().getPiece(rookFrom)) {
+        pos.getBoard().removePiece(rookFrom);
+        pos.getBoard().setPiece(rookTo, *rook);
+      }
     }
   }
 }
@@ -1387,7 +1439,22 @@ void GameController::stepForward() {
                                       : static_cast<core::Square>(info.move.to + 1);
       m_game_view.animationMovePiece(rookFrom, rookTo);
     }
-    m_game_view.animationMovePiece(info.move.from, info.move.to, epVictim, info.move.promotion);
+
+    // Defer premove visual restoration until this animation completes to avoid racing.
+    auto onMainMoveDone = [this]() {
+      if (m_premove_suspended && m_fen_index == m_fen_history.size() - 1) {
+        m_game_view.clearPremoveHighlights();
+        for (const auto &pm : m_premove_queue) {
+          m_game_view.highlightPremoveSquare(pm.from);
+          m_game_view.highlightPremoveSquare(pm.to);
+        }
+        updatePremovePreviews();  // now model-driven, safe vs. animations
+        m_premove_suspended = false;
+      }
+    };
+    m_game_view.animationMovePiece(info.move.from, info.move.to, epVictim, info.move.promotion,
+                                   onMainMoveDone);
+
     ++m_fen_index;
     m_game_view.selectMove(m_fen_index ? m_fen_index - 1 : static_cast<std::size_t>(-1));
     m_last_move_squares = {info.move.from, info.move.to};
@@ -1414,16 +1481,9 @@ void GameController::stepForward() {
     }
     syncCapturedPieces();
   }
-  // Restore premove visuals when returning to the latest position
-  if (m_premove_suspended && m_fen_index == m_fen_history.size() - 1) {
-    m_game_view.clearPremoveHighlights();
-    for (const auto &pm : m_premove_queue) {
-      m_game_view.highlightPremoveSquare(pm.from);
-      m_game_view.highlightPremoveSquare(pm.to);
-    }
-    updatePremovePreviews();
-    m_premove_suspended = false;
-  }
+
+  // (Restoration of premove visuals when returning to head now happens
+  //  in the animation completion callback above.)
   m_game_view.setHistoryOverlay(m_chess_game.getResult() == core::GameResult::ONGOING &&
                                 m_fen_index != m_fen_history.size() - 1);
 }
