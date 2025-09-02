@@ -109,7 +109,7 @@ private:
   void hoverSquare(core::Square sq);
   void dehoverSquare();
   void clearPremove();
-  void enqueuePremove(core::Square from, core::Square to);
+  bool enqueuePremove(core::Square from, core::Square to);
   void updatePremovePreviews();
   [[nodiscard]] bool isPseudoLegalPremove(core::Square from, core::Square to) const;
   [[nodiscard]] model::Position getPositionAfterPremoves() const;
@@ -156,6 +156,13 @@ private:
 
   std::deque<Premove> m_premove_queue;
   bool m_premove_suspended = false; ///< Premove visuals hidden while browsing history
+  // Temporary info while waiting for a premove promotion selection
+  bool m_pending_premove_promotion = false;
+  core::Square m_ppromo_from = core::NO_SQUARE;
+  core::Square m_ppromo_to = core::NO_SQUARE;
+  core::PieceType m_ppromo_captured_type = core::PieceType::None;
+  core::Color m_ppromo_captured_color = core::Color::White;
+  core::Color m_ppromo_mover_color = core::Color::White;
   core::Square m_pending_from = core::NO_SQUARE;
   core::Square m_pending_to = core::NO_SQUARE;
   core::PieceType m_pending_capture_type = core::PieceType::None;

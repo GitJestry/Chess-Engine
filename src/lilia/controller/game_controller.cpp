@@ -618,39 +618,51 @@ void GameController::dehoverSquare() {
 }
 
 /* -------------------- Premove queue -------------------- */
-void GameController::enqueuePremove(core::Square from, core::Square to) {
+bool GameController::enqueuePremove(core::Square from, core::Square to) {
   // Only allow premove for the human side NOT to move
   const auto st = m_chess_game.getGameState();
-  if (!m_game_manager || !m_game_manager->isHuman(~st.sideToMove)) return;
+  if (!m_game_manager || !m_game_manager->isHuman(~st.sideToMove)) return false;
 
-  if (m_premove_queue.size() >= MAX_PREMOVES) return;
-  if (!isPseudoLegalPremove(from, to)) return;
+  if (m_premove_queue.size() >= MAX_PREMOVES) return false;
+  if (!isPseudoLegalPremove(from, to)) return false;
 
-  // Use virtual position AFTER current queue to determine
-  // mover/captures/promotions
+  // Use virtual position AFTER current queue to determine mover/captures
   model::Position pos = getPositionAfterPremoves();
+
+  auto moverOpt = pos.getBoard().getPiece(from);
+  if (!moverOpt) return false;
+
+  const core::PieceType moverType = moverOpt->type;
+  const core::Color moverColor = moverOpt->color;
+
+  // Capture info from virtual board
+  core::PieceType capType = core::PieceType::None;
+  core::Color capColor = core::Color::White;
+  if (auto cap = pos.getBoard().getPiece(to)) {
+    capType = cap->type;
+    capColor = cap->color;
+  }
+
+  // Promotion? -> defer until user selects piece type
+  int rank = static_cast<int>(to) / 8;
+  if (moverType == core::PieceType::Pawn && (rank == 0 || rank == 7)) {
+    m_game_view.playPromotionSelectAnim(to, moverColor);
+    m_pending_premove_promotion = true;
+    m_ppromo_from = from;
+    m_ppromo_to = to;
+    m_ppromo_captured_type = capType;
+    m_ppromo_captured_color = capColor;
+    m_ppromo_mover_color = moverColor;
+    return false;
+  }
 
   Premove pm{};
   pm.from = from;
   pm.to = to;
   pm.moverColor = ~st.sideToMove;
-
-  // Promotion?
-  if (auto mover = pos.getBoard().getPiece(from)) {
-    int rank = static_cast<int>(to) / 8;
-    if (mover->type == core::PieceType::Pawn && (rank == 0 || rank == 7)) {
-      pm.promotion = core::PieceType::Queen;  // default like chess.com
-    }
-  }
-
-  // Capture info from virtual board
-  if (auto cap = pos.getBoard().getPiece(to)) {
-    pm.capturedType = cap->type;
-    pm.capturedColor = cap->color;
-  } else {
-    pm.capturedType = core::PieceType::None;
-    pm.capturedColor = core::Color::White;  // unused, kept for completeness
-  }
+  pm.promotion = core::PieceType::None;
+  pm.capturedType = capType;
+  pm.capturedColor = capColor;
 
   // Visuals
   m_game_view.clearAttackHighlights();
@@ -664,14 +676,18 @@ void GameController::enqueuePremove(core::Square from, core::Square to) {
 
   // Rebuild preview so ghosts end up on the latest squares per piece
   updatePremovePreviews();
+
+  return true;
 }
 
 void GameController::clearPremove() {
-  if (!m_premove_queue.empty()) {
+  if (!m_premove_queue.empty() || m_pending_premove_promotion) {
     m_premove_queue.clear();
     m_game_view.clearPremoveHighlights();
     m_game_view.clearPremovePieces(true);  // restore any stashed captures
     highlightLastMove();
+    m_pending_premove_promotion = false;
+    m_ppromo_from = m_ppromo_to = core::NO_SQUARE;
   }
 }
 
@@ -1008,6 +1024,31 @@ void GameController::onClick(core::MousePos mousePos) {
   if (m_game_view.isInPromotionSelection()) {
     const core::PieceType promoType = m_game_view.getSelectedPromotion(mousePos);
     m_game_view.removePromotionSelection();
+    if (m_pending_premove_promotion) {
+      if (promoType != core::PieceType::None) {
+        Premove pm{};
+        pm.from = m_ppromo_from;
+        pm.to = m_ppromo_to;
+        pm.promotion = promoType;
+        pm.capturedType = m_ppromo_captured_type;
+        pm.capturedColor = m_ppromo_captured_color;
+        pm.moverColor = m_ppromo_mover_color;
+
+        m_game_view.clearAttackHighlights();
+        m_game_view.clearHighlightSquare(pm.from);
+        m_game_view.highlightPremoveSquare(pm.from);
+        m_game_view.highlightPremoveSquare(pm.to);
+        m_game_view.highlightSquare(pm.to);
+
+        m_premove_queue.push_back(pm);
+        m_sound_manager.playEffect(view::sound::Effect::Premove);
+        updatePremovePreviews();
+      }
+      m_pending_premove_promotion = false;
+      m_ppromo_from = m_ppromo_to = core::NO_SQUARE;
+      deselectSquare();
+      return;
+    }
     if (m_game_manager) m_game_manager->completePendingPromotion(promoType);
     deselectSquare();
     return;
@@ -1127,8 +1168,7 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
       }
     } else if (fromColor == humanNextColor && humanNextIsHuman) {
       // Drag-to-premove when it's not your turn
-      enqueuePremove(from, to);
-      setPremove = true;
+      setPremove = enqueuePremove(from, to);
     }
   }
 
