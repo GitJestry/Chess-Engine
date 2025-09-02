@@ -109,7 +109,8 @@ private:
   void hoverSquare(core::Square sq);
   void dehoverSquare();
   void clearPremove();
-  void enqueuePremove(core::Square from, core::Square to);
+  /// Queue a premove; returns true if the premove was accepted.
+  [[nodiscard]] bool enqueuePremove(core::Square from, core::Square to);
   void updatePremovePreviews();
   [[nodiscard]] bool isPseudoLegalPremove(core::Square from, core::Square to) const;
   [[nodiscard]] model::Position getPositionAfterPremoves() const;

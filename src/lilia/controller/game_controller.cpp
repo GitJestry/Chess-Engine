@@ -622,16 +622,16 @@ void GameController::dehoverSquare() {
 }
 
 /* -------------------- Premove queue -------------------- */
-void GameController::enqueuePremove(core::Square from, core::Square to) {
+bool GameController::enqueuePremove(core::Square from, core::Square to) {
   // Only allow premove for the human side NOT to move
   const auto st = m_chess_game.getGameState();
   if (!m_game_manager || !m_game_manager->isHuman(~st.sideToMove))
-    return;
+    return false;
 
   if (m_premove_queue.size() >= MAX_PREMOVES)
-    return;
+    return false;
   if (!isPseudoLegalPremove(from, to))
-    return;
+    return false;
 
   // Use virtual position AFTER current queue to determine
   // mover/captures/promotions
@@ -670,6 +670,7 @@ void GameController::enqueuePremove(core::Square from, core::Square to) {
 
   // Rebuild preview so ghosts end up on the latest squares per piece
   updatePremovePreviews();
+  return true;
 }
 
 void GameController::clearPremove() {
@@ -999,9 +1000,10 @@ void GameController::onClick(core::MousePos mousePos) {
       return; // don't reselect
     }
     if (!ownTurnAndPiece && canPremove) {
-      enqueuePremove(m_selected_sq, sq);
-      m_selected_sq = core::NO_SQUARE;
-      return; // don't reselect
+      if (enqueuePremove(m_selected_sq, sq)) {
+        m_selected_sq = core::NO_SQUARE;
+        return; // don't reselect
+      }
     }
 
     // Not a legal click move -> maybe change selection
@@ -1099,8 +1101,7 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
       }
     } else if (fromColor == humanNextColor && humanNextIsHuman) {
       // Drag-to-premove when it's not your turn
-      enqueuePremove(from, to);
-      setPremove = true;
+      setPremove = enqueuePremove(from, to);
     }
   }
 
