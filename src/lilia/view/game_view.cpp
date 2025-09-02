@@ -200,6 +200,10 @@ MoveListView::Option GameView::getOptionAt(core::MousePos mousePos) const {
 
 void GameView::setGameOver(bool over) {
   m_move_list.setGameOver(over);
+  if (over) {
+    // Ensure move history overlay is hidden when the game is finished
+    m_board_view.setHistoryOverlay(false);
+  }
 }
 
 /* ---------- Modals ---------- */
