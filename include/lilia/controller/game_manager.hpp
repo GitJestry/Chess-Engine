@@ -38,7 +38,8 @@ public:
 
   void update(float dt);
 
-  bool requestUserMove(core::Square from, core::Square to, bool onClick);
+  bool requestUserMove(core::Square from, core::Square to, bool onClick,
+                       core::PieceType promotion = core::PieceType::None);
 
   void completePendingPromotion(core::PieceType promotion);
 
