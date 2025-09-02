@@ -605,10 +605,17 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
 
   core::PieceType capturedType = core::PieceType::None;
   if (move.isCapture) {
-    core::Square capSq = move.isEnPassant ? epVictimSq : to;
-    capturedType = m_game_view.getPieceType(capSq);
-    if (capturedType == core::PieceType::None && m_pending_capture_type != core::PieceType::None)
+    // When a premove capture is executed, the destination square may already
+    // contain our moving piece, making the visual lookup return the wrong type
+    // (e.g. the queen appears, but the captured pawn's moves are used). Prefer
+    // the cached capture info gathered before executing the premove and fall
+    // back to querying the view only if no pending capture type was stored.
+    if (m_pending_capture_type != core::PieceType::None) {
       capturedType = m_pending_capture_type;
+    } else {
+      core::Square capSq = move.isEnPassant ? epVictimSq : to;
+      capturedType = m_game_view.getPieceType(capSq);
+    }
   }
 
   // 4) Animate or drop
