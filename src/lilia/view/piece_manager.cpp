@@ -295,6 +295,14 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to, core::Pie
       m_premove_origin.erase(itO);
     }
 
+    // If this square held a stashed capture from an earlier step,
+    // drop it now so the captured piece doesn't get resurrected and
+    // accidentally participate in later premoves. Once the ghost
+    // moves on, the replacement is final.
+    if (auto bak = m_captured_backup.find(from); bak != m_captured_backup.end()) {
+      m_captured_backup.erase(bak);
+    }
+
     if (promotion != core::PieceType::None) {
       ghost = makeGhost(promotion, ghost.getColor());
     }
