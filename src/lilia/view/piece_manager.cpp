@@ -276,7 +276,8 @@ void PieceManager::renderPiece(core::Square pos, sf::RenderWindow &window) {
 }
 
 /* -------------------- Premove (ghost pieces) -------------------- */
-void PieceManager::setPremovePiece(core::Square from, core::Square to) {
+void PieceManager::setPremovePiece(core::Square from, core::Square to,
+                                   core::PieceType type, core::Color color) {
   // If the piece was already a ghost (chained premove), move that ghost
   Piece ghost;
   auto existing = m_premove_pieces.find(from);
@@ -287,9 +288,20 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to) {
     m_hidden_squares.erase(from);
   } else {
     auto it = m_pieces.find(from);
-    if (it == m_pieces.end())
-      return;
-    ghost = it->second; // copy to preserve original
+    if (it != m_pieces.end() && it->second.getType() == type &&
+        it->second.getColor() == color) {
+      ghost = it->second; // copy to preserve original
+    } else {
+      std::uint8_t numTypes = 6;
+      std::string filename =
+          constant::ASSET_PIECES_FILE_PATH + "/piece_" +
+          std::to_string(static_cast<std::uint8_t>(type) +
+                         numTypes * static_cast<std::uint8_t>(color)) +
+          ".png";
+      const sf::Texture &texture = TextureTable::getInstance().get(filename);
+      ghost = Piece(color, type, texture);
+      ghost.setScale(constant::ASSET_PIECE_SCALE, constant::ASSET_PIECE_SCALE);
+    }
     m_hidden_squares.insert(from);
   }
 

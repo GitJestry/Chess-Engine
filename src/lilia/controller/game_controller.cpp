@@ -487,7 +487,10 @@ void GameController::update(float dt) {
 
       // Commit instantly (no animation), then hand it to the game manager
       m_game_view.movePiece(m_pending_from, m_pending_to);
-      (void)m_game_manager->requestUserMove(m_pending_from, m_pending_to, /*onClick*/ true);
+      (void)m_game_manager->requestUserMove(m_pending_from, m_pending_to,
+                                            /*onClick*/ true);
+      // Rebuild ghosts so the moving piece remains a ghost for any queued follow-ups
+      updatePremovePreviews();
     } else {
       // Cancel entire chain if first premove is no longer legal
       clearPremove();
@@ -542,7 +545,10 @@ void GameController::enqueuePremove(core::Square from, core::Square to) {
   if (!isPseudoLegalPremove(from, to)) return;
 
   model::Position pos = getPositionAfterPremoves();
-  Premove pm{from, to, core::PieceType::None, core::Color::White};
+  auto mover = pos.getBoard().getPiece(from);
+  if (!mover) return;
+  Premove pm{from,       to,         core::PieceType::None, core::Color::White,
+             mover->type, mover->color};
   if (auto cap = pos.getBoard().getPiece(to)) {
     pm.capturedType = cap->type;
     pm.capturedColor = cap->color;
@@ -572,7 +578,7 @@ void GameController::updatePremovePreviews() {
   // Restore board from any previous preview, then rebuild from queue head->tail
   m_game_view.clearPremovePieces(true);
   for (const auto &pm : m_premove_queue) {
-    m_game_view.showPremovePiece(pm.from, pm.to);
+    m_game_view.showPremovePiece(pm.from, pm.to, pm.moverType, pm.moverColor);
   }
 }
 
@@ -983,7 +989,8 @@ model::Position GameController::getPositionAfterPremoves() const {
   model::MoveGenerator gen;
   for (const auto &pm : m_premove_queue) {
     auto mover = pos.getBoard().getPiece(pm.from);
-    if (!mover) break;
+    if (!mover || mover->color != pm.moverColor || mover->type != pm.moverType)
+      break;
     pos.getState().sideToMove = mover->color;
     std::vector<model::Move> pseudo;
     gen.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), pseudo);

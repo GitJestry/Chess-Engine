@@ -40,7 +40,8 @@ class PieceManager {
   void renderPiece(core::Square pos, sf::RenderWindow& window);
 
   // Visual-only helpers for premove previews
-  void setPremovePiece(core::Square from, core::Square to);
+  void setPremovePiece(core::Square from, core::Square to,
+                       core::PieceType type, core::Color color);
   void clearPremovePieces(bool restore = true);
   void consumePremoveGhost(core::Square from, core::Square to);
 

@@ -46,6 +46,8 @@ struct Premove {
   core::Square to;
   core::PieceType capturedType;
   core::Color capturedColor;
+  core::PieceType moverType;
+  core::Color moverColor;
 };
 
 struct TimeView {

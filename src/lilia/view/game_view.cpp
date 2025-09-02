@@ -421,8 +421,9 @@ void GameView::clearAttackHighlights() {
   m_highlight_manager.clearAttackHighlights();
 }
 
-void GameView::showPremovePiece(core::Square from, core::Square to) {
-  m_piece_manager.setPremovePiece(from, to);
+void GameView::showPremovePiece(core::Square from, core::Square to,
+                                core::PieceType type, core::Color color) {
+  m_piece_manager.setPremovePiece(from, to, type, color);
 }
 
 void GameView::clearPremovePieces(bool restore) {
