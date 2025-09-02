@@ -299,8 +299,16 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to, core::Pie
     // drop it now so the captured piece doesn't get resurrected and
     // accidentally participate in later premoves. Once the ghost
     // moves on, the replacement is final.
+    //
+    // However, if we're leaving the original starting square of the
+    // premove chain, that "captured" piece is actually our real piece
+    // waiting to be restored if the premove is cancelled. In that case
+    // keep the backup instead of erasing it; otherwise the piece would
+    // vanish after a few back-and-forth retargets.
     if (auto bak = m_captured_backup.find(from); bak != m_captured_backup.end()) {
-      m_captured_backup.erase(bak);
+      if (from != origin) {
+        m_captured_backup.erase(bak);
+      }
     }
 
     if (promotion != core::PieceType::None) {
@@ -323,10 +331,20 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to, core::Pie
     m_premove_pieces.erase(prevGhost);
   }
 
-  // If 'to' has a real piece, stash it so cancel restores it
+  // If 'to' has a real piece, stash it so cancel restores it.
+  // When returning to the original square of the premove chain,
+  // however, that piece is our own hidden piece. Keeping it in
+  // the backup would let it be mistaken for a captured piece of
+  // the same type (e.g., knight vs. knight) and moved instead of
+  // the actual premoved piece on subsequent drags. In that case,
+  // leave it in place but keep the square hidden.
   if (auto captured = m_pieces.find(to); captured != m_pieces.end()) {
-    m_captured_backup[to] = std::move(captured->second);
-    m_pieces.erase(captured);
+    if (to != origin) {
+      m_captured_backup[to] = std::move(captured->second);
+      m_pieces.erase(captured);
+    } else {
+      m_hidden_squares.insert(to);
+    }
   }
 
   ghost.setPosition(createPiecePositon(to));
