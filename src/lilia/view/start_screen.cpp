@@ -302,6 +302,14 @@ void StartScreen::setupUI() {
                          snapf(y0 + PANEL_H - 120.f));
   centerText(m_startText, m_startBtn.getGlobalBounds());
 
+  // FEN error hint above Start button
+  m_fenErrorText.setFont(m_font);
+  m_fenErrorText.setString("ERR -> FEN = STANDARD");
+  m_fenErrorText.setCharacterSize(14);
+  m_fenErrorText.setFillColor(colInvalid);
+  centerText(m_fenErrorText, m_startBtn.getGlobalBounds(),
+             -(m_startBtn.getSize().y / 2.f + 10.f));
+
   // -------- Inline FEN (50% smaller height) --------
   const float fenW = PANEL_W * 0.95f;
   const float fenH = 22.f;  // 44 * 0.5
@@ -787,6 +795,9 @@ StartConfig StartScreen::run() {
       }
     }
 
+    const bool fenEmpty = m_fenString.empty();
+    const bool fenValid = (!fenEmpty) && isValidFen(m_fenString);
+
     // Start (beveled)
     {
       auto r = m_startBtn.getGlobalBounds();
@@ -794,12 +805,10 @@ StartConfig StartScreen::run() {
       drawBevelButton3D(m_window, r, colAccent, hov, false);
       centerText(m_startText, r);
       m_window.draw(m_startText);
+      if (!fenEmpty && !fenValid) m_window.draw(m_fenErrorText);
     }
 
     // -------- FEN field --------
-    const bool fenEmpty = m_fenString.empty();
-    const bool fenValid = (!fenEmpty) && isValidFen(m_fenString);
-
     m_fenInputBox.setOutlineColor(fenEmpty ? colInputBorder : (fenValid ? colValid : colInvalid));
     m_window.draw(m_fenInputBox);
 
