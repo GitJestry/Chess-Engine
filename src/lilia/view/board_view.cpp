@@ -179,12 +179,18 @@ BoardView::BoardView()
     : m_board({constant::WINDOW_PX_SIZE / 2, constant::WINDOW_PX_SIZE / 2}),
       m_flip_pos(),
       m_flip_size(0.f),
-      m_flipped(false) {}
+      m_flipped(false),
+      m_show_history_overlay(false) {}
 
 void BoardView::init() {
   m_board.init(TextureTable::getInstance().get(constant::STR_TEXTURE_WHITE),
                TextureTable::getInstance().get(constant::STR_TEXTURE_BLACK),
                TextureTable::getInstance().get(constant::STR_TEXTURE_TRANSPARENT));
+  m_history_overlay.setTexture(
+      TextureTable::getInstance().get(constant::STR_TEXTURE_HISTORY_OVERLAY));
+  m_history_overlay.setScale(constant::WINDOW_PX_SIZE, constant::WINDOW_PX_SIZE);
+  m_history_overlay.setOriginToCenter();
+  m_show_history_overlay = false;
   setPosition(getPosition());
 }
 
@@ -205,6 +211,12 @@ void BoardView::renderBoard(sf::RenderWindow& window) {
     const float cx = slot.left + slot.width * 0.5f;
     const float cy = slot.top + slot.height * 0.5f;
     drawTooltip(window, {cx, cy}, "Flip board");
+  }
+}
+
+void BoardView::renderHistoryOverlay(sf::RenderWindow& window) {
+  if (m_show_history_overlay) {
+    m_history_overlay.draw(window);
   }
 }
 
@@ -232,6 +244,7 @@ void BoardView::setFlipped(bool flipped) {
 
 void BoardView::setPosition(const Entity::Position& pos) {
   m_board.setPosition(pos);
+  m_history_overlay.setPosition(pos);
   float iconOffset = constant::SQUARE_PX_SIZE * 0.2f;
   m_flip_size = constant::SQUARE_PX_SIZE * 0.3f;
   m_flip_pos = {pos.x + constant::WINDOW_PX_SIZE / 2.f + iconOffset,
@@ -309,6 +322,10 @@ core::Square BoardView::mousePosToSquare(core::MousePos mousePos) const {
   }
 
   return static_cast<core::Square>(rankFromWhite * 8 + fileFromWhite);
+}
+
+void BoardView::setHistoryOverlay(bool show) {
+  m_show_history_overlay = show;
 }
 
 }  // namespace lilia::view

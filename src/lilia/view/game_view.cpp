@@ -84,6 +84,7 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
 
 void GameView::init(const std::string &fen) {
   m_board_view.init();
+  m_board_view.setHistoryOverlay(false);
   m_piece_manager.initFromFen(fen);
   m_move_list.clear();
   m_eval_bar.reset();
@@ -114,6 +115,7 @@ void GameView::render() {
   m_piece_manager.renderPieces(m_window, m_chess_animator);
   m_highlight_manager.renderAttack(m_window);
   m_chess_animator.render(m_window);
+  m_board_view.renderHistoryOverlay(m_window);
   if (m_show_clocks) {
     m_top_clock.render(m_window);
     m_bottom_clock.render(m_window);
@@ -180,6 +182,10 @@ void GameView::scrollMoveList(float delta) {
 
 void GameView::setBotMode(bool anyBot) {
   m_move_list.setBotMode(anyBot);
+}
+
+void GameView::setHistoryOverlay(bool show) {
+  m_board_view.setHistoryOverlay(show);
 }
 
 std::size_t GameView::getMoveIndexAt(core::MousePos mousePos) const {

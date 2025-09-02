@@ -63,6 +63,7 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
     // If the user is viewing history, jump back to head before applying
     if (this->m_fen_index != this->m_fen_history.size() - 1) {
       this->m_fen_index = this->m_fen_history.size() - 1;
+      this->m_game_view.setHistoryOverlay(false);
       this->m_game_view.setBoardFen(this->m_fen_history[this->m_fen_index]);
       this->m_eval_cp.store(this->m_eval_history[this->m_fen_index]);
       this->m_game_view.updateEval(this->m_eval_history[this->m_fen_index]);
@@ -89,6 +90,7 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
     this->m_fen_history.push_back(this->m_chess_game.getFen());
     this->m_eval_history.push_back(this->m_eval_cp.load());
     this->m_fen_index = this->m_fen_history.size() - 1;
+    this->m_game_view.setHistoryOverlay(false);
     this->m_game_view.updateFen(this->m_fen_history.back());
     this->m_game_view.selectMove(this->m_fen_index ? this->m_fen_index - 1
                                                    : static_cast<std::size_t>(-1));
@@ -154,6 +156,7 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot, bool bla
   m_fen_history.push_back(fen);
   m_eval_history.push_back(m_eval_cp.load());
   m_fen_index = 0;
+  m_game_view.setHistoryOverlay(false);
   m_move_history.clear();
   m_game_view.selectMove(static_cast<std::size_t>(-1));
   m_eval_cp.store(m_eval_history[0]);
@@ -297,6 +300,7 @@ void GameController::handleEvent(const sf::Event &event) {
           m_game_view.setClockActive(std::nullopt);
       }
       syncCapturedPieces();
+      m_game_view.setHistoryOverlay(m_fen_index != m_fen_history.size() - 1);
       return;
     }
   }
@@ -1164,6 +1168,7 @@ void GameController::stepBackward() {
     }
     syncCapturedPieces();
   }
+  m_game_view.setHistoryOverlay(m_fen_index != m_fen_history.size() - 1);
 }
 
 void GameController::stepForward() {
@@ -1227,6 +1232,7 @@ void GameController::stepForward() {
     updatePremovePreviews();
     m_premove_suspended = false;
   }
+  m_game_view.setHistoryOverlay(m_fen_index != m_fen_history.size() - 1);
 }
 
 void GameController::resign() {
