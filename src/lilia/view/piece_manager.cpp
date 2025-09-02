@@ -299,8 +299,16 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to, core::Pie
     // drop it now so the captured piece doesn't get resurrected and
     // accidentally participate in later premoves. Once the ghost
     // moves on, the replacement is final.
+    //
+    // However, if we're leaving the original starting square of the
+    // premove chain, that "captured" piece is actually our real piece
+    // waiting to be restored if the premove is cancelled. In that case
+    // keep the backup instead of erasing it; otherwise the piece would
+    // vanish after a few back-and-forth retargets.
     if (auto bak = m_captured_backup.find(from); bak != m_captured_backup.end()) {
-      m_captured_backup.erase(bak);
+      if (from != origin) {
+        m_captured_backup.erase(bak);
+      }
     }
 
     if (promotion != core::PieceType::None) {
