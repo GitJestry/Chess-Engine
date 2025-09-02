@@ -132,7 +132,8 @@ void PieceManager::movePiece(core::Square from, core::Square to, core::PieceType
     m_pieces[to] = std::move(movingPiece);
   }
 
-  // The piece now occupies 'to', so ensure it's not hidden.
+  // The piece now occupies 'to', so ensure it's not hidden and reveal the origin.
+  m_hidden_squares.erase(from);
   m_hidden_squares.erase(to);
 }
 
@@ -287,10 +288,14 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to, core::Pie
     ghost = std::move(existing->second);
     m_premove_pieces.erase(existing);
     m_premove_origin.erase(from);
+    if (promotion != core::PieceType::None) {
+      ghost = makeGhost(promotion, ghost.getColor());
+    }
   } else {
     auto it = m_pieces.find(from);
     if (it == m_pieces.end()) return;
-    ghost = makeGhost(it->second.getType(), it->second.getColor());
+    core::PieceType gType = (promotion != core::PieceType::None) ? promotion : it->second.getType();
+    ghost = makeGhost(gType, it->second.getColor());
     m_hidden_squares.insert(from);
   }
 
