@@ -300,7 +300,8 @@ void GameController::handleEvent(const sf::Event &event) {
           m_game_view.setClockActive(std::nullopt);
       }
       syncCapturedPieces();
-      m_game_view.setHistoryOverlay(m_fen_index != m_fen_history.size() - 1);
+      m_game_view.setHistoryOverlay(m_chess_game.getResult() == core::GameResult::ONGOING &&
+                                    m_fen_index != m_fen_history.size() - 1);
       return;
     }
   }
@@ -1168,7 +1169,8 @@ void GameController::stepBackward() {
     }
     syncCapturedPieces();
   }
-  m_game_view.setHistoryOverlay(m_fen_index != m_fen_history.size() - 1);
+  m_game_view.setHistoryOverlay(m_chess_game.getResult() == core::GameResult::ONGOING &&
+                                m_fen_index != m_fen_history.size() - 1);
 }
 
 void GameController::stepForward() {
@@ -1232,12 +1234,15 @@ void GameController::stepForward() {
     updatePremovePreviews();
     m_premove_suspended = false;
   }
-  m_game_view.setHistoryOverlay(m_fen_index != m_fen_history.size() - 1);
+  m_game_view.setHistoryOverlay(m_chess_game.getResult() == core::GameResult::ONGOING &&
+                                m_fen_index != m_fen_history.size() - 1);
 }
 
 void GameController::resign() {
   m_game_manager->stopGame();
   m_chess_game.setResult(core::GameResult::CHECKMATE);
+  m_game_view.clearAllHighlights();
+  highlightLastMove();
   showGameOver(core::GameResult::CHECKMATE, m_chess_game.getGameState().sideToMove);
 }
 
