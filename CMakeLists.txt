@@ -183,14 +183,13 @@ endif()
 # Windows: copy runtime DLLs into the build tree (dev convenience)
 # -------------------------------------------------
 if (WIN32)
-  foreach(tgt IN ITEMS lilia_app lilia_engine)
-    add_custom_command(TARGET ${tgt} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_RUNTIME_DLLS:${tgt}>
-        $<TARGET_FILE_DIR:${tgt}>
-      COMMAND_EXPAND_LISTS
-    )
-  endforeach()
+  # Only the SFML app has runtime DLLs we need to copy
+  add_custom_command(TARGET lilia_app POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      $<TARGET_RUNTIME_DLLS:lilia_app>
+      $<TARGET_FILE_DIR:lilia_app>
+    COMMAND_EXPAND_LISTS
+  )
 
   add_custom_command(TARGET lilia_app POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E echo "Copying OpenAL32.dll (if exists)..."
@@ -200,6 +199,7 @@ if (WIN32)
     VERBATIM
   )
 endif()
+
 
 # -------------------------------------------------
 # Copy assets next to the EXE after build (dev convenience)
