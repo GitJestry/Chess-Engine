@@ -153,6 +153,7 @@ private:
   bool m_selection_changed_on_press = false;
 
   std::deque<Premove> m_premove_queue;
+  bool m_premove_suspended = false; ///< Premove visuals hidden while browsing history
   core::Square m_pending_from = core::NO_SQUARE;
   core::Square m_pending_to = core::NO_SQUARE;
   core::PieceType m_pending_capture_type = core::PieceType::None;

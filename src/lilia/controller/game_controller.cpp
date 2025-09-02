@@ -719,6 +719,19 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
     // isolate the piece; disable castling/en-passant; ignore checks
     board.clear();
     board.setPiece(pieceSQ, *pcOpt);
+    // For pawns, include dummy capture targets on both diagonals so
+    // capture premoves remain available even if those squares are empty.
+    if (pcOpt->type == core::PieceType::Pawn) {
+      const int file = static_cast<int>(pieceSQ) & 7;
+      const int forward = (pcOpt->color == core::Color::White) ? 8 : -8;
+      const model::bb::Piece dummy{core::PieceType::Pawn, ~pcOpt->color};
+      if (file > 0) {
+        board.setPiece(static_cast<core::Square>(static_cast<int>(pieceSQ) + forward - 1), dummy);
+      }
+      if (file < 7) {
+        board.setPiece(static_cast<core::Square>(static_cast<int>(pieceSQ) + forward + 1), dummy);
+      }
+    }
     st.castlingRights = 0;
     st.enPassantSquare = core::NO_SQUARE;
   }
@@ -1089,7 +1102,13 @@ void GameController::syncCapturedPieces() {
 }
 
 void GameController::stepBackward() {
-  clearPremove();
+  // Hide premove visuals when traversing history, but preserve the queue
+  if (!m_premove_queue.empty() && m_fen_index == m_fen_history.size() - 1 &&
+      !m_premove_suspended) {
+    m_game_view.clearPremoveHighlights();
+    m_game_view.clearPremovePieces(false);
+    m_premove_suspended = true;
+  }
   if (m_fen_index > 0) {
     const bool leavingFinalState = (m_chess_game.getResult() != core::GameResult::ONGOING &&
                                     m_fen_index == m_fen_history.size() - 1);
@@ -1148,7 +1167,6 @@ void GameController::stepBackward() {
 }
 
 void GameController::stepForward() {
-  clearPremove();
   if (m_fen_index < m_move_history.size()) {
     const bool enteringFinalState = (m_chess_game.getResult() != core::GameResult::ONGOING &&
                                      m_fen_index + 1 == m_fen_history.size() - 1);
@@ -1198,6 +1216,16 @@ void GameController::stepForward() {
         m_game_view.setClockActive(std::nullopt);
     }
     syncCapturedPieces();
+  }
+  // Restore premove visuals when returning to the latest position
+  if (m_premove_suspended && m_fen_index == m_fen_history.size() - 1) {
+    m_game_view.clearPremoveHighlights();
+    for (const auto &pm : m_premove_queue) {
+      m_game_view.highlightPremoveSquare(pm.from);
+      m_game_view.highlightPremoveSquare(pm.to);
+    }
+    updatePremovePreviews();
+    m_premove_suspended = false;
   }
 }
 

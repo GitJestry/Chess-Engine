@@ -234,6 +234,10 @@ void PieceManager::renderPieces(sf::RenderWindow& window,
   }
   // Top layer: premove ghosts always on top
   for (auto& pair : m_premove_pieces) {
+    // Recompute position each frame so board flips stay in sync
+    if (!chessAnimRef.isAnimating(pair.second.getId())) {
+      pair.second.setPosition(createPiecePositon(pair.first));
+    }
     pair.second.draw(window);
   }
 }
