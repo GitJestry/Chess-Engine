@@ -44,7 +44,6 @@ class GameView {
   void updateFen(const std::string &fen);
   void scrollMoveList(float delta);
   void setBotMode(bool anyBot);
-  void setHistoryOverlay(bool show);
 
   [[nodiscard]] std::size_t getMoveIndexAt(core::MousePos mousePos) const;
   [[nodiscard]] MoveListView::Option getOptionAt(core::MousePos mousePos) const;

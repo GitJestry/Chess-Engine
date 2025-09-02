@@ -85,7 +85,6 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
 
 void GameView::init(const std::string &fen) {
   m_board_view.init();
-  m_board_view.setHistoryOverlay(false);
   m_piece_manager.initFromFen(fen);
   m_move_list.clear();
   m_eval_bar.reset();
@@ -127,8 +126,6 @@ void GameView::render() {
     m_chess_animator.render(m_window);
     m_piece_manager.renderPremoveGhosts(m_window, m_chess_animator);
   }
-
-  m_board_view.renderHistoryOverlay(m_window);
   if (m_show_clocks) {
     m_top_clock.render(m_window);
     m_bottom_clock.render(m_window);
@@ -201,10 +198,6 @@ void GameView::setBotMode(bool anyBot) {
   m_move_list.setBotMode(anyBot);
 }
 
-void GameView::setHistoryOverlay(bool show) {
-  m_board_view.setHistoryOverlay(show);
-}
-
 std::size_t GameView::getMoveIndexAt(core::MousePos mousePos) const {
   return m_move_list.getMoveIndexAt(
       Entity::Position{static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)});
@@ -217,10 +210,6 @@ MoveListView::Option GameView::getOptionAt(core::MousePos mousePos) const {
 
 void GameView::setGameOver(bool over) {
   m_move_list.setGameOver(over);
-  if (over) {
-    // Ensure move history overlay is hidden when the game is finished
-    m_board_view.setHistoryOverlay(false);
-  }
 }
 
 /* ---------- Modals ---------- */
