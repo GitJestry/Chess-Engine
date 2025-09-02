@@ -183,10 +183,23 @@ Entity::Position PieceManager::getPieceSize(core::Square pos) const {
   return static_cast<Entity::Position>(mousePos);
 }
 
+static auto findGhostByOrigin(std::unordered_map<core::Square, core::Square> &origin,
+                              std::unordered_map<core::Square, Piece> &ghosts, core::Square from)
+    -> decltype(ghosts.find(from)) {
+  // If a ghost is currently sitting on 'from' (i.e., previous to), this hits:
+  auto it = ghosts.find(from);
+  if (it != ghosts.end()) return it;
+  // Otherwise, look up any ghost whose origin == from, then find its 'to'
+  for (auto &kv : origin) {  // kv: to -> from
+    if (kv.second == from) return ghosts.find(kv.first);
+  }
+  return ghosts.end();
+}
+
 void PieceManager::setPieceToSquareScreenPos(core::Square from, core::Square to) {
-  auto ghost = m_premove_pieces.find(from);
-  if (ghost != m_premove_pieces.end()) {
-    ghost->second.setPosition(createPiecePositon(to));
+  if (auto git = findGhostByOrigin(m_premove_origin, m_premove_pieces, from);
+      git != m_premove_pieces.end()) {
+    git->second.setPosition(createPiecePositon(to));
     return;
   }
   auto it = m_pieces.find(from);
@@ -196,9 +209,9 @@ void PieceManager::setPieceToSquareScreenPos(core::Square from, core::Square to)
 }
 
 void PieceManager::setPieceToScreenPos(core::Square pos, core::MousePos mousePos) {
-  auto ghost = m_premove_pieces.find(pos);
-  if (ghost != m_premove_pieces.end()) {
-    ghost->second.setPosition(mouseToEntityPos(mousePos));
+  if (auto git = findGhostByOrigin(m_premove_origin, m_premove_pieces, pos);
+      git != m_premove_pieces.end()) {
+    git->second.setPosition(mouseToEntityPos(mousePos));
     return;
   }
   auto it = m_pieces.find(pos);
@@ -208,9 +221,9 @@ void PieceManager::setPieceToScreenPos(core::Square pos, core::MousePos mousePos
 }
 
 void PieceManager::setPieceToScreenPos(core::Square pos, Entity::Position entityPos) {
-  auto ghost = m_premove_pieces.find(pos);
-  if (ghost != m_premove_pieces.end()) {
-    ghost->second.setPosition(entityPos);
+  if (auto git = findGhostByOrigin(m_premove_origin, m_premove_pieces, pos);
+      git != m_premove_pieces.end()) {
+    git->second.setPosition(entityPos);
     return;
   }
   auto it = m_pieces.find(pos);
@@ -269,36 +282,25 @@ static Piece makeGhost(core::PieceType type, core::Color color) {
 void PieceManager::setPremovePiece(core::Square from, core::Square to, core::PieceType promotion) {
   Piece ghost;
 
-  // Moving an existing ghost forward in a chain?
+  // Move existing ghost forward in a chain?
   if (auto existing = m_premove_pieces.find(from); existing != m_premove_pieces.end()) {
     ghost = std::move(existing->second);
     m_premove_pieces.erase(existing);
-    // Old mapping was keyed by the old 'to' (which equals current 'from')
     m_premove_origin.erase(from);
   } else {
     auto it = m_pieces.find(from);
     if (it == m_pieces.end()) return;
-    // create a fresh ghost with a NEW id (do not clone the real piece)
     ghost = makeGhost(it->second.getType(), it->second.getColor());
     m_hidden_squares.insert(from);
   }
 
-  // Promotion preview visuals (unchanged)
-  if (promotion != core::PieceType::None && ghost.getType() != promotion) {
-    constexpr std::uint8_t numTypes = 6;
-    std::string filename = constant::ASSET_PIECES_FILE_PATH + "/piece_" +
-                           std::to_string(static_cast<std::uint8_t>(promotion) +
-                                          numTypes * static_cast<std::uint8_t>(ghost.getColor())) +
-                           ".png";
-    const sf::Texture &tex = TextureTable::getInstance().get(filename);
-    ghost.setTexture(tex);
-    ghost.setType(promotion);
-  }
-
-  // If 'to' already has a ghost, just discard it (never back up ghosts)
+  // 🔧 If 'to' already has a ghost, reveal its origin before replacing it
   if (auto prevGhost = m_premove_pieces.find(to); prevGhost != m_premove_pieces.end()) {
+    if (auto itO = m_premove_origin.find(to); itO != m_premove_origin.end()) {
+      m_hidden_squares.erase(itO->second);  // reveal previous origin
+      m_premove_origin.erase(itO);
+    }
     m_premove_pieces.erase(prevGhost);
-    m_premove_origin.erase(to);
   }
 
   // If 'to' has a real piece, stash it so cancel restores it
@@ -309,18 +311,27 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to, core::Pie
 
   ghost.setPosition(createPiecePositon(to));
   m_premove_pieces[to] = std::move(ghost);
-
-  // Track which (from,to) this ghost represents
   m_premove_origin[to] = from;
 }
 
 void PieceManager::consumePremoveGhost(core::Square from, core::Square to) {
-  // Only remove if this ghost was queued for exactly (from → to)
   auto it = m_premove_origin.find(to);
   if (it == m_premove_origin.end() || it->second != from) return;
+
+  // Remove ghost + mapping
   m_premove_origin.erase(it);
   m_premove_pieces.erase(to);
-  // Do NOT touch hidden flags or backups here; the real move will reveal.
+
+  // ✅ Reveal the real piece again — no real move happened
+  m_hidden_squares.erase(from);
+
+  // ✅ If we had temporarily stashed a piece that was sitting on 'to',
+  // put it back so the board matches reality.
+  if (auto bak = m_captured_backup.find(to); bak != m_captured_backup.end()) {
+    m_pieces[to] = std::move(bak->second);
+    m_pieces[to].setPosition(createPiecePositon(to));
+    m_captured_backup.erase(to);
+  }
 }
 
 void PieceManager::applyPremoveInstant(core::Square from, core::Square to,

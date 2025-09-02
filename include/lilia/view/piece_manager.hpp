@@ -48,6 +48,7 @@ class PieceManager {
   void applyPremoveInstant(core::Square from, core::Square to,
                            core::PieceType promotion = core::PieceType::None);
   void renderPremoveGhosts(sf::RenderWindow& window, const animation::ChessAnimator& chessAnimRef);
+  void reconcileHiddenFromGhosts();
 
  private:
   Entity::Position createPiecePositon(core::Square pos);
