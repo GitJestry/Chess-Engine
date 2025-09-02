@@ -239,10 +239,10 @@ bool GameView::isOnResignNo(core::MousePos mousePos) const {
   return m_modal.hitResignNo({static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)});
 }
 
-void GameView::showGameOverPopup(const std::string &msg) {
+void GameView::showGameOverPopup(const std::string &msg, bool humanWinner) {
   auto center = m_board_view.getPosition();
   m_modal.showGameOver(msg, {center.x, center.y});
-  if (msg.find("won") != std::string::npos) {
+  if (humanWinner && msg.find("won") != std::string::npos) {
     m_particles.emitConfetti(center, static_cast<float>(constant::WINDOW_PX_SIZE), 200);
   }
 }

@@ -129,6 +129,8 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot, bool bla
   m_game_view.setGameOver(false);
   m_game_view.init(fen);
   m_game_view.setBotMode(whiteIsBot || blackIsBot);
+  m_white_is_bot = whiteIsBot;
+  m_black_is_bot = blackIsBot;
   m_game_manager->startGame(fen, whiteIsBot, blackIsBot, whiteThinkTimeMs, whiteDepth,
                             blackThinkTimeMs, blackDepth);
 
@@ -1381,35 +1383,43 @@ void GameController::showGameOver(core::GameResult res, core::Color sideToMove) 
 
   m_sound_manager.playEffect(view::sound::Effect::GameEnds);
   std::string resultStr;
+  core::Color winner = (sideToMove == core::Color::White) ? core::Color::Black
+                                                          : core::Color::White;
+  bool humanWinner = (winner == core::Color::White && !m_white_is_bot) ||
+                     (winner == core::Color::Black && !m_black_is_bot);
   switch (res) {
     case core::GameResult::CHECKMATE:
       resultStr = (sideToMove == core::Color::White) ? "0-1" : "1-0";
-      m_game_view.showGameOverPopup(sideToMove == core::Color::White ? "Black won" : "White won");
+      m_game_view.showGameOverPopup(
+          sideToMove == core::Color::White ? "Black won" : "White won",
+          humanWinner);
       break;
     case core::GameResult::TIMEOUT:
       resultStr = (sideToMove == core::Color::White) ? "0-1" : "1-0";
-      m_game_view.showGameOverPopup(sideToMove == core::Color::White ? "Black wins on time"
-                                                                     : "White wins on time");
+      m_game_view.showGameOverPopup(
+          sideToMove == core::Color::White ? "Black wins on time"
+                                           : "White wins on time",
+          humanWinner);
       break;
     case core::GameResult::REPETITION:
       resultStr = "1/2-1/2";
-      m_game_view.showGameOverPopup("Draw by repetition");
+      m_game_view.showGameOverPopup("Draw by repetition", false);
       break;
     case core::GameResult::MOVERULE:
       resultStr = "1/2-1/2";
-      m_game_view.showGameOverPopup("Draw by 50 move rule");
+      m_game_view.showGameOverPopup("Draw by 50 move rule", false);
       break;
     case core::GameResult::STALEMATE:
       resultStr = "1/2-1/2";
-      m_game_view.showGameOverPopup("Stalemate");
+      m_game_view.showGameOverPopup("Stalemate", false);
       break;
     case core::GameResult::INSUFFICIENT:
       resultStr = "1/2-1/2";
-      m_game_view.showGameOverPopup("Insufficient material");
+      m_game_view.showGameOverPopup("Insufficient material", false);
       break;
     default:
       resultStr = "error";
-      m_game_view.showGameOverPopup("result is not correct");
+      m_game_view.showGameOverPopup("result is not correct", false);
       break;
   }
   m_game_view.addResult(resultStr);

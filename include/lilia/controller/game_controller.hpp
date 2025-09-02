@@ -144,6 +144,9 @@ private:
   InputManager m_input_manager;   ///< Handles raw input processing.
   view::sound::SoundManager m_sound_manager; ///< Handles sfx and music
 
+  bool m_white_is_bot{false};
+  bool m_black_is_bot{false};
+
   core::Square m_promotion_square = core::NO_SQUARE;
 
   bool m_dragging = false;
