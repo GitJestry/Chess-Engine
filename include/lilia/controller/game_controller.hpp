@@ -98,6 +98,7 @@ private:
   void onMouseMove(core::MousePos pos);
   void onMousePressed(core::MousePos pos);
   void onMouseReleased(core::MousePos pos);
+  void onRightClick(core::MousePos pos);
   void onClick(core::MousePos mousePos);
 
   void onDrag(core::MousePos start, core::MousePos current);

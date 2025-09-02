@@ -9,7 +9,9 @@ HighlightManager::HighlightManager(const BoardView& boardRef)
     : m_board_view_ref(boardRef),
       m_hl_attack_squares(),
       m_hl_select_squares(),
-      m_hl_hover_squares() {}
+      m_hl_hover_squares(),
+      m_hl_premove_squares(),
+      m_hl_rclick_squares() {}
 
 void HighlightManager::renderEntitiesToBoard(std::unordered_map<core::Square, Entity>& map,
                                              sf::RenderWindow& window) {
@@ -32,6 +34,9 @@ void HighlightManager::renderSelect(sf::RenderWindow& window) {
 }
 void HighlightManager::renderPremove(sf::RenderWindow& window) {
   renderEntitiesToBoard(m_hl_premove_squares, window);
+}
+void HighlightManager::renderRightClick(sf::RenderWindow& window) {
+  renderEntitiesToBoard(m_hl_rclick_squares, window);
 }
 
 void HighlightManager::highlightSquare(core::Square pos) {
@@ -57,16 +62,23 @@ void HighlightManager::highlightPremoveSquare(core::Square pos) {
   newPremove.setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
   m_hl_premove_squares[pos] = std::move(newPremove);
 }
+void HighlightManager::highlightRightClickSquare(core::Square pos) {
+  Entity newRC(TextureTable::getInstance().get(constant::STR_TEXTURE_RCLICKHLIGHT));
+  newRC.setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
+  m_hl_rclick_squares[pos] = std::move(newRC);
+}
 void HighlightManager::clearAllHighlights() {
   m_hl_select_squares.clear();
   m_hl_attack_squares.clear();
   m_hl_hover_squares.clear();
   m_hl_premove_squares.clear();
+  m_hl_rclick_squares.clear();
 }
 void HighlightManager::clearNonPremoveHighlights() {
   m_hl_select_squares.clear();
   m_hl_attack_squares.clear();
   m_hl_hover_squares.clear();
+  m_hl_rclick_squares.clear();
 }
 void HighlightManager::clearAttackHighlights() { m_hl_attack_squares.clear(); }
 void HighlightManager::clearHighlightSquare(core::Square pos) {
@@ -80,6 +92,9 @@ void HighlightManager::clearHighlightPremoveSquare(core::Square pos) {
 }
 void HighlightManager::clearPremoveHighlights() {
   m_hl_premove_squares.clear();
+}
+void HighlightManager::clearRightClickHighlights() {
+  m_hl_rclick_squares.clear();
 }
 
 }  // namespace lilia::view
