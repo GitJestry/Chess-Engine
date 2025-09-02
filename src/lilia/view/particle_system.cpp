@@ -42,7 +42,7 @@ void ParticleSystem::emitConfetti(const sf::Vector2f &center, float boardSize, s
 
 void ParticleSystem::update(float dt) {
   // Simple gravity and slight horizontal jitter to simulate confetti drift
-  static constexpr float gravity = 2000.f;  // pixels per second^2
+  static constexpr float gravity = 1900.f;  // pixels per second^2
   static thread_local std::mt19937 rng{std::random_device{}()};
   std::uniform_real_distribution<float> jitterDist(-10.f, 10.f);
 
