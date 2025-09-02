@@ -4,7 +4,7 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write   # needed to create/upload the GitHub Release
+  contents: write
 
 jobs:
   build-windows:
@@ -12,64 +12,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure (MSVC, Release)
+      - name: Configure (MSVC, Release, perf on)
         run: >
           cmake -S . -B build
           -G "Visual Studio 17 2022" -A x64
           -DCMAKE_BUILD_TYPE=Release
           -DLILIA_NATIVE=ON -DLILIA_FAST_MATH=ON -DLILIA_LTO=ON
 
-      # Build BOTH executables explicitly
-      - name: Build
+      - name: Build both executables
         run: cmake --build build --config Release --target lilia_app lilia_engine
 
-      # Prove they exist in the build tree
-      - name: Verify built EXEs
+      - name: Verify built EXEs exist
         shell: pwsh
         run: |
           Get-ChildItem build\bin\Release\*.exe -Recurse | Format-Table FullName
-          if (-not (Test-Path build\bin\Release\lilia_app.exe)) { throw "lilia_app.exe missing (build tree)" }
-          if (-not (Test-Path build\bin\Release\lilia_engine.exe)) { throw "lilia_engine.exe missing (build tree)" }
+          if (-not (Test-Path build\bin\Release\lilia_app.exe))    { throw "lilia_app.exe missing" }
+          if (-not (Test-Path build\bin\Release\lilia_engine.exe)) { throw "lilia_engine.exe missing" }
+          if (-not (Test-Path build\bin\Release\assets))           { throw "assets/ missing" }
 
-      # Install to a clean prefix (this is what CPack packages)
-      - name: Install
-        run: cmake --install build --config Release --prefix build/install
-
-      # Prove they exist in the install tree
-      - name: Verify installed EXEs
+      - name: Create release ZIP from runtime folder
         shell: pwsh
         run: |
-          Get-ChildItem build\install\*.exe -Recurse | Format-Table FullName
-          if (-not (Test-Path build\install\lilia_app.exe)) { throw "lilia_app.exe missing (install tree)" }
-          if (-not (Test-Path build\install\lilia_engine.exe)) { throw "lilia_engine.exe missing (install tree)" }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item -Recurse -Force build\bin\Release\* dist\
+          Compress-Archive -Path dist\* -DestinationPath ChessEngine_Lilia-Windows.zip
+          Get-ChildItem *.zip
 
-      # Package Release with CPack (multi-config generators require -C)
-      - name: Package (CPack)
-        run: cpack -C Release --config build/CPackConfig.cmake
-
-      # Show the contents of the produced CPack ZIP (for visibility)
-      - name: Show CPack ZIP contents
-        shell: pwsh
-        run: |
-          $zip = (Get-ChildItem build\*.zip | Select-Object -First 1).FullName
-          Write-Host "ZIP: $zip"
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          [IO.Compression.ZipFile]::OpenRead($zip).Entries | ForEach-Object { $_.FullName }
-
-      # Fallback: also zip the entire install/ tree (guaranteed to contain the EXEs)
-      - name: Make fallback ZIP from install/
-        shell: pwsh
-        run: Compress-Archive -Path build\install\* -DestinationPath build\ChessEngine_Lilia-fallback.zip
-
-      # Upload both ZIPs and raw EXEs as CI artifacts
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-build
-          path: |
-            build\*.zip
-            build\bin\Release\*.exe
-            build\install\*.exe
+          name: windows-zip
+          path: ChessEngine_Lilia-Windows.zip
 
   release:
     needs: build-windows
@@ -78,9 +51,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
-        with: { name: windows-build, path: dist }
+        with: { name: windows-zip, path: . }
       - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/*.zip
-            dist/*.exe
+          files: ChessEngine_Lilia-Windows.zip

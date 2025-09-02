@@ -1,7 +1,7 @@
 # -------------------------------------------------
 # Project & toolchain
 # -------------------------------------------------
-cmake_minimum_required(VERSION 3.21)  # for $<TARGET_RUNTIME_DLLS:...>
+cmake_minimum_required(VERSION 3.21) # for $<TARGET_RUNTIME_DLLS:...>
 project(ChessEngine_Lilia VERSION 1.0 LANGUAGES CXX)
 
 # C++ standard
@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Default build type for single-config generators (Make/Ninja)
-if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+if (NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
@@ -52,7 +52,7 @@ add_executable(lilia_engine
   examples/main.cpp
   ${CORE_FILES}
 )
-target_compile_definitions(lilia_engine PRIVATE LILIA_ENGINE)
+target_compile_definitions(lilia_engine PRIVATE LILIA_ENGINE NOMINMAX)
 target_include_directories(lilia_engine PRIVATE
   ${PROJECT_SOURCE_DIR}/include
   ${PROJECT_SOURCE_DIR}/include/lilia
@@ -66,30 +66,28 @@ add_executable(lilia_app
   ${CONTROLLER_FILES}
   ${BOT_FILES}
 )
-target_compile_definitions(lilia_app PRIVATE LILIA_UI)
+target_compile_definitions(lilia_app PRIVATE LILIA_UI NOMINMAX)
 target_include_directories(lilia_app PRIVATE
   ${PROJECT_SOURCE_DIR}/include
   ${PROJECT_SOURCE_DIR}/include/lilia
 )
 
 # -------------------------------------------------
-# SFML for UI (shared; but DO NOT install SFML itself)
+# SFML for UI (shared, built from source)
 # -------------------------------------------------
 include(FetchContent)
-
-# build SFML as shared libs so we can copy its DLLs beside the exe
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+# Keep SFML minimal
+set(SFML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SFML_BUILD_TESTING  OFF CACHE BOOL "" FORCE)
+set(SFML_USE_STATIC_STD_LIBS OFF CACHE BOOL "" FORCE)
 
-# Prevent install() rules from being generated for SFML (avoids sfml-main.lib issue)
-set(_old_SKIP_INSTALL ${CMAKE_SKIP_INSTALL_RULES})
-set(CMAKE_SKIP_INSTALL_RULES TRUE)
 FetchContent_Declare(
   SFML
   GIT_REPOSITORY https://github.com/SFML/SFML.git
   GIT_TAG 2.6.0
 )
 FetchContent_MakeAvailable(SFML)
-set(CMAKE_SKIP_INSTALL_RULES ${_old_SKIP_INSTALL})
 
 target_link_libraries(lilia_app PRIVATE
   sfml-graphics
@@ -131,7 +129,6 @@ function(lilia_set_perf_flags tgt)
     if (LILIA_PGO_USE)
       target_link_options(${tgt} PRIVATE $<$<CONFIG:Release>:/USEPROFILE>)
     endif()
-    target_compile_definitions(${tgt} PRIVATE NOMINMAX)
   else()
     if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
       set(IS_GCC TRUE)
@@ -180,10 +177,10 @@ if (LILIA_LTO AND NOT MSVC)
 endif()
 
 # -------------------------------------------------
-# Windows: copy runtime DLLs into the build tree (dev convenience)
+# Windows: copy runtime DLLs beside the GUI exe + copy assets
 # -------------------------------------------------
 if (WIN32)
-  # Only the SFML app has runtime DLLs we need to copy
+  # SFML/runtime DLLs for the GUI app
   add_custom_command(TARGET lilia_app POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       $<TARGET_RUNTIME_DLLS:lilia_app>
@@ -191,19 +188,17 @@ if (WIN32)
     COMMAND_EXPAND_LISTS
   )
 
-  add_custom_command(TARGET lilia_app POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E echo "Copying OpenAL32.dll (if exists)..."
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll"
-      $<TARGET_FILE_DIR:lilia_app>
-    VERBATIM
-  )
+  # OpenAL (sfml-audio) if present in the SFML tree
+  if (EXISTS "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll")
+    add_custom_command(TARGET lilia_app POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll"
+        $<TARGET_FILE_DIR:lilia_app>
+    )
+  endif()
 endif()
 
-
-# -------------------------------------------------
-# Copy assets next to the EXE after build (dev convenience)
-# -------------------------------------------------
+# Copy assets next to the EXE after build (dev/CI convenience)
 function(lilia_copy_assets tgt)
   if (EXISTS "${LILIA_ASSETS_DIR}")
     add_custom_command(TARGET ${tgt} POST_BUILD
@@ -230,41 +225,5 @@ foreach(target lilia_engine lilia_app)
   )
 endforeach()
 
-# -------------------------------------------------
-# Install rules (we only install OUR stuff; SFML was excluded above)
-# -------------------------------------------------
-install(TARGETS lilia_app  RUNTIME DESTINATION . BUNDLE DESTINATION .)
-install(TARGETS lilia_engine RUNTIME DESTINATION .)
-
-if (EXISTS "${LILIA_ASSETS_DIR}")
-  install(DIRECTORY "${LILIA_ASSETS_DIR}/" DESTINATION assets)
-endif()
-
-if (WIN32)
-  install(FILES
-    $<TARGET_RUNTIME_DLLS:lilia_app>
-    $<TARGET_RUNTIME_DLLS:lilia_engine>
-    DESTINATION .
-  )
-  install(FILES "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll" DESTINATION . OPTIONAL)
-  include(InstallRequiredSystemLibraries)  # MSVC CRT/UCRT if needed
-endif()
-
-# -------------------------------------------------
-# CPack (ZIP on Windows) — force Release to avoid empty zips
-# -------------------------------------------------
-set(CPACK_PACKAGE_NAME "ChessEngine_Lilia")
-set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-set(CPACK_CONFIGURATION_TYPES "Release")
-
-if (WIN32)
-  set(CPACK_GENERATOR "ZIP")
-elseif(APPLE)
-  set(CPACK_GENERATOR "DragNDrop")
-else()
-  set(CPACK_GENERATOR "TGZ")
-endif()
-include(CPack)
-
-# Optional: export compile_commands.json
+# Developer QoL
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
