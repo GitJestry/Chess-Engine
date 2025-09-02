@@ -304,11 +304,10 @@ void StartScreen::setupUI() {
 
   // FEN error hint above Start button
   m_fenErrorText.setFont(m_font);
-  m_fenErrorText.setString("ERR -> FEN = STANDARD");
+  m_fenErrorText.setString("STANDARD FEN");
   m_fenErrorText.setCharacterSize(14);
   m_fenErrorText.setFillColor(colInvalid);
-  centerText(m_fenErrorText, m_startBtn.getGlobalBounds(),
-             -(m_startBtn.getSize().y / 2.f + 10.f));
+  centerText(m_fenErrorText, m_startBtn.getGlobalBounds(), -(m_startBtn.getSize().y / 2.f + 15.f));
 
   // -------- Inline FEN (50% smaller height) --------
   const float fenW = PANEL_W * 0.95f;
