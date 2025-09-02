@@ -141,10 +141,10 @@ void PlayerInfoView::setInfo(const PlayerInfo& info) {
   m_icon.setOriginToCenter();
 
   m_name.setString(info.name);
-  if (info.elo == 0) {
+  if (info.elo.empty()) {
     m_elo.setString("");
   } else {
-    m_elo.setString(" (" + std::to_string(info.elo) + ")");
+    m_elo.setString(" (" + info.elo + ")");
   }
 }
 

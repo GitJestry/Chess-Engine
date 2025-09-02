@@ -6,9 +6,8 @@ namespace lilia {
 
 struct PlayerInfo {
   std::string name;
-  int elo;
+  std::string elo;
   std::string iconPath;
 };
 
-} // namespace lilia
-
+}  // namespace lilia

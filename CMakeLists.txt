@@ -87,10 +87,10 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(SFML)
 
 target_link_libraries(lilia_app PRIVATE
-  sfml-graphics
-  sfml-window
-  sfml-system
-  sfml-audio
+    sfml::graphics
+  sfml::window
+  sfml::system
+  sfml::audio
 )
 
 # ---------------------------

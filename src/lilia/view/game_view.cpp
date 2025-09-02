@@ -43,10 +43,10 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
   // players
   PlayerInfo topInfo = topIsBot
                            ? getBotConfig(BotType::Lilia).info
-                           : PlayerInfo{"Challenger", 0, constant::STR_FILE_PATH_ICON_CHALLENGER};
+                           : PlayerInfo{"Challenger", "", constant::STR_FILE_PATH_ICON_CHALLENGER};
   PlayerInfo bottomInfo =
       bottomIsBot ? getBotConfig(BotType::Lilia).info
-                  : PlayerInfo{"Challenger", 0, constant::STR_FILE_PATH_ICON_CHALLENGER};
+                  : PlayerInfo{"Challenger", "", constant::STR_FILE_PATH_ICON_CHALLENGER};
 
   bool flipped = bottomIsBot && !topIsBot;
   if (flipped) {
@@ -288,7 +288,9 @@ void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
   m_piece_manager.setPieceToSquareScreenPos(from, to);
 }
 
-void GameView::clearDraggingPiece() { m_dragging_piece = core::NO_SQUARE; }
+void GameView::clearDraggingPiece() {
+  m_dragging_piece = core::NO_SQUARE;
+}
 
 void GameView::movePiece(core::Square from, core::Square to, core::PieceType promotion) {
   // IMPORTANT: reveal the real piece by consuming the premove ghost first

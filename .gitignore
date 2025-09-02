@@ -34,6 +34,10 @@
 # Ignore build directory
 build*/
 
+# ignoe package
+package_dir*/
+ChessEngine_Lilia*
+
 # Ignore CMake files directory
 CMakeFiles/
 

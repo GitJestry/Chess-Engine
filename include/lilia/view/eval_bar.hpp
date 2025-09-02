@@ -1,9 +1,10 @@
 #pragma once
-#include "entity.hpp"
-#include <SFML/Graphics/Text.hpp>
 #include <SFML/Graphics/Rect.hpp>
-#include "../controller/mousepos.hpp"
+#include <SFML/Graphics/Text.hpp>
 #include <string>
+
+#include "../controller/mousepos.hpp"
+#include "entity.hpp"
 
 namespace sf {
 class RenderWindow;
@@ -32,7 +33,7 @@ class EvalBar : Entity {
   sf::Text m_score_text;
   sf::Text m_toggle_text;
   sf::FloatRect m_toggle_bounds;
-  bool m_visible{true};
+  bool m_visible{false};
   float m_display_eval{0.f};
   float m_target_eval{0.f};
   bool m_has_result{false};
