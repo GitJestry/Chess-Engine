@@ -1,5 +1,4 @@
 name: Windows Release
-
 on:
   push:
     tags: ["v*"]
@@ -10,37 +9,72 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Configure (MSVC). Turn off AVX2 for compatibility.
-      - name: Configure
+      - name: Configure (MSVC, Release)
         run: >
           cmake -S . -B build
-          -G "Visual Studio 17 2022"
-          -A x64
+          -G "Visual Studio 17 2022" -A x64
           -DCMAKE_BUILD_TYPE=Release
           -DLILIA_NATIVE=ON
           -DLILIA_FAST_MATH=ON
+          -DLILIA_LTO=ON
 
+      # Build BOTH EXE targets explicitly
       - name: Build
-        run: cmake --build build --config Release
+        run: cmake --build build --config Release --target lilia_app lilia_engine
 
+      # Prove the EXEs exist in the build tree
+      - name: Verify built EXEs
+        shell: pwsh
+        run: |
+          Get-ChildItem build\bin\Release\*.exe -Recurse | Format-Table FullName
+          if (-not (Test-Path build\bin\Release\lilia_app.exe)) { throw "lilia_app.exe missing" }
+          if (-not (Test-Path build\bin\Release\lilia_engine.exe)) { throw "lilia_engine.exe missing" }
+
+      # Install to a clean prefix (this is what CPack will package)
       - name: Install
         run: cmake --install build --config Release --prefix build/install
 
-      - name: Package (CPack)
-        run: cpack --config build/CPackConfig.cmake
+      # Prove the EXEs exist in the install tree
+      - name: Verify installed EXEs
+        shell: pwsh
+        run: |
+          Get-ChildItem build\install\*.exe -Recurse | Format-Table FullName
+          if (-not (Test-Path build\install\lilia_app.exe)) { throw "Installed lilia_app.exe missing" }
+          if (-not (Test-Path build\install\lilia_engine.exe)) { throw "Installed lilia_engine.exe missing" }
 
-      - name: Upload artifact
+      # Package with CPack (Release config!)
+      - name: Package (CPack)
+        run: cpack -C Release --config build/CPackConfig.cmake
+
+      # List the contents of the produced ZIP
+      - name: Show CPack ZIP contents
+        shell: pwsh
+        run: |
+          $zip = (Get-ChildItem build\*.zip | Select-Object -First 1).FullName
+          Write-Host "ZIP: $zip"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [IO.Compression.ZipFile]::OpenRead($zip).Entries | ForEach-Object { $_.FullName }
+
+      # Also create a fallback ZIP from the install/ tree, just in case
+      - name: Make fallback ZIP from install/
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build\install\* -DestinationPath build\ChessEngine_Lilia-fallback.zip
+          Get-ChildItem build\*.zip
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-zip
-          path: build/*.zip
+          name: windows-zips
+          path: |
+            build\*.zip
 
   release:
     needs: build-windows
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
-        with: { name: windows-zip, path: dist }
+        with: { name: windows-zips, path: dist }
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*.zip

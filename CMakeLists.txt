@@ -1,37 +1,36 @@
-cmake_minimum_required(VERSION 3.21)  # needed for $<TARGET_RUNTIME_DLLS:...>
+# -------------------------------------------------
+# Project & toolchain
+# -------------------------------------------------
+cmake_minimum_required(VERSION 3.21)  # for $<TARGET_RUNTIME_DLLS:...>
 project(ChessEngine_Lilia VERSION 1.0 LANGUAGES CXX)
 
-# ---------------------------
-# C++ Standard
-# ---------------------------
+# C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ---------------------------
-# Buildtype Default (Make/Ninja)
-# ---------------------------
+# Default build type for single-config generators (Make/Ninja)
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-# ---------------------------
-# Options (perf toggles)
-# ---------------------------
+# -------------------------------------------------
+# Performance toggles (ON by default)
+# -------------------------------------------------
 option(LILIA_NATIVE       "Enable native CPU optimizations (-march=native or /arch:AVX2)" ON)
 option(LILIA_FAST_MATH    "Enable fast-math in Release" ON)
 option(LILIA_LTO          "Enable Link-Time Optimization/IPO in Release" ON)
 option(LILIA_PGO_GENERATE "Build with PGO generate (instrumentation)" OFF)
 option(LILIA_PGO_USE      "Build with PGO use (optimized by profiles)" OFF)
 
-# ---------------------------
+# -------------------------------------------------
 # Runtime assets path (shipped next to the exe)
-# ---------------------------
+# -------------------------------------------------
 set(LILIA_ASSETS_DIR "${PROJECT_SOURCE_DIR}/assets"
     CACHE PATH "Directory with runtime assets (textures, sounds, fonts, etc.)")
 
-# ---------------------------
+# -------------------------------------------------
 # Sources
-# ---------------------------
+# -------------------------------------------------
 file(GLOB_RECURSE MODEL_FILES      ${PROJECT_SOURCE_DIR}/src/lilia/model/*.cpp)
 file(GLOB_RECURSE ENGINE_FILES     ${PROJECT_SOURCE_DIR}/src/lilia/engine/*.cpp)
 file(GLOB_RECURSE UCI_FILES        ${PROJECT_SOURCE_DIR}/src/lilia/uci/*.cpp)
@@ -46,14 +45,13 @@ set(CORE_FILES
   ${UCI_FILES}
 )
 
-# ---------------------------
+# -------------------------------------------------
 # Targets
-# ---------------------------
+# -------------------------------------------------
 add_executable(lilia_engine
   examples/main.cpp
   ${CORE_FILES}
 )
-
 target_compile_definitions(lilia_engine PRIVATE LILIA_ENGINE)
 target_include_directories(lilia_engine PRIVATE
   ${PROJECT_SOURCE_DIR}/include
@@ -68,17 +66,19 @@ add_executable(lilia_app
   ${CONTROLLER_FILES}
   ${BOT_FILES}
 )
-
 target_compile_definitions(lilia_app PRIVATE LILIA_UI)
 target_include_directories(lilia_app PRIVATE
   ${PROJECT_SOURCE_DIR}/include
   ${PROJECT_SOURCE_DIR}/include/lilia
 )
 
-# ---------------------------
-# SFML for UI
-# ---------------------------
+# -------------------------------------------------
+# SFML for UI (shared libs; bundled into ZIP)
+# -------------------------------------------------
 include(FetchContent)
+# Build SFML as shared libs (default), good for TARGET_RUNTIME_DLLS collection
+set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+
 FetchContent_Declare(
   SFML
   GIT_REPOSITORY https://github.com/SFML/SFML.git
@@ -86,6 +86,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(SFML)
 
+# When added via FetchContent, SFML targets are 'sfml-graphics' etc.
 target_link_libraries(lilia_app PRIVATE
   sfml-graphics
   sfml-window
@@ -93,19 +94,21 @@ target_link_libraries(lilia_app PRIVATE
   sfml-audio
 )
 
-# ---------------------------
+# -------------------------------------------------
 # Threads
-# ---------------------------
+# -------------------------------------------------
 find_package(Threads REQUIRED)
 target_link_libraries(lilia_engine PRIVATE Threads::Threads)
 target_link_libraries(lilia_app    PRIVATE Threads::Threads)
 
-# ---------------------------
-# Helper macro: add perf flags per target
-# ---------------------------
+# -------------------------------------------------
+# Helper: performance flags per target
+# -------------------------------------------------
 function(lilia_set_perf_flags tgt)
   if (MSVC)
+    # Faster builds + strong optimizations
     target_compile_options(${tgt} PRIVATE
+      /MP
       $<$<CONFIG:Release>:/O2 /Ot /Oi /DNDEBUG /Gy /Gw>
       $<$<AND:$<CONFIG:Release>,$<BOOL:${LILIA_FAST_MATH}>>:/fp:fast>
       $<$<AND:$<CONFIG:Release>,$<BOOL:${LILIA_NATIVE}>>:/arch:AVX2>
@@ -114,6 +117,7 @@ function(lilia_set_perf_flags tgt)
       include(CheckIPOSupported)
       check_ipo_supported(RESULT _ipo_ok OUTPUT _ipo_out)
       if (_ipo_ok)
+        # Enables /GL + /LTCG on Release for this target
         set_property(TARGET ${tgt} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
       else()
         message(STATUS "IPO/LTO not supported: ${_ipo_out}")
@@ -162,9 +166,7 @@ endfunction()
 lilia_set_perf_flags(lilia_engine)
 lilia_set_perf_flags(lilia_app)
 
-# ---------------------------
-# IPO global fallback (in case)
-# ---------------------------
+# Global IPO fallback (for non-MSVC single-config)
 if (LILIA_LTO AND NOT MSVC)
   include(CheckIPOSupported)
   check_ipo_supported(RESULT ipo_ok OUTPUT ipo_out)
@@ -175,9 +177,9 @@ if (LILIA_LTO AND NOT MSVC)
   endif()
 endif()
 
-# ---------------------------
-# Windows: copy SFML DLLs
-# ---------------------------
+# -------------------------------------------------
+# Windows: copy runtime DLLs into the build tree (dev convenience)
+# -------------------------------------------------
 if (WIN32)
   add_custom_command(TARGET lilia_app POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -194,9 +196,9 @@ if (WIN32)
   )
 endif()
 
-# ---------------------------
-# Copy assets next to the EXE after build (Option 1)
-# ---------------------------
+# -------------------------------------------------
+# Copy assets next to the EXE after build (dev convenience)
+# -------------------------------------------------
 function(lilia_copy_assets tgt)
   if (EXISTS "${LILIA_ASSETS_DIR}")
     add_custom_command(TARGET ${tgt} POST_BUILD
@@ -210,13 +212,11 @@ function(lilia_copy_assets tgt)
     message(WARNING "LILIA_ASSETS_DIR not found: ${LILIA_ASSETS_DIR} — assets won't be copied.")
   endif()
 endfunction()
+lilia_copy_assets(lilia_app)  # engine doesn't need assets
 
-# copy only for the UI app (engine/uci may not need assets)
-lilia_copy_assets(lilia_app)
-
-# ---------------------------
+# -------------------------------------------------
 # Output dirs
-# ---------------------------
+# -------------------------------------------------
 foreach(target lilia_engine lilia_app)
   set_target_properties(${target} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
@@ -225,28 +225,47 @@ foreach(target lilia_engine lilia_app)
   )
 endforeach()
 
-# ---------------------------
-# Install rules (so cpack/cmake --install also place assets)
-# ---------------------------
+# -------------------------------------------------
+# Install rules (so cmake --install & CPack place files properly)
+# -------------------------------------------------
+# EXEs
 install(TARGETS lilia_app
   RUNTIME DESTINATION .
-  BUNDLE  DESTINATION .  # future macOS bundle support if enabled
+  BUNDLE  DESTINATION .
 )
+install(TARGETS lilia_engine
+  RUNTIME DESTINATION .
+)
+
+# Assets
 if (EXISTS "${LILIA_ASSETS_DIR}")
   install(DIRECTORY "${LILIA_ASSETS_DIR}/" DESTINATION assets)
 endif()
 
-# Ensure runtime DLLs (SFML, MinGW/MSVC, etc.) are installed into the package
+# Runtime DLLs (SFML + deps + MSVC/MinGW runtimes)
 if (WIN32)
-  install(FILES $<TARGET_RUNTIME_DLLS:lilia_app> DESTINATION .)
-  install(FILES "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll" DESTINATION . OPTIONAL)
-  # (Optional, MSVC only) also bundle MSVC CRT/UCRT if needed:
+  install(FILES
+    $<TARGET_RUNTIME_DLLS:lilia_app>
+    $<TARGET_RUNTIME_DLLS:lilia_engine>
+    DESTINATION .
+  )
+  # OpenAL for sfml-audio (if present)
+  install(FILES "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll"
+          DESTINATION . OPTIONAL)
+
+  # Also include MSVC system runtimes if needed
   include(InstallRequiredSystemLibraries)
 endif()
 
-# Minimal packaging convenience (ZIP on Win/Linux, DragNDrop on macOS)
+# -------------------------------------------------
+# CPack (ZIP on Windows)
+# -------------------------------------------------
 set(CPACK_PACKAGE_NAME "ChessEngine_Lilia")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+
+# Force packaging of Release config by default (esp. for multi-config generators like VS)
+set(CPACK_CONFIGURATION_TYPES "Release")
+
 if (WIN32)
   set(CPACK_GENERATOR "ZIP")
 elseif(APPLE)
@@ -254,6 +273,7 @@ elseif(APPLE)
 else()
   set(CPACK_GENERATOR "TGZ")
 endif()
+
 include(CPack)
 
 # Optional: export compile_commands.json
