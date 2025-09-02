@@ -789,6 +789,7 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
   if (m_selected_sq == from || m_selected_sq == to) deselectSquare();
   m_preview_active = false;
   m_prev_selected_before_preview = core::NO_SQUARE;
+  m_game_view.clearRightClickHighlights();
 
   // 3) En-passant victim square for visuals
   core::Square epVictimSq = core::NO_SQUARE;
