@@ -482,11 +482,8 @@ void GameController::update(float dt) {
         m_pending_capture_type = cap.type;
       }
 
-      // Consume only the first ghost; keep the rest visible
-      m_game_view.consumePremoveGhost(m_pending_from, m_pending_to);
-
-      // Commit instantly (no animation), then hand it to the game manager
-      m_game_view.movePiece(m_pending_from, m_pending_to);
+      // Defer visual updates to the central move handler so the ghost
+      // remains visible until the move is fully processed.
       (void)m_game_manager->requestUserMove(m_pending_from, m_pending_to, /*onClick*/ true);
     } else {
       // Cancel entire chain if first premove is no longer legal
@@ -618,12 +615,20 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
     }
   }
 
+  // Remove any ghost representation for this move now that the real move is
+  // being executed. This ensures the actual piece is only revealed once the
+  // premove finishes or is canceled.
+  m_game_view.consumePremoveGhost(from, to);
+
   // 4) Animate or drop
   if (!m_skip_next_move_animation) {
     if (onClick)
       m_game_view.animationMovePiece(from, to, epVictimSq, move.promotion);
     else
       m_game_view.animationDropPiece(from, to, epVictimSq, move.promotion);
+  } else {
+    // No animation requested (e.g. auto-played premove); commit instantly.
+    m_game_view.movePiece(from, to, move.promotion);
   }
   m_skip_next_move_animation = false;
   m_pending_capture_type = core::PieceType::None;
