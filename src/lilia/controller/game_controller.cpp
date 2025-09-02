@@ -386,6 +386,7 @@ void GameController::onMousePressed(core::MousePos pos) {
 
   if (!hasVirtualPiece(sq)) {
     m_game_view.setDefaultCursor();
+    m_game_view.clearRightClickHighlights();
     return;
   }
 
@@ -688,6 +689,11 @@ bool GameController::enqueuePremove(core::Square from, core::Square to) {
 
 void GameController::clearPremove() {
   if (!m_premove_queue.empty() || m_pending_premove_promotion) {
+    for (const auto &pm : m_premove_queue) {
+      m_game_view.clearHighlightSquare(pm.to);
+    }
+    if (m_pending_premove_promotion && m_ppromo_to != core::NO_SQUARE)
+      m_game_view.clearHighlightSquare(m_ppromo_to);
     m_premove_queue.clear();
     m_game_view.clearPremoveHighlights();
     m_game_view.clearPremovePieces(true);  // restore any stashed captures
