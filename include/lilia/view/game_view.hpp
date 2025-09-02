@@ -36,6 +36,7 @@ class GameView {
   void update(float dt);
   void updateEval(int eval);
   void render();
+  [[nodiscard]] bool needsUpdate() const;
 
   void addMove(const std::string &move);
   void addResult(const std::string &result);

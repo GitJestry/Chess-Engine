@@ -39,6 +39,10 @@ void AnimationManager::addOrReplace(Entity::ID_type entityID, std::unique_ptr<IA
          m_highlight_level_animations.find(entityID) != m_highlight_level_animations.end();
 }
 
+[[nodiscard]] bool AnimationManager::empty() const {
+  return m_animations.empty() && m_highlight_level_animations.empty();
+}
+
 void AnimationManager::declareHighlightLevel(Entity::ID_type entityID) {
   // Robust: egal in welchem Layer – stelle sicher, dass sie im Highlight-Layer liegt
   // 1) Wenn bereits im Highlight: nichts tun

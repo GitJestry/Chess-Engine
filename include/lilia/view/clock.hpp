@@ -29,6 +29,7 @@ class Clock {
   sf::Text m_text;
   sf::Font m_font;
   bool m_active{false};
+  float m_last_seconds{-1.f};
   sf::CircleShape m_icon_circle;
   sf::RectangleShape m_icon_hand;
 };

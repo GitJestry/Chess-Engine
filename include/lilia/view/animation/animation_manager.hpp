@@ -29,6 +29,7 @@ class AnimationManager {
   void cancelAll();
 
   bool hasInAnyLayer(Entity::ID_type entityID) const;
+  [[nodiscard]] bool empty() const;
 
  private:
   std::unordered_map<Entity::ID_type, std::unique_ptr<IAnimation>> m_highlight_level_animations;

@@ -65,6 +65,10 @@ void ChessAnimator::cancelAll() {
 [[nodiscard]] bool ChessAnimator::isAnimating(Entity::ID_type entityID) const {
   return m_anim_manager.isAnimating(entityID);
 }
+
+[[nodiscard]] bool ChessAnimator::hasActiveAnimations() const {
+  return !m_anim_manager.empty();
+}
 void ChessAnimator::updateAnimations(float dt) {
   m_anim_manager.update(dt);
 }

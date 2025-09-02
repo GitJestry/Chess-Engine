@@ -29,6 +29,7 @@ class ChessAnimator {
   void cancelAll();
 
   [[nodiscard]] bool isAnimating(Entity::ID_type entityID) const;
+  [[nodiscard]] bool hasActiveAnimations() const;
   void updateAnimations(float dt);
   void render(sf::RenderWindow& window);
   void renderHighlightLevel(sf::RenderWindow& window);

@@ -158,6 +158,7 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot, bool bla
   m_move_history.clear();
   m_game_view.selectMove(static_cast<std::size_t>(-1));
   m_eval_cp.store(m_eval_history[0]);
+  m_prev_eval = m_eval_history[0];
   m_game_view.updateEval(m_eval_history[0]);
   m_game_view.clearCapturedPieces();
 
@@ -439,9 +440,15 @@ void GameController::render() {
 }
 
 void GameController::update(float dt) {
-  // Always tick UI/animations/particles
-  m_game_view.update(dt);
-  m_game_view.updateEval(m_eval_cp.load());
+  // Tick view components only if something is active
+  if (m_game_view.needsUpdate()) {
+    m_game_view.update(dt);
+  }
+  int eval = m_eval_cp.load();
+  if (eval != m_prev_eval) {
+    m_prev_eval = eval;
+    m_game_view.updateEval(eval);
+  }
 
   if (m_chess_game.getResult() != core::GameResult::ONGOING) return;
 

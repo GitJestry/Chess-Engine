@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 #include <deque>
+#include <limits>
 
 // Forward declaration to avoid heavy SFML header
 namespace sf {
@@ -178,6 +179,7 @@ private:
   std::unique_ptr<GameManager> m_game_manager;
   std::unique_ptr<TimeController> m_time_controller;
   std::atomic<int> m_eval_cp{0};
+  int m_prev_eval{std::numeric_limits<int>::min()};
 
   std::vector<std::string> m_fen_history;
   std::vector<int> m_eval_history;

@@ -136,6 +136,10 @@ void Clock::setPosition(const sf::Vector2f& pos) {
 }
 
 void Clock::setTime(float seconds) {
+  if (std::fabs(seconds - m_last_seconds) < 1e-3f) {
+    return;
+  }
+  m_last_seconds = seconds;
   m_text.setString(formatTime(seconds));
 
   // ensure the text fits: grow width if needed (height stays the same)

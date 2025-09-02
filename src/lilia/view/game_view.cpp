@@ -92,12 +92,20 @@ void GameView::init(const std::string &fen) {
 }
 
 void GameView::update(float dt) {
-  m_chess_animator.updateAnimations(dt);
-  m_particles.update(dt);
+  if (m_chess_animator.hasActiveAnimations()) {
+    m_chess_animator.updateAnimations(dt);
+  }
+  if (!m_particles.empty()) {
+    m_particles.update(dt);
+  }
 }
 
 void GameView::updateEval(int eval) {
   m_eval_bar.update(eval);
+}
+
+bool GameView::needsUpdate() const {
+  return m_chess_animator.hasActiveAnimations() || !m_particles.empty();
 }
 
 // game_view.cpp
