@@ -3,6 +3,9 @@ on:
   push:
     tags: ["v*"]
 
+permissions:
+  contents: write   # needed to create/upload the GitHub Release
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -14,39 +17,37 @@ jobs:
           cmake -S . -B build
           -G "Visual Studio 17 2022" -A x64
           -DCMAKE_BUILD_TYPE=Release
-          -DLILIA_NATIVE=ON
-          -DLILIA_FAST_MATH=ON
-          -DLILIA_LTO=ON
+          -DLILIA_NATIVE=ON -DLILIA_FAST_MATH=ON -DLILIA_LTO=ON
 
-      # Build BOTH EXE targets explicitly
+      # Build BOTH executables explicitly
       - name: Build
         run: cmake --build build --config Release --target lilia_app lilia_engine
 
-      # Prove the EXEs exist in the build tree
+      # Prove they exist in the build tree
       - name: Verify built EXEs
         shell: pwsh
         run: |
           Get-ChildItem build\bin\Release\*.exe -Recurse | Format-Table FullName
-          if (-not (Test-Path build\bin\Release\lilia_app.exe)) { throw "lilia_app.exe missing" }
-          if (-not (Test-Path build\bin\Release\lilia_engine.exe)) { throw "lilia_engine.exe missing" }
+          if (-not (Test-Path build\bin\Release\lilia_app.exe)) { throw "lilia_app.exe missing (build tree)" }
+          if (-not (Test-Path build\bin\Release\lilia_engine.exe)) { throw "lilia_engine.exe missing (build tree)" }
 
-      # Install to a clean prefix (this is what CPack will package)
+      # Install to a clean prefix (this is what CPack packages)
       - name: Install
         run: cmake --install build --config Release --prefix build/install
 
-      # Prove the EXEs exist in the install tree
+      # Prove they exist in the install tree
       - name: Verify installed EXEs
         shell: pwsh
         run: |
           Get-ChildItem build\install\*.exe -Recurse | Format-Table FullName
-          if (-not (Test-Path build\install\lilia_app.exe)) { throw "Installed lilia_app.exe missing" }
-          if (-not (Test-Path build\install\lilia_engine.exe)) { throw "Installed lilia_engine.exe missing" }
+          if (-not (Test-Path build\install\lilia_app.exe)) { throw "lilia_app.exe missing (install tree)" }
+          if (-not (Test-Path build\install\lilia_engine.exe)) { throw "lilia_engine.exe missing (install tree)" }
 
-      # Package with CPack (Release config!)
+      # Package Release with CPack (multi-config generators require -C)
       - name: Package (CPack)
         run: cpack -C Release --config build/CPackConfig.cmake
 
-      # List the contents of the produced ZIP
+      # Show the contents of the produced CPack ZIP (for visibility)
       - name: Show CPack ZIP contents
         shell: pwsh
         run: |
@@ -55,26 +56,31 @@ jobs:
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           [IO.Compression.ZipFile]::OpenRead($zip).Entries | ForEach-Object { $_.FullName }
 
-      # Also create a fallback ZIP from the install/ tree, just in case
+      # Fallback: also zip the entire install/ tree (guaranteed to contain the EXEs)
       - name: Make fallback ZIP from install/
         shell: pwsh
-        run: |
-          Compress-Archive -Path build\install\* -DestinationPath build\ChessEngine_Lilia-fallback.zip
-          Get-ChildItem build\*.zip
+        run: Compress-Archive -Path build\install\* -DestinationPath build\ChessEngine_Lilia-fallback.zip
 
+      # Upload both ZIPs and raw EXEs as CI artifacts
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-zips
+          name: windows-build
           path: |
             build\*.zip
+            build\bin\Release\*.exe
+            build\install\*.exe
 
   release:
     needs: build-windows
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
-        with: { name: windows-zips, path: dist }
+        with: { name: windows-build, path: dist }
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.zip
+          files: |
+            dist/*.zip
+            dist/*.exe
