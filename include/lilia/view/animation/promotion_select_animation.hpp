@@ -8,7 +8,8 @@ namespace lilia::view::animation {
 
 class PromotionSelectAnim : public IAnimation {
  public:
-  PromotionSelectAnim(Entity::Position prPos, PromotionManager& prOptRef, core::Color c);
+  PromotionSelectAnim(Entity::Position prPos, PromotionManager& prOptRef, core::Color c,
+                      bool upwards);
   void update(float dt) override;
   void draw(sf::RenderWindow& window) override;
   [[nodiscard]] inline bool isFinished() const override;

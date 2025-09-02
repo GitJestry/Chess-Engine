@@ -9,15 +9,20 @@ bool PromotionManager::hasOptions() {
 }
 Entity::Position PromotionManager::getCenterPosition() {
   if (m_promotions.empty()) return {0.f, 0.f};
-  return m_promotions[2].getPosition() - Entity::Position{0.f, constant::SQUARE_PX_SIZE * 0.5f};
+  auto first = m_promotions.front().getPosition();
+  auto last = m_promotions.back().getPosition();
+  return {(first.x + last.x) * 0.5f, (first.y + last.y) * 0.5f};
 }
-void PromotionManager::fillOptions(Entity::Position prPos, core::Color c) {
+void PromotionManager::fillOptions(Entity::Position prPos, core::Color c, bool upwards) {
   removeOptions();
   constexpr core::PieceType promotionTypes[] = {core::PieceType::Knight, core::PieceType::Bishop,
                                                 core::PieceType::Rook, core::PieceType::Queen};
 
   for (std::size_t i = 0; i < std::size(promotionTypes); i++) {
-    Entity::Position pos = {prPos.x, prPos.y + i * constant::SQUARE_PX_SIZE};
+    float offset = static_cast<float>(i) * constant::SQUARE_PX_SIZE;
+    Entity::Position pos =
+        upwards ? Entity::Position{prPos.x, prPos.y - offset}
+                 : Entity::Position{prPos.x, prPos.y + offset};
     m_promotions.push_back(Promotion(pos, promotionTypes[i], c));
   }
 }
