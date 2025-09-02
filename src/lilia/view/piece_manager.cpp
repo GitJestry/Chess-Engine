@@ -10,10 +10,11 @@
 
 namespace lilia::view {
 
-PieceManager::PieceManager(const BoardView& boardRef) : m_board_view_ref(boardRef), m_pieces() {}
+PieceManager::PieceManager(const BoardView &boardRef)
+    : m_board_view_ref(boardRef), m_pieces() {}
 
 /* -------------------- FEN -------------------- */
-void PieceManager::initFromFen(const std::string& fen) {
+void PieceManager::initFromFen(const std::string &fen) {
   std::string boardPart = fen.substr(0, fen.find(' '));
   int rank = 7;
   int file = 0;
@@ -27,30 +28,31 @@ void PieceManager::initFromFen(const std::string& fen) {
       int pos = file + rank * constant::BOARD_SIZE;
       core::PieceType type;
       switch (std::tolower(static_cast<unsigned char>(ch))) {
-        case 'k':
-          type = core::PieceType::King;
-          break;
-        case 'p':
-          type = core::PieceType::Pawn;
-          break;
-        case 'n':
-          type = core::PieceType::Knight;
-          break;
-        case 'b':
-          type = core::PieceType::Bishop;
-          break;
-        case 'r':
-          type = core::PieceType::Rook;
-          break;
-        default:
-          type = core::PieceType::Queen;
-          break;
+      case 'k':
+        type = core::PieceType::King;
+        break;
+      case 'p':
+        type = core::PieceType::Pawn;
+        break;
+      case 'n':
+        type = core::PieceType::Knight;
+        break;
+      case 'b':
+        type = core::PieceType::Bishop;
+        break;
+      case 'r':
+        type = core::PieceType::Rook;
+        break;
+      default:
+        type = core::PieceType::Queen;
+        break;
       }
 
-      addPiece(
-          type,
-          (std::isupper(static_cast<unsigned char>(ch)) ? core::Color::White : core::Color::Black),
-          static_cast<core::Square>(pos));
+      addPiece(type,
+               (std::isupper(static_cast<unsigned char>(ch))
+                    ? core::Color::White
+                    : core::Color::Black),
+               static_cast<core::Square>(pos));
       file++;
     }
   }
@@ -58,25 +60,32 @@ void PieceManager::initFromFen(const std::string& fen) {
 
 /* -------------------- Query helpers -------------------- */
 [[nodiscard]] Entity::ID_type PieceManager::getPieceID(core::Square pos) const {
-  if (pos == core::NO_SQUARE) return 0;
+  if (pos == core::NO_SQUARE)
+    return 0;
   auto ghost = m_premove_pieces.find(pos);
-  if (ghost != m_premove_pieces.end()) return ghost->second.getId();
-  if (m_hidden_squares.count(pos) > 0) return 0;
+  if (ghost != m_premove_pieces.end())
+    return ghost->second.getId();
+  if (m_hidden_squares.count(pos) > 0)
+    return 0;
   auto it = m_pieces.find(pos);
   return it != m_pieces.end() ? it->second.getId() : 0;
 }
 
-[[nodiscard]] bool PieceManager::isSameColor(core::Square sq1, core::Square sq2) const {
-  auto getPiece = [this](core::Square sq) -> const Piece* {
+[[nodiscard]] bool PieceManager::isSameColor(core::Square sq1,
+                                             core::Square sq2) const {
+  auto getPiece = [this](core::Square sq) -> const Piece * {
     auto ghost = m_premove_pieces.find(sq);
-    if (ghost != m_premove_pieces.end()) return &ghost->second;
-    if (m_hidden_squares.count(sq) > 0) return nullptr;
+    if (ghost != m_premove_pieces.end())
+      return &ghost->second;
+    if (m_hidden_squares.count(sq) > 0)
+      return nullptr;
     auto it = m_pieces.find(sq);
     return it != m_pieces.end() ? &it->second : nullptr;
   };
-  const Piece* p1 = getPiece(sq1);
-  const Piece* p2 = getPiece(sq2);
-  if (!p1 || !p2) return false;
+  const Piece *p1 = getPiece(sq1);
+  const Piece *p2 = getPiece(sq2);
+  if (!p1 || !p2)
+    return false;
   return p1->getColor() == p2->getColor();
 }
 
@@ -86,14 +95,16 @@ Entity::Position PieceManager::createPiecePositon(core::Square pos) {
          Entity::Position{0.f, constant::SQUARE_PX_SIZE * 0.02f};
 }
 
-void PieceManager::addPiece(core::PieceType type, core::Color color, core::Square pos) {
+void PieceManager::addPiece(core::PieceType type, core::Color color,
+                            core::Square pos) {
   std::uint8_t numTypes = 6;
-  std::string filename = constant::ASSET_PIECES_FILE_PATH + "/piece_" +
-                         std::to_string(static_cast<std::uint8_t>(type) +
-                                        numTypes * static_cast<std::uint8_t>(color)) +
-                         ".png";
+  std::string filename =
+      constant::ASSET_PIECES_FILE_PATH + "/piece_" +
+      std::to_string(static_cast<std::uint8_t>(type) +
+                     numTypes * static_cast<std::uint8_t>(color)) +
+      ".png";
 
-  const sf::Texture& texture = TextureTable::getInstance().get(filename);
+  const sf::Texture &texture = TextureTable::getInstance().get(filename);
 
   Piece newpiece(color, type, texture);
   newpiece.setScale(constant::ASSET_PIECE_SCALE, constant::ASSET_PIECE_SCALE);
@@ -101,7 +112,8 @@ void PieceManager::addPiece(core::PieceType type, core::Color color, core::Squar
   m_pieces[pos].setPosition(createPiecePositon(pos));
 }
 
-void PieceManager::movePiece(core::Square from, core::Square to, core::PieceType promotion) {
+void PieceManager::movePiece(core::Square from, core::Square to,
+                             core::PieceType promotion) {
   Piece movingPiece;
 
   // The piece might have been stashed in m_captured_backup if a premove
@@ -142,48 +154,57 @@ void PieceManager::removePiece(core::Square pos) {
   m_hidden_squares.erase(pos);
 }
 
-void PieceManager::removeAll() {
-  m_pieces.clear();
-}
+void PieceManager::removeAll() { m_pieces.clear(); }
 
 /* -------------------- Piece info -------------------- */
 core::PieceType PieceManager::getPieceType(core::Square pos) const {
   auto ghost = m_premove_pieces.find(pos);
-  if (ghost != m_premove_pieces.end()) return ghost->second.getType();
-  if (m_hidden_squares.count(pos) > 0) return core::PieceType::None;
+  if (ghost != m_premove_pieces.end())
+    return ghost->second.getType();
+  if (m_hidden_squares.count(pos) > 0)
+    return core::PieceType::None;
   auto it = m_pieces.find(pos);
   return it != m_pieces.end() ? it->second.getType() : core::PieceType::None;
 }
 
 core::Color PieceManager::getPieceColor(core::Square pos) const {
   auto ghost = m_premove_pieces.find(pos);
-  if (ghost != m_premove_pieces.end()) return ghost->second.getColor();
-  if (m_hidden_squares.count(pos) > 0) return core::Color::White;
+  if (ghost != m_premove_pieces.end())
+    return ghost->second.getColor();
+  if (m_hidden_squares.count(pos) > 0)
+    return core::Color::White;
   auto it = m_pieces.find(pos);
   return it != m_pieces.end() ? it->second.getColor() : core::Color::White;
 }
 
 [[nodiscard]] bool PieceManager::hasPieceOnSquare(core::Square pos) const {
-  if (m_premove_pieces.find(pos) != m_premove_pieces.end()) return true;
-  if (m_hidden_squares.count(pos) > 0) return false;
+  if (m_premove_pieces.find(pos) != m_premove_pieces.end())
+    return true;
+  if (m_hidden_squares.count(pos) > 0)
+    return false;
   return m_pieces.find(pos) != m_pieces.end();
 }
 
 Entity::Position PieceManager::getPieceSize(core::Square pos) const {
   auto ghost = m_premove_pieces.find(pos);
-  if (ghost != m_premove_pieces.end()) return ghost->second.getCurrentSize();
-  if (m_hidden_squares.count(pos) > 0) return {0.f, 0.f};
+  if (ghost != m_premove_pieces.end())
+    return ghost->second.getCurrentSize();
+  if (m_hidden_squares.count(pos) > 0)
+    return {0.f, 0.f};
   auto it = m_pieces.find(pos);
-  if (it == m_pieces.end()) return {0.f, 0.f};
+  if (it == m_pieces.end())
+    return {0.f, 0.f};
   return it->second.getCurrentSize();
 }
 
 /* -------------------- Movement helpers -------------------- */
-[[nodiscard]] inline Entity::Position mouseToEntityPos(core::MousePos mousePos) {
+[[nodiscard]] inline Entity::Position
+mouseToEntityPos(core::MousePos mousePos) {
   return static_cast<Entity::Position>(mousePos);
 }
 
-void PieceManager::setPieceToSquareScreenPos(core::Square from, core::Square to) {
+void PieceManager::setPieceToSquareScreenPos(core::Square from,
+                                             core::Square to) {
   auto ghost = m_premove_pieces.find(from);
   if (ghost != m_premove_pieces.end()) {
     ghost->second.setPosition(createPiecePositon(to));
@@ -195,7 +216,8 @@ void PieceManager::setPieceToSquareScreenPos(core::Square from, core::Square to)
   }
 }
 
-void PieceManager::setPieceToScreenPos(core::Square pos, core::MousePos mousePos) {
+void PieceManager::setPieceToScreenPos(core::Square pos,
+                                       core::MousePos mousePos) {
   auto ghost = m_premove_pieces.find(pos);
   if (ghost != m_premove_pieces.end()) {
     ghost->second.setPosition(mouseToEntityPos(mousePos));
@@ -207,7 +229,8 @@ void PieceManager::setPieceToScreenPos(core::Square pos, core::MousePos mousePos
   }
 }
 
-void PieceManager::setPieceToScreenPos(core::Square pos, Entity::Position entityPos) {
+void PieceManager::setPieceToScreenPos(core::Square pos,
+                                       Entity::Position entityPos) {
   auto ghost = m_premove_pieces.find(pos);
   if (ghost != m_premove_pieces.end()) {
     ghost->second.setPosition(entityPos);
@@ -220,20 +243,21 @@ void PieceManager::setPieceToScreenPos(core::Square pos, Entity::Position entity
 }
 
 /* -------------------- Rendering -------------------- */
-void PieceManager::renderPieces(sf::RenderWindow& window,
-                                const animation::ChessAnimator& chessAnimRef) {
+void PieceManager::renderPieces(sf::RenderWindow &window,
+                                const animation::ChessAnimator &chessAnimRef) {
   // Base layer: non-animating pieces that are not hidden
-  for (auto& pair : m_pieces) {
-    const auto& pos = pair.first;
-    auto& piece = pair.second;
-    if (m_hidden_squares.count(pos) > 0) continue;
+  for (auto &pair : m_pieces) {
+    const auto &pos = pair.first;
+    auto &piece = pair.second;
+    if (m_hidden_squares.count(pos) > 0)
+      continue;
     if (!chessAnimRef.isAnimating(piece.getId())) {
       piece.setPosition(createPiecePositon(pos));
       piece.draw(window);
     }
   }
   // Top layer: premove ghosts always on top
-  for (auto& pair : m_premove_pieces) {
+  for (auto &pair : m_premove_pieces) {
     // Recompute position each frame so board flips stay in sync
     if (!chessAnimRef.isAnimating(pair.second.getId())) {
       pair.second.setPosition(createPiecePositon(pair.first));
@@ -242,8 +266,9 @@ void PieceManager::renderPieces(sf::RenderWindow& window,
   }
 }
 
-void PieceManager::renderPiece(core::Square pos, sf::RenderWindow& window) {
-  if (m_hidden_squares.count(pos) > 0) return;
+void PieceManager::renderPiece(core::Square pos, sf::RenderWindow &window) {
+  if (m_hidden_squares.count(pos) > 0)
+    return;
   auto it = m_pieces.find(pos);
   if (it != m_pieces.end()) {
     it->second.draw(window);
@@ -258,10 +283,13 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to) {
   if (existing != m_premove_pieces.end()) {
     ghost = std::move(existing->second);
     m_premove_pieces.erase(existing);
+    // Unhide the square the ghost is leaving so it can be reused
+    m_hidden_squares.erase(from);
   } else {
     auto it = m_pieces.find(from);
-    if (it == m_pieces.end()) return;
-    ghost = it->second;  // copy to preserve original
+    if (it == m_pieces.end())
+      return;
+    ghost = it->second; // copy to preserve original
     m_hidden_squares.insert(from);
   }
 
@@ -285,7 +313,8 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to) {
 void PieceManager::consumePremoveGhost(core::Square from, core::Square to) {
   // Remove only the ghost for the *first* premove being executed, keep others
   auto it = m_premove_pieces.find(to);
-  if (it != m_premove_pieces.end()) m_premove_pieces.erase(it);
+  if (it != m_premove_pieces.end())
+    m_premove_pieces.erase(it);
 
   // The move will actually be applied by the caller (real piece drawn),
   // so unhide involved squares and drop any stashed victim for 'to'
@@ -296,7 +325,7 @@ void PieceManager::consumePremoveGhost(core::Square from, core::Square to) {
 
 void PieceManager::clearPremovePieces(bool restore) {
   if (restore) {
-    for (auto& pair : m_captured_backup) {
+    for (auto &pair : m_captured_backup) {
       m_pieces[pair.first] = std::move(pair.second);
       m_pieces[pair.first].setPosition(createPiecePositon(pair.first));
     }
@@ -306,4 +335,4 @@ void PieceManager::clearPremovePieces(bool restore) {
   m_hidden_squares.clear();
 }
 
-}  // namespace lilia::view
+} // namespace lilia::view
