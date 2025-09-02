@@ -7,9 +7,9 @@
 namespace lilia::view::animation {
 
 PromotionSelectAnim::PromotionSelectAnim(Entity::Position prPos, PromotionManager& prOptRef,
-                                         core::Color c)
+                                         core::Color c, bool upwards)
     : m_promo_pos(prPos), m_promo_mgr_ref(prOptRef) {
-  m_promo_mgr_ref.fillOptions(prPos, c);
+  m_promo_mgr_ref.fillOptions(prPos, c, upwards);
 
   m_white_boarder.setTexture(TextureTable::getInstance().get(constant::STR_TEXTURE_PROMOTION));
   m_white_boarder.setOriginToCenter();

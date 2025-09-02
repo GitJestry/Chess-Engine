@@ -12,7 +12,7 @@ class PromotionManager {
 
   bool hasOptions();
   void render(sf::RenderWindow& window);
-  void fillOptions(Entity::Position prPos, core::Color c);
+  void fillOptions(Entity::Position prPos, core::Color c, bool upwards);
   void removeOptions();
   Entity::Position getCenterPosition();
   core::PieceType clickedOnType(Entity::Position mousePos);

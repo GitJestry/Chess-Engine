@@ -44,9 +44,10 @@ void ChessAnimator::dropPiece(core::Square from, core::Square to, core::PieceTyp
 }
 
 void ChessAnimator::promotionSelect(core::Square prPos, PromotionManager& prOptRef, core::Color c) {
+  auto pos = m_board_view_ref.getSquareScreenPos(prPos);
+  bool upwards = pos.y > m_board_view_ref.getPosition().y;
   m_anim_manager.add(m_piece_manager_ref.getPieceID(core::NO_SQUARE),
-                     std::make_unique<PromotionSelectAnim>(
-                         m_board_view_ref.getSquareScreenPos(prPos), prOptRef, c));
+                     std::make_unique<PromotionSelectAnim>(pos, prOptRef, c, upwards));
 }
 
 void ChessAnimator::piecePlaceHolder(core::Square sq) {

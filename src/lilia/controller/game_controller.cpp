@@ -502,20 +502,21 @@ void GameController::update(float dt) {
         m_game_view.applyPremoveInstant(rookFrom, rookTo, core::PieceType::None);
       }
 
-      // 2) Hand it to the game manager (synchronous acceptance)
-      const bool accepted = m_game_manager
-                                ? m_game_manager->requestUserMove(m_pending_from, m_pending_to,
-                                                                  /*onClick*/ true)
-                                : false;
+      // 2) Hand it to the game manager and handle promotion immediately
+      bool accepted = m_game_manager
+                          ? m_game_manager->requestUserMove(m_pending_from, m_pending_to,
+                                                            /*onClick*/ true)
+                          : false;
+      if (m_pending_promotion != core::PieceType::None && m_game_manager) {
+        m_game_manager->completePendingPromotion(m_pending_promotion);
+        accepted = true;
+      }
 
       if (!accepted) {
         // Roll back visuals to the last known state; cancel the chain
         m_game_view.setBoardFen(m_fen_history.back());
         clearPremove();
       } else {
-        if (m_pending_promotion != core::PieceType::None) {
-          m_game_manager->completePendingPromotion(m_pending_promotion);
-        }
 
         // IMPORTANT: Do NOT pop the queue here — it was already popped when
         // scheduling in movePieceAndClear(). Just rebuild highlights/ghosts for

@@ -119,11 +119,14 @@ void GameView::render() {
   m_piece_manager.renderPieces(m_window, m_chess_animator);
   m_highlight_manager.renderAttack(m_window);
 
-  // Animations in the middle
-  m_chess_animator.render(m_window);
-
-  // GHOSTS on top — fixes "real+ghost at same time"
-  m_piece_manager.renderPremoveGhosts(m_window, m_chess_animator);
+  // Animations and ghosts: ensure promotion overlay stays on top
+  if (isInPromotionSelection()) {
+    m_piece_manager.renderPremoveGhosts(m_window, m_chess_animator);
+    m_chess_animator.render(m_window);
+  } else {
+    m_chess_animator.render(m_window);
+    m_piece_manager.renderPremoveGhosts(m_window, m_chess_animator);
+  }
 
   m_board_view.renderHistoryOverlay(m_window);
   if (m_show_clocks) {
