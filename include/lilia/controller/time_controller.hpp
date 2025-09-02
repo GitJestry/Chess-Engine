@@ -25,6 +25,7 @@ class TimeController {
   int m_increment;
   core::Color m_active;
   bool m_running{false};
+  bool m_started{false};
   std::optional<core::Color> m_flagged;
 };
 

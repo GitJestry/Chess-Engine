@@ -11,6 +11,7 @@ TimeController::TimeController(int baseSeconds, int incSeconds)
 void TimeController::start(core::Color sideToMove) {
   m_active = sideToMove;
   m_running = true;
+  m_started = false;
   m_flagged.reset();
 }
 
@@ -20,10 +21,12 @@ void TimeController::onMove(core::Color mover) {
   float &t = (mover == core::Color::White) ? m_white_time : m_black_time;
   t += static_cast<float>(m_increment);
   m_active = ~mover;
+  if (!m_started)
+    m_started = true;
 }
 
 void TimeController::update(float dt) {
-  if (!m_running || m_flagged)
+  if (!m_running || m_flagged || !m_started)
     return;
   float &t = (m_active == core::Color::White) ? m_white_time : m_black_time;
   t -= dt;
@@ -36,6 +39,7 @@ void TimeController::update(float dt) {
 
 void TimeController::stop() {
   m_running = false;
+  m_started = false;
 }
 
 float TimeController::getTime(core::Color color) const {
