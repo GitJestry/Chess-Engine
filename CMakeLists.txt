@@ -73,20 +73,24 @@ target_include_directories(lilia_app PRIVATE
 )
 
 # -------------------------------------------------
-# SFML for UI (shared libs; bundled into ZIP)
+# SFML for UI (shared; but DO NOT install SFML itself)
 # -------------------------------------------------
 include(FetchContent)
-# Build SFML as shared libs (default), good for TARGET_RUNTIME_DLLS collection
+
+# build SFML as shared libs so we can copy its DLLs beside the exe
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
 
+# Prevent install() rules from being generated for SFML (avoids sfml-main.lib issue)
+set(_old_SKIP_INSTALL ${CMAKE_SKIP_INSTALL_RULES})
+set(CMAKE_SKIP_INSTALL_RULES TRUE)
 FetchContent_Declare(
   SFML
   GIT_REPOSITORY https://github.com/SFML/SFML.git
   GIT_TAG 2.6.0
 )
 FetchContent_MakeAvailable(SFML)
+set(CMAKE_SKIP_INSTALL_RULES ${_old_SKIP_INSTALL})
 
-# When added via FetchContent, SFML targets are 'sfml-graphics' etc.
 target_link_libraries(lilia_app PRIVATE
   sfml-graphics
   sfml-window
@@ -106,7 +110,6 @@ target_link_libraries(lilia_app    PRIVATE Threads::Threads)
 # -------------------------------------------------
 function(lilia_set_perf_flags tgt)
   if (MSVC)
-    # Faster builds + strong optimizations
     target_compile_options(${tgt} PRIVATE
       /MP
       $<$<CONFIG:Release>:/O2 /Ot /Oi /DNDEBUG /Gy /Gw>
@@ -117,7 +120,6 @@ function(lilia_set_perf_flags tgt)
       include(CheckIPOSupported)
       check_ipo_supported(RESULT _ipo_ok OUTPUT _ipo_out)
       if (_ipo_ok)
-        # Enables /GL + /LTCG on Release for this target
         set_property(TARGET ${tgt} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
       else()
         message(STATUS "IPO/LTO not supported: ${_ipo_out}")
@@ -166,7 +168,7 @@ endfunction()
 lilia_set_perf_flags(lilia_engine)
 lilia_set_perf_flags(lilia_app)
 
-# Global IPO fallback (for non-MSVC single-config)
+# Global IPO fallback (non-MSVC)
 if (LILIA_LTO AND NOT MSVC)
   include(CheckIPOSupported)
   check_ipo_supported(RESULT ipo_ok OUTPUT ipo_out)
@@ -181,12 +183,15 @@ endif()
 # Windows: copy runtime DLLs into the build tree (dev convenience)
 # -------------------------------------------------
 if (WIN32)
-  add_custom_command(TARGET lilia_app POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      $<TARGET_RUNTIME_DLLS:lilia_app>
-      $<TARGET_FILE_DIR:lilia_app>
-    COMMAND_EXPAND_LISTS
-  )
+  foreach(tgt IN ITEMS lilia_app lilia_engine)
+    add_custom_command(TARGET ${tgt} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_RUNTIME_DLLS:${tgt}>
+        $<TARGET_FILE_DIR:${tgt}>
+      COMMAND_EXPAND_LISTS
+    )
+  endforeach()
+
   add_custom_command(TARGET lilia_app POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E echo "Copying OpenAL32.dll (if exists)..."
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -212,7 +217,7 @@ function(lilia_copy_assets tgt)
     message(WARNING "LILIA_ASSETS_DIR not found: ${LILIA_ASSETS_DIR} — assets won't be copied.")
   endif()
 endfunction()
-lilia_copy_assets(lilia_app)  # engine doesn't need assets
+lilia_copy_assets(lilia_app)
 
 # -------------------------------------------------
 # Output dirs
@@ -226,44 +231,30 @@ foreach(target lilia_engine lilia_app)
 endforeach()
 
 # -------------------------------------------------
-# Install rules (so cmake --install & CPack place files properly)
+# Install rules (we only install OUR stuff; SFML was excluded above)
 # -------------------------------------------------
-# EXEs
-install(TARGETS lilia_app
-  RUNTIME DESTINATION .
-  BUNDLE  DESTINATION .
-)
-install(TARGETS lilia_engine
-  RUNTIME DESTINATION .
-)
+install(TARGETS lilia_app  RUNTIME DESTINATION . BUNDLE DESTINATION .)
+install(TARGETS lilia_engine RUNTIME DESTINATION .)
 
-# Assets
 if (EXISTS "${LILIA_ASSETS_DIR}")
   install(DIRECTORY "${LILIA_ASSETS_DIR}/" DESTINATION assets)
 endif()
 
-# Runtime DLLs (SFML + deps + MSVC/MinGW runtimes)
 if (WIN32)
   install(FILES
     $<TARGET_RUNTIME_DLLS:lilia_app>
     $<TARGET_RUNTIME_DLLS:lilia_engine>
     DESTINATION .
   )
-  # OpenAL for sfml-audio (if present)
-  install(FILES "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll"
-          DESTINATION . OPTIONAL)
-
-  # Also include MSVC system runtimes if needed
-  include(InstallRequiredSystemLibraries)
+  install(FILES "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll" DESTINATION . OPTIONAL)
+  include(InstallRequiredSystemLibraries)  # MSVC CRT/UCRT if needed
 endif()
 
 # -------------------------------------------------
-# CPack (ZIP on Windows)
+# CPack (ZIP on Windows) — force Release to avoid empty zips
 # -------------------------------------------------
 set(CPACK_PACKAGE_NAME "ChessEngine_Lilia")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-
-# Force packaging of Release config by default (esp. for multi-config generators like VS)
 set(CPACK_CONFIGURATION_TYPES "Release")
 
 if (WIN32)
@@ -273,7 +264,6 @@ elseif(APPLE)
 else()
   set(CPACK_GENERATOR "TGZ")
 endif()
-
 include(CPack)
 
 # Optional: export compile_commands.json
