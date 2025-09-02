@@ -644,6 +644,7 @@ void GameController::enqueuePremove(core::Square from, core::Square to) {
   m_game_view.clearHighlightSquare(from);
   m_game_view.highlightPremoveSquare(from);
   m_game_view.highlightPremoveSquare(to);
+  m_game_view.highlightSquare(to);
 
   m_premove_queue.push_back(pm);
   m_sound_manager.playEffect(view::sound::Effect::Premove);
@@ -973,6 +974,11 @@ void GameController::onClick(core::MousePos mousePos) {
     return;
   }
   const core::Square sq = m_game_view.mousePosToSquare(mousePos);
+  if (!isValid(sq)) {
+    m_selection_changed_on_press = false;
+    if (m_selected_sq != core::NO_SQUARE) deselectSquare();
+    return;
+  }
   // piece might have been moved on mouse press without dragging - reset it
   if (m_game_view.hasPieceOnSquare(sq)) {
     m_game_view.endAnimation(sq);
@@ -1216,6 +1222,7 @@ model::Position GameController::getPositionAfterPremoves() const {
 }
 
 model::bb::Piece GameController::getPieceConsideringPremoves(core::Square sq) const {
+  if (!isValid(sq)) return {};
   // Prefer the virtual board after queued premoves (fixes "captured piece
   // steals selection")
   if (!m_premove_queue.empty()) {
@@ -1226,6 +1233,7 @@ model::bb::Piece GameController::getPieceConsideringPremoves(core::Square sq) co
 }
 
 bool GameController::hasVirtualPiece(core::Square sq) const {
+  if (!isValid(sq)) return false;
   return getPieceConsideringPremoves(sq).type != core::PieceType::None;
 }
 
