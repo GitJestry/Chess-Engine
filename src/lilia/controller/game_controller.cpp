@@ -1021,8 +1021,12 @@ void GameController::onClick(core::MousePos mousePos) {
       return;  // don't reselect
     }
     if (!ownTurnAndPiece && canPremove) {
-      enqueuePremove(m_selected_sq, sq);
-      m_selected_sq = core::NO_SQUARE;
+      if (sq == m_selected_sq) {
+        deselectSquare();
+      } else {
+        enqueuePremove(m_selected_sq, sq);
+        deselectSquare();
+      }
       return;  // don't reselect
     }
 
