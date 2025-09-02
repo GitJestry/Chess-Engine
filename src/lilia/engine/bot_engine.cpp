@@ -1,6 +1,6 @@
 #include "lilia/engine/bot_engine.hpp"
 
-#define LOG 0
+#define LOG 1
 
 #include <chrono>
 #include <condition_variable>

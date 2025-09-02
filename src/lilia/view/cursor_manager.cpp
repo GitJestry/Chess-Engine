@@ -1,6 +1,7 @@
 #include "lilia/view/cursor_manager.hpp"
 
 #include <SFML/Graphics/Image.hpp>
+#include <SFML/Graphics/RenderWindow.hpp>
 
 #include "lilia/view/render_constants.hpp"
 
@@ -24,11 +25,16 @@ CursorManager::CursorManager(sf::RenderWindow &window) : m_window(window) {
   m_window.setMouseCursor(m_cursor_default);
 }
 
-void CursorManager::setDefaultCursor() { m_window.setMouseCursor(m_cursor_default); }
+void CursorManager::setDefaultCursor() {
+  m_window.setMouseCursor(m_cursor_default);
+}
 
-void CursorManager::setHandOpenCursor() { m_window.setMouseCursor(m_cursor_hand_open); }
+void CursorManager::setHandOpenCursor() {
+  m_window.setMouseCursor(m_cursor_hand_open);
+}
 
-void CursorManager::setHandClosedCursor() { m_window.setMouseCursor(m_cursor_hand_closed); }
+void CursorManager::setHandClosedCursor() {
+  m_window.setMouseCursor(m_cursor_hand_closed);
+}
 
-} // namespace lilia::view
-
+}  // namespace lilia::view
