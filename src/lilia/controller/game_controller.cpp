@@ -347,6 +347,8 @@ void GameController::handleEvent(const sf::Event &event) {
     case sf::Event::MouseLeft:
       m_mouse_down = false;
       m_dragging = false;
+      m_drag_from = core::NO_SQUARE;
+      m_game_view.clearDraggingPiece();
       m_game_view.setDefaultCursor();
       break;
     default:
@@ -424,6 +426,7 @@ void GameController::onMouseReleased(core::MousePos pos) {
   if (m_dragging) {
     m_dragging = false;
     m_drag_from = core::NO_SQUARE;
+    m_game_view.clearDraggingPiece();
   }
   m_preview_active = false;
   m_prev_selected_before_preview = core::NO_SQUARE;

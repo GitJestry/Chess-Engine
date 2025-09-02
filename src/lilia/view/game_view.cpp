@@ -121,10 +121,14 @@ void GameView::render() {
   // Animations and ghosts: ensure promotion overlay stays on top
   if (isInPromotionSelection()) {
     m_piece_manager.renderPremoveGhosts(m_window, m_chess_animator);
+    if (m_dragging_piece != core::NO_SQUARE)
+      m_piece_manager.renderPiece(m_dragging_piece, m_window);
     m_chess_animator.render(m_window);
   } else {
     m_chess_animator.render(m_window);
     m_piece_manager.renderPremoveGhosts(m_window, m_chess_animator);
+    if (m_dragging_piece != core::NO_SQUARE)
+      m_piece_manager.renderPiece(m_dragging_piece, m_window);
   }
   if (m_show_clocks) {
     m_top_clock.render(m_window);
@@ -276,11 +280,14 @@ core::MousePos GameView::clampPosToBoard(core::MousePos mousePos,
 void GameView::setPieceToMouseScreenPos(core::Square pos, core::MousePos mousePos) {
   auto size = getPieceSize(pos);
   m_piece_manager.setPieceToScreenPos(pos, clampPosToBoard(mousePos, size));
+  m_dragging_piece = pos;
 }
 
 void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
   m_piece_manager.setPieceToSquareScreenPos(from, to);
 }
+
+void GameView::clearDraggingPiece() { m_dragging_piece = core::NO_SQUARE; }
 
 void GameView::movePiece(core::Square from, core::Square to, core::PieceType promotion) {
   // IMPORTANT: reveal the real piece by consuming the premove ghost first

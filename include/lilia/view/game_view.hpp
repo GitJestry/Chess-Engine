@@ -71,6 +71,9 @@ class GameView {
   void movePiece(core::Square from, core::Square to,
                  core::PieceType promotion = core::PieceType::None);
 
+  // Track the piece currently being dragged so it can be rendered above others
+  void clearDraggingPiece();
+
   [[nodiscard]] sf::Vector2u getWindowSize() const;
   [[nodiscard]] Entity::Position getPieceSize(core::Square pos) const;
 
@@ -151,6 +154,9 @@ class GameView {
   HighlightManager m_highlight_manager;
   animation::ChessAnimator m_chess_animator;
   PromotionManager m_promotion_manager;
+
+  // Currently dragged piece (if any)
+  core::Square m_dragging_piece{core::NO_SQUARE};
 
   // cursors
   sf::Cursor m_cursor_default;
