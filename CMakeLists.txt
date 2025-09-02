@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.21)  # needed for $<TARGET_RUNTIME_DLLS:...>
 project(ChessEngine_Lilia VERSION 1.0 LANGUAGES CXX)
 
 # ---------------------------
@@ -87,10 +87,10 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(SFML)
 
 target_link_libraries(lilia_app PRIVATE
-    sfml::graphics
-  sfml::window
-  sfml::system
-  sfml::audio
+  sfml-graphics
+  sfml-window
+  sfml-system
+  sfml-audio
 )
 
 # ---------------------------
@@ -234,6 +234,14 @@ install(TARGETS lilia_app
 )
 if (EXISTS "${LILIA_ASSETS_DIR}")
   install(DIRECTORY "${LILIA_ASSETS_DIR}/" DESTINATION assets)
+endif()
+
+# Ensure runtime DLLs (SFML, MinGW/MSVC, etc.) are installed into the package
+if (WIN32)
+  install(FILES $<TARGET_RUNTIME_DLLS:lilia_app> DESTINATION .)
+  install(FILES "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll" DESTINATION . OPTIONAL)
+  # (Optional, MSVC only) also bundle MSVC CRT/UCRT if needed:
+  include(InstallRequiredSystemLibraries)
 endif()
 
 # Minimal packaging convenience (ZIP on Win/Linux, DragNDrop on macOS)

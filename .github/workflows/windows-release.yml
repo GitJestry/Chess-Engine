@@ -1,0 +1,46 @@
+name: Windows Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Configure (MSVC). Turn off AVX2 for compatibility.
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -G "Visual Studio 17 2022"
+          -A x64
+          -DCMAKE_BUILD_TYPE=Release
+          -DLILIA_NATIVE=ON
+          -DLILIA_FAST_MATH=ON
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Install
+        run: cmake --install build --config Release --prefix build/install
+
+      - name: Package (CPack)
+        run: cpack --config build/CPackConfig.cmake
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: build/*.zip
+
+  release:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: windows-zip, path: dist }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
