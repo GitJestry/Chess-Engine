@@ -14,7 +14,6 @@ public:
 
   void init();
   void renderBoard(sf::RenderWindow &window);
-  void renderHistoryOverlay(sf::RenderWindow &window);
   [[nodiscard]] Entity::Position getSquareScreenPos(core::Square sq) const;
   void toggleFlipped();
   void setFlipped(bool flipped);
@@ -24,8 +23,6 @@ public:
                                  Entity::Position pieceSize = {0.f, 0.f}) const noexcept;
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
 
-  void setHistoryOverlay(bool show);
-
   void setPosition(const Entity::Position &pos);
   [[nodiscard]] Entity::Position getPosition() const;
 
@@ -34,8 +31,6 @@ private:
   Entity::Position m_flip_pos{};
   float m_flip_size{0.f};
   bool m_flipped{false};
-  Entity m_history_overlay;
-  bool m_show_history_overlay{false};
 };
 
 } // namespace lilia::view

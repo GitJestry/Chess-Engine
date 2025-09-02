@@ -426,8 +426,6 @@ void TextureTable::preLoad() {
        sf::Color(180, 120, 255, 160));  // purple-ish premove highlight
   load(constant::STR_TEXTURE_WARNINGHLIGHT,
        sf::Color(255, 102, 102, 190));  // #FF6666, clear check alert
-  load(constant::STR_TEXTURE_HISTORY_OVERLAY,
-       sf::Color(120, 140, 170, 40));  // #788CAA, subtle last-move
 
   m_textures[constant::STR_TEXTURE_ATTACKHLIGHT] =
       std::move(makeAttackDotTexture(constant::ATTACK_DOT_PX_SIZE));
