@@ -220,6 +220,7 @@ void GameController::handleEvent(const sf::Event &event) {
     }
     if (m_game_view.isOnFlipIcon(mp)) {
       m_game_view.toggleBoardOrientation();
+      updatePremovePreviews();
       return;
     }
 
@@ -255,6 +256,7 @@ void GameController::handleEvent(const sf::Event &event) {
     std::size_t idx =
         m_game_view.getMoveIndexAt(core::MousePos(event.mouseButton.x, event.mouseButton.y));
     if (idx != static_cast<std::size_t>(-1)) {
+      clearPremove();
       const bool leavingFinalState =
           (m_chess_game.getResult() != core::GameResult::ONGOING &&
            m_fen_index == m_fen_history.size() - 1 && idx + 1 != m_fen_history.size() - 1);
@@ -316,6 +318,7 @@ void GameController::handleEvent(const sf::Event &event) {
       core::MousePos mp(event.mouseButton.x, event.mouseButton.y);
       if (m_game_view.isOnFlipIcon(mp)) {
         m_game_view.toggleBoardOrientation();
+        updatePremovePreviews();
       }
     }
     return;
@@ -463,6 +466,12 @@ void GameController::update(float dt) {
     const auto st = m_chess_game.getGameState();
     if (m_game_manager && m_game_manager->isHuman(st.sideToMove) &&
         hasCurrentLegalMove(m_pending_from, m_pending_to)) {
+      // Update capture info using the current board state; fall back to
+      // previously stored type (e.g. en-passant) if the square is empty.
+      if (auto cap = m_chess_game.getPiece(m_pending_to); cap.type != core::PieceType::None) {
+        m_pending_capture_type = cap.type;
+      }
+
       // Consume only the first ghost; keep the rest visible
       m_game_view.consumePremoveGhost(m_pending_from, m_pending_to);
 
@@ -475,7 +484,6 @@ void GameController::update(float dt) {
     }
     m_has_pending_auto_move = false;
     m_pending_from = m_pending_to = core::NO_SQUARE;
-    m_pending_capture_type = core::PieceType::None;
   }
 }
 
@@ -740,6 +748,7 @@ void GameController::showAttacks(std::vector<core::Square> att) {
 void GameController::onClick(core::MousePos mousePos) {
   if (m_game_view.isOnFlipIcon(mousePos)) {
     m_game_view.toggleBoardOrientation();
+    updatePremovePreviews();
     return;
   }
   const core::Square sq = m_game_view.mousePosToSquare(mousePos);
@@ -978,9 +987,24 @@ bool GameController::isPseudoLegalPremove(core::Square from, core::Square to) co
   if (!pcOpt) return false;
 
   // Safe premove: isolate moving piece, disable castle/en-passant, ignore checks
-  model::Board empty;
-  empty.clear();
-  empty.setPiece(from, *pcOpt);
+  model::Board board;
+  board.clear();
+  board.setPiece(from, *pcOpt);
+
+  // For pawns, add dummy capture targets on both forward diagonals so capture
+  // premoves remain available even if those squares are empty.
+  if (pcOpt->type == core::PieceType::Pawn) {
+    const int file = static_cast<int>(from) & 7;
+    const int forward = (pcOpt->color == core::Color::White) ? 8 : -8;
+    const model::bb::Piece dummy{core::PieceType::Pawn, ~pcOpt->color};
+    if (file > 0) {
+      board.setPiece(static_cast<core::Square>(static_cast<int>(from) + forward - 1), dummy);
+    }
+    if (file < 7) {
+      board.setPiece(static_cast<core::Square>(static_cast<int>(from) + forward + 1), dummy);
+    }
+  }
+
   model::GameState st{};
   st.sideToMove = pcOpt->color;
   st.castlingRights = 0;
@@ -988,7 +1012,7 @@ bool GameController::isPseudoLegalPremove(core::Square from, core::Square to) co
 
   model::MoveGenerator gen;
   std::vector<model::Move> pseudo;
-  gen.generatePseudoLegalMoves(empty, st, pseudo);
+  gen.generatePseudoLegalMoves(board, st, pseudo);
   for (const auto &m : pseudo) {
     if (m.from == from && m.to == to) return true;
   }
@@ -1059,6 +1083,7 @@ void GameController::syncCapturedPieces() {
 }
 
 void GameController::stepBackward() {
+  clearPremove();
   if (m_fen_index > 0) {
     const bool leavingFinalState = (m_chess_game.getResult() != core::GameResult::ONGOING &&
                                     m_fen_index == m_fen_history.size() - 1);
@@ -1117,6 +1142,7 @@ void GameController::stepBackward() {
 }
 
 void GameController::stepForward() {
+  clearPremove();
   if (m_fen_index < m_move_history.size()) {
     const bool enteringFinalState = (m_chess_game.getResult() != core::GameResult::ONGOING &&
                                      m_fen_index + 1 == m_fen_history.size() - 1);

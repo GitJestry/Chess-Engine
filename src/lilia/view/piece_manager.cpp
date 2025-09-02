@@ -102,8 +102,28 @@ void PieceManager::addPiece(core::PieceType type, core::Color color, core::Squar
 }
 
 void PieceManager::movePiece(core::Square from, core::Square to, core::PieceType promotion) {
-  Piece movingPiece = std::move(m_pieces[from]);
-  removePiece(from);
+  Piece movingPiece;
+
+  // The piece might have been stashed in m_captured_backup if a premove
+  // ghost temporarily "captured" it. Restore it if necessary so the real
+  // move can proceed.
+  auto fromIt = m_pieces.find(from);
+  if (fromIt != m_pieces.end()) {
+    movingPiece = std::move(fromIt->second);
+    m_pieces.erase(fromIt);
+  } else {
+    auto backupIt = m_captured_backup.find(from);
+    if (backupIt != m_captured_backup.end()) {
+      movingPiece = std::move(backupIt->second);
+      m_captured_backup.erase(backupIt);
+      m_hidden_squares.erase(from);
+    } else {
+      // No piece to move – likely an out-of-sync premove scenario.
+      return;
+    }
+  }
+
+  // If the destination square holds a stashed piece, drop it.
   removePiece(to);
 
   if (promotion != core::PieceType::None) {
@@ -111,10 +131,15 @@ void PieceManager::movePiece(core::Square from, core::Square to, core::PieceType
   } else {
     m_pieces[to] = std::move(movingPiece);
   }
+
+  // The piece now occupies 'to', so ensure it's not hidden.
+  m_hidden_squares.erase(to);
 }
 
 void PieceManager::removePiece(core::Square pos) {
   m_pieces.erase(pos);
+  m_captured_backup.erase(pos);
+  m_hidden_squares.erase(pos);
 }
 
 void PieceManager::removeAll() {
