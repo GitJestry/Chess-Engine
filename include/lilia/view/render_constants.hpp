@@ -18,7 +18,7 @@ constexpr unsigned int EVAL_BAR_FONT_SIZE = 14;
 
 // Breite des Bereichs für die Zugliste rechts neben dem Brett
 constexpr unsigned int MOVE_LIST_WIDTH =
-    static_cast<unsigned int>(static_cast<float>(WINDOW_PX_SIZE) * 0.35f);
+    static_cast<unsigned int>(static_cast<float>(WINDOW_PX_SIZE) * 0.2f);
 
 // Allgemeiner Abstand zwischen den Elementen (Eval-Bar, Brett, Zugliste)
 constexpr unsigned int SIDE_MARGIN =

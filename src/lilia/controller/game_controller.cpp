@@ -385,9 +385,6 @@ void GameController::onMousePressed(core::MousePos pos) {
   const core::Square sq = m_game_view.mousePosToSquare(pos);
   m_selection_changed_on_press = false;
 
-  // Clicking anywhere on the board should cancel all queued premoves
-  if (sq != core::NO_SQUARE && !m_premove_queue.empty()) clearPremove();
-
   if (!hasVirtualPiece(sq)) {
     m_game_view.setDefaultCursor();
     return;
@@ -450,6 +447,7 @@ void GameController::update(float dt) {
 
   if (m_chess_game.getResult() != core::GameResult::ONGOING) return;
 
+  // ----- Clocks -----
   if (m_time_controller) {
     m_time_controller->update(dt);
     if (!m_time_history.empty()) {
@@ -474,21 +472,24 @@ void GameController::update(float dt) {
     }
   }
 
+  // ----- Engine / bots -----
   if (m_game_manager) m_game_manager->update(dt);
 
-  // Auto-play first premove if legal when our turn starts
+  // ----- Auto-play the queued head premove when our turn starts -----
   if (m_has_pending_auto_move) {
     const auto st = m_chess_game.getGameState();
-    if (m_game_manager && m_game_manager->isHuman(st.sideToMove) &&
-        hasCurrentLegalMove(m_pending_from, m_pending_to)) {
+    const bool humansTurn = (m_game_manager && m_game_manager->isHuman(st.sideToMove));
+
+    if (humansTurn && hasCurrentLegalMove(m_pending_from, m_pending_to)) {
+      // Refresh capture info from the live board if available
       if (auto cap = m_chess_game.getPiece(m_pending_to); cap.type != core::PieceType::None) {
         m_pending_capture_type = cap.type;
       }
 
-      // Instant board update for ghost pieces (promotion or castling)
+      // 1) Instant visuals (avoid flicker)
       m_game_view.applyPremoveInstant(m_pending_from, m_pending_to, m_pending_promotion);
 
-      // Handle castling rook instantly as well
+      // 1a) If it's castling, move the rook instantly as well
       auto pc = m_chess_game.getPiece(m_pending_from);
       if (pc.type == core::PieceType::King &&
           std::abs(static_cast<int>(m_pending_to) - static_cast<int>(m_pending_from)) == 2) {
@@ -498,18 +499,52 @@ void GameController::update(float dt) {
         core::Square rookTo = (m_pending_to > m_pending_from)
                                   ? static_cast<core::Square>(m_pending_to - 1)
                                   : static_cast<core::Square>(m_pending_to + 1);
-        m_game_view.applyPremoveInstant(rookFrom, rookTo);
+        m_game_view.applyPremoveInstant(rookFrom, rookTo, core::PieceType::None);
       }
 
-      (void)m_game_manager->requestUserMove(m_pending_from, m_pending_to, /*onClick*/ true);
-      if (m_pending_promotion != core::PieceType::None)
-        m_game_manager->completePendingPromotion(m_pending_promotion);
-    } else {
+      // 2) Hand it to the game manager (synchronous acceptance)
+      const bool accepted = m_game_manager
+                                ? m_game_manager->requestUserMove(m_pending_from, m_pending_to,
+                                                                  /*onClick*/ true)
+                                : false;
+
+      if (!accepted) {
+        // Roll back visuals to the last known state; cancel the chain
+        m_game_view.setBoardFen(m_fen_history.back());
+        clearPremove();
+      } else {
+        if (m_pending_promotion != core::PieceType::None) {
+          m_game_manager->completePendingPromotion(m_pending_promotion);
+        }
+
+        // IMPORTANT: Do NOT pop the queue here — it was already popped when scheduling
+        // in movePieceAndClear(). Just rebuild highlights/ghosts for what's left.
+        m_game_view.clearPremoveHighlights();
+        for (const auto &remaining : m_premove_queue) {
+          m_game_view.highlightPremoveSquare(remaining.from);
+          m_game_view.highlightPremoveSquare(remaining.to);
+        }
+        updatePremovePreviews();
+      }
+
+      // One-shot flags are consumed now
+      m_has_pending_auto_move = false;
+      m_pending_from = m_pending_to = core::NO_SQUARE;
+      m_pending_promotion = core::PieceType::None;
+      m_pending_capture_type = core::PieceType::None;
+
+    } else if (humansTurn) {
+      // It's our turn but the premove is no longer legal → cancel the entire chain
       clearPremove();
+      m_has_pending_auto_move = false;
+      m_pending_from = m_pending_to = core::NO_SQUARE;
+      m_pending_promotion = core::PieceType::None;
+      m_pending_capture_type = core::PieceType::None;
+
+    } else {
+      // Not our turn *yet* — keep the pending state and try again next frame.
+      // (Do NOT clear flags or the queue here.)
     }
-    m_has_pending_auto_move = false;
-    m_pending_from = m_pending_to = core::NO_SQUARE;
-    m_pending_promotion = core::PieceType::None;
   }
 }
 
@@ -549,31 +584,35 @@ void GameController::dehoverSquare() {
 
 /* -------------------- Premove queue -------------------- */
 void GameController::enqueuePremove(core::Square from, core::Square to) {
-  // Only allow premove for the human side NOT to move (chess.com behavior)
+  // Only allow premove for the human side NOT to move
   const auto st = m_chess_game.getGameState();
   if (!m_game_manager || !m_game_manager->isHuman(~st.sideToMove)) return;
-  if (m_game_manager->isHuman(st.sideToMove)) return;  // don't premove on your turn
 
   if (m_premove_queue.size() >= MAX_PREMOVES) return;
   if (!isPseudoLegalPremove(from, to)) return;
 
+  // Use virtual position AFTER current queue to determine mover/captures/promotions
   model::Position pos = getPositionAfterPremoves();
+
   Premove pm{};
   pm.from = from;
   pm.to = to;
-  pm.capturedColor = core::Color::White;
+
+  // Promotion?
+  if (auto mover = pos.getBoard().getPiece(from)) {
+    int rank = static_cast<int>(to) / 8;
+    if (mover->type == core::PieceType::Pawn && (rank == 0 || rank == 7)) {
+      pm.promotion = core::PieceType::Queen;  // default like chess.com
+    }
+  }
+
+  // Capture info from virtual board
   if (auto cap = pos.getBoard().getPiece(to)) {
     pm.capturedType = cap->type;
     pm.capturedColor = cap->color;
   } else {
     pm.capturedType = core::PieceType::None;
-  }
-
-  // Detect promotion (default to queen)
-  core::PieceType movingType = m_game_view.getPieceType(from);
-  int rank = static_cast<int>(to) / 8;
-  if (movingType == core::PieceType::Pawn && (rank == 0 || rank == 7)) {
-    pm.promotion = core::PieceType::Queen;  // default choice
+    pm.capturedColor = core::Color::White;  // unused, kept for completeness
   }
 
   // Visuals
@@ -584,6 +623,8 @@ void GameController::enqueuePremove(core::Square from, core::Square to) {
 
   m_premove_queue.push_back(pm);
   m_sound_manager.playEffect(view::sound::Effect::Premove);
+
+  // Rebuild preview so ghosts end up on the latest squares per piece
   updatePremovePreviews();
 }
 
@@ -604,18 +645,15 @@ void GameController::updatePremovePreviews() {
     m_game_view.showPremovePiece(pm.from, pm.to, pm.promotion);
     if (type == core::PieceType::King &&
         std::abs(static_cast<int>(pm.to) - static_cast<int>(pm.from)) == 2) {
-      core::Square rookFrom = (pm.to > pm.from)
-                                  ? static_cast<core::Square>(pm.to + 1)
-                                  : static_cast<core::Square>(pm.to - 2);
-      core::Square rookTo = (pm.to > pm.from)
-                                ? static_cast<core::Square>(pm.to - 1)
-                                : static_cast<core::Square>(pm.to + 1);
+      core::Square rookFrom = (pm.to > pm.from) ? static_cast<core::Square>(pm.to + 1)
+                                                : static_cast<core::Square>(pm.to - 2);
+      core::Square rookTo = (pm.to > pm.from) ? static_cast<core::Square>(pm.to - 1)
+                                              : static_cast<core::Square>(pm.to + 1);
       m_game_view.showPremovePiece(rookFrom, rookTo);
     }
   }
 }
 
-/* --------- Central move handling (both human/engine) ---------- */
 void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMove, bool onClick) {
   const core::Square from = move.from;
   const core::Square to = move.to;
@@ -642,13 +680,9 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
                                                           : static_cast<core::Square>(to + 8);
   }
 
+  // 3b) Resolve captured piece type (prefer pending/cached info from premove path)
   core::PieceType capturedType = core::PieceType::None;
   if (move.isCapture) {
-    // When a premove capture is executed, the destination square may already
-    // contain our moving piece, making the visual lookup return the wrong type
-    // (e.g. the queen appears, but the captured pawn's moves are used). Prefer
-    // the cached capture info gathered before executing the premove and fall
-    // back to querying the view only if no pending capture type was stored.
     if (m_pending_capture_type != core::PieceType::None) {
       capturedType = m_pending_capture_type;
     } else {
@@ -657,19 +691,21 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
     }
   }
 
-  if (m_skip_next_move_animation && move.isEnPassant && epVictimSq != core::NO_SQUARE) {
+  // Keep the skip flag stable for the entire move (king + rook)
+  const bool skipAnim = m_skip_next_move_animation;
+
+  // If we already applied the instant premove, remove the EP victim now
+  if (skipAnim && move.isEnPassant && epVictimSq != core::NO_SQUARE) {
     m_game_view.removePiece(epVictimSq);
   }
 
-  // 4) Animate or drop
-  if (!m_skip_next_move_animation) {
+  // 4) Main mover (animate unless we’re in the instant/premove path)
+  if (!skipAnim) {
     if (onClick)
       m_game_view.animationMovePiece(from, to, epVictimSq, move.promotion);
     else
       m_game_view.animationDropPiece(from, to, epVictimSq, move.promotion);
   }
-  m_skip_next_move_animation = false;
-  m_pending_capture_type = core::PieceType::None;
 
   // 5) Castling rook
   if (move.castle != model::CastleSide::None) {
@@ -678,8 +714,19 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
     const core::Square rookTo = (move.castle == model::CastleSide::KingSide)
                                     ? static_cast<core::Square>(to - 1)
                                     : static_cast<core::Square>(to + 1);
-    m_game_view.animationMovePiece(rookFrom, rookTo);
+
+    if (!skipAnim) {
+      // Normal path: animate the rook
+      m_game_view.animationMovePiece(rookFrom, rookTo);
+    } else {
+      // Instant premove path: the rook was already moved via applyPremoveInstant in update()
+      // → do nothing here to avoid double-moving or flicker.
+    }
   }
+
+  // One-shot flags can be cleared now
+  m_skip_next_move_animation = false;
+  m_pending_capture_type = core::PieceType::None;
 
   // 6) Visuals / Sounds
   clearLastMoveHighlight();
@@ -705,7 +752,7 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
   if (move.isCapture) m_game_view.addCapturedPiece(moverColorBefore, capturedType);
   m_move_history.push_back({move, moverColorBefore, capturedType, effect, m_eval_cp.load()});
 
-  // 7) Safe premove processing
+  // 7) Safe premove processing (queue head)
   if (!m_premove_queue.empty() && m_game_manager && m_game_manager->isHuman(sideToMoveNow)) {
     Premove pm = m_premove_queue.front();
     m_premove_queue.pop_front();
@@ -716,7 +763,7 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
       m_pending_to = pm.to;
       m_pending_capture_type = pm.capturedType;
       m_pending_promotion = pm.promotion;
-      m_skip_next_move_animation = true;
+      m_skip_next_move_animation = true;  // next move will be applied instantly
     } else {
       clearPremove();  // cancel entire chain on failure
     }
@@ -1039,8 +1086,7 @@ model::Position GameController::getPositionAfterPremoves() const {
     gen.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), pseudo);
     auto it = std::find_if(pseudo.begin(), pseudo.end(), [&](const model::Move &m) {
       if (m.from != pm.from || m.to != pm.to) return false;
-      if (pm.promotion != core::PieceType::None && m.promotion != pm.promotion)
-        return false;
+      if (pm.promotion != core::PieceType::None && m.promotion != pm.promotion) return false;
       return true;
     });
     if (it == pseudo.end()) break;
@@ -1066,26 +1112,30 @@ bool GameController::hasVirtualPiece(core::Square sq) const {
 bool GameController::isPseudoLegalPremove(core::Square from, core::Square to) const {
   if (!isValid(from) || !isValid(to)) return false;
 
-  core::PieceType vType = m_game_view.getPieceType(from);
-  core::Color vCol = m_game_view.getPieceColor(from);
-  if (vType == core::PieceType::None) return false;
+  // Work from the virtual position AFTER already queued premoves
+  model::Position pos = getPositionAfterPremoves();
+  auto pcOpt = pos.getBoard().getPiece(from);
+  if (!pcOpt) return false;
+  const core::PieceType vType = pcOpt->type;
+  const core::Color vCol = pcOpt->color;
 
-  // Allow castling premove if king moves two squares toward rook of same color
+  // Allow castling premove: king moves two squares toward own rook (standard)
   if (vType == core::PieceType::King &&
       std::abs(static_cast<int>(to) - static_cast<int>(from)) == 2) {
-    core::Square rookSq = (to > from) ? static_cast<core::Square>(from + 3)
-                                     : static_cast<core::Square>(from - 4);
-    if (m_game_view.hasPieceOnSquare(rookSq) &&
-        m_game_view.isSameColorPiece(from, rookSq)) {
+    core::Square rookSq =
+        (to > from) ? static_cast<core::Square>(from + 3) : static_cast<core::Square>(from - 4);
+    if (pos.getBoard().getPiece(rookSq) && pos.getBoard().getPiece(rookSq)->color == vCol) {
       return true;
     }
   }
 
+  // Safe premove generation: isolate the mover on an empty board, ignore checks/castling/EP.
   model::Board board;
   board.clear();
   board.setPiece(from, {vType, vCol});
 
   if (vType == core::PieceType::Pawn) {
+    // Add dummy diagonals so capture premoves are offerable even if empty
     const int file = static_cast<int>(from) & 7;
     const int forward = (vCol == core::Color::White) ? 8 : -8;
     const model::bb::Piece dummy{core::PieceType::Pawn, ~vCol};
@@ -1103,8 +1153,10 @@ bool GameController::isPseudoLegalPremove(core::Square from, core::Square to) co
   model::MoveGenerator gen;
   std::vector<model::Move> pseudo;
   gen.generatePseudoLegalMoves(board, st, pseudo);
+
   for (const auto &m : pseudo)
     if (m.from == from && m.to == to) return true;
+
   return false;
 }
 
@@ -1180,7 +1232,7 @@ void GameController::stepBackward() {
   // Hide premove visuals when traversing history, but preserve the queue
   if (!m_premove_queue.empty() && m_fen_index == m_fen_history.size() - 1 && !m_premove_suspended) {
     m_game_view.clearPremoveHighlights();
-    m_game_view.clearPremovePieces(false);
+    m_game_view.clearPremovePieces(true);
     m_premove_suspended = true;
   }
   if (m_fen_index > 0) {

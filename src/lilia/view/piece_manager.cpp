@@ -222,11 +222,11 @@ void PieceManager::setPieceToScreenPos(core::Square pos, Entity::Position entity
 /* -------------------- Rendering -------------------- */
 void PieceManager::renderPieces(sf::RenderWindow &window,
                                 const animation::ChessAnimator &chessAnimRef) {
-  // REAL pieces only here (no ghosts) so the animator can overdraw cleanly.
   for (auto &pair : m_pieces) {
     const auto pos = pair.first;
     auto &piece = pair.second;
     if (m_hidden_squares.count(pos) > 0) continue;
+    if (m_premove_pieces.count(pos) > 0) continue;  // <- ghost on top, skip base
     if (!chessAnimRef.isAnimating(piece.getId())) {
       piece.setPosition(createPiecePositon(pos));
       piece.draw(window);
@@ -253,112 +253,108 @@ void PieceManager::renderPiece(core::Square pos, sf::RenderWindow &window) {
   }
 }
 
-/* -------------------- Premove (ghost pieces) -------------------- */
-void PieceManager::setPremovePiece(core::Square from, core::Square to,
-                                   core::PieceType promotion) {
-  // If the piece was already a ghost (chained premove), move that ghost
+// Build a fresh, independent piece (new ID) for ghosts.
+static Piece makeGhost(core::PieceType type, core::Color color) {
+  constexpr std::uint8_t numTypes = 6;
+  std::string filename = constant::ASSET_PIECES_FILE_PATH + std::string("/piece_") +
+                         std::to_string(static_cast<std::uint8_t>(type) +
+                                        numTypes * static_cast<std::uint8_t>(color)) +
+                         ".png";
+  const sf::Texture &texture = TextureTable::getInstance().get(filename);
+  Piece p(color, type, texture);
+  p.setScale(constant::ASSET_PIECE_SCALE, constant::ASSET_PIECE_SCALE);
+  return p;
+}
+
+void PieceManager::setPremovePiece(core::Square from, core::Square to, core::PieceType promotion) {
   Piece ghost;
-  auto existing = m_premove_pieces.find(from);
-  if (existing != m_premove_pieces.end()) {
+
+  // Moving an existing ghost forward in a chain?
+  if (auto existing = m_premove_pieces.find(from); existing != m_premove_pieces.end()) {
     ghost = std::move(existing->second);
     m_premove_pieces.erase(existing);
-    // Unhide the square the ghost is leaving so it can be reused
-    m_hidden_squares.erase(from);
+    // Old mapping was keyed by the old 'to' (which equals current 'from')
+    m_premove_origin.erase(from);
   } else {
     auto it = m_pieces.find(from);
     if (it == m_pieces.end()) return;
-    ghost = it->second;  // copy to preserve original
+    // create a fresh ghost with a NEW id (do not clone the real piece)
+    ghost = makeGhost(it->second.getType(), it->second.getColor());
     m_hidden_squares.insert(from);
   }
 
-  // Override piece type/texture for promotion preview
+  // Promotion preview visuals (unchanged)
   if (promotion != core::PieceType::None && ghost.getType() != promotion) {
-    std::uint8_t numTypes = 6;
-    std::string filename =
-        constant::ASSET_PIECES_FILE_PATH + std::string("/piece_") +
-        std::to_string(static_cast<std::uint8_t>(promotion) +
-                       numTypes * static_cast<std::uint8_t>(ghost.getColor())) +
-        ".png";
-    const sf::Texture& tex = TextureTable::getInstance().get(filename);
+    constexpr std::uint8_t numTypes = 6;
+    std::string filename = constant::ASSET_PIECES_FILE_PATH + "/piece_" +
+                           std::to_string(static_cast<std::uint8_t>(promotion) +
+                                          numTypes * static_cast<std::uint8_t>(ghost.getColor())) +
+                           ".png";
+    const sf::Texture &tex = TextureTable::getInstance().get(filename);
     ghost.setTexture(tex);
     ghost.setType(promotion);
   }
 
-  // If destination already has a premove ghost (chained capture), stash it too
-  if (auto ghostCap = m_premove_pieces.find(to); ghostCap != m_premove_pieces.end()) {
-    m_captured_backup[to] = std::move(ghostCap->second);
-    m_premove_pieces.erase(ghostCap);
-  } else {
-    // Otherwise stash any real piece so cancel restores it
-    auto captured = m_pieces.find(to);
-    if (captured != m_pieces.end()) {
-      m_captured_backup[to] = std::move(captured->second);
-      m_pieces.erase(captured);
-    }
+  // If 'to' already has a ghost, just discard it (never back up ghosts)
+  if (auto prevGhost = m_premove_pieces.find(to); prevGhost != m_premove_pieces.end()) {
+    m_premove_pieces.erase(prevGhost);
+    m_premove_origin.erase(to);
+  }
+
+  // If 'to' has a real piece, stash it so cancel restores it
+  if (auto captured = m_pieces.find(to); captured != m_pieces.end()) {
+    m_captured_backup[to] = std::move(captured->second);
+    m_pieces.erase(captured);
   }
 
   ghost.setPosition(createPiecePositon(to));
-
-  // Replace any previous ghost at 'to' to avoid duplicates
-  m_premove_pieces.erase(to);
   m_premove_pieces[to] = std::move(ghost);
 
-  // Ensure underlying content never shines through ghosts
-  m_hidden_squares.insert(to);
+  // Track which (from,to) this ghost represents
+  m_premove_origin[to] = from;
 }
 
-void PieceManager::clearPremovePieces(bool restore) {
-  if (restore) {
-    for (auto &pair : m_captured_backup) {
-      m_pieces[pair.first] = std::move(pair.second);
-      m_pieces[pair.first].setPosition(createPiecePositon(pair.first));
-    }
-  }
-  m_captured_backup.clear();
-  m_premove_pieces.clear();
-  m_hidden_squares.clear();
-}
-
-void PieceManager::consumePremoveGhost(core::Square /*from*/, core::Square to) {
-  // Only drop the ghost marker. DO NOT toggle hidden flags here; the real move will do that.
-  auto it = m_premove_pieces.find(to);
-  if (it != m_premove_pieces.end()) m_premove_pieces.erase(it);
-  // Intentionally leave m_hidden_squares and m_captured_backup untouched here.
+void PieceManager::consumePremoveGhost(core::Square from, core::Square to) {
+  // Only remove if this ghost was queued for exactly (from → to)
+  auto it = m_premove_origin.find(to);
+  if (it == m_premove_origin.end() || it->second != from) return;
+  m_premove_origin.erase(it);
+  m_premove_pieces.erase(to);
+  // Do NOT touch hidden flags or backups here; the real move will reveal.
 }
 
 void PieceManager::applyPremoveInstant(core::Square from, core::Square to,
                                        core::PieceType promotion) {
-  // 1) Remove the ghost at 'to' (if present) but keep both squares hidden during the swap
-  auto git = m_premove_pieces.find(to);
-  if (git != m_premove_pieces.end()) m_premove_pieces.erase(git);
-
-  // 2) Fetch the real moving piece (from live or backup) atomically
-  Piece moving;
-  if (auto it = m_pieces.find(from); it != m_pieces.end()) {
-    moving = std::move(it->second);
-    m_pieces.erase(it);
-  } else if (auto bit = m_captured_backup.find(from); bit != m_captured_backup.end()) {
-    moving = std::move(bit->second);
-    m_captured_backup.erase(bit);
-  } else {
-    return;  // nothing to move
+  if (auto it = m_premove_origin.find(to); it != m_premove_origin.end() && it->second == from) {
+    m_premove_origin.erase(it);
   }
-
-  // 3) Remove any occupant at 'to' (including stashed victim)
-  removePiece(to);
-
-  // 4) Place the moving piece (or promotion) at 'to'
-  if (promotion != core::PieceType::None) {
-    addPiece(promotion, moving.getColor(), to);
-  } else {
-    m_pieces[to] = std::move(moving);
-    m_pieces[to].setPosition(createPiecePositon(to));
+  if (auto git = m_premove_pieces.find(to); git != m_premove_pieces.end()) {
+    m_premove_pieces.erase(git);
   }
-
-  // 5) Finally reveal board squares
+  movePiece(from, to, promotion);  // moves the real piece & reveals it at 'to'
   m_hidden_squares.erase(from);
   m_hidden_squares.erase(to);
   m_captured_backup.erase(to);
+}
+
+void PieceManager::clearPremovePieces(bool restore) {
+  if (restore) {
+    // Put back anything we had visually 'captured' by ghosts
+    for (auto &pair : m_captured_backup) {
+      m_pieces[pair.first] = std::move(pair.second);
+      m_pieces[pair.first].setPosition(createPiecePositon(pair.first));
+    }
+    m_captured_backup.clear();  // only clear when we actually restored
+    m_hidden_squares.clear();   // safe to clear — nothing is hidden anymore
+  } else {
+    // We’re just hiding ghosts temporarily (e.g., while viewing history).
+    // Keep backups so we can reconstitute the preview later.
+    m_hidden_squares.clear();  // show the true board while in history view
+    // m_captured_backup stays intact on purpose
+  }
+
+  m_premove_pieces.clear();
+  m_premove_origin.clear();
 }
 
 }  // namespace lilia::view

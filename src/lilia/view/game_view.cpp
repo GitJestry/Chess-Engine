@@ -158,7 +158,7 @@ void GameView::selectMove(std::size_t moveIndex) {
 
 void GameView::setBoardFen(const std::string &fen) {
   // Clear any lingering ghosts/hidden squares before rebuilding
-  m_piece_manager.clearPremovePieces(false);
+  m_piece_manager.clearPremovePieces(true);
   m_chess_animator.cancelAll();
   m_piece_manager.removeAll();
   m_piece_manager.initFromFen(fen);
@@ -171,8 +171,9 @@ void GameView::updateFen(const std::string &fen) {
 }
 
 void GameView::resetBoard() {
-  // Clear ghosts to avoid stale hidden squares/overlaps
-  m_piece_manager.clearPremovePieces(false);
+  // Hard reset: restore any stashed pieces, cancel anims, then wipe
+  m_piece_manager.clearPremovePieces(true);
+  m_chess_animator.cancelAll();
   m_piece_manager.removeAll();
   init();
 }
@@ -436,8 +437,7 @@ void GameView::clearAttackHighlights() {
   m_highlight_manager.clearAttackHighlights();
 }
 
-void GameView::showPremovePiece(core::Square from, core::Square to,
-                                core::PieceType promotion) {
+void GameView::showPremovePiece(core::Square from, core::Square to, core::PieceType promotion) {
   m_piece_manager.setPremovePiece(from, to, promotion);
 }
 

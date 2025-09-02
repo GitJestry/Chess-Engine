@@ -60,6 +60,7 @@ class PieceManager {
   std::unordered_set<core::Square> m_hidden_squares;
   // Backup of pieces temporarily removed due to premove captures
   std::unordered_map<core::Square, Piece> m_captured_backup;
+  std::unordered_map<core::Square, core::Square> m_premove_origin;
 };
 
 }  // namespace lilia::view
