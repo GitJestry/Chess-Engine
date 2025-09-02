@@ -529,7 +529,7 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
         cfg.whiteBot = m_whiteBotOptions[i].type;
         m_whiteBotText.setString(botDisplayName(cfg.whiteBot));
         m_showWhiteBotList = false;
-        break;
+        return false;
       }
     }
   }
@@ -552,7 +552,7 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
         cfg.blackBot = m_blackBotOptions[i].type;
         m_blackBotText.setString(botDisplayName(cfg.blackBot));
         m_showBlackBotList = false;
-        break;
+        return false;
       }
     }
   }
