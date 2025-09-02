@@ -208,7 +208,29 @@ void EvalBar::render(sf::RenderWindow& window) {
   drawBevelAround(window, barRect, colPanelBG);
 
   // score text (already positioned/colored in update())
-  window.draw(m_score_text);
+  if (m_has_result && m_result == "1/2-1/2") {
+    sf::Text top = m_score_text;
+    sf::Text bottom = m_score_text;
+    auto bounds = m_score_text.getLocalBounds();
+    const float lineHeight = bounds.height;
+    const float gap = 2.f;
+    const float xPos = getPosition().x;
+    const float yCenter = getPosition().y;
+    const float barHalfHeight = static_cast<float>(constant::EVAL_BAR_HEIGHT) * 0.5f;
+    const float halfText = lineHeight / 2.f;
+    float topY = yCenter - halfText - gap * 0.5f;
+    float bottomY = yCenter + halfText + gap * 0.5f;
+    const float minY = yCenter - barHalfHeight + halfText;
+    const float maxY = yCenter + barHalfHeight - halfText;
+    topY = std::clamp(topY, minY, maxY);
+    bottomY = std::clamp(bottomY, minY, maxY);
+    top.setPosition(snapf(xPos), snapf(topY));
+    bottom.setPosition(snapf(xPos), snapf(bottomY));
+    window.draw(top);
+    window.draw(bottom);
+  } else {
+    window.draw(m_score_text);
+  }
 }
 
 void EvalBar::update(int eval) {
@@ -220,7 +242,11 @@ void EvalBar::update(int eval) {
 
   // score string
   if (m_has_result) {
-    m_score_text.setString(m_result);
+    if (m_result == "1/2-1/2") {
+      m_score_text.setString("1/2");
+    } else {
+      m_score_text.setString(m_result);
+    }
   } else {
     int absEval = std::abs(static_cast<int>(m_display_eval));
     if (absEval >= engine::MATE_THR) {
@@ -238,14 +264,17 @@ void EvalBar::update(int eval) {
   auto b = m_score_text.getLocalBounds();
   m_score_text.setOrigin(b.width / 2.f, b.height / 2.f);
 
-  // place/contrast: white advantage → bottom (dark text), black → top (light text + tiny outline)
+  // place/contrast: white advantage → bottom (dark text), black → top (light text)
   const float offset = 10.f;
   const float barHalfHeight = static_cast<float>(constant::EVAL_BAR_HEIGHT) * 0.5f;
 
   float xPos = getPosition().x;
   float yPos = getPosition().y;
 
-  if (m_display_eval >= 0.f) {
+  if (m_has_result && m_result == "1/2-1/2") {
+    m_score_text.setFillColor(sf::Color(20, 20, 26));
+    yPos = getPosition().y;
+  } else if (m_display_eval >= 0.f) {
     m_score_text.setFillColor(sf::Color(20, 20, 26));  // slightly darker than pure black
     yPos += barHalfHeight - offset * 1.5f;             // compensate baseline
   } else {
