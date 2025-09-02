@@ -1,5 +1,7 @@
 #include "lilia/engine/bot_engine.hpp"
 
+#define LOG 0
+
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
@@ -79,6 +81,18 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   cv.notify_one();
   if (timer.joinable()) timer.join();
 
+  // >>> WICHTIG: Nur dann Stats übernehmen, wenn die Suche NICHT geworfen hat
+  if (!engineThrew) {
+    res.stats = m_engine.getLastSearchStats();
+    res.topMoves = res.stats.topMoves;
+  } else {
+    res.stats = SearchStats{};  // leere/neutrale Stats statt alter Werte
+    res.topMoves.clear();
+  }
+
+#if LOG
+
+  // Logging – alles optional-sicher
   std::string reason;
   if (externalCancel && externalCancel->load()) {
     reason = "external-cancel";
@@ -89,17 +103,6 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   } else {
     reason = "normal";
   }
-
-  // >>> WICHTIG: Nur dann Stats übernehmen, wenn die Suche NICHT geworfen hat
-  if (!engineThrew) {
-    res.stats = m_engine.getLastSearchStats();
-    res.topMoves = res.stats.topMoves;
-  } else {
-    res.stats = SearchStats{};  // leere/neutrale Stats statt alter Werte
-    res.topMoves.clear();
-  }
-
-  // Logging – alles optional-sicher
   std::cout << "\n[BotEngine] Search finished: reason=" << reason << "\n";
   std::cout << "[BotEngine] depth=" << maxDepth << " time=" << elapsedMs
             << "ms maxTime=" << thinkMillis << "ms threads=" << m_engine.getConfig().threads
@@ -127,6 +130,8 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   if (!res.topMoves.empty()) {
     std::cout << "[BotEngine] topMoves " << format_top_moves(res.topMoves) << "\n";
   }
+#else
+#endif
 
   return res;
 }
