@@ -568,6 +568,19 @@ void GameController::update(float dt) {
       // (Do NOT clear flags or the queue here.)
     }
   }
+
+  // If a piece is being held or selected while turns switch, ensure the
+  // attack highlights reflect the current player to move instead of lingering
+  // premove previews.
+  core::Square activeSq = core::NO_SQUARE;
+  if (m_dragging && isValid(m_drag_from)) {
+    activeSq = m_drag_from;
+  } else if (isValid(m_selected_sq)) {
+    activeSq = m_selected_sq;
+  }
+  if (isValid(activeSq) && isHumanPiece(activeSq)) {
+    showAttacks(getAttackSquares(activeSq));
+  }
 }
 
 /* -------------------- Highlights -------------------- */
