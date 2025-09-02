@@ -1177,6 +1177,56 @@ bool GameController::hasCurrentLegalMove(core::Square from, core::Square to) con
 
 model::Position GameController::getPositionAfterPremoves() const {
   model::Position pos = m_chess_game.getPositionRefForBot();
+
+  // Apply the currently pending auto-play move (if any) so newly queued
+  // premoves "see" the board as it will look once that premove fires. This
+  // happens when a premove was scheduled but hasn't executed yet.
+  if (m_has_pending_auto_move) {
+    if (auto moverOpt = pos.getBoard().getPiece(m_pending_from)) {
+      // Remove captured piece (including potential en-passant victim)
+      if (m_pending_capture_type != core::PieceType::None) {
+        if (pos.getBoard().getPiece(m_pending_to)) {
+          pos.getBoard().removePiece(m_pending_to);
+        } else if (moverOpt->type == core::PieceType::Pawn &&
+                   ((static_cast<int>(m_pending_from) ^
+                     static_cast<int>(m_pending_to)) &
+                    7)) {
+          // Diagonal pawn move onto empty square -> en-passant capture
+          core::Square epSq = (moverOpt->color == core::Color::White)
+                                  ? static_cast<core::Square>(m_pending_to - 8)
+                                  : static_cast<core::Square>(m_pending_to + 8);
+          pos.getBoard().removePiece(epSq);
+        }
+      }
+
+      // Move the piece, ignoring normal legality
+      model::bb::Piece moving = *moverOpt;
+      pos.getBoard().removePiece(m_pending_from);
+      if (m_pending_promotion != core::PieceType::None)
+        moving.type = m_pending_promotion;
+      pos.getBoard().setPiece(m_pending_to, moving);
+
+      // Handle castling: move rook as well
+      if (moving.type == core::PieceType::King &&
+          std::abs(static_cast<int>(m_pending_to) -
+                   static_cast<int>(m_pending_from)) == 2) {
+        core::Square rookFrom = (m_pending_to > m_pending_from)
+                                    ? static_cast<core::Square>(m_pending_to + 1)
+                                    : static_cast<core::Square>(m_pending_to - 2);
+        core::Square rookTo = (m_pending_to > m_pending_from)
+                                  ? static_cast<core::Square>(m_pending_to - 1)
+                                  : static_cast<core::Square>(m_pending_to + 1);
+        if (auto rook = pos.getBoard().getPiece(rookFrom)) {
+          pos.getBoard().removePiece(rookFrom);
+          pos.getBoard().setPiece(rookTo, *rook);
+        }
+      }
+
+      // After applying our pending move, it's the opponent's turn
+      pos.getState().sideToMove = ~moverOpt->color;
+    }
+  }
+
   if (m_premove_queue.empty()) return pos;
   for (const auto &pm : m_premove_queue) {
     auto moverOpt = pos.getBoard().getPiece(pm.from);
@@ -1223,9 +1273,9 @@ model::Position GameController::getPositionAfterPremoves() const {
 
 model::bb::Piece GameController::getPieceConsideringPremoves(core::Square sq) const {
   if (!isValid(sq)) return {};
-  // Prefer the virtual board after queued premoves (fixes "captured piece
-  // steals selection")
-  if (!m_premove_queue.empty()) {
+  // Prefer the virtual board after queued or pending premoves (fixes "captured
+  // piece steals selection")
+  if (m_has_pending_auto_move || !m_premove_queue.empty()) {
     model::Position pos = getPositionAfterPremoves();
     if (auto virt = pos.getBoard().getPiece(sq)) return *virt;
   }
