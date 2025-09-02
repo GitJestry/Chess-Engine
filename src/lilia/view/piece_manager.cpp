@@ -282,12 +282,19 @@ static Piece makeGhost(core::PieceType type, core::Color color) {
 
 void PieceManager::setPremovePiece(core::Square from, core::Square to, core::PieceType promotion) {
   Piece ghost;
+  core::Square origin = from;  // track the true origin across retargeting
 
   // Move existing ghost forward in a chain?
   if (auto existing = m_premove_pieces.find(from); existing != m_premove_pieces.end()) {
     ghost = std::move(existing->second);
     m_premove_pieces.erase(existing);
-    m_premove_origin.erase(from);
+
+    // Preserve the original starting square if this ghost was already moved
+    if (auto itO = m_premove_origin.find(from); itO != m_premove_origin.end()) {
+      origin = itO->second;
+      m_premove_origin.erase(itO);
+    }
+
     if (promotion != core::PieceType::None) {
       ghost = makeGhost(promotion, ghost.getColor());
     }
@@ -316,7 +323,7 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to, core::Pie
 
   ghost.setPosition(createPiecePositon(to));
   m_premove_pieces[to] = std::move(ghost);
-  m_premove_origin[to] = from;
+  m_premove_origin[to] = origin;
 }
 
 void PieceManager::consumePremoveGhost(core::Square from, core::Square to) {
