@@ -56,7 +56,7 @@ void GameManager::update([[maybe_unused]] float dt) {
 }
 
 bool GameManager::requestUserMove(core::Square from, core::Square to,
-                                  bool onClick) {
+                                  bool onClick, core::PieceType promotion) {
   std::lock_guard lock(m_mutex);
   if (m_waiting_promotion)
     return false; // waiting on previous promotion
@@ -67,7 +67,13 @@ bool GameManager::requestUserMove(core::Square from, core::Square to,
   for (const auto &m : moves) {
     if (m.from == from && m.to == to) {
       if (m.promotion != core::PieceType::None) {
-        // request UI promotion selection
+        // If caller already provided promotion piece, apply immediately.
+        if (promotion != core::PieceType::None && promotion == m.promotion) {
+          applyMoveAndNotify(m, onClick);
+          startBotIfNeeded();
+          return true;
+        }
+        // Otherwise, request UI selection as before.
         m_waiting_promotion = true;
         m_promotion_from = from;
         m_promotion_to = to;

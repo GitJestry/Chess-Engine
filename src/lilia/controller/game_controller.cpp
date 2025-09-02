@@ -502,15 +502,12 @@ void GameController::update(float dt) {
         m_game_view.applyPremoveInstant(rookFrom, rookTo, core::PieceType::None);
       }
 
-      // 2) Hand it to the game manager and handle promotion immediately
+      // 2) Hand it to the game manager (promotion handled internally)
       bool accepted = m_game_manager
                           ? m_game_manager->requestUserMove(m_pending_from, m_pending_to,
-                                                            /*onClick*/ true)
+                                                            /*onClick*/ true,
+                                                            m_pending_promotion)
                           : false;
-      if (m_pending_promotion != core::PieceType::None && m_game_manager) {
-        m_game_manager->completePendingPromotion(m_pending_promotion);
-        accepted = true;
-      }
 
       if (!accepted) {
         // Roll back visuals to the last known state; cancel the chain
