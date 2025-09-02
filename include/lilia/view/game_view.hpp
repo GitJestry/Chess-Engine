@@ -56,7 +56,7 @@ class GameView {
   [[nodiscard]] bool isOnResignYes(core::MousePos mousePos) const;
   [[nodiscard]] bool isOnResignNo(core::MousePos mousePos) const;
 
-  void showGameOverPopup(const std::string &msg);
+  void showGameOverPopup(const std::string &msg, bool humanWinner);
   void hideGameOverPopup();
   [[nodiscard]] bool isGameOverPopupOpen() const;
   [[nodiscard]] bool isOnNewBot(core::MousePos mousePos) const;
