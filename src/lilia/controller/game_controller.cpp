@@ -640,6 +640,7 @@ void GameController::enqueuePremove(core::Square from, core::Square to) {
   Premove pm{};
   pm.from = from;
   pm.to = to;
+  pm.moverColor = ~st.sideToMove;
 
   // Promotion?
   if (auto mover = pos.getBoard().getPiece(from)) {
@@ -807,28 +808,31 @@ void GameController::movePieceAndClear(const model::Move &move,
       {move, moverColorBefore, capturedType, effect, m_eval_cp.load()});
 
   // 7) Safe premove processing (queue head)
-  if (!m_premove_queue.empty() && m_game_manager &&
-      m_game_manager->isHuman(sideToMoveNow)) {
-    Premove pm = m_premove_queue.front();
-    m_premove_queue.pop_front();
+  if (!m_premove_queue.empty()) {
+    const Premove &front = m_premove_queue.front();
+    if (front.moverColor == sideToMoveNow && m_game_manager &&
+        m_game_manager->isHuman(sideToMoveNow)) {
+      Premove pm = front;
+      m_premove_queue.pop_front();
 
-    if (hasCurrentLegalMove(pm.from, pm.to)) {
-      m_has_pending_auto_move = true;
-      m_pending_from = pm.from;
-      m_pending_to = pm.to;
-      m_pending_capture_type = pm.capturedType;
-      m_pending_promotion = pm.promotion;
-      m_skip_next_move_animation = true; // next move will be applied instantly
-    } else {
-      clearPremove(); // cancel entire chain on failure
-    }
+      if (hasCurrentLegalMove(pm.from, pm.to)) {
+        m_has_pending_auto_move = true;
+        m_pending_from = pm.from;
+        m_pending_to = pm.to;
+        m_pending_capture_type = pm.capturedType;
+        m_pending_promotion = pm.promotion;
+        m_skip_next_move_animation = true; // next move will be applied instantly
+      } else {
+        clearPremove(); // cancel entire chain on failure
+      }
 
-    m_game_view.clearPremoveHighlights();
-    for (const auto &remaining : m_premove_queue) {
-      m_game_view.highlightPremoveSquare(remaining.from);
-      m_game_view.highlightPremoveSquare(remaining.to);
+      m_game_view.clearPremoveHighlights();
+      for (const auto &remaining : m_premove_queue) {
+        m_game_view.highlightPremoveSquare(remaining.from);
+        m_game_view.highlightPremoveSquare(remaining.to);
+      }
+      updatePremovePreviews();
     }
-    updatePremovePreviews();
   }
 }
 
@@ -1179,7 +1183,7 @@ model::Position GameController::getPositionAfterPremoves() const {
       break;
 
     // Keep side to move stable so previews chain for the same color
-    pos.getState().sideToMove = moverOpt->color;
+    pos.getState().sideToMove = pm.moverColor;
 
     // Remove captured piece (including potential en-passant victim)
     if (pm.capturedType != core::PieceType::None) {

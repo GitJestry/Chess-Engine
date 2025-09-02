@@ -47,6 +47,7 @@ struct Premove {
   core::PieceType promotion = core::PieceType::None;
   core::PieceType capturedType;
   core::Color capturedColor;
+  core::Color moverColor;
 };
 
 struct TimeView {
