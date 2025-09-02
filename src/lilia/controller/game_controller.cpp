@@ -7,6 +7,7 @@
 #include <SFML/Window/Keyboard.hpp>
 #include <SFML/Window/Mouse.hpp>
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <string>
 
@@ -180,6 +181,7 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot, bool bla
   m_pending_from = core::NO_SQUARE;
   m_pending_to = core::NO_SQUARE;
   m_pending_capture_type = core::PieceType::None;
+  m_pending_promotion = core::PieceType::None;
   m_skip_next_move_animation = false;
 
   m_game_view.setDefaultCursor();
@@ -383,6 +385,9 @@ void GameController::onMousePressed(core::MousePos pos) {
   const core::Square sq = m_game_view.mousePosToSquare(pos);
   m_selection_changed_on_press = false;
 
+  // Clicking anywhere on the board should cancel all queued premoves
+  if (sq != core::NO_SQUARE && !m_premove_queue.empty()) clearPremove();
+
   if (!hasVirtualPiece(sq)) {
     m_game_view.setDefaultCursor();
     return;
@@ -480,14 +485,31 @@ void GameController::update(float dt) {
         m_pending_capture_type = cap.type;
       }
 
-      m_game_view.applyPremoveInstant(m_pending_from, m_pending_to);
+      // Instant board update for ghost pieces (promotion or castling)
+      m_game_view.applyPremoveInstant(m_pending_from, m_pending_to, m_pending_promotion);
+
+      // Handle castling rook instantly as well
+      auto pc = m_chess_game.getPiece(m_pending_from);
+      if (pc.type == core::PieceType::King &&
+          std::abs(static_cast<int>(m_pending_to) - static_cast<int>(m_pending_from)) == 2) {
+        core::Square rookFrom = (m_pending_to > m_pending_from)
+                                    ? static_cast<core::Square>(m_pending_to + 1)
+                                    : static_cast<core::Square>(m_pending_to - 2);
+        core::Square rookTo = (m_pending_to > m_pending_from)
+                                  ? static_cast<core::Square>(m_pending_to - 1)
+                                  : static_cast<core::Square>(m_pending_to + 1);
+        m_game_view.applyPremoveInstant(rookFrom, rookTo);
+      }
 
       (void)m_game_manager->requestUserMove(m_pending_from, m_pending_to, /*onClick*/ true);
+      if (m_pending_promotion != core::PieceType::None)
+        m_game_manager->completePendingPromotion(m_pending_promotion);
     } else {
       clearPremove();
     }
     m_has_pending_auto_move = false;
     m_pending_from = m_pending_to = core::NO_SQUARE;
+    m_pending_promotion = core::PieceType::None;
   }
 }
 
@@ -536,10 +558,22 @@ void GameController::enqueuePremove(core::Square from, core::Square to) {
   if (!isPseudoLegalPremove(from, to)) return;
 
   model::Position pos = getPositionAfterPremoves();
-  Premove pm{from, to, core::PieceType::None, core::Color::White};
+  Premove pm{};
+  pm.from = from;
+  pm.to = to;
+  pm.capturedColor = core::Color::White;
   if (auto cap = pos.getBoard().getPiece(to)) {
     pm.capturedType = cap->type;
     pm.capturedColor = cap->color;
+  } else {
+    pm.capturedType = core::PieceType::None;
+  }
+
+  // Detect promotion (default to queen)
+  core::PieceType movingType = m_game_view.getPieceType(from);
+  int rank = static_cast<int>(to) / 8;
+  if (movingType == core::PieceType::Pawn && (rank == 0 || rank == 7)) {
+    pm.promotion = core::PieceType::Queen;  // default choice
   }
 
   // Visuals
@@ -566,7 +600,18 @@ void GameController::updatePremovePreviews() {
   // Restore board from any previous preview, then rebuild from queue head->tail
   m_game_view.clearPremovePieces(true);
   for (const auto &pm : m_premove_queue) {
-    m_game_view.showPremovePiece(pm.from, pm.to);
+    core::PieceType type = m_game_view.getPieceType(pm.from);
+    m_game_view.showPremovePiece(pm.from, pm.to, pm.promotion);
+    if (type == core::PieceType::King &&
+        std::abs(static_cast<int>(pm.to) - static_cast<int>(pm.from)) == 2) {
+      core::Square rookFrom = (pm.to > pm.from)
+                                  ? static_cast<core::Square>(pm.to + 1)
+                                  : static_cast<core::Square>(pm.to - 2);
+      core::Square rookTo = (pm.to > pm.from)
+                                ? static_cast<core::Square>(pm.to - 1)
+                                : static_cast<core::Square>(pm.to + 1);
+      m_game_view.showPremovePiece(rookFrom, rookTo);
+    }
   }
 }
 
@@ -670,6 +715,7 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
       m_pending_from = pm.from;
       m_pending_to = pm.to;
       m_pending_capture_type = pm.capturedType;
+      m_pending_promotion = pm.promotion;
       m_skip_next_move_animation = true;
     } else {
       clearPremove();  // cancel entire chain on failure
@@ -992,7 +1038,10 @@ model::Position GameController::getPositionAfterPremoves() const {
     std::vector<model::Move> pseudo;
     gen.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), pseudo);
     auto it = std::find_if(pseudo.begin(), pseudo.end(), [&](const model::Move &m) {
-      return m.from == pm.from && m.to == pm.to;
+      if (m.from != pm.from || m.to != pm.to) return false;
+      if (pm.promotion != core::PieceType::None && m.promotion != pm.promotion)
+        return false;
+      return true;
     });
     if (it == pseudo.end()) break;
     pos.doMove(*it);
@@ -1020,6 +1069,17 @@ bool GameController::isPseudoLegalPremove(core::Square from, core::Square to) co
   core::PieceType vType = m_game_view.getPieceType(from);
   core::Color vCol = m_game_view.getPieceColor(from);
   if (vType == core::PieceType::None) return false;
+
+  // Allow castling premove if king moves two squares toward rook of same color
+  if (vType == core::PieceType::King &&
+      std::abs(static_cast<int>(to) - static_cast<int>(from)) == 2) {
+    core::Square rookSq = (to > from) ? static_cast<core::Square>(from + 3)
+                                     : static_cast<core::Square>(from - 4);
+    if (m_game_view.hasPieceOnSquare(rookSq) &&
+        m_game_view.isSameColorPiece(from, rookSq)) {
+      return true;
+    }
+  }
 
   model::Board board;
   board.clear();
