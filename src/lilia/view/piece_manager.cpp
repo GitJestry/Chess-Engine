@@ -306,10 +306,10 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to, core::Pie
     m_hidden_squares.insert(from);
   }
 
-  // 🔧 If 'to' already has a ghost, reveal its origin before replacing it
+  // If 'to' already has a ghost, treat it as captured: remove the ghost and
+  // keep its origin hidden so the piece doesn't pop back to its start square.
   if (auto prevGhost = m_premove_pieces.find(to); prevGhost != m_premove_pieces.end()) {
     if (auto itO = m_premove_origin.find(to); itO != m_premove_origin.end()) {
-      m_hidden_squares.erase(itO->second);  // reveal previous origin
       m_premove_origin.erase(itO);
     }
     m_premove_pieces.erase(prevGhost);
