@@ -144,8 +144,20 @@ void PieceManager::movePiece(core::Square from, core::Square to,
     m_pieces[to] = std::move(movingPiece);
   }
 
-  // The piece now occupies 'to', so ensure it's not hidden.
-  m_hidden_squares.erase(to);
+  // The piece now occupies 'to'. If a ghost for this piece still exists
+  // (chained premove), keep the square hidden so only the ghost is shown.
+  const Entity::ID_type movingId = m_pieces[to].getId();
+  bool hasGhost = false;
+  for (const auto &pair : m_premove_pieces) {
+    if (pair.second.getId() == movingId) {
+      hasGhost = true;
+      break;
+    }
+  }
+  if (hasGhost)
+    m_hidden_squares.insert(to);
+  else
+    m_hidden_squares.erase(to);
 }
 
 void PieceManager::removePiece(core::Square pos) {
@@ -283,8 +295,9 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to) {
   if (existing != m_premove_pieces.end()) {
     ghost = std::move(existing->second);
     m_premove_pieces.erase(existing);
-    // Unhide the square the ghost is leaving so it can be reused
-    m_hidden_squares.erase(from);
+    // Keep the origin hidden; the real piece shouldn't be revealed until
+    // the entire premove chain has completed or been canceled.
+    // (no m_hidden_squares.erase(from))
   } else {
     auto it = m_pieces.find(from);
     if (it == m_pieces.end())
@@ -316,10 +329,32 @@ void PieceManager::consumePremoveGhost(core::Square from, core::Square to) {
   if (it != m_premove_pieces.end())
     m_premove_pieces.erase(it);
 
-  // The move will actually be applied by the caller (real piece drawn),
-  // so unhide involved squares and drop any stashed victim for 'to'
+  // Identify the moving piece to check whether further ghosts remain
+  Entity::ID_type movingId = 0;
+  if (auto live = m_pieces.find(from); live != m_pieces.end()) {
+    movingId = live->second.getId();
+  } else if (auto backup = m_captured_backup.find(from); backup != m_captured_backup.end()) {
+    movingId = backup->second.getId();
+  }
+
+  // Always reveal the origin square; the piece has left it.
   m_hidden_squares.erase(from);
-  m_hidden_squares.erase(to);
+
+  // Only reveal the destination if this piece has no remaining ghosts.
+  bool stillGhost = false;
+  if (movingId != 0) {
+    for (const auto &pair : m_premove_pieces) {
+      if (pair.second.getId() == movingId) {
+        stillGhost = true;
+        break;
+      }
+    }
+  }
+  if (stillGhost)
+    m_hidden_squares.insert(to);
+  else
+    m_hidden_squares.erase(to);
+
   m_captured_backup.erase(to);
 }
 

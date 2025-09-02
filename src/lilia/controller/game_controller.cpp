@@ -998,11 +998,20 @@ model::Position GameController::getPositionAfterPremoves() const {
 }
 
 model::bb::Piece GameController::getPieceConsideringPremoves(core::Square sq) const {
-  // Prefer the virtual board after queued premoves (fixes "captured piece steals selection")
+  // The visual layer (ghost pieces) takes precedence. This ensures that when a
+  // premoved piece is captured, its ghost still behaves like the original
+  // piece rather than whatever occupies the square in the game state.
+  core::PieceType viewType = m_game_view.getPieceType(sq);
+  if (viewType != core::PieceType::None) {
+    return {viewType, m_game_view.getPieceColor(sq)};
+  }
+
+  // Fall back to the virtual board after queued premoves if available.
   if (!m_premove_queue.empty()) {
     model::Position pos = getPositionAfterPremoves();
     if (auto virt = pos.getBoard().getPiece(sq)) return *virt;
   }
+
   return m_chess_game.getPiece(sq);
 }
 
