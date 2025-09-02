@@ -299,6 +299,18 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to, core::Pie
   if (auto prevGhost = m_premove_pieces.find(to); prevGhost != m_premove_pieces.end()) {
     m_premove_pieces.erase(prevGhost);
     m_premove_origin.erase(to);
+
+    // If that ghost had stashed a capture, put the piece back before
+    // replacing it. Otherwise, a later premove chain could leave behind a
+    // phantom (hidden) piece with no matching ghost, blocking further
+    // previews.
+    if (auto backup = m_captured_backup.find(to);
+        backup != m_captured_backup.end()) {
+      m_pieces[to] = std::move(backup->second);
+      m_pieces[to].setPosition(createPiecePositon(to));
+      m_captured_backup.erase(backup);
+    }
+    m_hidden_squares.erase(to);
   }
 
   // If 'to' has a real piece, stash it so cancel restores it
