@@ -31,8 +31,8 @@ constexpr float kSubHeaderH = 40.f;  // "Move List" line
 constexpr float kListTopGap = 8.f;   // spacing below subheader before rows
 constexpr float kFooterH = 54.f;     // fixed footer height (beveled controls)
 constexpr float kSlot = 32.f;        // enlarged icon slot size for better visibility
-constexpr float kSlotGap = 20.f;     // increased gap for symmetrical spacing
-constexpr float kFooterPadX = 20.f;  // horizontal padding inside footer
+constexpr float kSlotGap = 25.f;     // increased gap for symmetrical spacing
+constexpr float kFooterPadX = 25.f;  // horizontal padding inside footer
 
 // Tooltip
 constexpr float kTipPadX = 8.f;
@@ -334,8 +334,8 @@ void MoveListView::setSize(unsigned int width, unsigned int height) {
   const float left2X = kFooterPadX + kSlot + kSlotGap;
 
   // Center: prev / next
-  const float midL = (static_cast<float>(m_width) * 0.5f) - (kSlotGap * 0.5f) - kSlot;
-  const float midR = (static_cast<float>(m_width) * 0.5f) + (kSlotGap * 0.5f);
+  const float midL = (static_cast<float>(m_width) * 0.7f) - (kSlotGap * 0.5f) - kSlot;
+  const float midR = (static_cast<float>(m_width) * 0.7f) + (kSlotGap * 0.5f);
 
   // Assign click bounds (always computed; visibility depends on m_game_over)
   m_bounds_resign = {left1X, centerY - kSlot * 0.5f, kSlot, kSlot};
