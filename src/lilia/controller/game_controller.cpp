@@ -1056,6 +1056,11 @@ void GameController::showGameOver(core::GameResult res, core::Color sideToMove) 
   m_dragging = false;
   m_game_view.setDefaultCursor();
 
+  // Ensure no premove state or visuals linger after the game ends
+  m_premove_queue.clear();
+  m_game_view.clearPremoveHighlights();
+  m_game_view.clearPremovePieces(true);
+
   if (m_time_controller) {
     m_time_controller->stop();
     m_game_view.setClockActive(std::nullopt);
@@ -1250,7 +1255,11 @@ void GameController::resign() {
   m_chess_game.setResult(core::GameResult::CHECKMATE);
   m_game_view.clearAllHighlights();
   highlightLastMove();
-  showGameOver(core::GameResult::CHECKMATE, m_chess_game.getGameState().sideToMove);
+  core::Color loser = m_chess_game.getGameState().sideToMove;
+  if (m_game_manager && !m_game_manager->isHuman(loser)) {
+    loser = ~loser;
+  }
+  showGameOver(core::GameResult::CHECKMATE, loser);
 }
 
 GameController::NextAction GameController::getNextAction() const {
