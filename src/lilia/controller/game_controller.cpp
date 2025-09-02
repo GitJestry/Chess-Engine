@@ -338,6 +338,8 @@ void GameController::handleEvent(const sf::Event &event) {
     case sf::Event::MouseButtonPressed:
       if (event.mouseButton.button == sf::Mouse::Left)
         onMousePressed(core::MousePos(event.mouseButton.x, event.mouseButton.y));
+      else if (event.mouseButton.button == sf::Mouse::Right)
+        onRightClick(core::MousePos(event.mouseButton.x, event.mouseButton.y));
       break;
     case sf::Event::MouseButtonReleased:
       if (event.mouseButton.button == sf::Mouse::Left)
@@ -431,6 +433,14 @@ void GameController::onMouseReleased(core::MousePos pos) {
   m_preview_active = false;
   m_prev_selected_before_preview = core::NO_SQUARE;
   onMouseMove(pos);
+}
+
+void GameController::onRightClick(core::MousePos pos) {
+  const core::Square sq = m_game_view.mousePosToSquare(pos);
+  if (!isValid(sq)) return;
+  const bool hasPiece = hasVirtualPiece(sq);
+  if (!hasPiece) clearPremove();
+  m_game_view.highlightRightClickSquare(sq);
 }
 
 /* -------------------- Main loop hooks -------------------- */

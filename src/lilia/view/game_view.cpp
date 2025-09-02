@@ -117,6 +117,7 @@ void GameView::render() {
   // REAL pieces below animations
   m_piece_manager.renderPieces(m_window, m_chess_animator);
   m_highlight_manager.renderAttack(m_window);
+  m_highlight_manager.renderRightClick(m_window);
 
   // Animations and ghosts: ensure promotion overlay stays on top
   if (isInPromotionSelection()) {
@@ -413,6 +414,9 @@ void GameView::highlightCaptureSquare(core::Square pos) {
 void GameView::highlightPremoveSquare(core::Square pos) {
   m_highlight_manager.highlightPremoveSquare(pos);
 }
+void GameView::highlightRightClickSquare(core::Square pos) {
+  m_highlight_manager.highlightRightClickSquare(pos);
+}
 
 void GameView::clearHighlightSquare(core::Square pos) {
   m_highlight_manager.clearHighlightSquare(pos);
@@ -434,6 +438,9 @@ void GameView::clearNonPremoveHighlights() {
 }
 void GameView::clearAttackHighlights() {
   m_highlight_manager.clearAttackHighlights();
+}
+void GameView::clearRightClickHighlights() {
+  m_highlight_manager.clearRightClickHighlights();
 }
 
 void GameView::showPremovePiece(core::Square from, core::Square to, core::PieceType promotion) {

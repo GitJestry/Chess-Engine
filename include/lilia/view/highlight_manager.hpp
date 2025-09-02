@@ -16,6 +16,7 @@ class HighlightManager {
   void highlightCaptureSquare(core::Square pos);
   void highlightHoverSquare(core::Square pos);
   void highlightPremoveSquare(core::Square pos);
+  void highlightRightClickSquare(core::Square pos);
   void clearAllHighlights();
   void clearNonPremoveHighlights();
   void clearAttackHighlights();
@@ -23,11 +24,13 @@ class HighlightManager {
   void clearHighlightHoverSquare(core::Square pos);
   void clearHighlightPremoveSquare(core::Square pos);
   void clearPremoveHighlights();
+  void clearRightClickHighlights();
 
   void renderAttack(sf::RenderWindow& window);
   void renderHover(sf::RenderWindow& window);
   void renderSelect(sf::RenderWindow& window);
   void renderPremove(sf::RenderWindow& window);
+  void renderRightClick(sf::RenderWindow& window);
 
  private:
   void renderEntitiesToBoard(std::unordered_map<core::Square, Entity>& map,
@@ -39,6 +42,7 @@ class HighlightManager {
   std::unordered_map<core::Square, Entity> m_hl_select_squares;
   std::unordered_map<core::Square, Entity> m_hl_hover_squares;
   std::unordered_map<core::Square, Entity> m_hl_premove_squares;
+  std::unordered_map<core::Square, Entity> m_hl_rclick_squares;
 };
 
 }  // namespace lilia::view

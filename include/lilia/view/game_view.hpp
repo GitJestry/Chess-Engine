@@ -97,6 +97,7 @@ class GameView {
   void highlightCaptureSquare(core::Square pos);
   void highlightHoverSquare(core::Square pos);
   void highlightPremoveSquare(core::Square pos);
+  void highlightRightClickSquare(core::Square pos);
   void clearHighlightSquare(core::Square pos);
   void clearHighlightHoverSquare(core::Square pos);
   void clearHighlightPremoveSquare(core::Square pos);
@@ -104,6 +105,7 @@ class GameView {
   void clearAllHighlights();
   void clearNonPremoveHighlights();
   void clearAttackHighlights();
+  void clearRightClickHighlights();
 
   // Preview helpers for premoves
   void showPremovePiece(core::Square from, core::Square to,
