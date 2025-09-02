@@ -1,6 +1,5 @@
 #include "lilia/view/game_view.hpp"
 
-#include <SFML/Graphics/Image.hpp>
 #include <algorithm>
 
 #include "lilia/bot/bot_info.hpp"
@@ -16,6 +15,7 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
       m_highlight_manager(m_board_view),
       m_chess_animator(m_board_view, m_piece_manager),
       m_promotion_manager(),
+      m_cursor_manager(window),
       m_eval_bar(),
       m_move_list(),
       m_top_player(),
@@ -24,22 +24,6 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
       m_bottom_clock(),
       m_modal(),
       m_particles() {
-  // cursors
-  m_cursor_default.loadFromSystem(sf::Cursor::Arrow);
-
-  sf::Image openImg;
-  if (openImg.loadFromFile(constant::STR_FILE_PATH_HAND_OPEN)) {
-    m_cursor_hand_open.loadFromPixels(openImg.getPixelsPtr(), openImg.getSize(),
-                                      {openImg.getSize().x / 3, openImg.getSize().y / 3});
-  }
-  sf::Image closedImg;
-  if (closedImg.loadFromFile(constant::STR_FILE_PATH_HAND_CLOSED)) {
-    // FIX: use closedImg size for hotspot (previously used openImg)
-    m_cursor_hand_closed.loadFromPixels(closedImg.getPixelsPtr(), closedImg.getSize(),
-                                        {closedImg.getSize().x / 3, closedImg.getSize().y / 3});
-  }
-  m_window.setMouseCursor(m_cursor_default);
-
   // players
   PlayerInfo topInfo = topIsBot
                            ? getBotConfig(BotType::Lilia).info
@@ -300,13 +284,13 @@ void GameView::movePiece(core::Square from, core::Square to, core::PieceType pro
 
 /* ---------- Cursors ---------- */
 void GameView::setDefaultCursor() {
-  m_window.setMouseCursor(m_cursor_default);
+  m_cursor_manager.setDefaultCursor();
 }
 void GameView::setHandOpenCursor() {
-  m_window.setMouseCursor(m_cursor_hand_open);
+  m_cursor_manager.setHandOpenCursor();
 }
 void GameView::setHandClosedCursor() {
-  m_window.setMouseCursor(m_cursor_hand_closed);
+  m_cursor_manager.setHandClosedCursor();
 }
 
 /* ---------- Board info ---------- */

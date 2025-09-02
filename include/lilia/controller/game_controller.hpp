@@ -20,6 +20,7 @@ class Event;
 #include "../view/game_view.hpp"
 #include "input_manager.hpp"
 #include "time_controller.hpp"
+#include "selection_manager.hpp"
 
 namespace lilia::model {
 class ChessGame;
@@ -105,10 +106,6 @@ private:
 
   void onDrop(core::MousePos start, core::MousePos end);
 
-  void selectSquare(core::Square sq);
-  void deselectSquare();
-  void hoverSquare(core::Square sq);
-  void dehoverSquare();
   void clearPremove();
   bool enqueuePremove(core::Square from, core::Square to);
   void updatePremovePreviews();
@@ -121,8 +118,6 @@ private:
                          bool onClick);
 
   void snapAndReturn(core::Square sq, core::MousePos cur);
-  void highlightLastMove();
-  void clearLastMoveHighlight();
 
   [[nodiscard]] std::vector<core::Square>
   getAttackSquares(core::Square pieceSQ) const;
@@ -173,10 +168,7 @@ private:
   core::PieceType m_pending_promotion = core::PieceType::None;
   bool m_skip_next_move_animation = false;
 
-  core::Square m_selected_sq = core::NO_SQUARE; ///< Currently selected square.
-  core::Square m_hover_sq = core::NO_SQUARE;    ///< Currently hovered square.
-  std::pair<core::Square, core::Square> m_last_move_squares = {
-      core::NO_SQUARE, core::NO_SQUARE}; ///< Last executed move (from -> to).
+  SelectionManager m_selection_manager;
 
   // ---------------- New: GameManager ----------------
   std::unique_ptr<GameManager> m_game_manager;

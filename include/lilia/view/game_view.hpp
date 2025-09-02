@@ -2,7 +2,6 @@
 
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/System/Vector2.hpp>
-#include <SFML/Window/Cursor.hpp>
 #include <functional>
 #include <optional>
 #include <vector>
@@ -16,6 +15,7 @@
 #include "entity.hpp"
 #include "eval_bar.hpp"
 #include "highlight_manager.hpp"
+#include "cursor_manager.hpp"
 #include "modal_view.hpp"
 #include "move_list_view.hpp"
 #include "particle_system.hpp"
@@ -160,10 +160,7 @@ class GameView {
   // Currently dragged piece (if any)
   core::Square m_dragging_piece{core::NO_SQUARE};
 
-  // cursors
-  sf::Cursor m_cursor_default;
-  sf::Cursor m_cursor_hand_open;
-  sf::Cursor m_cursor_hand_closed;
+  CursorManager m_cursor_manager;
 
   // UI components
   EvalBar m_eval_bar;
