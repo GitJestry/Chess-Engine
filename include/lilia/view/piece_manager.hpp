@@ -43,6 +43,9 @@ class PieceManager {
   void setPremovePiece(core::Square from, core::Square to);
   void clearPremovePieces(bool restore = true);
   void consumePremoveGhost(core::Square from, core::Square to);
+  void applyPremoveInstant(core::Square from, core::Square to,
+                           core::PieceType promotion = core::PieceType::None);
+  void renderPremoveGhosts(sf::RenderWindow& window, const animation::ChessAnimator& chessAnimRef);
 
  private:
   Entity::Position createPiecePositon(core::Square pos);

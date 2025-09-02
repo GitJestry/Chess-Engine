@@ -201,8 +201,7 @@ void GameController::handleEvent(const sf::Event &event) {
         if (m_game_view.isOnResignYes(mp)) {
           resign();
           m_game_view.hideResignPopup();
-        } else if (m_game_view.isOnResignNo(mp) ||
-                   m_game_view.isOnModalClose(mp)) {
+        } else if (m_game_view.isOnResignNo(mp) || m_game_view.isOnModalClose(mp)) {
           m_game_view.hideResignPopup();
         }
       } else if (m_game_view.isGameOverPopupOpen()) {
@@ -477,20 +476,14 @@ void GameController::update(float dt) {
     const auto st = m_chess_game.getGameState();
     if (m_game_manager && m_game_manager->isHuman(st.sideToMove) &&
         hasCurrentLegalMove(m_pending_from, m_pending_to)) {
-      // Update capture info using the current board state; fall back to
-      // previously stored type (e.g. en-passant) if the square is empty.
       if (auto cap = m_chess_game.getPiece(m_pending_to); cap.type != core::PieceType::None) {
         m_pending_capture_type = cap.type;
       }
 
-      // Consume only the first ghost; keep the rest visible
-      m_game_view.consumePremoveGhost(m_pending_from, m_pending_to);
+      m_game_view.applyPremoveInstant(m_pending_from, m_pending_to);
 
-      // Commit instantly (no animation), then hand it to the game manager
-      m_game_view.movePiece(m_pending_from, m_pending_to);
       (void)m_game_manager->requestUserMove(m_pending_from, m_pending_to, /*onClick*/ true);
     } else {
-      // Cancel entire chain if first premove is no longer legal
       clearPremove();
     }
     m_has_pending_auto_move = false;
@@ -619,6 +612,10 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
     }
   }
 
+  if (m_skip_next_move_animation && move.isEnPassant && epVictimSq != core::NO_SQUARE) {
+    m_game_view.removePiece(epVictimSq);
+  }
+
   // 4) Animate or drop
   if (!m_skip_next_move_animation) {
     if (onClick)
@@ -713,54 +710,60 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
   return m_game_view.isSameColorPiece(a, b);
 }
 
-[[nodiscard]] std::vector<core::Square> GameController::getAttackSquares(
-    core::Square pieceSQ) const {
+std::vector<core::Square> GameController::getAttackSquares(core::Square pieceSQ) const {
   std::vector<core::Square> att;
   if (!isValid(pieceSQ)) return att;
 
-  model::Position pos = getPositionAfterPremoves();
+  // If there is any premove context, prefer the ghost (view) info for the piece.
+  core::PieceType vType = m_game_view.getPieceType(pieceSQ);
+  core::Color vCol = m_game_view.getPieceColor(pieceSQ);
+  const bool hasVirtual = (vType != core::PieceType::None);
+
+  // Are we previewing a premove (piece color != sideToMove now)?
+  const bool premoveContext = hasVirtual && (vCol != m_chess_game.getGameState().sideToMove);
+
+  model::MoveGenerator gen;
+
+  if (premoveContext) {
+    // Safe premove generation: isolate the ghost on an empty board, ignore checks/castling.
+    model::Board board;
+    board.clear();
+    board.setPiece(pieceSQ, {vType, vCol});
+
+    model::GameState st{};
+    st.sideToMove = vCol;
+    st.castlingRights = 0;
+    st.enPassantSquare = core::NO_SQUARE;
+
+    // Pawn: add dummy diagonals so capture premoves are always offerable.
+    if (vType == core::PieceType::Pawn) {
+      const int file = static_cast<int>(pieceSQ) & 7;
+      const int forward = (vCol == core::Color::White) ? 8 : -8;
+      const model::bb::Piece dummy{core::PieceType::Pawn, ~vCol};
+      if (file > 0)
+        board.setPiece(static_cast<core::Square>(static_cast<int>(pieceSQ) + forward - 1), dummy);
+      if (file < 7)
+        board.setPiece(static_cast<core::Square>(static_cast<int>(pieceSQ) + forward + 1), dummy);
+    }
+
+    std::vector<model::Move> pseudo;
+    gen.generatePseudoLegalMoves(board, st, pseudo);
+    for (const auto &m : pseudo)
+      if (m.from == pieceSQ) att.push_back(m.to);
+    return att;
+  }
+
+  // Normal (on-turn) preview uses the current position with legality via do/undo.
+  model::Position pos = m_chess_game.getPositionRefForBot();
   auto pcOpt = pos.getBoard().getPiece(pieceSQ);
   if (!pcOpt) return att;
 
-  bool forPremove = (m_chess_game.getGameState().sideToMove != pcOpt->color);
-  model::Board board = pos.getBoard();
-  model::GameState st = pos.getState();
-  st.sideToMove = pcOpt->color;
-  if (forPremove) {
-    // Safe premove generation (like chess.com):
-    // isolate the piece; disable castling/en-passant; ignore checks
-    board.clear();
-    board.setPiece(pieceSQ, *pcOpt);
-    // For pawns, include dummy capture targets on both diagonals so
-    // capture premoves remain available even if those squares are empty.
-    if (pcOpt->type == core::PieceType::Pawn) {
-      const int file = static_cast<int>(pieceSQ) & 7;
-      const int forward = (pcOpt->color == core::Color::White) ? 8 : -8;
-      const model::bb::Piece dummy{core::PieceType::Pawn, ~pcOpt->color};
-      if (file > 0) {
-        board.setPiece(static_cast<core::Square>(static_cast<int>(pieceSQ) + forward - 1), dummy);
-      }
-      if (file < 7) {
-        board.setPiece(static_cast<core::Square>(static_cast<int>(pieceSQ) + forward + 1), dummy);
-      }
-    }
-    st.castlingRights = 0;
-    st.enPassantSquare = core::NO_SQUARE;
-  }
-
-  model::MoveGenerator gen;
   std::vector<model::Move> pseudo;
-  gen.generatePseudoLegalMoves(board, st, pseudo);
-
-  if (forPremove) {
-    for (const auto &m : pseudo)
-      if (m.from == pieceSQ) att.push_back(m.to);
-  } else {
-    for (const auto &m : pseudo) {
-      if (m.from == pieceSQ && pos.doMove(m)) {
-        att.push_back(m.to);
-        pos.undoMove();
-      }
+  gen.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), pseudo);
+  for (const auto &m : pseudo) {
+    if (m.from == pieceSQ && pos.doMove(m)) {
+      att.push_back(m.to);
+      pos.undoMove();
     }
   }
   return att;
@@ -1013,40 +1016,35 @@ bool GameController::hasVirtualPiece(core::Square sq) const {
 
 bool GameController::isPseudoLegalPremove(core::Square from, core::Square to) const {
   if (!isValid(from) || !isValid(to)) return false;
-  model::Position pos = getPositionAfterPremoves();
-  auto pcOpt = pos.getBoard().getPiece(from);
-  if (!pcOpt) return false;
 
-  // Safe premove: isolate moving piece, disable castle/en-passant, ignore checks
+  core::PieceType vType = m_game_view.getPieceType(from);
+  core::Color vCol = m_game_view.getPieceColor(from);
+  if (vType == core::PieceType::None) return false;
+
   model::Board board;
   board.clear();
-  board.setPiece(from, *pcOpt);
+  board.setPiece(from, {vType, vCol});
 
-  // For pawns, add dummy capture targets on both forward diagonals so capture
-  // premoves remain available even if those squares are empty.
-  if (pcOpt->type == core::PieceType::Pawn) {
+  if (vType == core::PieceType::Pawn) {
     const int file = static_cast<int>(from) & 7;
-    const int forward = (pcOpt->color == core::Color::White) ? 8 : -8;
-    const model::bb::Piece dummy{core::PieceType::Pawn, ~pcOpt->color};
-    if (file > 0) {
+    const int forward = (vCol == core::Color::White) ? 8 : -8;
+    const model::bb::Piece dummy{core::PieceType::Pawn, ~vCol};
+    if (file > 0)
       board.setPiece(static_cast<core::Square>(static_cast<int>(from) + forward - 1), dummy);
-    }
-    if (file < 7) {
+    if (file < 7)
       board.setPiece(static_cast<core::Square>(static_cast<int>(from) + forward + 1), dummy);
-    }
   }
 
   model::GameState st{};
-  st.sideToMove = pcOpt->color;
+  st.sideToMove = vCol;
   st.castlingRights = 0;
   st.enPassantSquare = core::NO_SQUARE;
 
   model::MoveGenerator gen;
   std::vector<model::Move> pseudo;
   gen.generatePseudoLegalMoves(board, st, pseudo);
-  for (const auto &m : pseudo) {
+  for (const auto &m : pseudo)
     if (m.from == from && m.to == to) return true;
-  }
   return false;
 }
 
@@ -1120,8 +1118,7 @@ void GameController::syncCapturedPieces() {
 
 void GameController::stepBackward() {
   // Hide premove visuals when traversing history, but preserve the queue
-  if (!m_premove_queue.empty() && m_fen_index == m_fen_history.size() - 1 &&
-      !m_premove_suspended) {
+  if (!m_premove_queue.empty() && m_fen_index == m_fen_history.size() - 1 && !m_premove_suspended) {
     m_game_view.clearPremoveHighlights();
     m_game_view.clearPremovePieces(false);
     m_premove_suspended = true;

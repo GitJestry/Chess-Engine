@@ -87,6 +87,8 @@ class GameView {
   void removeCapturedPiece(core::Color capturer);
   void clearCapturedPieces();
   void consumePremoveGhost(core::Square from, core::Square to);
+  void applyPremoveInstant(core::Square from, core::Square to,
+                           core::PieceType promotion = core::PieceType::None);
 
   void highlightSquare(core::Square pos);
   void highlightAttackSquare(core::Square pos);

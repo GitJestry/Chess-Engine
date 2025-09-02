@@ -34,8 +34,9 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
   }
   sf::Image closedImg;
   if (closedImg.loadFromFile(constant::STR_FILE_PATH_HAND_CLOSED)) {
+    // FIX: use closedImg size for hotspot (previously used openImg)
     m_cursor_hand_closed.loadFromPixels(closedImg.getPixelsPtr(), closedImg.getSize(),
-                                        {openImg.getSize().x / 3, openImg.getSize().y / 3});
+                                        {closedImg.getSize().x / 3, closedImg.getSize().y / 3});
   }
   m_window.setMouseCursor(m_cursor_default);
 
@@ -100,8 +101,9 @@ void GameView::updateEval(int eval) {
   m_eval_bar.update(eval);
 }
 
+// game_view.cpp
 void GameView::render() {
-  // left stack (eval bar manages its own visibility and toggle)
+  // left stack
   m_eval_bar.render(m_window);
 
   // board + pieces + overlays
@@ -112,26 +114,33 @@ void GameView::render() {
   m_highlight_manager.renderPremove(m_window);
   m_chess_animator.renderHighlightLevel(m_window);
   m_highlight_manager.renderHover(m_window);
+
+  // REAL pieces below animations
   m_piece_manager.renderPieces(m_window, m_chess_animator);
   m_highlight_manager.renderAttack(m_window);
+
+  // Animations in the middle
   m_chess_animator.render(m_window);
+
+  // GHOSTS on top — fixes "real+ghost at same time"
+  m_piece_manager.renderPremoveGhosts(m_window, m_chess_animator);
+
   m_board_view.renderHistoryOverlay(m_window);
   if (m_show_clocks) {
     m_top_clock.render(m_window);
     m_bottom_clock.render(m_window);
   }
-
-  // right stack
   m_move_list.render(m_window);
 
-  // modals (overlay → confetti → panel)
   if (m_modal.isResignOpen() || m_modal.isGameOverOpen()) {
     m_modal.drawOverlay(m_window);
-    if (m_modal.isGameOverOpen()) {
-      m_particles.render(m_window);
-    }
+    if (m_modal.isGameOverOpen()) m_particles.render(m_window);
     m_modal.drawPanel(m_window);
   }
+}
+
+void GameView::applyPremoveInstant(core::Square from, core::Square to, core::PieceType promotion) {
+  m_piece_manager.applyPremoveInstant(from, to, promotion);
 }
 
 void GameView::addMove(const std::string &move) {
@@ -148,6 +157,8 @@ void GameView::selectMove(std::size_t moveIndex) {
 }
 
 void GameView::setBoardFen(const std::string &fen) {
+  // Clear any lingering ghosts/hidden squares before rebuilding
+  m_piece_manager.clearPremovePieces(false);
   m_chess_animator.cancelAll();
   m_piece_manager.removeAll();
   m_piece_manager.initFromFen(fen);
@@ -160,6 +171,8 @@ void GameView::updateFen(const std::string &fen) {
 }
 
 void GameView::resetBoard() {
+  // Clear ghosts to avoid stale hidden squares/overlaps
+  m_piece_manager.clearPremovePieces(false);
   m_piece_manager.removeAll();
   init();
 }
@@ -277,6 +290,8 @@ void GameView::setPieceToSquareScreenPos(core::Square from, core::Square to) {
 }
 
 void GameView::movePiece(core::Square from, core::Square to, core::PieceType promotion) {
+  // IMPORTANT: reveal the real piece by consuming the premove ghost first
+  m_piece_manager.consumePremoveGhost(from, to);
   m_piece_manager.movePiece(from, to, promotion);
 }
 
@@ -445,12 +460,16 @@ void GameView::animationSnapAndReturn(core::Square sq, core::MousePos mousePos) 
 
 void GameView::animationMovePiece(core::Square from, core::Square to, core::Square enPSquare,
                                   core::PieceType promotion, std::function<void()> onComplete) {
+  // IMPORTANT: remove the ghost FIRST so the animation reveals the real piece.
+  m_piece_manager.consumePremoveGhost(from, to);
   m_chess_animator.movePiece(from, to, promotion, std::move(onComplete));
   if (enPSquare != core::NO_SQUARE) m_piece_manager.removePiece(enPSquare);
 }
 
 void GameView::animationDropPiece(core::Square from, core::Square to, core::Square enPSquare,
                                   core::PieceType promotion) {
+  // IMPORTANT: remove the ghost FIRST so the drop reveals the real piece.
+  m_piece_manager.consumePremoveGhost(from, to);
   m_chess_animator.dropPiece(from, to, promotion);
   if (enPSquare != core::NO_SQUARE) m_piece_manager.removePiece(enPSquare);
 }

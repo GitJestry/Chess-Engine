@@ -10,6 +10,9 @@ class Piece : public Entity {
   Piece(core::Color color, core::PieceType type, const sf::Texture &texture, Entity::Position pos);
   Piece() = default;
 
+  Piece(const Piece& other);
+  Piece& operator=(const Piece& other);
+
   void setColor(core::Color color);
   core::Color getColor() const;
   void setType(core::PieceType type);
@@ -20,4 +23,4 @@ class Piece : public Entity {
   core::PieceType m_type;
 };
 
-}  
+}
