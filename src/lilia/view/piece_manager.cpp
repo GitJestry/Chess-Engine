@@ -254,7 +254,8 @@ void PieceManager::renderPiece(core::Square pos, sf::RenderWindow &window) {
 }
 
 /* -------------------- Premove (ghost pieces) -------------------- */
-void PieceManager::setPremovePiece(core::Square from, core::Square to) {
+void PieceManager::setPremovePiece(core::Square from, core::Square to,
+                                   core::PieceType promotion) {
   // If the piece was already a ghost (chained premove), move that ghost
   Piece ghost;
   auto existing = m_premove_pieces.find(from);
@@ -270,11 +271,30 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to) {
     m_hidden_squares.insert(from);
   }
 
-  // If destination has a *real* piece, stash it so cancel restores it
-  auto captured = m_pieces.find(to);
-  if (captured != m_pieces.end()) {
-    m_captured_backup[to] = std::move(captured->second);
-    m_pieces.erase(captured);
+  // Override piece type/texture for promotion preview
+  if (promotion != core::PieceType::None && ghost.getType() != promotion) {
+    std::uint8_t numTypes = 6;
+    std::string filename =
+        constant::ASSET_PIECES_FILE_PATH + std::string("/piece_") +
+        std::to_string(static_cast<std::uint8_t>(promotion) +
+                       numTypes * static_cast<std::uint8_t>(ghost.getColor())) +
+        ".png";
+    const sf::Texture& tex = TextureTable::getInstance().get(filename);
+    ghost.setTexture(tex);
+    ghost.setType(promotion);
+  }
+
+  // If destination already has a premove ghost (chained capture), stash it too
+  if (auto ghostCap = m_premove_pieces.find(to); ghostCap != m_premove_pieces.end()) {
+    m_captured_backup[to] = std::move(ghostCap->second);
+    m_premove_pieces.erase(ghostCap);
+  } else {
+    // Otherwise stash any real piece so cancel restores it
+    auto captured = m_pieces.find(to);
+    if (captured != m_pieces.end()) {
+      m_captured_backup[to] = std::move(captured->second);
+      m_pieces.erase(captured);
+    }
   }
 
   ghost.setPosition(createPiecePositon(to));

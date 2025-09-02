@@ -44,6 +44,7 @@ struct MoveView {
 struct Premove {
   core::Square from;
   core::Square to;
+  core::PieceType promotion = core::PieceType::None;
   core::PieceType capturedType;
   core::Color capturedColor;
 };
@@ -157,6 +158,7 @@ private:
   core::Square m_pending_from = core::NO_SQUARE;
   core::Square m_pending_to = core::NO_SQUARE;
   core::PieceType m_pending_capture_type = core::PieceType::None;
+  core::PieceType m_pending_promotion = core::PieceType::None;
   bool m_skip_next_move_animation = false;
 
   core::Square m_selected_sq = core::NO_SQUARE; ///< Currently selected square.

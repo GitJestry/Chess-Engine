@@ -104,7 +104,8 @@ class GameView {
   void clearAttackHighlights();
 
   // Preview helpers for premoves
-  void showPremovePiece(core::Square from, core::Square to);
+  void showPremovePiece(core::Square from, core::Square to,
+                        core::PieceType promotion = core::PieceType::None);
   void clearPremovePieces(bool restore = true);
 
   void warningKingSquareAnim(core::Square ksq);
