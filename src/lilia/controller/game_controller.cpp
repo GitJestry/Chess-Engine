@@ -197,15 +197,21 @@ void GameController::handleEvent(const sf::Event &event) {
       if (m_game_view.isResignPopupOpen()) {
         if (m_game_view.isOnResignYes(mp)) {
           resign();
+          m_game_view.hideResignPopup();
+        } else if (m_game_view.isOnResignNo(mp) ||
+                   m_game_view.isOnModalClose(mp)) {
+          m_game_view.hideResignPopup();
         }
-        m_game_view.hideResignPopup();
       } else if (m_game_view.isGameOverPopupOpen()) {
         if (m_game_view.isOnNewBot(mp)) {
           m_next_action = NextAction::NewBot;
+          m_game_view.hideGameOverPopup();
         } else if (m_game_view.isOnRematch(mp)) {
           m_next_action = NextAction::Rematch;
+          m_game_view.hideGameOverPopup();
+        } else if (m_game_view.isOnModalClose(mp)) {
+          m_game_view.hideGameOverPopup();
         }
-        m_game_view.hideGameOverPopup();
       }
     }
     return;

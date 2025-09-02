@@ -243,6 +243,10 @@ bool GameView::isOnRematch(core::MousePos mousePos) const {
   return m_modal.hitRematch({static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)});
 }
 
+bool GameView::isOnModalClose(core::MousePos mousePos) const {
+  return m_modal.hitClose({static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)});
+}
+
 /* ---------- Input helpers ---------- */
 core::Square GameView::mousePosToSquare(core::MousePos mousePos) const {
   return m_board_view.mousePosToSquare(mousePos);

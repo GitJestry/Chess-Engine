@@ -61,6 +61,7 @@ class GameView {
   [[nodiscard]] bool isGameOverPopupOpen() const;
   [[nodiscard]] bool isOnNewBot(core::MousePos mousePos) const;
   [[nodiscard]] bool isOnRematch(core::MousePos mousePos) const;
+  [[nodiscard]] bool isOnModalClose(core::MousePos mousePos) const;
 
   [[nodiscard]] core::Square mousePosToSquare(core::MousePos mousePos) const;
   [[nodiscard]] core::MousePos clampPosToBoard(core::MousePos mousePos,

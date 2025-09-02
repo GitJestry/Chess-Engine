@@ -36,6 +36,7 @@ class ModalView {
   bool hitResignNo(sf::Vector2f p) const;
   bool hitNewBot(sf::Vector2f p) const;
   bool hitRematch(sf::Vector2f p) const;
+  bool hitClose(sf::Vector2f p) const;
 
  private:
   // theme (kept local to avoid touching your constants)
@@ -53,8 +54,6 @@ class ModalView {
   sf::RectangleShape m_btnClose;
   sf::Text m_lblClose;
   sf::FloatRect m_hitClose;
-
-  bool hitClose(sf::Vector2f p) const;
 
   // state
   bool m_openResign = false;
