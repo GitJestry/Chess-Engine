@@ -323,8 +323,16 @@ void PieceManager::setPremovePiece(core::Square from, core::Square to, core::Pie
     m_premove_pieces.erase(prevGhost);
   }
 
-  // If 'to' has a real piece, stash it so cancel restores it
-  if (auto captured = m_pieces.find(to); captured != m_pieces.end()) {
+  // If 'to' has a real piece, stash it so cancel restores it.
+  //
+  // However, if we're retargeting the premove back onto its own origin
+  // square, `m_pieces[to]` already holds the *real* mover we previously
+  // hid. Stashing it here would temporarily remove the piece from
+  // `m_pieces` and later cause it to vanish when the ghost moves again
+  // (the backup would be dropped without being restored).  By skipping
+  // the stash when `to` equals the preserved `origin`, the original piece
+  // stays put and can be safely moved or revealed later.
+  if (auto captured = m_pieces.find(to); captured != m_pieces.end() && to != origin) {
     m_captured_backup[to] = std::move(captured->second);
     m_pieces.erase(captured);
   }
