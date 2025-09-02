@@ -30,8 +30,8 @@ constexpr float kFenH = 30.f;        // FEN info row
 constexpr float kSubHeaderH = 40.f;  // "Move List" line
 constexpr float kListTopGap = 8.f;   // spacing below subheader before rows
 constexpr float kFooterH = 54.f;     // fixed footer height (beveled controls)
-constexpr float kSlot = 26.f;        // icon slot size (compact)
-constexpr float kSlotGap = 14.f;     // gap between slots
+constexpr float kSlot = 32.f;        // enlarged icon slot size for better visibility
+constexpr float kSlotGap = 20.f;     // increased gap for symmetrical spacing
 constexpr float kFooterPadX = 20.f;  // horizontal padding inside footer
 
 // Tooltip
