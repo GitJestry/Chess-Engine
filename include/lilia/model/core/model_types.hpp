@@ -27,6 +27,10 @@ constexpr Bitboard FILE_A = 0x0101010101010101ULL;
 constexpr Bitboard FILE_B = 0x0202020202020202ULL;
 constexpr Bitboard FILE_G = 0x4040404040404040ULL;
 constexpr Bitboard FILE_H = 0x8080808080808080ULL;
+constexpr Bitboard FILE_C = 0x0404040404040404ULL;
+constexpr Bitboard FILE_D = 0x0808080808080808ULL;
+constexpr Bitboard FILE_E = 0x1010101010101010ULL;
+constexpr Bitboard FILE_F = 0x2020202020202020ULL;
 
 constexpr Bitboard RANK_1 = 0x00000000000000FFULL;
 constexpr Bitboard RANK_2 = 0x000000000000FF00ULL;
