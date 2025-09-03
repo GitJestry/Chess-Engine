@@ -104,16 +104,16 @@ void GameView::render() {
   m_highlight_manager.renderRightClick(m_window);
 
   // Animations and ghosts: ensure promotion overlay stays on top
-  if (isInPromotionSelection()) {
+  const bool inPromotion = isInPromotionSelection();
+  const bool draggingPiece = m_dragging_piece != core::NO_SQUARE;
+  if (inPromotion) {
     m_piece_manager.renderPremoveGhosts(m_window, m_chess_animator);
-    if (m_dragging_piece != core::NO_SQUARE)
-      m_piece_manager.renderPiece(m_dragging_piece, m_window);
+    if (draggingPiece) m_piece_manager.renderPiece(m_dragging_piece, m_window);
     m_chess_animator.render(m_window);
   } else {
     m_chess_animator.render(m_window);
     m_piece_manager.renderPremoveGhosts(m_window, m_chess_animator);
-    if (m_dragging_piece != core::NO_SQUARE)
-      m_piece_manager.renderPiece(m_dragging_piece, m_window);
+    if (draggingPiece) m_piece_manager.renderPiece(m_dragging_piece, m_window);
   }
   if (m_show_clocks) {
     m_top_clock.render(m_window);
