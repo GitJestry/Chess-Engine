@@ -18,6 +18,10 @@ class Engine {
   explicit Engine(const EngineConfig& cfg = {});
   ~Engine();
 
+  // Clear all internal caches and reset state. Useful when restarting the
+  // engine to avoid any leftover data or undefined behaviour.
+  void reset();
+
   static void init() {
     // Zobrist inner once_flag
     model::Zobrist::init();
@@ -31,7 +35,7 @@ class Engine {
 
  private:
   struct Impl;
-  Impl* pimpl;
+  std::unique_ptr<Impl> pimpl;
 };
 
 }  // namespace lilia::engine

@@ -1053,12 +1053,8 @@ struct Evaluator::Impl {
   std::array<PawnEntry, PAWN_SIZE> pawn;
   std::atomic<uint32_t> age{1};
 };
-Evaluator::Evaluator() noexcept {
-  m_impl = new Impl();
-}
-Evaluator::~Evaluator() noexcept {
-  delete m_impl;
-}
+Evaluator::Evaluator() noexcept : m_impl(std::make_unique<Impl>()) {}
+Evaluator::~Evaluator() noexcept = default;
 void Evaluator::clearCaches() const noexcept {
   if (!m_impl) return;
   for (auto& e : m_impl->eval) {

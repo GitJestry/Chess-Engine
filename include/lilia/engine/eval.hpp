@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <memory>
 
 namespace lilia {
 namespace model {
@@ -26,7 +27,7 @@ class Evaluator final {
 
  private:
   struct Impl;
-  mutable Impl* m_impl = nullptr;
+  mutable std::unique_ptr<Impl> m_impl;
 };
 
 }  // namespace engine

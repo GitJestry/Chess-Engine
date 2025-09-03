@@ -33,12 +33,27 @@ struct Engine::Impl {
   }
 };
 
-Engine::Engine(const EngineConfig& cfg) : pimpl(new Impl(cfg)) {
+Engine::Engine(const EngineConfig& cfg) : pimpl(std::make_unique<Impl>(cfg)) {
   Engine::init();
+  reset();
 }
 
-Engine::~Engine() {
-  delete pimpl;
+Engine::~Engine() = default;
+
+void Engine::reset() {
+  if (!pimpl) return;
+  try {
+    pimpl->tt.clear();
+  } catch (...) {
+  }
+  try {
+    if (pimpl->eval) pimpl->eval->clearCaches();
+  } catch (...) {
+  }
+  try {
+    if (pimpl->search) pimpl->search->clearSearchState();
+  } catch (...) {
+  }
 }
 
 std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxDepth,
