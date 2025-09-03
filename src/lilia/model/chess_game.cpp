@@ -18,18 +18,20 @@ core::Square stringToSquare(const std::string& strSquare) {
   return static_cast<core::Square>(file + rank * 8);
 }
 
-inline int squareFromUCI(const std::string& sq) {
-  if (sq.size() != 2) return -1;
+inline int squareFromUCI(const char* sq) {
+  if (!sq) return -1;
   int file = sq[0] - 'a';
   int rank = sq[1] - '1';
+  if (file < 0 || file > 7 || rank < 0 || rank > 7) return -1;
   return rank * 8 + file;
 }
 
 void ChessGame::doMoveUCI(const std::string& uciMove) {
   if (uciMove.size() < 4) return;
 
-  int from = squareFromUCI(uciMove.substr(0, 2));
-  int to = squareFromUCI(uciMove.substr(2, 2));
+  const char* ptr = uciMove.c_str();
+  int from = squareFromUCI(ptr);
+  int to = squareFromUCI(ptr + 2);
   core::PieceType promo = core::PieceType::None;
 
   if (uciMove.size() == 5) {
