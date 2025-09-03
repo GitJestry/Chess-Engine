@@ -46,6 +46,12 @@ void InputManager::processEvent(const sf::Event& event) {
       }
       break;
 
+    case sf::Event::LostFocus:
+    case sf::Event::MouseLeft:
+      m_drag_start.reset();
+      m_dragging = false;
+      break;
+
     default:
       break;
   }

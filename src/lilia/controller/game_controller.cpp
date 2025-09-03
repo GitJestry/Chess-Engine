@@ -362,9 +362,15 @@ void GameController::handleEvent(const sf::Event &event) {
       break;
     case sf::Event::LostFocus:
     case sf::Event::MouseLeft:
+      if (m_dragging && isValid(m_drag_from)) {
+        m_game_view.endAnimation(m_drag_from);
+        snapAndReturn(m_drag_from, m_last_mouse_pos);
+      }
       m_mouse_down = false;
       m_dragging = false;
       m_drag_from = core::NO_SQUARE;
+      m_preview_active = false;
+      m_prev_selected_before_preview = core::NO_SQUARE;
       m_game_view.clearDraggingPiece();
       m_game_view.setDefaultCursor();
       break;
@@ -390,6 +396,7 @@ void GameController::onMouseMove(core::MousePos pos) {
 
 void GameController::onMousePressed(core::MousePos pos) {
   m_mouse_down = true;
+  m_last_mouse_pos = pos;
 
   if (m_game_view.isInPromotionSelection()) {
     m_game_view.setHandClosedCursor();
@@ -1094,6 +1101,7 @@ void GameController::onDrag(core::MousePos start, core::MousePos current) {
   const core::Square sqStart = m_game_view.mousePosToSquare(start);
   const core::MousePos clamped = m_game_view.clampPosToBoard(current);
   const core::Square sqMous = m_game_view.mousePosToSquare(clamped);
+  m_last_mouse_pos = clamped;
 
   if (m_game_view.isInPromotionSelection()) return;
   if (!hasVirtualPiece(sqStart)) return;

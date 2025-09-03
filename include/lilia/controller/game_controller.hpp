@@ -147,6 +147,7 @@ class GameController {
   bool m_has_pending_auto_move = false;
 
   core::Square m_drag_from = core::NO_SQUARE;
+  core::MousePos m_last_mouse_pos{};
   bool m_preview_active = false;
   core::Square m_prev_selected_before_preview = core::NO_SQUARE;
   bool m_selection_changed_on_press = false;
