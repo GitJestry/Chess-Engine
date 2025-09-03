@@ -1,9 +1,12 @@
 #include "lilia/view/board.hpp"
 
+#include <SFML/Graphics/Font.hpp>
+#include <SFML/Graphics/RenderTexture.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/Text.hpp>
 #include <string>
 
-#include "lilia/view/texture_table.hpp"
+#include "lilia/view/render_constants.hpp"
 
 namespace lilia::view {
 
@@ -68,19 +71,54 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
     }
   }
 
+  static sf::Font s_font;
+  static bool s_font_loaded = false;
+  if (!s_font_loaded) {
+    s_font_loaded = s_font.loadFromFile(constant::STR_FILE_PATH_FONT);
+    if (s_font_loaded) s_font.setSmooth(false);
+  }
+
+  const sf::Color outlineCol(52, 58, 74);
+
   // FILE-Labels (a–h)
   for (int file = 0; file < constant::BOARD_SIZE; ++file) {
-    std::string name = constant::ASSET_PIECES_FILE_PATH + "/" +
-                       std::string(1, static_cast<char>('a' + file)) + ".png";
-    m_file_labels[file].setTexture(TextureTable::getInstance().get(name));
+    sf::Text t(std::string(1, static_cast<char>('a' + file)), s_font, 128);
+    t.setFillColor(sf::Color::Transparent);
+    t.setOutlineColor(outlineCol);
+    t.setOutlineThickness(12.f);
+    auto bounds = t.getLocalBounds();
+    sf::RenderTexture rt;
+    rt.create(static_cast<unsigned int>(bounds.width + 20),
+              static_cast<unsigned int>(bounds.height + 20));
+    rt.clear(sf::Color::Transparent);
+    t.setPosition(-bounds.left + 10, -bounds.top + 10);
+    rt.draw(t);
+    rt.display();
+    m_file_textures[file] = rt.getTexture();
+    m_file_textures[file].setSmooth(true);
+    m_file_labels[file].setTexture(m_file_textures[file]);
     auto size = m_file_labels[file].getOriginalSize();
     float scale = (constant::SQUARE_PX_SIZE * 0.25f) / size.x;
     m_file_labels[file].setScale(scale, scale);
   }
+
   // RANK-Labels (1–8)
   for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {
-    std::string name = constant::ASSET_PIECES_FILE_PATH + "/" + std::to_string(rank + 1) + ".png";
-    m_rank_labels[rank].setTexture(TextureTable::getInstance().get(name));
+    sf::Text t(std::to_string(rank + 1), s_font, 128);
+    t.setFillColor(sf::Color::Transparent);
+    t.setOutlineColor(outlineCol);
+    t.setOutlineThickness(12.f);
+    auto bounds = t.getLocalBounds();
+    sf::RenderTexture rt;
+    rt.create(static_cast<unsigned int>(bounds.width + 20),
+              static_cast<unsigned int>(bounds.height + 20));
+    rt.clear(sf::Color::Transparent);
+    t.setPosition(-bounds.left + 10, -bounds.top + 10);
+    rt.draw(t);
+    rt.display();
+    m_rank_textures[rank] = rt.getTexture();
+    m_rank_textures[rank].setSmooth(true);
+    m_rank_labels[rank].setTexture(m_rank_textures[rank]);
     auto size = m_rank_labels[rank].getOriginalSize();
     float scale = (constant::SQUARE_PX_SIZE * 0.25f) / size.x;
     m_rank_labels[rank].setScale(scale, scale);
