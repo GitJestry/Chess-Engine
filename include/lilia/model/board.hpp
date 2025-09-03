@@ -10,12 +10,12 @@ class Board {
  public:
   Board();
 
-  void clear();
+  void clear() noexcept;
 
   // API unverändert
-  void setPiece(core::Square sq, bb::Piece p);
-  void removePiece(core::Square sq);
-  std::optional<bb::Piece> getPiece(core::Square sq) const;
+  void setPiece(core::Square sq, bb::Piece p) noexcept;
+  void removePiece(core::Square sq) noexcept;
+  std::optional<bb::Piece> getPiece(core::Square sq) const noexcept;
 
   bb::Bitboard getPieces(core::Color c) const { return m_color_occ[bb::ci(c)]; }
   bb::Bitboard getAllPieces() const { return m_all_occ; }
@@ -25,7 +25,7 @@ class Board {
 
   // Optionaler Fast-Path (später in Position nutzen):
   // bewegt eine Figur von 'from' nach 'to' (ohne Capture; 'to' muss leer sein)
-  void movePiece_noCapture(core::Square from, core::Square to);
+  void movePiece_noCapture(core::Square from, core::Square to) noexcept;
 
  private:
   // Bitboards wie gehabt
@@ -37,9 +37,8 @@ class Board {
   std::array<std::uint8_t, 64> m_piece_on{};
 
   // Helper
-  static inline int type_index(core::PieceType t);
-  static inline std::uint8_t pack_piece(bb::Piece p);
-  static inline bb::Piece unpack_piece(std::uint8_t pp);
+  static inline std::uint8_t pack_piece(bb::Piece p) noexcept;
+  static inline bb::Piece unpack_piece(std::uint8_t pp) noexcept;
 };
 
 }  // namespace lilia::model

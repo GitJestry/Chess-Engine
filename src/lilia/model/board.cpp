@@ -4,24 +4,22 @@
 
 namespace lilia::model {
 
-static inline int type_index_impl(core::PieceType t) {
-  switch (t) {
-    case core::PieceType::Pawn:
-      return 0;
-    case core::PieceType::Knight:
-      return 1;
-    case core::PieceType::Bishop:
-      return 2;
-    case core::PieceType::Rook:
-      return 3;
-    case core::PieceType::Queen:
-      return 4;
-    case core::PieceType::King:
-      return 5;
-    default:
-      return -1;
-  }
+namespace {
+constexpr std::int8_t kTypeIndex[7] = {0, 1, 2, 3, 4, 5, -1};
+inline int type_index(core::PieceType t) noexcept {
+  return kTypeIndex[static_cast<int>(t)];
 }
+
+// Packed byte layout:
+//  low 3 bits: (typeIndex + 1) in [1..6], 0 means empty
+//  bit 3: color (0 white, 1 black)
+inline int decode_ti(std::uint8_t packed) noexcept {
+  return (packed & 0x7) - 1;
+}  // only if packed!=0
+inline int decode_ci(std::uint8_t packed) noexcept {
+  return (packed >> 3) & 0x1;
+}  // only if packed!=0
+}  // namespace
 
 // ---- Board ----
 
@@ -29,25 +27,22 @@ Board::Board() {
   clear();
 }
 
-void Board::clear() {
+void Board::clear() noexcept {
   for (auto& byColor : m_bb) byColor.fill(0);
   m_color_occ = {0, 0};
   m_all_occ = 0;
   m_piece_on.fill(0);
 }
 
-inline int Board::type_index(core::PieceType t) {
-  return type_index_impl(t);
-}
-
-inline std::uint8_t Board::pack_piece(bb::Piece p) {
+inline std::uint8_t Board::pack_piece(bb::Piece p) noexcept {
   if (p.type == core::PieceType::None) return 0;
-  const int ti = type_index_impl(p.type);                 // 0..5
-  const std::uint8_t c = (bb::ci(p.color) & 1u);          // 0=white,1=black
+  const int ti = type_index(p.type);  // 0..5
+  assert(ti >= 0 && ti < 6 && "Invalid PieceType");
+  const std::uint8_t c = static_cast<std::uint8_t>(bb::ci(p.color) & 1u);  // 0=white,1=black
   return static_cast<std::uint8_t>((ti + 1) | (c << 3));  // low3: (ti+1), bit3: color
 }
 
-inline bb::Piece Board::unpack_piece(std::uint8_t pp) {
+inline bb::Piece Board::unpack_piece(std::uint8_t pp) noexcept {
   if (pp == 0) return bb::Piece{core::PieceType::None, core::Color::White};
   const int ti = (pp & 0x7) - 1;  // 0..5
   const core::PieceType pt = static_cast<core::PieceType>(ti);
@@ -55,76 +50,95 @@ inline bb::Piece Board::unpack_piece(std::uint8_t pp) {
   return bb::Piece{pt, col};
 }
 
-void Board::setPiece(core::Square sq, bb::Piece p) {
-  // remove falls etwas steht
-  removePiece(sq);
-  if (p.type == core::PieceType::None) return;
+void Board::setPiece(core::Square sq, bb::Piece p) noexcept {
+  const int s = static_cast<int>(sq);
+  assert(s >= 0 && s < 64);
 
-  const int ti = type_index(p.type);
-  assert(ti >= 0 && "Invalid PieceType");
+  const std::uint8_t newPacked = pack_piece(p);
+  const std::uint8_t oldPacked = m_piece_on[s];
 
-  const int ci = bb::ci(p.color);
-  const bb::Bitboard mask = bb::sq_bb(sq);
+  // Fast path: same piece already there → nothing to do
+  if (oldPacked == newPacked) return;
 
-  // Bitboards + Occupancies inkrementell
-  m_bb[ci][ti] |= mask;
-  m_color_occ[ci] |= mask;
-  m_all_occ |= mask;
+  // If something stands there, remove it (without constructing a bb::Piece)
+  if (oldPacked) {
+    const int oldTi = decode_ti(oldPacked);
+    const int oldCi = decode_ci(oldPacked);
+    const bb::Bitboard mask = bb::sq_bb(sq);
 
-  // by-square
-  m_piece_on[static_cast<int>(sq)] = pack_piece(p);
+    m_bb[oldCi][oldTi] &= ~mask;
+    m_color_occ[oldCi] &= ~mask;
+    m_all_occ &= ~mask;
+
+    m_piece_on[s] = 0;
+  }
+
+  // Place new (if not empty)
+  if (newPacked) {
+    const int ti = type_index(p.type);
+    assert(ti >= 0 && ti < 6 && "Invalid PieceType in setPiece");
+    const int ci = bb::ci(p.color);
+    const bb::Bitboard mask = bb::sq_bb(sq);
+
+    m_bb[ci][ti] |= mask;
+    m_color_occ[ci] |= mask;
+    m_all_occ |= mask;
+
+    m_piece_on[s] = newPacked;
+  }
 }
 
-void Board::removePiece(core::Square sq) {
+void Board::removePiece(core::Square sq) noexcept {
   const int s = static_cast<int>(sq);
-  const std::uint8_t packed = m_piece_on[s];
-  if (!packed) return;  // war leer
+  assert(s >= 0 && s < 64);
 
-  const bb::Piece p = unpack_piece(packed);
-  const int ti = type_index(p.type);
-  const int ci = bb::ci(p.color);
+  const std::uint8_t packed = m_piece_on[s];
+  if (!packed) return;  // already empty
+
+  // Decode directly from packed (avoid constructing bb::Piece)
+  const int ti = decode_ti(packed);
+  const int ci = decode_ci(packed);
+  assert(ti >= 0 && ti < 6 && (ci == 0 || ci == 1));
+
   const bb::Bitboard mask = bb::sq_bb(sq);
 
-  // Bitboards + Occupancies inkrementell
   m_bb[ci][ti] &= ~mask;
   m_color_occ[ci] &= ~mask;
   m_all_occ &= ~mask;
 
-  // by-square
   m_piece_on[s] = 0;
 }
 
-std::optional<bb::Piece> Board::getPiece(core::Square sq) const {
+std::optional<bb::Piece> Board::getPiece(core::Square sq) const noexcept {
   const std::uint8_t packed = m_piece_on[static_cast<int>(sq)];
   if (!packed) return std::nullopt;
   return unpack_piece(packed);
 }
 
-void Board::movePiece_noCapture(core::Square from, core::Square to) {
+void Board::movePiece_noCapture(core::Square from, core::Square to) noexcept {
   const int sf = static_cast<int>(from);
   const int st = static_cast<int>(to);
+  assert(sf >= 0 && sf < 64 && st >= 0 && st < 64);
+
   const std::uint8_t packed = m_piece_on[sf];
-  if (!packed) return;  // nichts zu bewegen
+  if (!packed) return;  // nothing to move
   assert(m_piece_on[st] == 0 && "movePiece_noCapture: 'to' must be empty");
 
-  const bb::Piece p = unpack_piece(packed);
-  const int ti = type_index(p.type);
-  const int ci = bb::ci(p.color);
+  const int ti = decode_ti(packed);
+  const int ci = decode_ci(packed);
+  assert(ti >= 0 && ti < 6 && (ci == 0 || ci == 1));
 
   const bb::Bitboard fromMask = bb::sq_bb(from);
   const bb::Bitboard toMask = bb::sq_bb(to);
 
-  // Bitboards
-  m_bb[ci][ti] &= ~fromMask;
-  m_bb[ci][ti] |= toMask;
+  // Piece bitboard
+  m_bb[ci][ti] = (m_bb[ci][ti] & ~fromMask) | toMask;
 
-  // Occupancies
-  m_color_occ[ci] ^= fromMask;  // remove from
-  m_color_occ[ci] |= toMask;    // add to
-  m_all_occ ^= fromMask;
-  m_all_occ |= toMask;
+  // Occupancies (robust form rather than XOR)
+  m_color_occ[ci] = (m_color_occ[ci] & ~fromMask) | toMask;
+  m_all_occ = (m_all_occ & ~fromMask) | toMask;
 
-  // by-square
+  // By-square
   m_piece_on[sf] = 0;
   m_piece_on[st] = packed;
 }

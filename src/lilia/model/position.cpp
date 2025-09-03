@@ -14,7 +14,6 @@ namespace lilia::model {
 
 namespace {
 // --------- Castling-Right Clear-Masken (FROM/TO) ----------
-static std::once_flag s_cr_once;
 namespace {
 constexpr std::array<std::uint8_t, 64> CR_CLEAR_FROM = [] {
   std::array<std::uint8_t, 64> a{};

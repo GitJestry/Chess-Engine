@@ -1,42 +1,56 @@
 #include "lilia/model/chess_game.hpp"
 
+#include <cctype>
 #include <optional>
 #include <sstream>
-#include <cctype>
+#include <string_view>
 
 #include "lilia/model/move_helper.hpp"
 
 namespace lilia::model {
 
-core::Square stringToSquare(const std::string& strSquare) {
-  if (strSquare.size() < 2) return core::NO_SQUARE;
-  char f = strSquare[0];
-  char r = strSquare[1];
+namespace {
+
+// Fast ASCII helpers
+inline char tolower_ascii(char c) noexcept {
+  return (c >= 'A' && c <= 'Z') ? static_cast<char>(c | 32) : c;
+}
+
+inline int squareFromUCI(const char* sq) noexcept {
+  // expects "e2", returns 0..63 or -1
+  if (!sq) return -1;
+  const int file = sq[0] - 'a';
+  const int rank = sq[1] - '1';
+  return (static_cast<unsigned>(file) < 8u && static_cast<unsigned>(rank) < 8u) ? (rank * 8 + file)
+                                                                                : -1;
+}
+
+inline core::Square stringToSquare(std::string_view sv) noexcept {
+  if (sv.size() < 2) return core::NO_SQUARE;
+  const char f = sv[0];
+  const char r = sv[1];
   if (f < 'a' || f > 'h' || r < '1' || r > '8') return core::NO_SQUARE;
-  uint8_t file = static_cast<uint8_t>(f - 'a');
-  uint8_t rank = static_cast<uint8_t>(r - '1');
+  const uint8_t file = static_cast<uint8_t>(f - 'a');
+  const uint8_t rank = static_cast<uint8_t>(r - '1');
   return static_cast<core::Square>(file + rank * 8);
 }
 
-inline int squareFromUCI(const char* sq) {
-  if (!sq) return -1;
-  int file = sq[0] - 'a';
-  int rank = sq[1] - '1';
-  if (file < 0 || file > 7 || rank < 0 || rank > 7) return -1;
-  return rank * 8 + file;
-}
+}  // namespace
+
+// ---------------- Public API ----------------
 
 void ChessGame::doMoveUCI(const std::string& uciMove) {
-  if (uciMove.size() < 4) return;
+  const size_t len = uciMove.size();
+  if (len < 4) return;
 
   const char* ptr = uciMove.c_str();
-  int from = squareFromUCI(ptr);
-  int to = squareFromUCI(ptr + 2);
-  core::PieceType promo = core::PieceType::None;
+  const int from = squareFromUCI(ptr + 0);
+  const int to = squareFromUCI(ptr + 2);
+  if (from < 0 || to < 0) return;
 
-  if (uciMove.size() == 5) {
-    char c = uciMove[4];
-    switch (c) {
+  core::PieceType promo = core::PieceType::None;
+  if (len >= 5) {
+    switch (tolower_ascii(uciMove[4])) {
       case 'q':
         promo = core::PieceType::Queen;
         break;
@@ -54,96 +68,150 @@ void ChessGame::doMoveUCI(const std::string& uciMove) {
         break;
     }
   }
-  doMove(from, to, promo);
+  doMove(static_cast<core::Square>(from), static_cast<core::Square>(to), promo);
 }
 
 std::optional<Move> ChessGame::getMove(core::Square from, core::Square to) {
-  int side = bb::ci(m_position.getState().sideToMove);
   const auto& moves = generateLegalMoves();
   for (const auto& m : moves) {
-    if (m.from == from && m.to == to) {
-      return m;
-    }
+    if (m.from == from && m.to == to) return m;
   }
   return std::nullopt;
 }
 
 void ChessGame::setPosition(const std::string& fen) {
-  // Reset to a fresh game state so old pieces or metadata do not persist
+  // full reset
   m_position = Position{};
   m_result = core::GameResult::ONGOING;
   m_pseudo_moves.clear();
   m_legal_moves.clear();
 
-  std::istringstream iss(fen);
-  std::string board, activeColor, castling, enPassant, halfmoveClock, fullmoveNumber;
+  // Split FEN into 6 fields manually (faster than stringstream)
+  std::string_view sv{fen};
+  std::string_view fields[6]{};
+  for (int i = 0; i < 6; ++i) {
+    const size_t sp = sv.find(' ');
+    if (sp == std::string_view::npos) {
+      fields[i] = sv;
+      for (++i; i < 6; ++i) fields[i] = {};
+      break;
+    }
+    fields[i] = sv.substr(0, sp);
+    sv.remove_prefix(sp + 1);
+  }
 
-  iss >> board >> activeColor >> castling >> enPassant >> halfmoveClock >> fullmoveNumber;
+  const std::string_view board = fields[0];
+  const std::string_view activeColor = fields[1];
+  const std::string_view castling = fields[2];
+  const std::string_view enPassant = fields[3];
+  const std::string_view halfmoveClock = fields[4];
+  const std::string_view fullmoveNumber = fields[5];
 
-  uint8_t rank = 7;
-  uint8_t file = 0;
+  // Board placement
+  uint8_t rank = 7, file = 0;
   for (char ch : board) {
     if (ch == '/') {
-      rank--;
-      file = 0;
-    } else if (std::isdigit(ch)) {
-      file += ch - '0';
-    } else {
-      core::Square sq = file + rank * 8;
-      core::PieceType type;
-      switch (std::tolower(ch)) {
-        case 'k':
-          type = core::PieceType::King;
-          break;
-        case 'p':
-          type = core::PieceType::Pawn;
-          break;
-        case 'n':
-          type = core::PieceType::Knight;
-          break;
-        case 'b':
-          type = core::PieceType::Bishop;
-          break;
-        case 'r':
-          type = core::PieceType::Rook;
-          break;
-        case 'q':
-          type = core::PieceType::Queen;
-          break;
-        default:
-          throw std::runtime_error("Ungültiges Zeichen im FEN: " + std::string(1, ch));
+      if (rank == 0) { /* ignore overflows */
       }
-      m_position.getBoard().setPiece(
-          sq, {type, (std::isupper(ch) ? core::Color::White : core::Color::Black)});
+      if (file > 8) { /* ignore malformed */
+      }
+      file = 0;
+      if (rank > 0) --rank;
+      continue;
+    }
+    if (std::isdigit(static_cast<unsigned char>(ch))) {
+      file = static_cast<uint8_t>(file + (ch - '0'));
+      continue;
+    }
+    if (file > 7) continue;  // guard malformed FEN
 
-      file++;
+    const char lo = tolower_ascii(ch);
+    core::PieceType type;
+    switch (lo) {
+      case 'k':
+        type = core::PieceType::King;
+        break;
+      case 'q':
+        type = core::PieceType::Queen;
+        break;
+      case 'r':
+        type = core::PieceType::Rook;
+        break;
+      case 'b':
+        type = core::PieceType::Bishop;
+        break;
+      case 'n':
+        type = core::PieceType::Knight;
+        break;
+      case 'p':
+        type = core::PieceType::Pawn;
+        break;
+      default:
+        type = core::PieceType::None;
+        break;
+    }
+    if (type != core::PieceType::None) {
+      const core::Square sq = static_cast<core::Square>(file + rank * 8);
+      const core::Color col = (ch == lo) ? core::Color::Black : core::Color::White;
+      m_position.getBoard().setPiece(sq, {type, col});
+      ++file;
     }
   }
 
-  // active Color
-  m_position.getState().sideToMove = (activeColor == "w" ? core::Color::White : core::Color::Black);
+  // Active color
+  m_position.getState().sideToMove =
+      (!activeColor.empty() && activeColor[0] == 'w') ? core::Color::White : core::Color::Black;
 
+  // Castling rights
   uint8_t rights = 0;
-  if (castling.find('K') != std::string::npos) rights |= bb::Castling::WK;
-  if (castling.find('Q') != std::string::npos) rights |= bb::Castling::WQ;
-  if (castling.find('k') != std::string::npos) rights |= bb::Castling::BK;
-  if (castling.find('q') != std::string::npos) rights |= bb::Castling::BQ;
-
+  for (char c : castling) {
+    switch (c) {
+      case 'K':
+        rights |= bb::Castling::WK;
+        break;
+      case 'Q':
+        rights |= bb::Castling::WQ;
+        break;
+      case 'k':
+        rights |= bb::Castling::BK;
+        break;
+      case 'q':
+        rights |= bb::Castling::BQ;
+        break;
+      case '-':
+      default:
+        break;
+    }
+  }
   m_position.getState().castlingRights = rights;
 
-  if (enPassant == "-") {
-    m_position.getState().enPassantSquare =
-        core::NO_SQUARE;  // oder core::NO_SQUARE falls definiert
-  } else {
+  // En passant
+  if (enPassant.size() == 2) {
     m_position.getState().enPassantSquare = stringToSquare(enPassant);
+  } else {
+    m_position.getState().enPassantSquare = core::NO_SQUARE;
   }
 
-  // halfmove clock
-  m_position.getState().halfmoveClock = std::stoi(halfmoveClock);
+  // Clocks (robust parse)
+  int hm = 0, fm = 1;
+  if (!halfmoveClock.empty()) {
+    try {
+      hm = std::stoi(std::string(halfmoveClock));
+    } catch (...) {
+      hm = 0;
+    }
+  }
+  if (!fullmoveNumber.empty()) {
+    try {
+      fm = std::stoi(std::string(fullmoveNumber));
+    } catch (...) {
+      fm = 1;
+    }
+  }
+  m_position.getState().halfmoveClock = hm;
+  m_position.getState().fullmoveNumber = fm;
 
-  // fullmove number
-  m_position.getState().fullmoveNumber = std::stoi(fullmoveNumber);
-
+  // Rebuild hashes/accumulators
   m_position.buildHash();
   m_position.rebuildEvalAcc();
 }
@@ -153,10 +221,12 @@ void ChessGame::buildHash() {
 }
 
 const std::vector<Move>& ChessGame::generateLegalMoves() {
-  int side = bb::ci(m_position.getState().sideToMove);
   m_pseudo_moves.clear();
   m_legal_moves.clear();
+
   m_move_gen.generatePseudoLegalMoves(m_position.getBoard(), m_position.getState(), m_pseudo_moves);
+
+  // Filter legality by make/unmake (fast because Position has fast quiet paths)
   for (const auto& m : m_pseudo_moves) {
     if (m_position.doMove(m)) {
       m_position.undoMove();
@@ -171,25 +241,19 @@ const GameState& ChessGame::getGameState() {
 }
 
 core::Square ChessGame::getRookSquareFromCastleside(CastleSide castleSide, core::Color side) {
-  if (castleSide == CastleSide::KingSide) {
-    if (side == core::Color::White)
-      return static_cast<core::Square>(7);
-    else
-      return static_cast<core::Square>(63);
-
-  } else if (castleSide == CastleSide::QueenSide) {
-    if (side == core::Color::White)
-      return static_cast<core::Square>(0);
-    else
-      return static_cast<core::Square>(56);
-  }
+  if (castleSide == CastleSide::KingSide)
+    return (side == core::Color::White) ? static_cast<core::Square>(7)
+                                        : static_cast<core::Square>(63);
+  if (castleSide == CastleSide::QueenSide)
+    return (side == core::Color::White) ? static_cast<core::Square>(0)
+                                        : static_cast<core::Square>(56);
   return core::NO_SQUARE;
 }
 
 core::Square ChessGame::getKingSquare(core::Color color) {
-  bb::Bitboard kbb = m_position.getBoard().getPieces(color, core::PieceType::King);
-  core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
-  return ksq;
+  const bb::Bitboard kbb = m_position.getBoard().getPieces(color, core::PieceType::King);
+  if (!kbb) return core::NO_SQUARE;
+  return static_cast<core::Square>(bb::ctz64(kbb));
 }
 
 void ChessGame::checkGameResult() {
@@ -208,23 +272,29 @@ core::GameResult ChessGame::getResult() {
   return m_result;
 }
 
-void ChessGame::setResult(core::GameResult res) { m_result = res; }
+void ChessGame::setResult(core::GameResult res) {
+  m_result = res;
+}
 
 bb::Piece ChessGame::getPiece(core::Square sq) {
-  bb::Piece none;
-  if (m_position.getBoard().getPiece(sq).has_value())
-    return m_position.getBoard().getPiece(sq).value();
-  return none;
+  auto opt = m_position.getBoard().getPiece(sq);
+  return opt.value_or(bb::Piece{core::PieceType::None, core::Color::White});
 }
 
 void ChessGame::doMove(core::Square from, core::Square to, core::PieceType promotion) {
-  for (const auto& m : generateLegalMoves())
-    if (m.from == from && m.to == to && m.promotion == promotion) m_position.doMove(m);
+  const auto& moves = generateLegalMoves();
+  for (const auto& m : moves) {
+    if (m.from == from && m.to == to && m.promotion == promotion) {
+      m_position.doMove(m);
+      break;  // execute once
+    }
+  }
 }
 
 bool ChessGame::isKingInCheck(core::Color from) const {
-  bb::Bitboard kbb = m_position.getBoard().getPieces(from, core::PieceType::King);
-  core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
+  const bb::Bitboard kbb = m_position.getBoard().getPieces(from, core::PieceType::King);
+  if (!kbb) return false;
+  const core::Square ksq = static_cast<core::Square>(bb::ctz64(kbb));
   return attackedBy(m_position.getBoard(), ksq, ~from, m_position.getBoard().getAllPieces());
 }
 
@@ -235,13 +305,14 @@ Position& ChessGame::getPositionRefForBot() {
 std::string ChessGame::getFen() const {
   std::ostringstream oss;
   const auto& board = m_position.getBoard();
+
   for (int rank = 7; rank >= 0; --rank) {
     int empty = 0;
     for (int file = 0; file < 8; ++file) {
-      core::Square sq = static_cast<core::Square>(rank * 8 + file);
-      auto piece = board.getPiece(sq);
+      const core::Square sq = static_cast<core::Square>(rank * 8 + file);
+      const auto piece = board.getPiece(sq);
       if (piece.has_value()) {
-        if (empty > 0) {
+        if (empty) {
           oss << empty;
           empty = 0;
         }
@@ -275,8 +346,8 @@ std::string ChessGame::getFen() const {
         ++empty;
       }
     }
-    if (empty > 0) oss << empty;
-    if (rank > 0) oss << '/';
+    if (empty) oss << empty;
+    if (rank) oss << '/';
   }
 
   const auto& st = m_position.getState();
@@ -293,8 +364,9 @@ std::string ChessGame::getFen() const {
   if (st.enPassantSquare == core::NO_SQUARE) {
     oss << '-';
   } else {
-    char file = 'a' + (static_cast<int>(st.enPassantSquare) & 7);
-    char rank = '1' + (static_cast<int>(st.enPassantSquare) >> 3);
+    const int sq = static_cast<int>(st.enPassantSquare);
+    const char file = static_cast<char>('a' + (sq & 7));
+    const char rank = static_cast<char>('1' + (sq >> 3));
     oss << file << rank;
   }
   oss << ' ' << st.halfmoveClock << ' ' << st.fullmoveNumber;
