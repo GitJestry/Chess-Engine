@@ -1144,6 +1144,45 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
   // End drag placeholder before doing anything
   m_game_view.endAnimation(from);
 
+  // If the drop position is outside the board and the cursor isn't over the piece,
+  // snap the piece back to its origin square immediately.
+  if (m_game_view.mousePosToSquare(end) == core::NO_SQUARE) {
+    auto size = m_game_view.getPieceSize(from);
+    auto clamped = m_game_view.clampPosToBoard(end, size);
+    const float halfW = size.x / 2.f;
+    const float halfH = size.y / 2.f;
+    const float left = static_cast<float>(clamped.x) - halfW;
+    const float right = static_cast<float>(clamped.x) + halfW;
+    const float top = static_cast<float>(clamped.y) - halfH;
+    const float bottom = static_cast<float>(clamped.y) + halfH;
+    const bool overPiece = static_cast<float>(end.x) >= left &&
+                           static_cast<float>(end.x) <= right &&
+                           static_cast<float>(end.y) >= top &&
+                           static_cast<float>(end.y) <= bottom;
+    if (!overPiece) {
+      m_game_view.setPieceToSquareScreenPos(from, from);
+      m_game_view.animationSnapAndReturn(from, end);
+
+      if (m_preview_active && isValid(m_prev_selected_before_preview) &&
+          m_prev_selected_before_preview != from) {
+        m_game_view.clearNonPremoveHighlights();
+        m_selection_manager.highlightLastMove();
+        m_selection_manager.selectSquare(m_prev_selected_before_preview);
+        if (isHumanPiece(m_prev_selected_before_preview))
+          showAttacks(getAttackSquares(m_prev_selected_before_preview));
+      } else {
+        m_game_view.clearNonPremoveHighlights();
+        m_selection_manager.highlightLastMove();
+        m_selection_manager.selectSquare(from);
+        if (isHumanPiece(from)) showAttacks(getAttackSquares(from));
+      }
+
+      m_preview_active = false;
+      m_prev_selected_before_preview = core::NO_SQUARE;
+      return;
+    }
+  }
+
   bool accepted = false;
   bool setPremove = false;
 
