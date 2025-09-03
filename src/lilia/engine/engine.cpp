@@ -38,6 +38,18 @@ Engine::Engine(const EngineConfig& cfg) : pimpl(new Impl(cfg)) {
 }
 
 Engine::~Engine() {
+  try {
+    pimpl->tt.clear();
+  } catch (...) {
+  }
+  try {
+    if (pimpl->eval) pimpl->eval->clearCaches();
+  } catch (...) {
+  }
+  try {
+    if (pimpl->search) pimpl->search->clearSearchState();
+  } catch (...) {
+  }
   delete pimpl;
 }
 
