@@ -78,14 +78,16 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
     if (s_font_loaded) s_font.setSmooth(false);
   }
 
-  const sf::Color outlineCol(52, 58, 74);
+  const sf::Color outlineCol(52, 58, 74, 120);
+  const float outlineThick = 5.f;
+  const int textSize = 60;
 
   // FILE-Labels (a–h)
   for (int file = 0; file < constant::BOARD_SIZE; ++file) {
-    sf::Text t(std::string(1, static_cast<char>('a' + file)), s_font, 128);
+    sf::Text t(std::string(1, static_cast<char>('a' + file)), s_font, textSize);
     t.setFillColor(sf::Color::Transparent);
     t.setOutlineColor(outlineCol);
-    t.setOutlineThickness(12.f);
+    t.setOutlineThickness(outlineThick);
     auto bounds = t.getLocalBounds();
     sf::RenderTexture rt;
     rt.create(static_cast<unsigned int>(bounds.width + 20),
@@ -104,10 +106,10 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
 
   // RANK-Labels (1–8)
   for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {
-    sf::Text t(std::to_string(rank + 1), s_font, 128);
+    sf::Text t(std::to_string(rank + 1), s_font, textSize);
     t.setFillColor(sf::Color::Transparent);
     t.setOutlineColor(outlineCol);
-    t.setOutlineThickness(12.f);
+    t.setOutlineThickness(outlineThick);
     auto bounds = t.getLocalBounds();
     sf::RenderTexture rt;
     rt.create(static_cast<unsigned int>(bounds.width + 20),
