@@ -134,6 +134,9 @@ class TT5 {
 
       // Ok: read data relaxed
       const std::uint64_t d = ent.data.load(std::memory_order_relaxed);
+      // Torn-read/ABA-Schutz: verifiziere KeyHigh auch aus den Daten
+      const std::uint16_t dKeyHi = static_cast<std::uint16_t>(d >> 48);
+      if (LILIA_UNLIKELY(dKeyHi != keyHi)) continue;
 
       TTEntry5 tmp{};
       tmp.key = key;
@@ -191,12 +194,14 @@ class TT5 {
       const std::uint8_t od = static_cast<std::uint8_t>((info1 >> INFO_DEPTH_SHIFT) & 0xFFu);
       const Bound ob = static_cast<Bound>((info1 >> INFO_BOUND_SHIFT) & 0x3u);
 
-      bool replace = true;
       // conservative policy: keep stronger bounds/deeper
-      if (bound == Bound::Upper && (ob == Bound::Exact || ob == Bound::Lower) && od > depth8) {
+      const unsigned oldD = od;
+      const unsigned newD = depth8;
+      bool replace = true;
+      if (bound == Bound::Upper && (ob == Bound::Exact || ob == Bound::Lower) && oldD > newD) {
         replace = false;
       } else if (bound != Bound::Exact) {
-        if (od > static_cast<std::uint8_t>(depth8 + 1) && ob != Bound::Upper) replace = false;
+        if (oldD > newD + 1u && ob != Bound::Upper) replace = false;
       }
 
       if (!replace) return;
