@@ -44,6 +44,8 @@ inline std::string resultToString(core::GameResult res, core::Color sideToMove) 
 
 // chess.com allows multiple queued safe premoves; keep a sane limit
 constexpr std::size_t MAX_PREMOVES = 200;
+// Preallocate common histories to avoid repeated reallocations
+constexpr std::size_t HISTORY_RESERVE = 512;
 
 }  // namespace
 
@@ -63,6 +65,9 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
 
   m_game_manager = std::make_unique<GameManager>(game);
   BotPlayer::setEvalCallback([this](int eval) { m_eval_cp.store(eval); });
+
+  m_attack_buffer.reserve(64);
+  m_pseudo_buffer.reserve(64);
 
   m_game_manager->setOnMoveExecuted([this](const model::Move &mv, bool isPlayerMove, bool onClick) {
     // If the user is viewing history, jump back to head before applying
@@ -127,6 +132,7 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot, bool bla
                                int whiteThinkTimeMs, int whiteDepth, int blackThinkTimeMs,
                                int blackDepth, bool useTimer, int baseSeconds,
                                int incrementSeconds) {
+  invalidateLegalCache();
   m_sound_manager.playEffect(view::sound::Effect::GameBegins);
   m_game_view.hideResignPopup();
   m_game_view.hideGameOverPopup();
@@ -138,6 +144,18 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot, bool bla
   m_game_manager->startGame(fen, whiteIsBot, blackIsBot, whiteThinkTimeMs, whiteDepth,
                             blackThinkTimeMs, blackDepth);
 
+  // Preallocate frequently growing containers to avoid repeated reallocations
+  m_fen_history.clear();
+  m_eval_history.clear();
+  m_move_history.clear();
+  m_time_history.clear();
+  m_fen_history.reserve(HISTORY_RESERVE);
+  m_eval_history.reserve(HISTORY_RESERVE);
+  m_move_history.reserve(HISTORY_RESERVE);
+  m_time_history.reserve(HISTORY_RESERVE);
+  m_premove_queue.clear();
+  m_premove_queue.shrink_to_fit();
+
   if (useTimer) {
     m_time_controller = std::make_unique<TimeController>(baseSeconds, incrementSeconds);
     core::Color stm = m_chess_game.getGameState().sideToMove;
@@ -146,22 +164,16 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot, bool bla
     m_game_view.updateClock(core::Color::White, static_cast<float>(baseSeconds));
     m_game_view.updateClock(core::Color::Black, static_cast<float>(baseSeconds));
     m_game_view.setClockActive(m_time_controller->getActive());
-    m_time_history.clear();
     m_time_history.push_back(
         {static_cast<float>(baseSeconds), static_cast<float>(baseSeconds), stm});
   } else {
     m_time_controller.reset();
     m_game_view.setClocksVisible(false);
-    m_time_history.clear();
     m_time_history.push_back({0.f, 0.f, m_chess_game.getGameState().sideToMove});
   }
-
-  m_fen_history.clear();
-  m_eval_history.clear();
   m_fen_history.push_back(fen);
   m_eval_history.push_back(m_eval_cp.load());
   m_fen_index = 0;
-  m_move_history.clear();
   m_game_view.selectMove(static_cast<std::size_t>(-1));
   m_eval_cp.store(m_eval_history[0]);
   m_game_view.updateEval(m_eval_history[0]);
@@ -177,7 +189,6 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot, bool bla
   m_selection_changed_on_press = false;
 
   // Premove + Auto-Move
-  m_premove_queue.clear();
   m_has_pending_auto_move = false;
   m_pending_from = core::NO_SQUARE;
   m_pending_to = core::NO_SQUARE;
@@ -746,6 +757,7 @@ void GameController::updatePremovePreviews() {
 }
 
 void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMove, bool onClick) {
+  invalidateLegalCache();
   const core::Square from = move.from;
   const core::Square to = move.to;
 
@@ -903,7 +915,8 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 }
 
 [[nodiscard]] bool GameController::isPromotion(core::Square a, core::Square b) {
-  for (const auto &m : m_chess_game.generateLegalMoves()) {
+  ensureLegalCache();
+  for (const auto &m : *m_cached_moves) {
     if (m.from == a && m.to == b && m.promotion != core::PieceType::None) return true;
   }
   return false;
@@ -913,24 +926,16 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
   return m_game_view.isSameColorPiece(a, b);
 }
 
-std::vector<core::Square> GameController::getAttackSquares(core::Square pieceSQ) const {
-  std::vector<core::Square> att;
-  if (!isValid(pieceSQ)) return att;
+const std::vector<core::Square> &GameController::getAttackSquares(core::Square pieceSQ) const {
+  m_attack_buffer.clear();
+  if (!isValid(pieceSQ)) return m_attack_buffer;
 
-  // If there is any premove context, prefer the ghost (view) info for the
-  // piece.
   core::PieceType vType = m_game_view.getPieceType(pieceSQ);
   core::Color vCol = m_game_view.getPieceColor(pieceSQ);
   const bool hasVirtual = (vType != core::PieceType::None);
-
-  // Are we previewing a premove (piece color != sideToMove now)?
   const bool premoveContext = hasVirtual && (vCol != m_chess_game.getGameState().sideToMove);
 
-  model::MoveGenerator gen;
-
   if (premoveContext) {
-    // Safe premove generation: isolate the ghost on an empty board, ignore
-    // checks/castling.
     model::Board board;
     board.clear();
     board.setPiece(pieceSQ, {vType, vCol});
@@ -940,7 +945,6 @@ std::vector<core::Square> GameController::getAttackSquares(core::Square pieceSQ)
     st.castlingRights = 0;
     st.enPassantSquare = core::NO_SQUARE;
 
-    // Pawn: add dummy diagonals so capture premoves are always offerable.
     if (vType == core::PieceType::Pawn) {
       const int file = static_cast<int>(pieceSQ) & 7;
       const int forward = (vCol == core::Color::White) ? 8 : -8;
@@ -951,31 +955,20 @@ std::vector<core::Square> GameController::getAttackSquares(core::Square pieceSQ)
         board.setPiece(static_cast<core::Square>(static_cast<int>(pieceSQ) + forward + 1), dummy);
     }
 
-    std::vector<model::Move> pseudo;
-    gen.generatePseudoLegalMoves(board, st, pseudo);
-    for (const auto &m : pseudo)
-      if (m.from == pieceSQ) att.push_back(m.to);
-    return att;
+    m_pseudo_buffer.clear();
+    m_movegen.generatePseudoLegalMoves(board, st, m_pseudo_buffer);
+    for (const auto &m : m_pseudo_buffer)
+      if (m.from == pieceSQ) m_attack_buffer.push_back(m.to);
+    return m_attack_buffer;
   }
 
-  // Normal (on-turn) preview uses the current position with legality via
-  // do/undo.
-  model::Position pos = m_chess_game.getPositionRefForBot();
-  auto pcOpt = pos.getBoard().getPiece(pieceSQ);
-  if (!pcOpt) return att;
-
-  std::vector<model::Move> pseudo;
-  gen.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), pseudo);
-  for (const auto &m : pseudo) {
-    if (m.from == pieceSQ && pos.doMove(m)) {
-      att.push_back(m.to);
-      pos.undoMove();
-    }
-  }
-  return att;
+  ensureLegalCache();
+  for (const auto &m : *m_cached_moves)
+    if (m.from == pieceSQ) m_attack_buffer.push_back(m.to);
+  return m_attack_buffer;
 }
 
-void GameController::showAttacks(std::vector<core::Square> att) {
+void GameController::showAttacks(const std::vector<core::Square> &att) {
   m_game_view.clearAttackHighlights();
   for (auto sq : att) {
     if (hasVirtualPiece(sq))
@@ -1258,10 +1251,17 @@ bool GameController::hasCurrentLegalMove(core::Square from, core::Square to) con
   auto pc = m_chess_game.getPiece(from);
   if (pc.type == core::PieceType::None || pc.color != st.sideToMove) return false;
 
-  for (const auto &m : m_chess_game.generateLegalMoves()) {
+  ensureLegalCache();
+  for (const auto &m : *m_cached_moves) {
     if (m.from == from && m.to == to) return true;
   }
   return false;
+}
+
+void GameController::invalidateLegalCache() { m_cached_moves = nullptr; }
+
+void GameController::ensureLegalCache() const {
+  if (!m_cached_moves) m_cached_moves = &m_chess_game.generateLegalMoves();
 }
 
 model::Position GameController::getPositionAfterPremoves() const {
@@ -1368,11 +1368,10 @@ bool GameController::isPseudoLegalPremove(core::Square from, core::Square to) co
   st.castlingRights = 0;
   st.enPassantSquare = core::NO_SQUARE;
 
-  model::MoveGenerator gen;
-  std::vector<model::Move> pseudo;
-  gen.generatePseudoLegalMoves(board, st, pseudo);
+  m_pseudo_buffer.clear();
+  m_movegen.generatePseudoLegalMoves(board, st, m_pseudo_buffer);
 
-  for (const auto &m : pseudo)
+  for (const auto &m : m_pseudo_buffer)
     if (m.from == from && m.to == to) return true;
 
   return false;

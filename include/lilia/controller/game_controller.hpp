@@ -26,6 +26,7 @@ namespace lilia::model {
 class ChessGame;
 struct Move;
 class Position;
+class MoveGenerator;
 namespace bb {
 struct Piece;
 }
@@ -119,9 +120,8 @@ private:
 
   void snapAndReturn(core::Square sq, core::MousePos cur);
 
-  [[nodiscard]] std::vector<core::Square>
-  getAttackSquares(core::Square pieceSQ) const;
-  void showAttacks(std::vector<core::Square> att);
+  [[nodiscard]] const std::vector<core::Square> &getAttackSquares(core::Square pieceSQ) const;
+  void showAttacks(const std::vector<core::Square> &att);
   [[nodiscard]] bool tryMove(core::Square a, core::Square b);
   [[nodiscard]] bool isPromotion(core::Square a, core::Square b);
   [[nodiscard]] bool isSameColor(core::Square a, core::Square b);
@@ -181,6 +181,14 @@ private:
   std::vector<MoveView> m_move_history;
   std::vector<TimeView> m_time_history;
   NextAction m_next_action{NextAction::None};
+
+  mutable model::MoveGenerator m_movegen;
+  mutable std::vector<model::Move> m_pseudo_buffer;
+  mutable std::vector<core::Square> m_attack_buffer;
+  mutable const std::vector<model::Move> *m_cached_moves{nullptr};
+
+  void invalidateLegalCache();
+  void ensureLegalCache() const;
 };
 
 } // namespace lilia::controller
