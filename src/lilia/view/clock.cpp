@@ -74,6 +74,10 @@ Clock::Clock() {
   m_overlay.setSize({baseW, baseH});
   m_overlay.setFillColor(sf::Color(0, 0, 0, 100));  // default: dim
 
+  // Pre-built accent strip to avoid per-frame allocations
+  m_active_strip.setSize({kActiveStripW, baseH});
+  m_active_strip.setFillColor(kAccent);
+
   // Small "analog" indicator (only when active)
   m_icon_circle.setRadius(kIconRadius);
   m_icon_circle.setOrigin(kIconRadius, kIconRadius);
@@ -119,6 +123,8 @@ void Clock::setPosition(const sf::Vector2f& pos) {
   // position the box & overlay
   m_box.setPosition({snapf(pos.x), snapf(pos.y)});
   m_overlay.setPosition(m_box.getPosition());
+  m_active_strip.setPosition(m_box.getPosition());
+  m_active_strip.setSize({kActiveStripW, m_box.getSize().y});
 
   // right-align the time inside the box (like chess.com)
   const auto tb = m_text.getLocalBounds();  // tb.top usually negative in SFML
@@ -197,14 +203,10 @@ void Clock::render(sf::RenderWindow& window) {
   // left accent strip + analog indicator when active
   if (m_active) {
     // thin accent strip
-    sf::RectangleShape strip({kActiveStripW, m_box.getSize().y});
-    strip.setPosition(m_box.getPosition());
-    strip.setFillColor(kAccent);
-    window.draw(strip);
+    window.draw(m_active_strip);
 
     // --- simple ticking animation: 90° per second ---
-    static sf::Clock animClock;  // shared ticking base (keeps code header-free)
-    const int step = static_cast<int>(animClock.getElapsedTime().asSeconds()) % 4;
+    const int step = static_cast<int>(m_anim_clock.getElapsedTime().asSeconds()) % 4;
     const float angle = -90.f + 90.f * static_cast<float>(step);  // up, right, down, left
     m_icon_hand.setRotation(angle);
 

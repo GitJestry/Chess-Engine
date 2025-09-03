@@ -16,6 +16,7 @@ class Event;
 #include "../chess_types.hpp"
 #include "../constants.hpp"
 #include "../model/move.hpp"
+#include "../model/move_generator.hpp"
 #include "../view/audio/sound_manager.hpp"
 #include "../view/game_view.hpp"
 #include "input_manager.hpp"
@@ -174,6 +175,7 @@ private:
   std::unique_ptr<GameManager> m_game_manager;
   std::unique_ptr<TimeController> m_time_controller;
   std::atomic<int> m_eval_cp{0};
+  int m_last_eval_cp{0};
 
   std::vector<std::string> m_fen_history;
   std::vector<int> m_eval_history;

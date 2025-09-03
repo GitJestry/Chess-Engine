@@ -76,6 +76,7 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
       this->m_game_view.setBoardFen(this->m_fen_history[this->m_fen_index]);
       this->m_eval_cp.store(this->m_eval_history[this->m_fen_index]);
       this->m_game_view.updateEval(this->m_eval_history[this->m_fen_index]);
+      this->m_last_eval_cp = this->m_eval_history[this->m_fen_index];
       this->m_game_view.selectMove(this->m_fen_index ? this->m_fen_index - 1
                                                      : static_cast<std::size_t>(-1));
       this->m_game_view.clearAllHighlights();
@@ -177,6 +178,7 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot, bool bla
   m_game_view.selectMove(static_cast<std::size_t>(-1));
   m_eval_cp.store(m_eval_history[0]);
   m_game_view.updateEval(m_eval_history[0]);
+  m_last_eval_cp = m_eval_history[0];
   m_game_view.clearCapturedPieces();
 
   // UI-State
@@ -297,6 +299,7 @@ void GameController::handleEvent(const sf::Event &event) {
       m_sound_manager.playEffect(info.sound);
       m_eval_cp.store(m_eval_history[m_fen_index]);
       m_game_view.updateEval(m_eval_history[m_fen_index]);
+      m_last_eval_cp = m_eval_history[m_fen_index];
       if (enteringFinalState) {
         m_game_view.setEvalResult(
             resultToString(m_chess_game.getResult(), m_chess_game.getGameState().sideToMove));
@@ -469,7 +472,12 @@ void GameController::render() {
 void GameController::update(float dt) {
   // Always tick UI/animations/particles
   m_game_view.update(dt);
-  m_game_view.updateEval(m_eval_cp.load());
+  // Update evaluation display only when the value actually changes
+  int currentEval = m_eval_cp.load();
+  if (currentEval != m_last_eval_cp) {
+    m_game_view.updateEval(currentEval);
+    m_last_eval_cp = currentEval;
+  }
 
   if (m_chess_game.getResult() != core::GameResult::ONGOING) return;
 
@@ -1501,6 +1509,7 @@ void GameController::stepBackward() {
     m_eval_cp.store(m_eval_history[m_fen_index]);
     if (leavingFinalState) m_game_view.resetEvalBar();
     m_game_view.updateEval(m_eval_history[m_fen_index]);
+    m_last_eval_cp = m_eval_history[m_fen_index];
     m_game_view.updateFen(m_fen_history[m_fen_index]);
     if (m_fen_index < m_time_history.size()) {
       const TimeView &tv = m_time_history[m_fen_index];
@@ -1565,6 +1574,7 @@ void GameController::stepForward() {
     m_sound_manager.playEffect(info.sound);
     m_eval_cp.store(m_eval_history[m_fen_index]);
     m_game_view.updateEval(m_eval_history[m_fen_index]);
+    m_last_eval_cp = m_eval_history[m_fen_index];
     if (enteringFinalState) {
       m_game_view.setEvalResult(
           resultToString(m_chess_game.getResult(), m_chess_game.getGameState().sideToMove));

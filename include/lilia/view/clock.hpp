@@ -4,6 +4,7 @@
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Text.hpp>
+#include <SFML/System/Clock.hpp>
 
 #include "lilia/chess_types.hpp"
 #include "lilia/view/render_constants.hpp"
@@ -31,6 +32,8 @@ class Clock {
   bool m_active{false};
   sf::CircleShape m_icon_circle;
   sf::RectangleShape m_icon_hand;
+  sf::RectangleShape m_active_strip;
+  sf::Clock m_anim_clock;
 };
 
 }  // namespace lilia::view
