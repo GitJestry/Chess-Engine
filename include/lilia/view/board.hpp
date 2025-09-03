@@ -2,9 +2,11 @@
 
 namespace sf {
 class RenderWindow;
+class Texture;
 }
 
 #include <array>
+#include <SFML/Graphics/Texture.hpp>
 
 #include "../chess_types.hpp"
 #include "entity.hpp"
@@ -35,6 +37,8 @@ class Board : public Entity {
   std::array<Entity, constant::BOARD_SIZE * constant::BOARD_SIZE> m_squares;
   std::array<Entity, constant::BOARD_SIZE> m_file_labels;
   std::array<Entity, constant::BOARD_SIZE> m_rank_labels;
+  std::array<sf::Texture, constant::BOARD_SIZE> m_file_textures;
+  std::array<sf::Texture, constant::BOARD_SIZE> m_rank_textures;
   bool m_flipped{false};
 };
 

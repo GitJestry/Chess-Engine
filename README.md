@@ -63,6 +63,7 @@ The project is structured around a clear separation of responsibilities:
 
 - **Model** – core chess logic such as the board representation, move generation and evaluation (`include/lilia/model`, `src/lilia/model`).
 - **View** – SFML-based rendering layer (`include/lilia/view`, `src/lilia/view`). `GameView` acts as a façade over SFML, while textures are managed by the Singleton `TextureTable`.
+- Board coordinates are rendered at runtime with an outlined OpenSans font, removing the need for separate PNG label textures.
 - **Controller** – orchestrates user input and the game loop (`include/lilia/controller`, `src/lilia/controller`). `GameManager` exposes callbacks for moves, promotions and game end events, enabling an observer-style communication with the view.
 - **Engine** – search and evaluation algorithms for AI play (`include/lilia/engine`, `src/lilia/engine`).
 
