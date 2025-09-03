@@ -531,8 +531,7 @@ void GameController::update(float dt) {
       // 2) Hand it to the game manager (promotion handled internally)
       bool accepted = m_game_manager
                           ? m_game_manager->requestUserMove(m_pending_from, m_pending_to,
-                                                            /*onClick*/ true,
-                                                            m_pending_promotion)
+                                                            /*onClick*/ true, m_pending_promotion)
                           : false;
 
       if (!accepted) {
@@ -540,7 +539,6 @@ void GameController::update(float dt) {
         m_game_view.setBoardFen(m_fen_history.back());
         clearPremove();
       } else {
-
         // IMPORTANT: Do NOT pop the queue here — it was already popped when
         // scheduling in movePieceAndClear(). Just rebuild highlights/ghosts for
         // what's left.
@@ -997,8 +995,7 @@ void GameController::onClick(core::MousePos mousePos) {
     m_game_view.setPieceToSquareScreenPos(sq, sq);
   }
 
-  if (m_selection_changed_on_press &&
-      sq == m_selection_manager.getSelectedSquare()) {
+  if (m_selection_changed_on_press && sq == m_selection_manager.getSelectedSquare()) {
     m_selection_changed_on_press = false;
     return;
   }
@@ -1050,11 +1047,10 @@ void GameController::onClick(core::MousePos mousePos) {
         (selPiece.type != core::PieceType::None && selPiece.color == humanColor &&
          (!m_game_manager || m_game_manager->isHuman(humanColor)));
 
-    if (ownTurnAndPiece &&
-        tryMove(m_selection_manager.getSelectedSquare(), sq)) {
+    if (ownTurnAndPiece && tryMove(m_selection_manager.getSelectedSquare(), sq)) {
       if (m_game_manager) {
-        (void)m_game_manager->requestUserMove(
-            m_selection_manager.getSelectedSquare(), sq, /*onClick*/ true);
+        (void)m_game_manager->requestUserMove(m_selection_manager.getSelectedSquare(), sq,
+                                              /*onClick*/ true);
       }
       m_selection_manager.deselectSquare();
       return;  // don't reselect
@@ -1111,8 +1107,7 @@ void GameController::onDrag(core::MousePos start, core::MousePos current) {
     if (isHumanPiece(sqStart)) showAttacks(getAttackSquares(sqStart));
   }
 
-  if (m_selection_manager.getHoveredSquare() != sqMous)
-    m_selection_manager.dehoverSquare();
+  if (m_selection_manager.getHoveredSquare() != sqMous) m_selection_manager.dehoverSquare();
   m_selection_manager.hoverSquare(sqMous);
 
   m_game_view.setPieceToMouseScreenPos(sqStart, current);
@@ -1149,8 +1144,7 @@ void GameController::onDrop(core::MousePos start, core::MousePos end) {
     const float top = static_cast<float>(clamped.y) - halfH;
     const float bottom = static_cast<float>(clamped.y) + halfH;
     const bool overPiece = static_cast<float>(end.x) >= left &&
-                           static_cast<float>(end.x) <= right &&
-                           static_cast<float>(end.y) >= top &&
+                           static_cast<float>(end.x) <= right && static_cast<float>(end.y) >= top &&
                            static_cast<float>(end.y) <= bottom;
     if (!overPiece) {
       m_game_view.setPieceToSquareScreenPos(from, from);
@@ -1258,7 +1252,9 @@ bool GameController::hasCurrentLegalMove(core::Square from, core::Square to) con
   return false;
 }
 
-void GameController::invalidateLegalCache() { m_cached_moves = nullptr; }
+void GameController::invalidateLegalCache() {
+  m_cached_moves = nullptr;
+}
 
 void GameController::ensureLegalCache() const {
   if (!m_cached_moves) m_cached_moves = &m_chess_game.generateLegalMoves();
@@ -1400,22 +1396,19 @@ void GameController::showGameOver(core::GameResult res, core::Color sideToMove) 
 
   m_sound_manager.playEffect(view::sound::Effect::GameEnds);
   std::string resultStr;
-  core::Color winner = (sideToMove == core::Color::White) ? core::Color::Black
-                                                          : core::Color::White;
+  core::Color winner = (sideToMove == core::Color::White) ? core::Color::Black : core::Color::White;
   bool humanWinner = (winner == core::Color::White && !m_white_is_bot) ||
                      (winner == core::Color::Black && !m_black_is_bot);
   switch (res) {
     case core::GameResult::CHECKMATE:
       resultStr = (sideToMove == core::Color::White) ? "0-1" : "1-0";
-      m_game_view.showGameOverPopup(
-          sideToMove == core::Color::White ? "Black won" : "White won",
-          humanWinner);
+      m_game_view.showGameOverPopup(sideToMove == core::Color::White ? "Black won" : "White won",
+                                    humanWinner);
       break;
     case core::GameResult::TIMEOUT:
       resultStr = (sideToMove == core::Color::White) ? "0-1" : "1-0";
       m_game_view.showGameOverPopup(
-          sideToMove == core::Color::White ? "Black wins on time"
-                                           : "White wins on time",
+          sideToMove == core::Color::White ? "Black wins on time" : "White wins on time",
           humanWinner);
       break;
     case core::GameResult::REPETITION:

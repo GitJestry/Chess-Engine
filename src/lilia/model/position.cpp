@@ -109,111 +109,101 @@ bool Position::see(const model::Move& m) const {
   using core::Color;
   using core::PieceType;
   using core::Square;
-
   if (!m.isCapture && !m.isEnPassant) return true;
 
   auto ap = m_board.getPiece(m.from);
   if (!ap) return true;
-  const Color us = ap->color;
-  const Color them = static_cast<Color>(~us);
+  const Color us = ap->color, them = static_cast<Color>(~us);
   const Square to = m.to;
 
   bb::Bitboard occ = m_board.getAllPieces();
 
-  auto alive = [&](Color c, PieceType pt) -> bb::Bitboard {
-    return m_board.getPieces(c, pt) & occ;
-  };
+  // Cache piece sets (unmasked)
+  bb::Bitboard pcs[2][6];
+  for (int c = 0; c < 2; ++c)
+    for (int pt = 0; pt < 6; ++pt) pcs[c][pt] = m_board.getPieces((Color)c, (PieceType)pt);
+
+  auto alive = [&](Color c, PieceType pt) -> bb::Bitboard { return pcs[(int)c][(int)pt] & occ; };
   auto val = [&](PieceType pt) -> int { return engine::base_value[(int)pt]; };
 
   PieceType captured = PieceType::None;
   if (m.isEnPassant) {
     captured = PieceType::Pawn;
-    const Square capSq = (us == Color::White) ? static_cast<Square>(static_cast<int>(to) - 8)
-                                              : static_cast<Square>(static_cast<int>(to) + 8);
+    const Square capSq = (us == Color::White) ? (Square)((int)to - 8) : (Square)((int)to + 8);
     occ &= ~bb::sq_bb(capSq);
   } else {
-    if (auto cap = m_board.getPiece(to))
-      captured = cap->type;
-    else
-      return true;
+    auto cap = m_board.getPiece(to);
+    if (!cap) return true;
+    captured = cap->type;
     occ &= ~bb::sq_bb(to);
   }
 
+  // move piece to 'to'
   occ &= ~bb::sq_bb(m.from);
-
   PieceType curOnTo = (m.promotion != PieceType::None) ? m.promotion : ap->type;
   occ |= bb::sq_bb(to);
+
+  auto pawn_atk = [&](Color c) {
+    bb::Bitboard tgt = bb::sq_bb(to);
+    return (c == Color::White ? (bb::sw(tgt) | bb::se(tgt)) : (bb::nw(tgt) | bb::ne(tgt))) &
+           alive(c, PieceType::Pawn);
+  };
+  auto knight_atk = [&](Color c) {
+    return bb::knight_attacks_from(to) & alive(c, PieceType::Knight);
+  };
+  auto bishop_rays = [&](bb::Bitboard occNow) {
+    return magic::sliding_attacks(magic::Slider::Bishop, to, occNow);
+  };
+  auto rook_rays = [&](bb::Bitboard occNow) {
+    return magic::sliding_attacks(magic::Slider::Rook, to, occNow);
+  };
+
+  auto bishop_att = [&](Color c, bb::Bitboard occNow) {
+    return bishop_rays(occNow) & alive(c, PieceType::Bishop);
+  };
+  auto rook_att = [&](Color c, bb::Bitboard occNow) {
+    return rook_rays(occNow) & alive(c, PieceType::Rook);
+  };
+  auto queen_att = [&](Color c, bb::Bitboard occNow) {
+    return (bishop_rays(occNow) | rook_rays(occNow)) & alive(c, PieceType::Queen);
+  };
+
+  auto pick_lva = [&](Color c, Square& fromSq, PieceType& pt) -> bool {
+    bb::Bitboard bbx;
+    if ((bbx = pawn_atk(c))) {
+      fromSq = bb::pop_lsb(bbx);
+      pt = PieceType::Pawn;
+      return true;
+    }
+    if ((bbx = knight_atk(c))) {
+      fromSq = bb::pop_lsb(bbx);
+      pt = PieceType::Knight;
+      return true;
+    }
+    if ((bbx = bishop_att(c, occ))) {
+      fromSq = bb::pop_lsb(bbx);
+      pt = PieceType::Bishop;
+      return true;
+    }
+    if ((bbx = rook_att(c, occ))) {
+      fromSq = bb::pop_lsb(bbx);
+      pt = PieceType::Rook;
+      return true;
+    }
+    if ((bbx = queen_att(c, occ))) {
+      fromSq = bb::pop_lsb(bbx);
+      pt = PieceType::Queen;
+      return true;
+    }
+    // King absichtlich nicht: konservativ & schnell
+    return false;
+  };
 
   int gain[32];
   int d = 0;
   gain[d++] = val(captured);
 
-  auto pawn_attackers = [&](Color c) -> bb::Bitboard {
-    const bb::Bitboard tgt = bb::sq_bb(to);
-    if (c == Color::White)
-      return (bb::sw(tgt) | bb::se(tgt)) & alive(Color::White, PieceType::Pawn);
-    return (bb::nw(tgt) | bb::ne(tgt)) & alive(Color::Black, PieceType::Pawn);
-  };
-  auto knight_attackers = [&](Color c) -> bb::Bitboard {
-    const bb::Bitboard mask = bb::knight_attacks_from(to);
-    return mask & alive(c, PieceType::Knight);
-  };
-  auto bishop_rays = [&](bb::Bitboard occNow) -> bb::Bitboard {
-    return magic::sliding_attacks(magic::Slider::Bishop, to, occNow);
-  };
-  auto rook_rays = [&](bb::Bitboard occNow) -> bb::Bitboard {
-    return magic::sliding_attacks(magic::Slider::Rook, to, occNow);
-  };
-  auto bishop_like = [&](Color c, bb::Bitboard occNow) -> bb::Bitboard {
-    const bb::Bitboard rays = bishop_rays(occNow);
-    return rays & (alive(c, PieceType::Bishop) | alive(c, PieceType::Queen));
-  };
-  auto rook_like = [&](Color c, bb::Bitboard occNow) -> bb::Bitboard {
-    const bb::Bitboard rays = rook_rays(occNow);
-    return rays & (alive(c, PieceType::Rook) | alive(c, PieceType::Queen));
-  };
-  auto king_attackers = [&](Color c) -> bb::Bitboard {
-    const bb::Bitboard mask = bb::king_attacks_from(to);
-    return mask & alive(c, PieceType::King);
-  };
-
-  auto pick_lva = [&](Color c, Square& fromSq, PieceType& pt) -> bool {
-    bb::Bitboard bbx;
-    if ((bbx = pawn_attackers(c))) {
-      fromSq = bb::pop_lsb(bbx);
-      pt = PieceType::Pawn;
-      return true;
-    }
-    if ((bbx = knight_attackers(c))) {
-      fromSq = bb::pop_lsb(bbx);
-      pt = PieceType::Knight;
-      return true;
-    }
-    if ((bbx = bishop_like(c, occ) & alive(c, PieceType::Bishop))) {
-      fromSq = bb::pop_lsb(bbx);
-      pt = PieceType::Bishop;
-      return true;
-    }
-    if ((bbx = rook_like(c, occ) & alive(c, PieceType::Rook))) {
-      fromSq = bb::pop_lsb(bbx);
-      pt = PieceType::Rook;
-      return true;
-    }
-    if ((bbx = ((bishop_like(c, occ) | rook_like(c, occ)) & alive(c, PieceType::Queen)))) {
-      fromSq = bb::pop_lsb(bbx);
-      pt = PieceType::Queen;
-      return true;
-    }
-    if ((bbx = king_attackers(c))) {
-      fromSq = bb::pop_lsb(bbx);
-      pt = PieceType::King;
-      return true;
-    }
-    return false;
-  };
-
   Color side = them;
-
   while (true) {
     Square from2 = core::NO_SQUARE;
     PieceType pt2 = PieceType::None;
@@ -221,14 +211,11 @@ bool Position::see(const model::Move& m) const {
 
     gain[d] = val(curOnTo) - gain[d - 1];
     ++d;
-
-    if (gain[d - 1] < 0 && d > 1) break;
-    if (d == 1 && gain[0] < 0) break;
+    if (gain[d - 1] < 0) break;
 
     occ &= ~bb::sq_bb(from2);
-
     curOnTo = pt2;
-    side = static_cast<Color>(~side);
+    side = (Color)~side;
 
     if (d >= 31) break;
   }
@@ -341,10 +328,12 @@ void Position::undoNullMove() {
   m_hash = st.zobristKey;
 }
 
+// ===== Position::applyMove (optimized) =====
 void Position::applyMove(const Move& m, StateInfo& st) {
   core::Color us = m_state.sideToMove;
   core::Color them = ~us;
 
+  // EP out of hash; clear EP
   xorEPRelevant();
   const core::Square prevEP = m_state.enPassantSquare;
   m_state.enPassantSquare = core::NO_SQUARE;
@@ -353,7 +342,7 @@ void Position::applyMove(const Move& m, StateInfo& st) {
   if (!fromPiece) return;
   const bool movingPawn = (fromPiece->type == core::PieceType::Pawn);
 
-  // Rochade?
+  // Detect castling
   bool isCastleMove = (m.castle != CastleSide::None);
   if (isCastleMove && st.move.castle == CastleSide::None) {
     if (us == core::Color::White)
@@ -370,7 +359,7 @@ void Position::applyMove(const Move& m, StateInfo& st) {
       isCastleMove = true;
   }
 
-  // En passant sicher erkennen
+  // Detect en passant robustly
   bool isEP = m.isEnPassant;
   if (!isEP && movingPawn) {
     const int df = (int)m.to - (int)m.from;
@@ -380,52 +369,78 @@ void Position::applyMove(const Move& m, StateInfo& st) {
     }
   }
 
+  // Detect capture (also when generator didn't tag it)
   bool isCap = m.isCapture;
   if (!isCap && !isEP) {
     auto cap = m_board.getPiece(m.to);
     if (cap && cap->color == them) isCap = true;
   }
 
-  // ------- Capture entfernen (vor Board-Mutation)
+  // Determine captured piece and store in state
   if (isEP) {
-    core::Square capSq = (us == core::Color::White) ? static_cast<core::Square>(m.to - 8)
-                                                    : static_cast<core::Square>(m.to + 8);
+    const core::Square capSq = (us == core::Color::White) ? static_cast<core::Square>(m.to - 8)
+                                                          : static_cast<core::Square>(m.to + 8);
     auto cap = m_board.getPiece(capSq);
-    st.captured = cap.value_or(bb::Piece{core::PieceType::None, them});
-    if (cap) {
-      evalAcc_.remove_piece(them, core::PieceType::Pawn, (int)capSq);
-      hashXorPiece(them, core::PieceType::Pawn, capSq);
-      m_board.removePiece(capSq);
-    }
+    st.captured = cap.value_or(bb::Piece{core::PieceType::Pawn, them});
+    st.captured.type = core::PieceType::Pawn;  // enforce
   } else if (isCap) {
     auto cap = m_board.getPiece(m.to);
     st.captured = cap.value_or(bb::Piece{core::PieceType::None, them});
-    if (cap) {
-      evalAcc_.remove_piece(them, st.captured.type, (int)m.to);
-      hashXorPiece(them, st.captured.type, m.to);
-      m_board.removePiece(m.to);
-    }
   } else {
     st.captured = bb::Piece{core::PieceType::None, them};
   }
 
-  // ------- Mover platzieren (Fast-Path für quiet moves)
+  // ===== fast paths =====
   bb::Piece placed = *fromPiece;
-
   const bool fastQuiet = (!isCap && !isEP && !isCastleMove && m.promotion == core::PieceType::None);
+  const bool fastCap = (isCap && !isEP && !isCastleMove && m.promotion == core::PieceType::None &&
+                        st.captured.type != core::PieceType::None);
+  const bool fastEP = (isEP && m.promotion == core::PieceType::None);
 
   if (fastQuiet) {
-    // EvalAcc & Hash
+    // quiet move
     evalAcc_.move_piece(us, placed.type, (int)m.from, (int)m.to);
     hashXorPiece(us, placed.type, m.from);
     m_board.movePiece_noCapture(m.from, m.to);
     hashXorPiece(us, placed.type, m.to);
+  } else if (fastCap) {
+    // normal capture
+    evalAcc_.remove_piece(them, st.captured.type, (int)m.to);
+    evalAcc_.move_piece(us, placed.type, (int)m.from, (int)m.to);
+
+    hashXorPiece(them, st.captured.type, m.to);
+    hashXorPiece(us, placed.type, m.from);
+    m_board.movePiece_withCapture(m.from, m.to, m.to, st.captured);
+    hashXorPiece(us, placed.type, m.to);
+  } else if (fastEP) {
+    // en passant capture (capSq != to)
+    const core::Square capSq = (us == core::Color::White) ? static_cast<core::Square>(m.to - 8)
+                                                          : static_cast<core::Square>(m.to + 8);
+    evalAcc_.remove_piece(them, core::PieceType::Pawn, (int)capSq);
+    evalAcc_.move_piece(us, core::PieceType::Pawn, (int)m.from, (int)m.to);
+
+    hashXorPiece(them, core::PieceType::Pawn, capSq);
+    hashXorPiece(us, core::PieceType::Pawn, m.from);
+    m_board.movePiece_withCapture(m.from, capSq, m.to, bb::Piece{core::PieceType::Pawn, them});
+    hashXorPiece(us, core::PieceType::Pawn, m.to);
   } else {
-    // alter (sicherer) Weg inkl. Promotion
+    // general slow path (promotions and mixed cases)
     hashXorPiece(us, placed.type, m.from);
     m_board.removePiece(m.from);
 
     if (m.promotion != core::PieceType::None) placed.type = m.promotion;
+
+    if (isEP) {
+      const core::Square capSq = (us == core::Color::White) ? static_cast<core::Square>(m.to - 8)
+                                                            : static_cast<core::Square>(m.to + 8);
+      evalAcc_.remove_piece(them, core::PieceType::Pawn, (int)capSq);
+      hashXorPiece(them, core::PieceType::Pawn, capSq);
+      m_board.removePiece(capSq);
+    } else if (isCap && st.captured.type != core::PieceType::None) {
+      evalAcc_.remove_piece(them, st.captured.type, (int)m.to);
+      hashXorPiece(them, st.captured.type, m.to);
+      m_board.removePiece(m.to);
+    }
 
     if (m.promotion != core::PieceType::None) {
       evalAcc_.remove_piece(us, fromPiece->type, (int)m.from);
@@ -438,17 +453,15 @@ void Position::applyMove(const Move& m, StateInfo& st) {
     m_board.setPiece(m.to, placed);
   }
 
-  // ------- Rochade: Turm versetzen (jetzt auch Fast-Path)
+  // Castle rook move (fast path as before)
   if (isCastleMove) {
     if (us == core::Color::White) {
       if (m.to == static_cast<core::Square>(6) || m.castle == CastleSide::KingSide) {
-        // H1 -> F1
         evalAcc_.move_piece(us, core::PieceType::Rook, (int)bb::H1, 5);
         hashXorPiece(core::Color::White, core::PieceType::Rook, bb::H1);
         m_board.movePiece_noCapture(bb::H1, static_cast<core::Square>(5));
         hashXorPiece(core::Color::White, core::PieceType::Rook, static_cast<core::Square>(5));
       } else {
-        // A1 -> D1
         evalAcc_.move_piece(us, core::PieceType::Rook, (int)bb::A1, 3);
         hashXorPiece(core::Color::White, core::PieceType::Rook, bb::A1);
         m_board.movePiece_noCapture(bb::A1, static_cast<core::Square>(3));
@@ -456,13 +469,11 @@ void Position::applyMove(const Move& m, StateInfo& st) {
       }
     } else {
       if (m.to == static_cast<core::Square>(62) || m.castle == CastleSide::KingSide) {
-        // H8 -> F8
         evalAcc_.move_piece(us, core::PieceType::Rook, (int)bb::H8, 61);
         hashXorPiece(core::Color::Black, core::PieceType::Rook, bb::H8);
         m_board.movePiece_noCapture(bb::H8, static_cast<core::Square>(61));
         hashXorPiece(core::Color::Black, core::PieceType::Rook, static_cast<core::Square>(61));
       } else {
-        // A8 -> D8
         evalAcc_.move_piece(us, core::PieceType::Rook, (int)bb::A8, 59);
         hashXorPiece(core::Color::Black, core::PieceType::Rook, bb::A8);
         m_board.movePiece_noCapture(bb::A8, static_cast<core::Square>(59));
@@ -471,7 +482,7 @@ void Position::applyMove(const Move& m, StateInfo& st) {
     }
   }
 
-  // --- NEW: compute gaveCheck BEFORE flipping sideToMove ---
+  // gaveCheck (compute before side flip)
   const bb::Bitboard kThem = m_board.getPieces(them, core::PieceType::King);
   std::uint8_t gc = 0;
   if (kThem) {
@@ -480,13 +491,13 @@ void Position::applyMove(const Move& m, StateInfo& st) {
   }
   st.gaveCheck = gc;
 
-  // 50-Züge-Regel
+  // 50-move rule
   if (placed.type == core::PieceType::Pawn || st.captured.type != core::PieceType::None)
     m_state.halfmoveClock = 0;
   else
     ++m_state.halfmoveClock;
 
-  // neuen EP-Square (Doppelschritt)
+  // new EP square (double push)
   if (placed.type == core::PieceType::Pawn) {
     if (us == core::Color::White && bb::rank_of(m.from) == 1 && bb::rank_of(m.to) == 3)
       m_state.enPassantSquare = static_cast<core::Square>(m.from + 8);
@@ -494,52 +505,51 @@ void Position::applyMove(const Move& m, StateInfo& st) {
       m_state.enPassantSquare = static_cast<core::Square>(m.from - 8);
   }
 
-  // Castling-Rechte
+  // castling rights & hash
   const std::uint8_t prevCR = m_state.castlingRights;
   m_state.castlingRights &= ~(CR_CLEAR_FROM[(int)m.from] | CR_CLEAR_TO[(int)m.to]);
   if (prevCR != m_state.castlingRights) hashSetCastling(prevCR, m_state.castlingRights);
 
-  // Seite flippen
+  // side flip & fullmove
   hashXorSide();
   m_state.sideToMove = them;
   if (them == core::Color::White) ++m_state.fullmoveNumber;
 
-  // EP in Hash
+  // EP into hash
   xorEPRelevant();
 }
 
+// ===== Position::unapplyMove (optimized) =====
 void Position::unapplyMove(const StateInfo& st) {
-  // Seite zurück
+  // Flip side back
   m_state.sideToMove = ~m_state.sideToMove;
   hashXorSide();
   if (m_state.sideToMove == core::Color::Black) --m_state.fullmoveNumber;
 
-  // Castling-Rechte zurück
+  // Restore castling rights (+hash)
   hashSetCastling(m_state.castlingRights, st.prevCastlingRights);
   m_state.castlingRights = st.prevCastlingRights;
 
-  // EP zurück
+  // Restore EP (+hash)
   m_state.enPassantSquare = st.prevEnPassantSquare;
   xorEPRelevant();
 
-  // 50-Züge
+  // Restore 50-move clock
   m_state.halfmoveClock = st.prevHalfmoveClock;
 
   const Move& m = st.move;
-  core::Color us = m_state.sideToMove;
+  core::Color us = m_state.sideToMove;  // the side that made 'm'
   core::Color them = ~us;
 
-  // Rochade rückgängig (Turm zurück) – Fast-Path
+  // Undo castle rook (fast)
   if (m.castle != CastleSide::None) {
     if (us == core::Color::White) {
       if (m.castle == CastleSide::KingSide) {
-        // F1 -> H1
         evalAcc_.move_piece(us, core::PieceType::Rook, 5, (int)bb::H1);
         hashXorPiece(core::Color::White, core::PieceType::Rook, static_cast<core::Square>(5));
         m_board.movePiece_noCapture(static_cast<core::Square>(5), bb::H1);
         hashXorPiece(core::Color::White, core::PieceType::Rook, bb::H1);
       } else {
-        // D1 -> A1
         evalAcc_.move_piece(us, core::PieceType::Rook, 3, (int)bb::A1);
         hashXorPiece(core::Color::White, core::PieceType::Rook, static_cast<core::Square>(3));
         m_board.movePiece_noCapture(static_cast<core::Square>(3), bb::A1);
@@ -547,13 +557,11 @@ void Position::unapplyMove(const StateInfo& st) {
       }
     } else {
       if (m.castle == CastleSide::KingSide) {
-        // F8 -> H8
         evalAcc_.move_piece(us, core::PieceType::Rook, 61, (int)bb::H8);
         hashXorPiece(core::Color::Black, core::PieceType::Rook, static_cast<core::Square>(61));
         m_board.movePiece_noCapture(static_cast<core::Square>(61), bb::H8);
         hashXorPiece(core::Color::Black, core::PieceType::Rook, bb::H8);
       } else {
-        // D8 -> A8
         evalAcc_.move_piece(us, core::PieceType::Rook, 59, (int)bb::A8);
         hashXorPiece(core::Color::Black, core::PieceType::Rook, static_cast<core::Square>(59));
         m_board.movePiece_noCapture(static_cast<core::Square>(59), bb::A8);
@@ -562,7 +570,7 @@ void Position::unapplyMove(const StateInfo& st) {
     }
   }
 
-  // -------- Fast-Path: kein Capture & keine Promotion -> nur den Mover zurückschieben
+  // Fast: no capture & no promotion → just move back
   if (m.promotion == core::PieceType::None && st.captured.type == core::PieceType::None) {
     if (auto moving = m_board.getPiece(m.to)) {
       evalAcc_.move_piece(us, moving->type, (int)m.to, (int)m.from);
@@ -570,10 +578,35 @@ void Position::unapplyMove(const StateInfo& st) {
       m_board.movePiece_noCapture(m.to, m.from);
       hashXorPiece(us, moving->type, m.from);
     }
-    return;  // nichts weiter zu tun
+    return;
   }
 
-  // -------- Allgemeiner (alter) Weg für Promo/Captures
+  // Fast: non-promotion capture → move back, then restore victim
+  if (m.promotion == core::PieceType::None && st.captured.type != core::PieceType::None) {
+    // move our piece back
+    if (auto moving = m_board.getPiece(m.to)) {
+      evalAcc_.move_piece(us, moving->type, (int)m.to, (int)m.from);
+      hashXorPiece(us, moving->type, m.to);
+      m_board.movePiece_noCapture(m.to, m.from);
+      hashXorPiece(us, moving->type, m.from);
+    }
+
+    // restore captured
+    if (m.isEnPassant) {
+      const core::Square capSq = (us == core::Color::White) ? static_cast<core::Square>(m.to - 8)
+                                                            : static_cast<core::Square>(m.to + 8);
+      evalAcc_.add_piece(them, st.captured.type, (int)capSq);
+      hashXorPiece(~us, st.captured.type, capSq);
+      m_board.setPiece(capSq, st.captured);
+    } else {
+      evalAcc_.add_piece(them, st.captured.type, (int)m.to);
+      hashXorPiece(~us, st.captured.type, m.to);
+      m_board.setPiece(m.to, st.captured);
+    }
+    return;
+  }
+
+  // Slow path: promotions (and rare mixed cases)
   if (auto moving = m_board.getPiece(m.to)) {
     m_board.removePiece(m.to);
     bb::Piece placed = *moving;
@@ -593,10 +626,10 @@ void Position::unapplyMove(const StateInfo& st) {
     return;
   }
 
-  // Capture zurück
+  // Restore capture for slow path as well
   if (m.isEnPassant) {
-    core::Square capSq = (us == core::Color::White) ? static_cast<core::Square>(m.to - 8)
-                                                    : static_cast<core::Square>(m.to + 8);
+    const core::Square capSq = (us == core::Color::White) ? static_cast<core::Square>(m.to - 8)
+                                                          : static_cast<core::Square>(m.to + 8);
     if (st.captured.type != core::PieceType::None) {
       evalAcc_.add_piece(them, st.captured.type, (int)capSq);
       hashXorPiece(~us, st.captured.type, capSq);

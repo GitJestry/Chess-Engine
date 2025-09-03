@@ -26,6 +26,12 @@ class Board {
   // Optionaler Fast-Path (später in Position nutzen):
   // bewegt eine Figur von 'from' nach 'to' (ohne Capture; 'to' muss leer sein)
   void movePiece_noCapture(core::Square from, core::Square to) noexcept;
+  // Move a piece from `from` to `to` while removing a captured piece on `capSq`.
+  // For normal captures: capSq == to.
+  // For en passant:      capSq != to (the pawn behind `to`).
+  // `captured` must describe the piece removed on `capSq` (type != None).
+  void movePiece_withCapture(core::Square from, core::Square capSq, core::Square to,
+                             bb::Piece captured) noexcept;
 
  private:
   // Bitboards wie gehabt

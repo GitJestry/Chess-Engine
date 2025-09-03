@@ -1,11 +1,11 @@
 #pragma once
 
 #include <atomic>
+#include <deque>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
-#include <deque>
 
 // Forward declaration to avoid heavy SFML header
 namespace sf {
@@ -16,11 +16,12 @@ class Event;
 #include "../chess_types.hpp"
 #include "../constants.hpp"
 #include "../model/move.hpp"
+#include "../model/move_generator.hpp"
 #include "../view/audio/sound_manager.hpp"
 #include "../view/game_view.hpp"
 #include "input_manager.hpp"
-#include "time_controller.hpp"
 #include "selection_manager.hpp"
+#include "time_controller.hpp"
 
 namespace lilia::model {
 class ChessGame;
@@ -30,7 +31,7 @@ class MoveGenerator;
 namespace bb {
 struct Piece;
 }
-} // namespace lilia::model
+}  // namespace lilia::model
 
 namespace lilia::controller {
 class GameManager;
@@ -59,7 +60,7 @@ struct TimeView {
 };
 
 class GameController {
-public:
+ public:
   explicit GameController(view::GameView &gView, model::ChessGame &game);
   ~GameController();
 
@@ -83,17 +84,15 @@ public:
    * @param blackDepth Suchtiefe für den schwarzen Bot.
    */
 
-  void startGame(const std::string &fen = core::START_FEN,
-                 bool whiteIsBot = false, bool blackIsBot = true,
-                 int whiteThinkTimeMs = 1000, int whiteDepth = 5,
-                 int blackThinkTimeMs = 1000, int blackDepth = 5,
-                 bool useTimer = true, int baseSeconds = 0,
-                 int incrementSeconds = 0);
+  void startGame(const std::string &fen = core::START_FEN, bool whiteIsBot = false,
+                 bool blackIsBot = true, int whiteThinkTimeMs = 1000, int whiteDepth = 5,
+                 int blackThinkTimeMs = 1000, int blackDepth = 5, bool useTimer = true,
+                 int baseSeconds = 0, int incrementSeconds = 0);
 
   enum class NextAction { None, NewBot, Rematch };
   [[nodiscard]] NextAction getNextAction() const;
 
-private:
+ private:
   bool isHumanPiece(core::Square sq) const;
   bool hasCurrentLegalMove(core::Square from, core::Square to) const;
 
@@ -115,8 +114,7 @@ private:
   [[nodiscard]] model::bb::Piece getPieceConsideringPremoves(core::Square sq) const;
   [[nodiscard]] bool hasVirtualPiece(core::Square sq) const;
 
-  void movePieceAndClear(const model::Move &move, bool isPlayerMove,
-                         bool onClick);
+  void movePieceAndClear(const model::Move &move, bool isPlayerMove, bool onClick);
 
   void snapAndReturn(core::Square sq, core::MousePos cur);
 
@@ -134,10 +132,10 @@ private:
   void syncCapturedPieces();
 
   // ---------------- Members ----------------
-  view::GameView &m_game_view;    ///< Responsible for rendering.
-  model::ChessGame &m_chess_game; ///< Game model containing rules and state.
-  InputManager m_input_manager;   ///< Handles raw input processing.
-  view::sound::SoundManager m_sound_manager; ///< Handles sfx and music
+  view::GameView &m_game_view;                ///< Responsible for rendering.
+  model::ChessGame &m_chess_game;             ///< Game model containing rules and state.
+  InputManager m_input_manager;               ///< Handles raw input processing.
+  view::sound::SoundManager m_sound_manager;  ///< Handles sfx and music
 
   bool m_white_is_bot{false};
   bool m_black_is_bot{false};
@@ -154,7 +152,7 @@ private:
   bool m_selection_changed_on_press = false;
 
   std::deque<Premove> m_premove_queue;
-  bool m_premove_suspended = false; ///< Premove visuals hidden while browsing history
+  bool m_premove_suspended = false;  ///< Premove visuals hidden while browsing history
   // Temporary info while waiting for a premove promotion selection
   bool m_pending_premove_promotion = false;
   core::Square m_ppromo_from = core::NO_SQUARE;
@@ -191,4 +189,4 @@ private:
   void ensureLegalCache() const;
 };
 
-} // namespace lilia::controller
+}  // namespace lilia::controller

@@ -143,4 +143,55 @@ void Board::movePiece_noCapture(core::Square from, core::Square to) noexcept {
   m_piece_on[st] = packed;
 }
 
+void Board::movePiece_withCapture(core::Square from, core::Square capSq, core::Square to,
+                                  bb::Piece captured) noexcept {
+  const int sf = static_cast<int>(from);
+  const int sc = static_cast<int>(capSq);
+  const int st = static_cast<int>(to);
+
+  const std::uint8_t moverPacked = m_piece_on[sf];
+  if (!moverPacked) return;  // nothing to move
+
+  // Decode mover
+  const int m_ti = (moverPacked & 0x7) - 1;   // 0..5
+  const int m_ci = (moverPacked >> 3) & 0x1;  // 0/1
+  assert(m_ti >= 0 && m_ti < 6);
+
+  // Decode captured (must exist)
+  assert(captured.type != core::PieceType::None);
+  const std::uint8_t capPacked = pack_piece(captured);
+  const int c_ti = (capPacked & 0x7) - 1;   // 0..5
+  const int c_ci = (capPacked >> 3) & 0x1;  // 0/1
+  assert(c_ti >= 0 && c_ti < 6);
+
+  const bb::Bitboard fromBB = bb::sq_bb(from);
+  const bb::Bitboard capBB = bb::sq_bb(capSq);
+  const bb::Bitboard toBB = bb::sq_bb(to);
+
+  // Preconditions on squares
+  // Normal capture: capSq == to (occupied by captured)
+  // En passant:     capSq != to and 'to' is empty before move
+  if (capSq == to) {
+    // Ensure 'to' currently holds the captured (not strictly required in release)
+    // assert(m_piece_on[st] && "capture target must be occupied");
+  } else {
+    assert(m_piece_on[st] == 0 && "EP target square must be empty before the move");
+  }
+
+  // 1) Remove captured piece from its bitboards / occupancies / square
+  m_bb[c_ci][c_ti] &= ~capBB;
+  m_color_occ[c_ci] &= ~capBB;
+  m_all_occ &= ~capBB;
+  m_piece_on[sc] = 0;
+
+  // 2) Move mover from -> to (bitboards & occupancies)
+  m_bb[m_ci][m_ti] = (m_bb[m_ci][m_ti] & ~fromBB) | toBB;
+  m_color_occ[m_ci] = (m_color_occ[m_ci] & ~fromBB) | toBB;
+  m_all_occ = (m_all_occ & ~fromBB) | toBB;
+
+  // 3) Update by-square
+  m_piece_on[sf] = 0;
+  m_piece_on[st] = moverPacked;
+}
+
 }  // namespace lilia::model
