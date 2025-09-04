@@ -63,6 +63,11 @@ void HighlightManager::highlightPremoveSquare(core::Square pos) {
   m_hl_premove_squares[pos] = std::move(newPremove);
 }
 void HighlightManager::highlightRightClickSquare(core::Square pos) {
+  if (auto it = m_hl_rclick_squares.find(pos); it != m_hl_rclick_squares.end()) {
+    m_hl_rclick_squares.erase(it);
+    return;
+  }
+
   Entity newRC(TextureTable::getInstance().get(constant::STR_TEXTURE_RCLICKHLIGHT));
   newRC.setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
   m_hl_rclick_squares[pos] = std::move(newRC);
