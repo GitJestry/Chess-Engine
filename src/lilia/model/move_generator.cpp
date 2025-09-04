@@ -510,10 +510,12 @@ LILIA_ALWAYS_INLINE void generateEvasions_T(const Board& b, const GameState& st,
   bb::Bitboard checkers = 0ULL;
 
   if (us == core::Color::White) {
-    checkers |= (bb::sw(bb::sq_bb(ksq)) | bb::se(bb::sq_bb(ksq))) &
+    // black pawns attack the white king from NE/NW
+    checkers |= (bb::nw(bb::sq_bb(ksq)) | bb::ne(bb::sq_bb(ksq))) &
                 b.getPieces(core::Color::Black, core::PieceType::Pawn);
   } else {
-    checkers |= (bb::nw(bb::sq_bb(ksq)) | bb::ne(bb::sq_bb(ksq))) &
+    // white pawns attack the black king from SW/SE
+    checkers |= (bb::sw(bb::sq_bb(ksq)) | bb::se(bb::sq_bb(ksq))) &
                 b.getPieces(core::Color::White, core::PieceType::Pawn);
   }
 

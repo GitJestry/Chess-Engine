@@ -17,14 +17,14 @@ const sf::Color kLightBG(210, 215, 230);    // white side clock bg
 const sf::Color kDarkBG(33, 38, 50);        // black side clock bg
 const sf::Color kDarkText(26, 22, 30);      // text on light bg
 const sf::Color kLightText(210, 224, 255);  // text on dark bg
-const sf::Color kAccent(100, 190, 255);
+const sf::Color kAccent(225, 225, 235);     // silver highlight accent
 
 // layout
 constexpr float kScale = 0.80f;  // 20% smaller
 constexpr float kPadX = 10.f;
 constexpr float kPadY = 6.f;
 constexpr float kIconRadius = 6.f;
-constexpr float kIconOffsetX = kIconRadius + 8.f;  // small left margin
+constexpr float kIconOffsetX = kIconRadius + 12.f;  // small left margin
 constexpr float kActiveStripW = 3.f;
 
 inline float snapf(float v) {
@@ -35,11 +35,11 @@ inline sf::Color lighten(sf::Color c, int d) {
   auto clip = [](int x) { return std::clamp(x, 0, 255); };
   return sf::Color(clip(c.r + d), clip(c.g + d), clip(c.b + d), c.a);
 }
-inline sf::Color darken(sf::Color c, int d) { return lighten(c, -d); }
+inline sf::Color darken(sf::Color c, int d) {
+  return lighten(c, -d);
+}
 inline sf::Color lerp(sf::Color a, sf::Color b, float t) {
-  auto L = [&](int A, int B) {
-    return static_cast<sf::Uint8>(std::lround(A + (B - A) * t));
-  };
+  auto L = [&](int A, int B) { return static_cast<sf::Uint8>(std::lround(A + (B - A) * t)); };
   return sf::Color(L(a.r, b.r), L(a.g, b.g), L(a.b, b.b), L(a.a, b.a));
 }
 
@@ -55,8 +55,7 @@ static std::string formatTime(float seconds) {
     std::ostringstream oss;
     oss << std::setw(2) << std::setfill('0');
     if (h > 0) {
-      oss << h << ':' << std::setw(2) << m << ':' << std::setw(2) << sec << '.'
-          << (tenths % 10);
+      oss << h << ':' << std::setw(2) << m << ':' << std::setw(2) << sec << '.' << (tenths % 10);
     } else {
       oss << m << ':' << std::setw(2) << sec << '.' << (tenths % 10);
     }
