@@ -100,6 +100,8 @@ class GameView {
   void highlightPremoveSquare(core::Square pos);
   void highlightRightClickSquare(core::Square pos);
   void highlightRightClickArrow(core::Square from, core::Square to);
+  void stashRightClickHighlights();
+  void restoreRightClickHighlights();
   void clearHighlightSquare(core::Square pos);
   void clearHighlightHoverSquare(core::Square pos);
   void clearHighlightPremoveSquare(core::Square pos);
@@ -180,6 +182,9 @@ class GameView {
 
   // FX
   ParticleSystem m_particles;
+
+  std::vector<core::Square> m_saved_rclick_squares;
+  std::vector<std::pair<core::Square, core::Square>> m_saved_rclick_arrows;
 
   // eval bar toggle handled internally by EvalBar
 };

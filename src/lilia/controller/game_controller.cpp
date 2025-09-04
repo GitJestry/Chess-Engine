@@ -92,6 +92,7 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
         this->m_game_view.updateClock(core::Color::Black, tv.black);
         this->m_game_view.setClockActive(tv.active);
       }
+      this->m_game_view.restoreRightClickHighlights();
     }
 
     this->movePieceAndClear(mv, isPlayerMove, onClick);
@@ -288,6 +289,10 @@ void GameController::handleEvent(const sf::Event &event) {
 
       if (leavingFinalState) m_game_view.resetEvalBar();
 
+      if (m_fen_index == m_fen_history.size() - 1 &&
+          idx + 1 != m_fen_history.size() - 1)
+        m_game_view.stashRightClickHighlights();
+
       m_fen_index = idx + 1;
       m_game_view.setBoardFen(m_fen_history[m_fen_index]);
       m_game_view.selectMove(idx);
@@ -314,6 +319,8 @@ void GameController::handleEvent(const sf::Event &event) {
           m_game_view.setClockActive(std::nullopt);
       }
       syncCapturedPieces();
+      if (m_fen_index == m_fen_history.size() - 1)
+        m_game_view.restoreRightClickHighlights();
       return;
     }
   }
@@ -580,6 +587,7 @@ void GameController::update(float dt) {
       if (!accepted) {
         // Roll back visuals to the last known state; cancel the chain
         m_game_view.setBoardFen(m_fen_history.back());
+        m_game_view.restoreRightClickHighlights();
         clearPremove();
       } else {
         // IMPORTANT: Do NOT pop the queue here — it was already popped when
@@ -1500,6 +1508,8 @@ void GameController::stepBackward() {
     const bool leavingFinalState = (m_chess_game.getResult() != core::GameResult::ONGOING &&
                                     m_fen_index == m_fen_history.size() - 1);
 
+    if (m_fen_index == m_fen_history.size() - 1)
+      m_game_view.stashRightClickHighlights();
     m_game_view.setBoardFen(m_fen_history[m_fen_index]);
     const MoveView &info = m_move_history[m_fen_index - 1];
     core::Square epVictim = core::NO_SQUARE;
@@ -1550,6 +1560,8 @@ void GameController::stepBackward() {
         m_game_view.setClockActive(std::nullopt);
     }
     syncCapturedPieces();
+    if (m_fen_index == m_fen_history.size() - 1)
+      m_game_view.restoreRightClickHighlights();
   }
 }
 

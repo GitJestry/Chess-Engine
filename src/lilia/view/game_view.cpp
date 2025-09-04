@@ -417,6 +417,16 @@ void GameView::highlightRightClickSquare(core::Square pos) {
 void GameView::highlightRightClickArrow(core::Square from, core::Square to) {
   m_highlight_manager.highlightRightClickArrow(from, to);
 }
+void GameView::stashRightClickHighlights() {
+  m_saved_rclick_squares = m_highlight_manager.getRightClickSquares();
+  m_saved_rclick_arrows = m_highlight_manager.getRightClickArrows();
+}
+void GameView::restoreRightClickHighlights() {
+  for (auto sq : m_saved_rclick_squares)
+    m_highlight_manager.highlightRightClickSquare(sq);
+  for (const auto& ar : m_saved_rclick_arrows)
+    m_highlight_manager.highlightRightClickArrow(ar.first, ar.second);
+}
 
 void GameView::clearHighlightSquare(core::Square pos) {
   m_highlight_manager.clearHighlightSquare(pos);
