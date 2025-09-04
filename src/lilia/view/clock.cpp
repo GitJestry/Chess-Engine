@@ -35,15 +35,34 @@ inline sf::Color lighten(sf::Color c, int d) {
   auto clip = [](int x) { return std::clamp(x, 0, 255); };
   return sf::Color(clip(c.r + d), clip(c.g + d), clip(c.b + d), c.a);
 }
-inline sf::Color darken(sf::Color c, int d) {
-  return lighten(c, -d);
-}
+inline sf::Color darken(sf::Color c, int d) { return lighten(c, -d); }
 inline sf::Color lerp(sf::Color a, sf::Color b, float t) {
-  auto L = [&](int A, int B) { return static_cast<sf::Uint8>(std::lround(A + (B - A) * t)); };
+  auto L = [&](int A, int B) {
+    return static_cast<sf::Uint8>(std::lround(A + (B - A) * t));
+  };
   return sf::Color(L(a.r, b.r), L(a.g, b.g), L(a.b, b.b), L(a.a, b.a));
 }
 
 static std::string formatTime(float seconds) {
+  // Show tenths of a second when under 20 seconds, otherwise standard mm:ss.
+  if (seconds < 20.f) {
+    int tenths = static_cast<int>(seconds * 10.f);  // truncated
+    int totalSec = tenths / 10;
+    int h = totalSec / 3600;
+    int m = (totalSec % 3600) / 60;
+    int sec = totalSec % 60;
+
+    std::ostringstream oss;
+    oss << std::setw(2) << std::setfill('0');
+    if (h > 0) {
+      oss << h << ':' << std::setw(2) << m << ':' << std::setw(2) << sec << '.'
+          << (tenths % 10);
+    } else {
+      oss << m << ':' << std::setw(2) << sec << '.' << (tenths % 10);
+    }
+    return oss.str();
+  }
+
   int s = static_cast<int>(seconds + 0.5f);
   int h = s / 3600;
   int m = (s % 3600) / 60;
@@ -94,6 +113,8 @@ Clock::Clock() {
   m_text.setFont(m_font);
   m_text.setCharacterSize(18);
   m_text.setFillColor(kLightText);  // setPlayerColor() will adjust
+  m_text_base_color = kLightText;
+  m_is_light_theme = false;
   m_text.setStyle(sf::Text::Style::Bold);
 }
 
@@ -101,6 +122,8 @@ void Clock::setPlayerColor(core::Color color) {
   if (color == core::Color::White) {
     m_box.setFillColor(kLightBG);
     m_text.setFillColor(kDarkText);
+    m_text_base_color = kDarkText;
+    m_is_light_theme = true;
     // Darker accent so it pops on light bg
     sf::Color iconCol = lerp(kAccent, kDarkText, 0.45f);
     m_icon_circle.setOutlineColor(iconCol);
@@ -108,6 +131,8 @@ void Clock::setPlayerColor(core::Color color) {
   } else {
     m_box.setFillColor(kDarkBG);
     m_text.setFillColor(kLightText);
+    m_text_base_color = kLightText;
+    m_is_light_theme = false;
     // Lighter accent so it pops on dark bg
     sf::Color iconCol = lerp(kAccent, kLightText, 0.25f);
     m_icon_circle.setOutlineColor(iconCol);
@@ -138,6 +163,13 @@ void Clock::setPosition(const sf::Vector2f& pos) {
 void Clock::setTime(float seconds) {
   m_text.setString(formatTime(seconds));
 
+  // Highlight low time in red and show tenths of seconds below 20s
+  if (seconds <= 20.f) {
+    m_text.setFillColor(sf::Color(220, 70, 70));
+  } else {
+    m_text.setFillColor(m_text_base_color);
+  }
+
   // ensure the text fits: grow width if needed (height stays the same)
   const auto tb = m_text.getLocalBounds();
   auto size = m_box.getSize();
@@ -161,8 +193,8 @@ void Clock::setTime(float seconds) {
 void Clock::setActive(bool active) {
   m_active = active;
 
-  // Determine base theme by text color (avoids adding members)
-  const bool isLightTheme = (m_text.getFillColor() == kDarkText);
+  // Determine base theme from stored flag rather than current text color
+  const bool isLightTheme = m_is_light_theme;
   const sf::Color baseFill = isLightTheme ? kLightBG : kDarkBG;
 
   if (active) {
