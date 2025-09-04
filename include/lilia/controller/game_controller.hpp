@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <deque>
 #include <memory>
 #include <string>
@@ -99,7 +100,8 @@ class GameController {
   void onMouseMove(core::MousePos pos);
   void onMousePressed(core::MousePos pos);
   void onMouseReleased(core::MousePos pos);
-  void onRightClick(core::MousePos pos);
+  void onRightPressed(core::MousePos pos);
+  void onRightReleased(core::MousePos pos);
   void onClick(core::MousePos mousePos);
 
   void onDrag(core::MousePos start, core::MousePos current);
@@ -144,9 +146,12 @@ class GameController {
 
   bool m_dragging = false;
   bool m_mouse_down = false;
+  bool m_right_mouse_down = false;
   bool m_has_pending_auto_move = false;
 
   core::Square m_drag_from = core::NO_SQUARE;
+  core::Square m_right_drag_from = core::NO_SQUARE;
+  std::chrono::steady_clock::time_point m_right_press_time{};
   bool m_preview_active = false;
   core::Square m_prev_selected_before_preview = core::NO_SQUARE;
   bool m_selection_changed_on_press = false;

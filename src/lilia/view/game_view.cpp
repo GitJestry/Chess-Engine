@@ -414,6 +414,9 @@ void GameView::highlightPremoveSquare(core::Square pos) {
 void GameView::highlightRightClickSquare(core::Square pos) {
   m_highlight_manager.highlightRightClickSquare(pos);
 }
+void GameView::highlightRightClickArrow(core::Square from, core::Square to) {
+  m_highlight_manager.highlightRightClickArrow(from, to);
+}
 
 void GameView::clearHighlightSquare(core::Square pos) {
   m_highlight_manager.clearHighlightSquare(pos);
