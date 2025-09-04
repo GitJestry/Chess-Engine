@@ -183,7 +183,10 @@ void ModalView::onResize(const sf::Vector2u& windowSize, sf::Vector2f boardCente
   m_windowSize = windowSize;
   m_boardCenter = boardCenter;
   if (m_openResign) layoutCommon({windowSize.x * 0.5f, windowSize.y * 0.5f}, {360.f, 180.f});
-  if (m_openGameOver) layoutCommon(boardCenter, {380.f, 190.f});
+  if (m_openGameOver) {
+    layoutCommon(boardCenter, {380.f, 190.f});
+    layoutGameOverExtras();
+  }
 }
 
 void ModalView::layoutCommon(sf::Vector2f center, sf::Vector2f panelSize) {
@@ -247,6 +250,63 @@ void ModalView::layoutCommon(sf::Vector2f center, sf::Vector2f panelSize) {
   m_hitClose = m_btnClose.getGlobalBounds();
 }
 
+void ModalView::layoutGameOverExtras() {
+  const float W = m_panel.getSize().x;
+  const float left = m_panel.getPosition().x;
+  const float top = m_panel.getPosition().y;
+  const float centerX = left + W * 0.5f;
+
+  float textTop = top + 40.f;
+
+  if (m_showTrophy) {
+    const sf::Color gold(212, 175, 55);
+    const float cupW = 60.f;
+    const float cupH = 40.f;
+    const float stemH = 10.f;
+    const float baseH = 10.f;
+    const float trophyTop = top + 16.f;
+
+    m_trophyCup.setPointCount(4);
+    m_trophyCup.setPoint(0, {0.f, 0.f});
+    m_trophyCup.setPoint(1, {cupW, 0.f});
+    m_trophyCup.setPoint(2, {cupW * 0.8f, cupH});
+    m_trophyCup.setPoint(3, {cupW * 0.2f, cupH});
+    m_trophyCup.setFillColor(gold);
+    m_trophyCup.setPosition(snapf(centerX - cupW * 0.5f), snapf(trophyTop));
+
+    const float handleR = 12.f;
+    m_trophyHandleL.setRadius(handleR);
+    m_trophyHandleL.setPointCount(30);
+    m_trophyHandleL.setFillColor(sf::Color::Transparent);
+    m_trophyHandleL.setOutlineThickness(4.f);
+    m_trophyHandleL.setOutlineColor(gold);
+    m_trophyHandleL.setPosition(snapf(centerX - cupW * 0.5f - handleR + 1.f),
+                                snapf(trophyTop + 5.f));
+
+    m_trophyHandleR.setRadius(handleR);
+    m_trophyHandleR.setPointCount(30);
+    m_trophyHandleR.setFillColor(sf::Color::Transparent);
+    m_trophyHandleR.setOutlineThickness(4.f);
+    m_trophyHandleR.setOutlineColor(gold);
+    m_trophyHandleR.setPosition(snapf(centerX + cupW * 0.5f - handleR - 1.f),
+                                snapf(trophyTop + 5.f));
+
+    m_trophyStem.setSize({cupW * 0.3f, stemH});
+    m_trophyStem.setFillColor(gold);
+    m_trophyStem.setPosition(snapf(centerX - (cupW * 0.3f) * 0.5f), snapf(trophyTop + cupH));
+
+    m_trophyBase.setSize({cupW * 0.6f, baseH});
+    m_trophyBase.setFillColor(gold);
+    m_trophyBase.setPosition(snapf(centerX - (cupW * 0.6f) * 0.5f),
+                             snapf(trophyTop + cupH + stemH));
+
+    textTop = trophyTop + cupH + stemH + baseH + 12.f;
+  }
+
+  auto tb = m_title.getLocalBounds();
+  m_title.setPosition(snapf(centerX - tb.width * 0.5f - tb.left), snapf(textTop - tb.top));
+}
+
 void ModalView::stylePrimaryButton(sf::RectangleShape& btn, sf::Text& lbl) {
   btn.setFillColor(colAccent);
   btn.setOutlineThickness(0.f);
@@ -284,23 +344,29 @@ bool ModalView::isResignOpen() const {
 }
 
 // -------- Game Over --------
-void ModalView::showGameOver(const std::string& msg, sf::Vector2f centerOnBoard) {
+void ModalView::showGameOver(const std::string& msg, bool won, sf::Vector2f centerOnBoard) {
   m_openGameOver = true;
   m_openResign = false;
   m_boardCenter = centerOnBoard;
 
-  m_title.setString("Game Over");
-  m_msg.setString(msg);
+  m_title.setString(msg);
+  m_title.setCharacterSize(28);
+  m_title.setStyle(sf::Text::Bold);
+  m_msg.setString("");
   m_lblLeft.setString("New Bot");
   m_lblRight.setString("Rematch");
   styleSecondaryButton(m_btnLeft, m_lblLeft);
   stylePrimaryButton(m_btnRight, m_lblRight);
 
+  m_showTrophy = won;
+
   layoutCommon(centerOnBoard, {380.f, 190.f});
+  layoutGameOverExtras();
 }
 
 void ModalView::hideGameOver() {
   m_openGameOver = false;
+  m_showTrophy = false;
 }
 bool ModalView::isGameOverOpen() const {
   return m_openGameOver;
@@ -322,6 +388,15 @@ void ModalView::drawPanel(sf::RenderWindow& win) const {
   // Frame + panel body
   win.draw(m_border);
   win.draw(m_panel);
+
+  // Trophy icon (when a win occurs)
+  if (m_openGameOver && m_showTrophy) {
+    win.draw(m_trophyHandleL);
+    win.draw(m_trophyHandleR);
+    win.draw(m_trophyCup);
+    win.draw(m_trophyStem);
+    win.draw(m_trophyBase);
+  }
 
   // Title + message
   win.draw(m_title);
