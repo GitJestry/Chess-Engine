@@ -360,12 +360,35 @@ void GameController::handleEvent(const sf::Event &event) {
       if (event.mouseButton.button == sf::Mouse::Left)
         onMouseReleased(core::MousePos(event.mouseButton.x, event.mouseButton.y));
       break;
-    case sf::Event::LostFocus:
     case sf::Event::MouseLeft:
+      break;
+    case sf::Event::MouseEntered: {
+      m_mouse_down = sf::Mouse::isButtonPressed(sf::Mouse::Left);
+      if (m_dragging) {
+        core::MousePos mp = m_game_view.getMousePosition();
+        if (!m_mouse_down) {
+          snapAndReturn(m_drag_from, mp);
+          m_dragging = false;
+          m_drag_from = core::NO_SQUARE;
+          m_game_view.clearDraggingPiece();
+          m_input_manager.cancelDrag();
+          m_game_view.setDefaultCursor();
+        } else {
+          m_game_view.setPieceToMouseScreenPos(m_drag_from, mp);
+        }
+      }
+      break;
+    }
+    case sf::Event::LostFocus:
       m_mouse_down = false;
-      m_dragging = false;
-      m_drag_from = core::NO_SQUARE;
-      m_game_view.clearDraggingPiece();
+      if (m_dragging) {
+        core::MousePos mp = m_game_view.getMousePosition();
+        snapAndReturn(m_drag_from, mp);
+        m_dragging = false;
+        m_drag_from = core::NO_SQUARE;
+        m_game_view.clearDraggingPiece();
+        m_input_manager.cancelDrag();
+      }
       m_game_view.setDefaultCursor();
       break;
     default:

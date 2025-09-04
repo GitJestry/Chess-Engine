@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include <SFML/Window/Mouse.hpp>
 #include "lilia/bot/bot_info.hpp"
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
@@ -296,6 +297,11 @@ void GameView::setHandClosedCursor() {
 /* ---------- Board info ---------- */
 sf::Vector2u GameView::getWindowSize() const {
   return m_window.getSize();
+}
+
+core::MousePos GameView::getMousePosition() const {
+  sf::Vector2i mp = sf::Mouse::getPosition(m_window);
+  return core::MousePos(static_cast<unsigned>(mp.x), static_cast<unsigned>(mp.y));
 }
 
 Entity::Position GameView::getPieceSize(core::Square pos) const {

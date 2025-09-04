@@ -75,6 +75,7 @@ class GameView {
   void clearDraggingPiece();
 
   [[nodiscard]] sf::Vector2u getWindowSize() const;
+  [[nodiscard]] core::MousePos getMousePosition() const;
   [[nodiscard]] Entity::Position getPieceSize(core::Square pos) const;
 
   [[nodiscard]] bool hasPieceOnSquare(core::Square pos) const;
