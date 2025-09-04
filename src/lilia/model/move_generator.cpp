@@ -98,10 +98,18 @@ inline void compute_pins(const Board& b, Color us, const bb::Bitboard occ, PinIn
   if (!kbb) return;
   const Square ksq = static_cast<Square>(bb::ctz64(kbb));
 
-  const bb::Bitboard diagFromK = magic::sliding_attacks(magic::Slider::Bishop, ksq, occ) &
-                                 (b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Queen));
-  const bb::Bitboard orthoFromK = magic::sliding_attacks(magic::Slider::Rook, ksq, occ) &
-                                  (b.getPieces(~us, PT::Rook) | b.getPieces(~us, PT::Queen));
+  // For pin detection we need to look past our own pieces so that enemy sliders
+  // behind them become visible.  Hence, remove all of our pieces from the
+  // occupancy when tracing rays from the king.  The full occupancy is still
+  // used later when counting blockers between the king and a potential pinner.
+  const bb::Bitboard occNoUs = occ & ~b.getPieces(us);
+
+  const bb::Bitboard diagFromK =
+      magic::sliding_attacks(magic::Slider::Bishop, ksq, occNoUs) &
+      (b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Queen));
+  const bb::Bitboard orthoFromK =
+      magic::sliding_attacks(magic::Slider::Rook, ksq, occNoUs) &
+      (b.getPieces(~us, PT::Rook) | b.getPieces(~us, PT::Queen));
 
   auto try_mark = [&](Square pinnerSq) noexcept {
     const bb::Bitboard between = squares_between(ksq, pinnerSq);
