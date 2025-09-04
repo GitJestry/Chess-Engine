@@ -28,7 +28,11 @@ class Clock {
   sf::RectangleShape m_overlay;
   sf::Text m_text;
   sf::Font m_font;
+  // Remember the player's base theme/text color so low-time highlighting
+  // can temporarily override it without losing the original.
+  sf::Color m_text_base_color;
   bool m_active{false};
+  bool m_is_light_theme{false};
   sf::CircleShape m_icon_circle;
   sf::RectangleShape m_icon_hand;
 };
