@@ -1666,8 +1666,9 @@ int Evaluator::evaluate(model::Position& pos) const {
   mg_add += dev * std::min(curPhase, 12) / 12;
   eg_add += dev / 8;
 
-  mg_add += rim + outp + ract + badB + spc + block + trop;
-  eg_add += (rim / 2) + (outp / 2) + (ract / 3) + (badB / 3) + (spc / 4) + (block / 2) + trop / 6;
+  // avoid double-counting terms already mixed into mg_add/eg_add
+  mg_add += rim + badB + block + trop;
+  eg_add += (rim / 2) + (badB / 3) + (block / 2) + trop / 6;
 
   // Rook-EG-Extras & King-Activity & Passed-Pawn-Race
   eg_add += rook_endgame_extras_eg(W, B, W[0], B[0], occ);
