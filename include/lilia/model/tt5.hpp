@@ -1,5 +1,6 @@
 // include/lilia/model/tt5.hpp
 #pragma once
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -177,7 +178,9 @@ class TT5 {
         value < std::numeric_limits<int16_t>::min()   ? std::numeric_limits<int16_t>::min()
         : value > std::numeric_limits<int16_t>::max() ? std::numeric_limits<int16_t>::max()
                                                       : value);
-    const std::int16_t se16 = static_cast<std::int16_t>(staticEval);
+    const std::int16_t se16 = static_cast<std::int16_t>(
+        std::clamp(staticEval, std::numeric_limits<int16_t>::min(),
+                   std::numeric_limits<int16_t>::max()));
     const std::uint16_t mv16 = pack_move16(best);
 
     // 1) Update same key if present (no data read needed)
