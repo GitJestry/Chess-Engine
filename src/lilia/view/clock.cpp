@@ -98,7 +98,7 @@ Clock::Clock() {
   m_icon_circle.setRadius(kIconRadius);
   m_icon_circle.setOrigin(kIconRadius, kIconRadius);
   m_icon_circle.setFillColor(sf::Color::Transparent);
-  m_icon_circle.setOutlineThickness(3.f);   // stays crisp
+  m_icon_circle.setOutlineThickness(2.f);   // stays crisp
   m_icon_circle.setOutlineColor(kOutline);  // setPlayerColor() will adjust
 
   m_icon_hand.setSize({kIconRadius - 2.f, 1.f});

@@ -34,6 +34,8 @@ namespace lilia::engine {
 // Für History-Tabellen: Anzahl nicht-leerer Figurtypen (Pawn..King)
 static constexpr int PIECE_NB = 6;
 static constexpr int SQ_NB = 64;
+
+// Continuation History (prevPiece x prevTo x curTo)
 inline int16_t contHist[PIECE_NB][SQ_NB][SQ_NB]{};  // prevPiece x prevTo x curTo
 
 // -----------------------------------------------------------------------------
@@ -51,6 +53,7 @@ struct SearchStats {
 
 // Vorwärtsdeklaration
 class Evaluator;
+struct StagedPicker;
 
 // -----------------------------------------------------------------------------
 // Search – ein Instanz-pro-Thread (keine geteilten mutablen Daten)
@@ -76,6 +79,7 @@ class Search {
   model::TT5& ttRef() noexcept { return tt; }
 
  private:
+  friend struct StagedPicker;
   // Kernfunktionen
   int negamax(model::Position& pos, int depth, int alpha, int beta, int ply, model::Move& refBest,
               int parentStaticEval = 0);
@@ -109,7 +113,7 @@ class Search {
   alignas(64) model::Move counterMove[SQ_NB][SQ_NB] = {};
   alignas(64) int16_t counterHist[SQ_NB][SQ_NB] = {};
 
-  // Voriger Zug pro Ply (für CounterMove)
+  // Voriger Zug pro Ply (für CounterMove / Continuation History)
   std::array<model::Move, MAX_PLY> prevMove{};
 
   // Feste, flache Puffer pro Ply:
