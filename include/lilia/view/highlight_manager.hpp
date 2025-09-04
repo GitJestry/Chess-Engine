@@ -1,6 +1,7 @@
 #pragma once
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "../chess_types.hpp"
 #include "board_view.hpp"
@@ -19,6 +20,9 @@ class HighlightManager {
   void highlightPremoveSquare(core::Square pos);
   void highlightRightClickSquare(core::Square pos);
   void highlightRightClickArrow(core::Square from, core::Square to);
+  [[nodiscard]] std::vector<core::Square> getRightClickSquares() const;
+  [[nodiscard]] std::vector<std::pair<core::Square, core::Square>>
+      getRightClickArrows() const;
   void clearAllHighlights();
   void clearNonPremoveHighlights();
   void clearAttackHighlights();

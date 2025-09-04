@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <vector>
 
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
@@ -50,32 +51,56 @@ void HighlightManager::renderRightClick(sf::RenderWindow& window) {
   const float headLength = sqSize * 0.45f;
   const float headWidth = sqSize * 0.45f;
 
-  for (const auto& kv : m_hl_rclick_arrows) {
-    auto fromPos = m_board_view_ref.getSquareScreenPos(kv.second.first);
-    auto toPos = m_board_view_ref.getSquareScreenPos(kv.second.second);
-    sf::Vector2f start = fromPos;
-    sf::Vector2f end = toPos;
-    sf::Vector2f diff = end - start;
+  auto drawSegment = [&](sf::Vector2f s, sf::Vector2f e, bool arrowHead) {
+    sf::Vector2f diff = e - s;
     float len = std::sqrt(diff.x * diff.x + diff.y * diff.y);
-    if (len <= 0.1f) continue;
+    if (len <= 0.1f) return;
     float angle = std::atan2(diff.y, diff.x) * 180.f / std::numbers::pi_v<float>;
-    float bodyLen = std::max(0.f, len - headLength);
-
+    float bodyLen = arrowHead ? std::max(0.f, len - headLength) : len;
     sf::RectangleShape body({bodyLen, thickness});
     body.setFillColor(col);
     body.setOrigin(0.f, thickness / 2.f);
-    body.setPosition(start);
+    body.setPosition(s);
     body.setRotation(angle);
     window.draw(body);
 
-    sf::ConvexShape head(3);
-    head.setPoint(0, {0.f, 0.f});
-    head.setPoint(1, {-headLength, headWidth / 2.f});
-    head.setPoint(2, {-headLength, -headWidth / 2.f});
-    head.setFillColor(col);
-    head.setPosition(end);
-    head.setRotation(angle);
-    window.draw(head);
+    if (arrowHead) {
+      sf::ConvexShape head(3);
+      head.setPoint(0, {0.f, 0.f});
+      head.setPoint(1, {-headLength, headWidth / 2.f});
+      head.setPoint(2, {-headLength, -headWidth / 2.f});
+      head.setFillColor(col);
+      head.setPosition(e);
+      head.setRotation(angle);
+      window.draw(head);
+    }
+  };
+
+  for (const auto& kv : m_hl_rclick_arrows) {
+    core::Square fromSq = kv.second.first;
+    core::Square toSq = kv.second.second;
+    auto fromPos = m_board_view_ref.getSquareScreenPos(fromSq);
+    auto toPos = m_board_view_ref.getSquareScreenPos(toSq);
+
+    int fx = static_cast<int>(fromSq) & 7;
+    int fy = static_cast<int>(fromSq) >> 3;
+    int tx = static_cast<int>(toSq) & 7;
+    int ty = static_cast<int>(toSq) >> 3;
+    int adx = std::abs(tx - fx);
+    int ady = std::abs(ty - fy);
+    bool knight = (adx == 1 && ady == 2) || (adx == 2 && ady == 1);
+
+    if (knight) {
+      int cornerFile = (ady > adx) ? fx : tx;
+      int cornerRank = (ady > adx) ? ty : fy;
+      core::Square cornerSq = static_cast<core::Square>(
+          cornerFile + cornerRank * constant::BOARD_SIZE);
+      sf::Vector2f corner = m_board_view_ref.getSquareScreenPos(cornerSq);
+      drawSegment(fromPos, corner, false);
+      drawSegment(corner, toPos, true);
+    } else {
+      drawSegment(fromPos, toPos, true);
+    }
   }
 }
 
@@ -124,6 +149,21 @@ void HighlightManager::highlightRightClickArrow(core::Square from, core::Square 
     return;
   }
   m_hl_rclick_arrows[key] = {from, to};
+}
+
+std::vector<core::Square> HighlightManager::getRightClickSquares() const {
+  std::vector<core::Square> out;
+  out.reserve(m_hl_rclick_squares.size());
+  for (const auto& kv : m_hl_rclick_squares) out.push_back(kv.first);
+  return out;
+}
+
+std::vector<std::pair<core::Square, core::Square>>
+HighlightManager::getRightClickArrows() const {
+  std::vector<std::pair<core::Square, core::Square>> out;
+  out.reserve(m_hl_rclick_arrows.size());
+  for (const auto& kv : m_hl_rclick_arrows) out.push_back(kv.second);
+  return out;
 }
 void HighlightManager::clearAllHighlights() {
   m_hl_select_squares.clear();
