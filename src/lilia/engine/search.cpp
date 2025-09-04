@@ -51,23 +51,6 @@ inline int decode_tt_score(int s, int ply) {
   return s;
 }
 
-// ---- LMR-Reduktionstabelle (Depth<=64, Move#<=64) ----
-static int LMR_RED[65][65];
-static std::once_flag LMR_once;
-
-static void init_LMR_table() {
-  std::call_once(LMR_once, [] {
-    for (int d = 0; d <= 64; ++d)
-      for (int m = 0; m <= 64; ++m) {
-        double rd = (d <= 1 ? 0.0 : 0.33 + std::log((double)d) * std::log(2.0 + (double)m) / 3.6);
-        int r = (int)rd;
-        if (r < 0) r = 0;
-        if (r > d - 1) r = std::max(0, d - 1);
-        LMR_RED[d][m] = r;
-      }
-  });
-}
-
 static inline bool improving(int staticEval, int parentEval) {
   return staticEval > parentEval - 8;
 }
@@ -419,7 +402,6 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 
 int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int ply,
                     model::Move& refBest, int parentStaticEval) {
-  init_LMR_table();
   stats.nodes++;
   check_stop(stopFlag);
 
