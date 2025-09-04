@@ -42,14 +42,16 @@ void HighlightManager::renderSelect(sf::RenderWindow& window) {
 void HighlightManager::renderPremove(sf::RenderWindow& window) {
   renderEntitiesToBoard(m_hl_premove_squares, window);
 }
-void HighlightManager::renderRightClick(sf::RenderWindow& window) {
+void HighlightManager::renderRightClickSquares(sf::RenderWindow& window) {
   renderEntitiesToBoard(m_hl_rclick_squares, window);
-
+}
+void HighlightManager::renderRightClickArrows(sf::RenderWindow& window) {
   const sf::Color col(255, 80, 80, 170);
   const float sqSize = static_cast<float>(constant::SQUARE_PX_SIZE);
   const float thickness = sqSize * 0.15f;
   const float headLength = sqSize * 0.45f;
   const float headWidth = sqSize * 0.45f;
+  const float edgeOffset = sqSize * 0.5f * 0.9f;
 
   auto drawSegment = [&](sf::Vector2f s, sf::Vector2f e, bool arrowHead) {
     sf::Vector2f diff = e - s;
@@ -96,10 +98,27 @@ void HighlightManager::renderRightClick(sf::RenderWindow& window) {
       core::Square cornerSq = static_cast<core::Square>(
           cornerFile + cornerRank * constant::BOARD_SIZE);
       sf::Vector2f corner = m_board_view_ref.getSquareScreenPos(cornerSq);
-      drawSegment(fromPos, corner, false);
+
+      int dx1 = cornerFile - fx;
+      int dy1 = cornerRank - fy;
+      sf::Vector2f start = fromPos;
+      start.x += (dx1 > 0 ? edgeOffset : dx1 < 0 ? -edgeOffset : 0.f);
+      start.y += (dy1 > 0 ? edgeOffset : dy1 < 0 ? -edgeOffset : 0.f);
+
+      drawSegment(start, corner, false);
       drawSegment(corner, toPos, true);
+      sf::CircleShape joint(thickness / 2.f);
+      joint.setOrigin(thickness / 2.f, thickness / 2.f);
+      joint.setFillColor(col);
+      joint.setPosition(corner);
+      window.draw(joint);
     } else {
-      drawSegment(fromPos, toPos, true);
+      sf::Vector2f start = fromPos;
+      int sgnX = (tx > fx) ? 1 : (tx < fx ? -1 : 0);
+      int sgnY = (ty > fy) ? 1 : (ty < fy ? -1 : 0);
+      start.x += sgnX * edgeOffset;
+      start.y += sgnY * edgeOffset;
+      drawSegment(start, toPos, true);
     }
   }
 }
