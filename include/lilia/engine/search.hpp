@@ -68,7 +68,11 @@ class Search {
 
   // Root (iterative deepening, parallel auf Root-Children)
   int search_root_parallel(model::Position& pos, int depth, std::shared_ptr<std::atomic<bool>> stop,
-                           int maxThreads = 0);
+                           int maxThreads = 0, std::uint64_t maxNodes = 0);
+  void set_node_limit(std::shared_ptr<std::atomic<std::uint64_t>> shared, std::uint64_t limit) {
+    sharedNodes = std::move(shared);
+    nodeLimit = limit;
+  }
 
   [[nodiscard]] const SearchStats& getStats() const noexcept { return stats; }
   void clearSearchState();  // Killers/History resetten
@@ -122,6 +126,8 @@ class Search {
   // Stop/Stats
   std::shared_ptr<std::atomic<bool>> stopFlag;
   SearchStats stats;
+  std::shared_ptr<std::atomic<std::uint64_t>> sharedNodes;
+  std::uint64_t nodeLimit = 0;
 };
 
 }  // namespace lilia::engine

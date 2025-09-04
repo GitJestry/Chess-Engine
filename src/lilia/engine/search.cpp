@@ -214,6 +214,8 @@ Search::Search(model::TT5& tt_, std::shared_ptr<const Evaluator> eval_, const En
   std::fill(&contHist[0][0][0], &contHist[0][0][0] + PIECE_NB * SQ_NB * SQ_NB, 0);
 
   stopFlag.reset();
+  sharedNodes.reset();  // NEW
+  nodeLimit = 0;        // NEW
   stats = SearchStats{};
 }
 
@@ -227,6 +229,13 @@ int Search::signed_eval(model::Position& pos) {
 
 int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   stats.nodes++;
+  if (sharedNodes) {
+    auto now = sharedNodes->fetch_add(1, std::memory_order_relaxed) + 1;
+    if (nodeLimit && now >= nodeLimit) {
+      if (stopFlag) stopFlag->store(true, std::memory_order_relaxed);
+      throw SearchStoppedException();
+    }
+  }
   check_stop(stopFlag);
 
   if (ply >= MAX_PLY - 2) return signed_eval(pos);
@@ -403,6 +412,13 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int ply,
                     model::Move& refBest, int parentStaticEval) {
   stats.nodes++;
+  if (sharedNodes) {
+    auto now = sharedNodes->fetch_add(1, std::memory_order_relaxed) + 1;
+    if (nodeLimit && now >= nodeLimit) {
+      if (stopFlag) stopFlag->store(true, std::memory_order_relaxed);
+      throw SearchStoppedException();
+    }
+  }
   check_stop(stopFlag);
 
   if (ply >= MAX_PLY - 2) return signed_eval(pos);
@@ -792,9 +808,15 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
 // ---------- Root Search (parallel, Work-Queue, fixes) ----------
 
 int Search::search_root_parallel(model::Position& pos, int maxDepth,
-                                 std::shared_ptr<std::atomic<bool>> stop, int maxThreads) {
+                                 std::shared_ptr<std::atomic<bool>> stop, int maxThreads,
+                                 std::uint64_t maxNodes /* = 0 */) {
   this->stopFlag = stop;
   stats = SearchStats{};
+
+  // Shared node counter for optional node cap (0 = unlimited)
+  auto sharedNodeCounter = std::make_shared<std::atomic<std::uint64_t>>(0);
+  this->sharedNodes = sharedNodeCounter;
+  this->nodeLimit = maxNodes;
 
   auto t0 = steady_clock::now();
   auto update_time_stats = [&] {
@@ -811,7 +833,6 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
   }
 
   // Root-Moves
-  // (hier können wir weiter die vector-Variante nutzen: ist nur 64 Moves max & nicht super hot)
   std::vector<model::Move> rootMoves;
   mg.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), rootMoves);
   if (rootMoves.empty()) {
@@ -880,39 +901,47 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
         tt.prefetch(child.hash());
         Search worker(tt, eval_, cfg);
         worker.stopFlag = stop;
+        worker.set_node_limit(sharedNodeCounter, maxNodes);  // node cap
         worker.prevMove[0] = m0;
+
         model::Move ref{};
-
         int s = 0;
-        if (!cfg.useAspiration || depth - 1 < 3 || is_mate_score(lastScoreGuess)) {
-          s = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
-        } else {
-          int w = std::max(12, cfg.aspirationWindow);
-          int low = lastScoreGuess - w, high = lastScoreGuess + w;
-          for (int tries = 0; tries < 3; ++tries) {
-            s = -worker.negamax(child, depth - 1, -high, -low, 1, ref);
-            s = std::clamp(s, -MATE + 1, MATE - 1);
-            if (!is_mate_score(s) && s > low && s < high) break;
-            const int step = 64 + 16 * tries;
-            if (s <= low)
-              low -= step;
-            else if (s >= high)
-              high += step;
-            else
-              break;
-            if (is_mate_score(s)) break;
-          }
-          if (!(s > (lastScoreGuess - std::max(12, cfg.aspirationWindow)) &&
-                s < (lastScoreGuess + std::max(12, cfg.aspirationWindow)))) {
+        try {
+          if (!cfg.useAspiration || depth - 1 < 3 || is_mate_score(lastScoreGuess)) {
             s = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+          } else {
+            int w = std::max(12, cfg.aspirationWindow);
+            int low = lastScoreGuess - w, high = lastScoreGuess + w;
+            for (int tries = 0; tries < 3; ++tries) {
+              s = -worker.negamax(child, depth - 1, -high, -low, 1, ref);
+              s = std::clamp(s, -MATE + 1, MATE - 1);
+              if (!is_mate_score(s) && s > low && s < high) break;
+              const int step = 64 + 16 * tries;
+              if (s <= low)
+                low -= step;
+              else if (s >= high)
+                high += step;
+              else
+                break;
+              if (is_mate_score(s)) break;
+            }
+            if (!(s > (lastScoreGuess - std::max(12, cfg.aspirationWindow)) &&
+                  s < (lastScoreGuess + std::max(12, cfg.aspirationWindow)))) {
+              s = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+            }
           }
+        } catch (const SearchStoppedException&) {
+          // Stop cleanly with whatever we have so far
+          if (stop) stop->store(true, std::memory_order_relaxed);
+          update_time_stats();
+          this->stopFlag.reset();
+          return stats.bestScore;
         }
-        s = std::clamp(s, -MATE + 1, MATE - 1);
 
+        s = std::clamp(s, -MATE + 1, MATE - 1);
         results[0].nullScore.store(s, std::memory_order_relaxed);
         results[0].fullScore.store(s, std::memory_order_relaxed);
         sharedAlpha.store(s, std::memory_order_relaxed);
-
         stats.nodes += worker.getStats().nodes;
       }
     }
@@ -926,42 +955,47 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     auto workerFn = [&](int /*threadId*/) {
       Search worker(tt, eval_, cfg);
       worker.stopFlag = stop;
+      worker.set_node_limit(sharedNodeCounter, maxNodes);  // node cap
+      try {
+        for (;;) {
+          if (stop && stop->load()) break;
+          int i = idx.fetch_add(1, std::memory_order_relaxed);
+          if (i >= total) break;
 
-      for (;;) {
-        if (stop && stop->load()) break;
-        int i = idx.fetch_add(1, std::memory_order_relaxed);
-        if (i >= total) break;
+          const model::Move m = rootMoves[i];
+          model::Position child = pos;
+          if (!child.doMove(m)) continue;
 
-        const model::Move m = rootMoves[i];
-        model::Position child = pos;
-        if (!child.doMove(m)) continue;
+          tt.prefetch(child.hash());
+          worker.prevMove[0] = m;
+          model::Move ref{};
 
-        tt.prefetch(child.hash());
-        worker.prevMove[0] = m;
-        model::Move ref{};
+          int localAlpha = sharedAlpha.load(std::memory_order_relaxed);
 
-        int localAlpha = sharedAlpha.load(std::memory_order_relaxed);
-
-        uint64_t before = worker.getStats().nodes;
-        int sN = -worker.negamax(child, depth - 1, -(localAlpha + 1), -localAlpha, 1, ref);
-        sN = std::clamp(sN, -MATE + 1, MATE - 1);
-        nodesAcc.fetch_add(worker.getStats().nodes - before, std::memory_order_relaxed);
-
-        results[i].nullScore.store(sN, std::memory_order_relaxed);
-
-        if (sN >= localAlpha && !(stop && stop->load())) {
-          before = worker.getStats().nodes;
-          int sF = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
-          sF = std::clamp(sF, -MATE + 1, MATE - 1);
+          uint64_t before = worker.getStats().nodes;
+          int sN = -worker.negamax(child, depth - 1, -(localAlpha + 1), -localAlpha, 1, ref);
+          sN = std::clamp(sN, -MATE + 1, MATE - 1);
           nodesAcc.fetch_add(worker.getStats().nodes - before, std::memory_order_relaxed);
 
-          results[i].fullScore.store(sF, std::memory_order_relaxed);
+          results[i].nullScore.store(sN, std::memory_order_relaxed);
 
-          int cur = localAlpha;
-          while (sF > cur &&
-                 !sharedAlpha.compare_exchange_weak(cur, sF, std::memory_order_relaxed)) {
+          if (sN >= localAlpha && !(stop && stop->load())) {
+            before = worker.getStats().nodes;
+            int sF = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+            sF = std::clamp(sF, -MATE + 1, MATE - 1);
+            nodesAcc.fetch_add(worker.getStats().nodes - before, std::memory_order_relaxed);
+
+            results[i].fullScore.store(sF, std::memory_order_relaxed);
+
+            int cur = localAlpha;
+            while (sF > cur &&
+                   !sharedAlpha.compare_exchange_weak(cur, sF, std::memory_order_relaxed)) {
+            }
           }
         }
+      } catch (const SearchStoppedException&) {
+        if (stop) stop->store(true, std::memory_order_relaxed);
+        // thread exits quietly
       }
     };
 
@@ -979,34 +1013,89 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     }
     stats.nodes += nodesAcc.load(std::memory_order_relaxed);
 
-    // 3) Confirm-Pass
-    const int bestAlphaNow = sharedAlpha.load(std::memory_order_relaxed);
+    // --- NEW: sequential fallback so 1-thread works and to mop up any leftovers ---
     for (int i = 1; i < total; ++i) {
       if (stop && stop->load()) break;
-      const int sN = results[i].nullScore.load(std::memory_order_relaxed);
-      const int sF = results[i].fullScore.load(std::memory_order_relaxed);
-      if (sF != std::numeric_limits<int>::min()) continue;
-      if (sN < bestAlphaNow) continue;
+      if (results[i].nullScore.load(std::memory_order_relaxed) != std::numeric_limits<int>::min())
+        continue;  // already processed by a worker
 
       model::Position child = pos;
       if (!child.doMove(rootMoves[i])) continue;
 
       Search worker(tt, eval_, cfg);
       worker.stopFlag = stop;
+      worker.set_node_limit(sharedNodeCounter, maxNodes);  // node cap
       worker.prevMove[0] = rootMoves[i];
-      model::Move ref{};
-      uint64_t before = worker.getStats().nodes;
-      int sF2 = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
-      sF2 = std::clamp(sF2, -MATE + 1, MATE - 1);
-      results[i].fullScore.store(sF2, std::memory_order_relaxed);
-      stats.nodes += worker.getStats().nodes - before;
 
-      int cur = sharedAlpha.load(std::memory_order_relaxed);
-      while (sF2 > cur && !sharedAlpha.compare_exchange_weak(cur, sF2, std::memory_order_relaxed)) {
+      model::Move ref{};
+      try {
+        int localAlpha = sharedAlpha.load(std::memory_order_relaxed);
+
+        std::uint64_t before = worker.getStats().nodes;
+        int sN = -worker.negamax(child, depth - 1, -(localAlpha + 1), -localAlpha, 1, ref);
+        sN = std::clamp(sN, -MATE + 1, MATE - 1);
+        results[i].nullScore.store(sN, std::memory_order_relaxed);
+        stats.nodes += worker.getStats().nodes - before;
+
+        if (sN >= localAlpha && !(stop && stop->load())) {
+          before = worker.getStats().nodes;
+          int sF = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+          sF = std::clamp(sF, -MATE + 1, MATE - 1);
+          results[i].fullScore.store(sF, std::memory_order_relaxed);
+          stats.nodes += worker.getStats().nodes - before;
+
+          int cur = localAlpha;
+          while (sF > cur &&
+                 !sharedAlpha.compare_exchange_weak(cur, sF, std::memory_order_relaxed)) {
+          }
+        }
+      } catch (const SearchStoppedException&) {
+        if (stop) stop->store(true, std::memory_order_relaxed);
+        break;  // leave fallback loop
       }
     }
 
+    // 3) Confirm-Pass (guarded)
+    try {
+      const int bestAlphaNow = sharedAlpha.load(std::memory_order_relaxed);
+      for (int i = 1; i < total; ++i) {
+        if (stop && stop->load()) break;
+        const int sN = results[i].nullScore.load(std::memory_order_relaxed);
+        const int sF = results[i].fullScore.load(std::memory_order_relaxed);
+        if (sF != std::numeric_limits<int>::min()) continue;
+        if (sN < bestAlphaNow) continue;
+
+        model::Position child = pos;
+        if (!child.doMove(rootMoves[i])) continue;
+
+        Search worker(tt, eval_, cfg);
+        worker.stopFlag = stop;
+        worker.set_node_limit(sharedNodeCounter, maxNodes);  // node cap
+        worker.prevMove[0] = rootMoves[i];
+
+        model::Move ref{};
+        std::uint64_t before = worker.getStats().nodes;
+        int sF2 = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+        sF2 = std::clamp(sF2, -MATE + 1, MATE - 1);
+        results[i].fullScore.store(sF2, std::memory_order_relaxed);
+        stats.nodes += worker.getStats().nodes - before;
+
+        int cur = sharedAlpha.load(std::memory_order_relaxed);
+        while (sF2 > cur &&
+               !sharedAlpha.compare_exchange_weak(cur, sF2, std::memory_order_relaxed)) {
+        }
+      }
+    } catch (const SearchStoppedException&) {
+      if (stop) stop->store(true, std::memory_order_relaxed);
+      // fall through to ranking with what we have
+    }
+
     // 4) Ranking
+    // If we were interrupted this iteration, keep the previous depth's result.
+    if (stop && stop->load()) {
+      break;  // exits the depth loop without touching stats
+    }
+
     std::vector<std::pair<int, model::Move>> depthCand;
     depthCand.reserve(total);
     for (int i = 0; i < total; ++i) {
@@ -1015,6 +1104,12 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       int s = (sF != std::numeric_limits<int>::min()) ? sF : sN;
       depthCand.emplace_back(s, rootMoves[i]);
     }
+
+    // If nothing was searched (e.g., immediate stop), keep last stats and bail.
+    bool anyScored = std::any_of(depthCand.begin(), depthCand.end(), [](const auto& p) {
+      return p.first != std::numeric_limits<int>::min();
+    });
+    if (!anyScored) break;
 
     int NDISPLAY = (depth >= 6 ? 2 : 1);
     NDISPLAY = std::min<int>(NDISPLAY, (int)depthCand.size());
