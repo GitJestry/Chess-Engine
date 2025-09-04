@@ -36,7 +36,8 @@ class HighlightManager {
   void renderHover(sf::RenderWindow& window);
   void renderSelect(sf::RenderWindow& window);
   void renderPremove(sf::RenderWindow& window);
-  void renderRightClick(sf::RenderWindow& window);
+  void renderRightClickSquares(sf::RenderWindow& window);
+  void renderRightClickArrows(sf::RenderWindow& window);
 
  private:
   void renderEntitiesToBoard(std::unordered_map<core::Square, Entity>& map,

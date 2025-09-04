@@ -99,11 +99,12 @@ void GameView::render() {
   m_highlight_manager.renderPremove(m_window);
   m_chess_animator.renderHighlightLevel(m_window);
   m_highlight_manager.renderHover(m_window);
+  m_highlight_manager.renderRightClickSquares(m_window);
 
   // REAL pieces below animations
-  m_highlight_manager.renderRightClick(m_window);
   m_piece_manager.renderPieces(m_window, m_chess_animator);
   m_highlight_manager.renderAttack(m_window);
+  m_highlight_manager.renderRightClickArrows(m_window);
 
   // Animations and ghosts: ensure promotion overlay stays on top
   const bool inPromotion = isInPromotionSelection();
