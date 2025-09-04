@@ -242,16 +242,18 @@ static inline void pack_magic_vectors_to_flat(const std::array<std::vector<bb::B
                                               std::vector<bb::Bitboard>& arena) {
   std::uint32_t cur = 0;
   arena.clear();
-  arena.reserve(1 << 16);  // genug; wächst bei Bedarf
+  arena.reserve(1 << 16);
 
   for (int i = 0; i < 64; ++i) {
     off[i] = cur;
-    len[i] = static_cast<std::uint16_t>(src[i].empty() ? 1 : src[i].size());
-    arena.insert(arena.end(), src[i].begin(), src[i].end());
-    cur += len[i];
     if (src[i].empty()) {
-      arena.push_back(0);  // safety for len==1
+      len[i] = 1;
+      arena.push_back(0);
       ++cur;
+    } else {
+      len[i] = static_cast<std::uint16_t>(src[i].size());
+      arena.insert(arena.end(), src[i].begin(), src[i].end());
+      cur += len[i];
     }
   }
 }
