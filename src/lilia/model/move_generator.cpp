@@ -34,7 +34,7 @@ inline SideSets side_sets(const Board& b, Color c) noexcept {
 // Precompute squares_between(a,b) -> Bitboard der strikt dazwischen liegenden Felder.
 // Beschleunigt Pins und Evasions spürbar.
 
-inline bb::Bitboard compute_between_single(int ai, int bi) noexcept {
+constexpr bb::Bitboard compute_between_single(int ai, int bi) noexcept {
   if (ai == bi) return 0ULL;
   const int d = bi - ai;
   int step = 0;
@@ -50,16 +50,19 @@ inline bb::Bitboard compute_between_single(int ai, int bi) noexcept {
     return 0ULL;
 
   bb::Bitboard mask = 0ULL;
-  for (int cur = ai + step; cur != bi; cur += step) mask |= bb::sq_bb(static_cast<Square>(cur));
+  for (int cur = ai + step; cur != bi; cur += step)
+    mask |= bb::sq_bb(static_cast<Square>(cur));
   return mask;
 }
 
-std::array<std::array<bb::Bitboard, 64>, 64> Between = [] {
+constexpr std::array<std::array<bb::Bitboard, 64>, 64> build_between_table() {
   std::array<std::array<bb::Bitboard, 64>, 64> T{};
   for (int a = 0; a < 64; ++a)
     for (int b = 0; b < 64; ++b) T[a][b] = compute_between_single(a, b);
   return T;
-}();
+}
+
+inline constexpr auto Between = build_between_table();
 
 inline bb::Bitboard squares_between(Square a, Square b) noexcept {
   return Between[(int)a][(int)b];
@@ -97,19 +100,22 @@ inline void compute_pins(const Board& b, Color us, const bb::Bitboard occ, PinIn
   const bb::Bitboard kbb = b.getPieces(us, PT::King);
   if (!kbb) return;
   const Square ksq = static_cast<Square>(bb::ctz64(kbb));
+  const bb::Bitboard ourPieces = b.getPieces(us);
+  const bb::Bitboard oppBishQueens =
+      b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Queen);
+  const bb::Bitboard oppRookQueens =
+      b.getPieces(~us, PT::Rook) | b.getPieces(~us, PT::Queen);
 
   // For pin detection we need to look past our own pieces so that enemy sliders
-  // behind them become visible.  Hence, remove all of our pieces from the
-  // occupancy when tracing rays from the king.  The full occupancy is still
-  // used later when counting blockers between the king and a potential pinner.
-  const bb::Bitboard occNoUs = occ & ~b.getPieces(us);
+  // behind them become visible. Hence, remove our pieces when tracing rays
+  // from the king.  The full occupancy is still used later when counting
+  // blockers between the king and a potential pinner.
+  const bb::Bitboard occNoUs = occ & ~ourPieces;
 
   const bb::Bitboard diagFromK =
-      magic::sliding_attacks(magic::Slider::Bishop, ksq, occNoUs) &
-      (b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Queen));
+      magic::sliding_attacks(magic::Slider::Bishop, ksq, occNoUs) & oppBishQueens;
   const bb::Bitboard orthoFromK =
-      magic::sliding_attacks(magic::Slider::Rook, ksq, occNoUs) &
-      (b.getPieces(~us, PT::Rook) | b.getPieces(~us, PT::Queen));
+      magic::sliding_attacks(magic::Slider::Rook, ksq, occNoUs) & oppRookQueens;
 
   auto try_mark = [&](Square pinnerSq) noexcept {
     const bb::Bitboard between = squares_between(ksq, pinnerSq);
@@ -117,9 +123,8 @@ inline void compute_pins(const Board& b, Color us, const bb::Bitboard occ, PinIn
     const bb::Bitboard blockers = between & occ;
     // exactly one bit?  (x != 0) && (x & (x-1)) == 0
     if (!blockers || (blockers & (blockers - 1))) return;
-    const bb::Bitboard ours = blockers & b.getPieces(us);
-    if (!ours) return;
-    const Square pinnedSq = static_cast<Square>(bb::ctz64(ours));
+    if (!(blockers & ourPieces)) return;
+    const Square pinnedSq = static_cast<Square>(bb::ctz64(blockers));
     out.add(pinnedSq, between | bb::sq_bb(pinnerSq));
   };
 
