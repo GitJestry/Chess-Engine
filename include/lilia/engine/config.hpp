@@ -11,8 +11,10 @@ struct EngineConfig {
   int aspirationWindow = 20;    // nicht zu eng, sonst Re-Search-Flapping
   int threads = 0;              // 0 => auto(HW); Engine begrenzt ohnehin
   bool useLMP = true;           // Late Move Pruning (quiet, flach)
-  int lmpDepthMax = 3;          // nur für Tiefe <= 3
-  int lmpBase = 2;              // Schwelle ~ lmpBase + depth*depth
+  bool useIID = true;
+  bool useSingular = true;
+  int lmpDepthMax = 3;  // nur für Tiefe <= 3
+  int lmpBase = 2;      // Schwelle ~ lmpBase + depth*depth
 
   bool useFutility = true;  // Futility bei depth==1, quiet
   int futilityMargin = 125;

@@ -18,13 +18,13 @@ inline std::string square_to_uci(int sq) {
 }
 
 inline std::string move_to_uci(const model::Move& m) {
-  if (m.from < 0 || m.to < 0) return "----";
+  if (m.from() < 0 || m.to() < 0) return "----";
 
-  std::string uci = square_to_uci(m.from) + square_to_uci(m.to);
+  std::string uci = square_to_uci(m.from()) + square_to_uci(m.to());
   using core::PieceType;
-  if (m.promotion != PieceType::None) {
+  if (m.promotion() != PieceType::None) {
     char p = 'q';
-    switch (m.promotion) {
+    switch (m.promotion()) {
       case PieceType::Knight:
         p = 'n';
         break;
@@ -47,4 +47,4 @@ inline std::string move_to_uci(const model::Move& m) {
   return uci;
 }
 
-}  // namespace lilia::uci
+}  // namespace lilia

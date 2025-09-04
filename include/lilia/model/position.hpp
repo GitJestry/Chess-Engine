@@ -59,6 +59,7 @@ class Position {
 
   bool inCheck() const;
   bool see(const model::Move& m) const;
+  bool isPseudoLegal(const Move& m) const;
 
   const engine::EvalAcc& getEvalAcc() const noexcept { return evalAcc_; }
   void rebuildEvalAcc() { evalAcc_.build_from_board(m_board); }

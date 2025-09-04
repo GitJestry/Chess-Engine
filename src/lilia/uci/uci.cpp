@@ -235,7 +235,7 @@ int UCI::run() {
             best = model::Move{};
           }
 
-          if (best.from >= 0 && best.to >= 0) {
+          if (best.from() >= 0 && best.to() >= 0) {
             std::cout << "bestmove " << move_to_uci(best) << "\n";
           } else {
             std::cout << "bestmove 0000\n";

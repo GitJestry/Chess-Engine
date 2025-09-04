@@ -21,6 +21,7 @@ struct Engine::Impl {
   explicit Impl(const EngineConfig& c) : cfg(c), tt(c.ttSizeMb) {
     unsigned hw = std::thread::hardware_concurrency();
     int logical = (hw > 0 ? (int)hw : 1);
+    logical = logical - logical / 4;
 
     if (cfg.threads <= 0) {
       cfg.threads = std::max(1, logical - 1);  // auto
@@ -79,7 +80,7 @@ std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxD
     auto& tt = pimpl->search->ttRef();
     if (auto e = tt.probe(pos.hash())) {
       model::Move ttMove = e->best;
-      if (ttMove.from >= 0 && ttMove.to >= 0) {
+      if (ttMove.from() >= 0 && ttMove.to() >= 0) {
         model::Position tmp = pos;
         if (tmp.doMove(ttMove))  // legal?
           return ttMove;
@@ -105,7 +106,7 @@ std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxD
       model::Position tmp = pos;
       if (!tmp.doMove(m)) continue;  // illegal -> raus
 
-      if (m.isCapture || m.promotion != core::PieceType::None) {
+      if (m.isCapture() || m.promotion() != core::PieceType::None) {
         int sc = mvv_lva_fast(pos, m);  // vorhandene Heuristik
         if (!bestCapPromo || sc > bestCapScore) {
           bestCapPromo = m;

@@ -572,39 +572,39 @@ LILIA_ALWAYS_INLINE void generateEvasions_T(const Board& b, const GameState& st,
     genPawnMoves_T<core::Color::White>(
         b, st, occ, our, opp, pins,
         [&](const Move& m) noexcept {
-          if (bb::sq_bb(m.to) & evasionTargets) emit(m);
+          if (bb::sq_bb(m.to()) & evasionTargets) emit(m);
         },
         evasionTargets);
   else
     genPawnMoves_T<core::Color::Black>(
         b, st, occ, our, opp, pins,
         [&](const Move& m) noexcept {
-          if (bb::sq_bb(m.to) & evasionTargets) emit(m);
+          if (bb::sq_bb(m.to()) & evasionTargets) emit(m);
         },
         evasionTargets);
 
   genKnightMoves_T(
       our, opp, occ, pins,
       [&](const Move& m) noexcept {
-        if (bb::sq_bb(m.to) & evasionTargets) emit(m);
+        if (bb::sq_bb(m.to()) & evasionTargets) emit(m);
       },
       evasionTargets);
   genBishopMoves_T(
       our, opp, occ, pins,
       [&](const Move& m) noexcept {
-        if (bb::sq_bb(m.to) & evasionTargets) emit(m);
+        if (bb::sq_bb(m.to()) & evasionTargets) emit(m);
       },
       evasionTargets);
   genRookMoves_T(
       our, opp, occ, pins,
       [&](const Move& m) noexcept {
-        if (bb::sq_bb(m.to) & evasionTargets) emit(m);
+        if (bb::sq_bb(m.to()) & evasionTargets) emit(m);
       },
       evasionTargets);
   genQueenMoves_T(
       our, opp, occ, pins,
       [&](const Move& m) noexcept {
-        if (bb::sq_bb(m.to) & evasionTargets) emit(m);
+        if (bb::sq_bb(m.to()) & evasionTargets) emit(m);
       },
       evasionTargets);
 
@@ -645,7 +645,7 @@ struct AcceptAny {
 };
 struct AcceptCaptures {
   LILIA_ALWAYS_INLINE bool operator()(const Move& m) const noexcept {
-    return m.isCapture || m.promotion != PT::None;
+    return m.isCapture() || m.promotion() != PT::None;
   }
 };
 
@@ -666,8 +666,8 @@ LILIA_ALWAYS_INLINE void generate_all_regular(const Board& b, const GameState& s
 
   auto gated_emit = [&](const Move& m) noexcept {
     // King moves are never filtered by pins; others already pin-filtered in gens.
-    if (m.from == ksq || (pins.pinned & bb::sq_bb(m.from)) == 0ULL ||
-        (pins.allow_mask(m.from) & bb::sq_bb(m.to)))
+    if (m.from() == ksq || (pins.pinned & bb::sq_bb(m.from())) == 0ULL ||
+        (pins.allow_mask(m.from()) & bb::sq_bb(m.to())))
       if (accept(m)) emit(m);
   };
 

@@ -195,12 +195,12 @@ static inline int gen_evasions(model::MoveGenerator& mg, model::Position& pos, m
 static inline bool quiet_pawn_push_creates_attack(const model::Board& b, const model::Move& m,
                                                   core::Color us) {
   using PT = core::PieceType;
-  if (m.isCapture || m.promotion != PT::None) return false;
+  if (m.isCapture() || m.promotion() != PT::None) return false;
 
-  auto mover = b.getPiece(m.from);
+  auto mover = b.getPiece(m.from());
   if (!mover || mover->type != PT::Pawn) return false;
 
-  const model::bb::Bitboard toBB = model::bb::sq_bb(m.to);
+  const model::bb::Bitboard toBB = model::bb::sq_bb(m.to());
   const model::bb::Bitboard atk = (us == core::Color::White)
                                       ? (model::bb::ne(toBB) | model::bb::nw(toBB))
                                       : (model::bb::se(toBB) | model::bb::sw(toBB));
@@ -275,16 +275,16 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     model::Move ordered[MAXM];
 
     const model::Move prev = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
-    const bool prevOk = (prev.from >= 0 && prev.to >= 0 && prev.from < 64 && prev.to < 64);
-    const model::Move cm = prevOk ? counterMove[prev.from][prev.to] : model::Move{};
+    const bool prevOk = (prev.from() >= 0 && prev.to() >= 0 && prev.from() < 64 && prev.to() < 64);
+    const model::Move cm = prevOk ? counterMove[prev.from()][prev.to()] : model::Move{};
 
     for (int i = 0; i < n; ++i) {
       const auto& m = genArr_[kply][i];
       int s = 0;
       if (prevOk && m == cm) s += 80'000;
-      if (m.isCapture) s += 100'000 + mvv_lva_fast(pos, m);
-      if (m.promotion != core::PieceType::None) s += 60'000;
-      s += history[m.from][m.to];
+      if (m.isCapture()) s += 100'000 + mvv_lva_fast(pos, m);
+      if (m.promotion() != core::PieceType::None) s += 60'000;
+      s += history[m.from()][m.to()];
       scores[i] = s;
       ordered[i] = m;
     }
@@ -367,21 +367,21 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     const model::Move m = qord[i];
     check_stop(stopFlag);
 
-    if (m.isCapture && !pos.see(m) && m.promotion == core::PieceType::None) continue;
+    if (m.isCapture() && !pos.see(m) && m.promotion() == core::PieceType::None) continue;
 
-    const bool isQuietPromo = (m.promotion != core::PieceType::None) && !m.isCapture;
+    const bool isQuietPromo = (m.promotion() != core::PieceType::None) && !m.isCapture();
 
     int capVal = 0;
-    if (m.isEnPassant)
+    if (m.isEnPassant())
       capVal = base_value[(int)core::PieceType::Pawn];
-    else if (m.isCapture) {
-      if (auto cap = pos.getBoard().getPiece(m.to)) capVal = base_value[(int)cap->type];
+    else if (m.isCapture()) {
+      if (auto cap = pos.getBoard().getPiece(m.to())) capVal = base_value[(int)cap->type];
     }
 
     int promoGain = 0;
-    if (m.promotion != core::PieceType::None)
+    if (m.promotion() != core::PieceType::None)
       promoGain =
-          std::max(0, base_value[(int)m.promotion] - base_value[(int)core::PieceType::Pawn]);
+          std::max(0, base_value[(int)m.promotion()] - base_value[(int)core::PieceType::Pawn]);
 
     if (!isQuietPromo) {
       if (stand + capVal + promoGain + DELTA_MARGIN <= alpha) continue;  // Delta
@@ -418,7 +418,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 // ---------- Negamax ----------
 
 int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int ply,
-                    model::Move& refBest) {
+                    model::Move& refBest, int parentStaticEval) {
   init_LMR_table();
   stats.nodes++;
   check_stop(stopFlag);
@@ -500,7 +500,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     return countSide(core::Color::White) + countSide(core::Color::Black);
   };
   const bool sparse = (nonPawnCount(pos.getBoard()) <= 3);
-  const bool prevWasCapture = (ply > 0 && prevMove[cap_ply(ply - 1)].isCapture);
+  const bool prevWasCapture = (ply > 0 && prevMove[cap_ply(ply - 1)].isCapture());
 
   if (cfg.useNullMove && depth >= 3 && !inCheck && !isPV && !sparse && !prevWasCapture) {
     const int margin = 50 + 20 * depth;
@@ -533,8 +533,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   // prev für CounterMove
   const model::Move prev = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
-  const bool prevOk = (prev.from >= 0 && prev.to >= 0 && prev.from < 64 && prev.to < 64);
-  const model::Move cm = prevOk ? counterMove[prev.from][prev.to] : model::Move{};
+  const bool prevOk = (prev.from() >= 0 && prev.to() >= 0 && prev.from() < 64 && prev.to() < 64);
+  const model::Move cm = prevOk ? counterMove[prev.from()][prev.to()] : model::Move{};
 
   // Ordering
   constexpr int MAX_MOVES = engine::MAX_MOVES;
@@ -555,35 +555,35 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     if (haveTT && m == ttMove) {
       s = TT_BONUS;
-    } else if (m.isCapture || m.promotion != core::PieceType::None) {
+    } else if (m.isCapture() || m.promotion() != core::PieceType::None) {
       const auto us = pos.getState().sideToMove;
       if (quiet_pawn_push_creates_attack(board, m, us)) {
         // moderater Bonus, damit früh kommt, aber TT/Killer weiterhin oben bleiben
         s += 180'000;  // feinjustierbar (150–250k)
       }
-      auto moverOpt = board.getPiece(m.from);
+      auto moverOpt = board.getPiece(m.from());
       const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
       core::PieceType capPt = core::PieceType::Pawn;
-      if (m.isEnPassant)
+      if (m.isEnPassant())
         capPt = core::PieceType::Pawn;
-      else if (auto cap = board.getPiece(m.to))
+      else if (auto cap = board.getPiece(m.to()))
         capPt = cap->type;
 
       const int mvv = mvv_lva_fast(pos, m);
-      const int ch = captureHist[pidx(moverPt)][m.to][pidx(capPt)];
-      if (m.promotion != core::PieceType::None && !m.isCapture)
+      const int ch = captureHist[pidx(moverPt)][m.to()][pidx(capPt)];
+      if (m.promotion() != core::PieceType::None && !m.isCapture())
         s = PROMO_BASE + mvv;
       else
         s = CAP_BASE_GOOD + mvv + (ch >> 2);
     } else {
-      auto moverOpt = board.getPiece(m.from);
+      auto moverOpt = board.getPiece(m.from());
       const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
-      s = history[m.from][m.to] + (quietHist[pidx(moverPt)][m.to] >> 1);
+      s = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
       if (m == killers[kply][0] || m == killers[kply][1]) s += KILLER_BASE;
-      if (prevOk && m == cm) s += CM_BASE + (counterHist[prev.from][prev.to] >> 1);
+      if (prevOk && m == cm) s += CM_BASE + (counterHist[prev.from()][prev.to()] >> 1);
     }
 
-    if (!m.isCapture && m.promotion == core::PieceType::None) {
+    if (!m.isCapture() && m.promotion() == core::PieceType::None) {
     }
 
     scores[i] = s;
@@ -598,24 +598,24 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     check_stop(stopFlag);
 
     const model::Move m = ordered[idx];
-    const bool isQuiet = !m.isCapture && (m.promotion == core::PieceType::None);
+    const bool isQuiet = !m.isCapture() && (m.promotion() == core::PieceType::None);
     const auto us = pos.getState().sideToMove;
     const bool tacticalQuiet = isQuiet && quiet_pawn_push_creates_attack(board, m, us);
 
     // pre info
-    auto moverOpt = board.getPiece(m.from);
+    auto moverOpt = board.getPiece(m.from());
     const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
     core::PieceType capPt = core::PieceType::Pawn;
-    if (m.isEnPassant)
+    if (m.isEnPassant())
       capPt = core::PieceType::Pawn;
-    else if (m.isCapture) {
-      if (auto cap = board.getPiece(m.to)) capPt = cap->type;
+    else if (m.isCapture()) {
+      if (auto cap = board.getPiece(m.to())) capPt = cap->type;
     }
 
     // LMP
     if (!inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet) {
       int limit = depth * depth;  // 1,4,9
-      int h = history[m.from][m.to] + (quietHist[pidx(moverPt)][m.to] >> 1);
+      int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
       if (h < -8000) limit = std::max(1, limit - 1);
       if (staticEval + FUT_MARGIN[depth] <= alpha + 32 && moveCount >= limit) {
         ++moveCount;
@@ -625,7 +625,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // Extended futility (depth<=3, quiets)
     if (allowFutility && isQuiet && depth <= 3 && !tacticalQuiet) {
-      int fut = FUT_MARGIN[depth] + (history[m.from][m.to] < -8000 ? 32 : 0);
+      int fut = FUT_MARGIN[depth] + (history[m.from()][m.to()] < -8000 ? 32 : 0);
       if (staticEval + fut <= alpha) {
         ++moveCount;
         continue;
@@ -634,7 +634,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // History pruning
     if (!inCheck && !isPV && isQuiet && depth <= 2 && !tacticalQuiet) {
-      int histScore = history[m.from][m.to] + (quietHist[pidx(moverPt)][m.to] >> 1);
+      int histScore = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
       if (histScore < -11000 && m != killers[kply][0] && m != killers[kply][1] &&
           (!prevOk || m != cm)) {
         ++moveCount;
@@ -652,17 +652,17 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // SEE pruning (after futility)
     bool seeGood = true;
-    if (!inCheck && ply > 0 && m.isCapture && depth <= 5) {
+    if (!inCheck && ply > 0 && m.isCapture() && depth <= 5) {
       if (!pos.see(m)) {
         ++moveCount;
         continue;
       }
-    } else if (m.isCapture) {
+    } else if (m.isCapture()) {
       seeGood = pos.see(m);
     }
 
     const int mvvBefore =
-        (m.isCapture || m.promotion != core::PieceType::None) ? mvv_lva_fast(pos, m) : 0;
+        (m.isCapture() || m.promotion() != core::PieceType::None) ? mvv_lva_fast(pos, m) : 0;
 
     MoveUndoGuard g(pos);
     if (!g.doMove(m)) {
@@ -678,11 +678,11 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     int newDepth = depth - 1;
 
     // ProbCut (light)
-    if (!isPV && !inCheck && depth >= 5 && m.isCapture && seeGood && mvvBefore >= 700) {
+    if (!isPV && !inCheck && depth >= 5 && m.isCapture() && seeGood && mvvBefore >= 700) {
       int capVal = 0;
-      if (m.isEnPassant)
+      if (m.isEnPassant())
         capVal = base_value[(int)core::PieceType::Pawn];
-      else if (auto cap = board.getPiece(m.to))
+      else if (auto cap = board.getPiece(m.to()))
         capVal = base_value[(int)cap->type];
       const int PROBCUT_MARGIN = 180;
       if (staticEval + capVal + PROBCUT_MARGIN >= beta) {
@@ -698,7 +698,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // Bad capture reduction
     int reduction = 0;
-    if (!seeGood && m.isCapture && newDepth >= 2) reduction = std::min(1, newDepth - 1);
+    if (!seeGood && m.isCapture() && newDepth >= 2) reduction = std::min(1, newDepth - 1);
 
     // PVS / LMR
     if (moveCount == 0) {
@@ -710,7 +710,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         const int lm = ilog2_u32((unsigned)(moveCount + 1));
         int rBase = (ld * (lm + 1)) / 3;
 
-        const int h = history[m.from][m.to] + (quietHist[pidx(moverPt)][m.to] >> 1);
+        const int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
         if (h > 8000) rBase -= 1;
         if (h < -8000) rBase += 1;
 
@@ -736,8 +736,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // History updates
     if (isQuiet && value <= origAlpha) {
-      hist_update(history[m.from][m.to], -hist_bonus(depth) / 2);
-      hist_update(quietHist[pidx(moverPt)][m.to], -hist_bonus(depth) / 2);
+      hist_update(history[m.from()][m.to()], -hist_bonus(depth) / 2);
+      hist_update(quietHist[pidx(moverPt)][m.to()], -hist_bonus(depth) / 2);
     }
 
     if (value > best) {
@@ -750,14 +750,14 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       if (isQuiet) {
         killers[kply][1] = killers[kply][0];
         killers[kply][0] = m;
-        hist_update(history[m.from][m.to], +hist_bonus(depth));
-        hist_update(quietHist[pidx(moverPt)][m.to], +hist_bonus(depth));
+        hist_update(history[m.from()][m.to()], +hist_bonus(depth));
+        hist_update(quietHist[pidx(moverPt)][m.to()], +hist_bonus(depth));
         if (prevOk) {
-          counterMove[prev.from][prev.to] = m;
-          hist_update(counterHist[prev.from][prev.to], +hist_bonus(depth));
+          counterMove[prev.from()][prev.to()] = m;
+          hist_update(counterHist[prev.from()][prev.to()], +hist_bonus(depth));
         }
       } else {
-        hist_update(captureHist[pidx(moverPt)][m.to][pidx(capPt)], +hist_bonus(depth));
+        hist_update(captureHist[pidx(moverPt)][m.to()][pidx(capPt)], +hist_bonus(depth));
       }
       break;
     }
@@ -796,7 +796,7 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
     if (!tt.probe_into(pos.hash(), tte)) break;
     model::Move m = tte.best;
 
-    if (m.from == m.to) break;
+    if (m.from() == m.to()) break;
     if (!pos.doMove(m)) break;
     pv.push_back(m);
 
@@ -854,9 +854,9 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
   auto score_root_move = [&](const model::Move& m, const model::Move& ttMove, bool haveTT) {
     int s = 0;
     if (haveTT && m == ttMove) s += 2'500'000;
-    if (m.isCapture) s += 1'100'000 + mvv_lva_fast(pos, m);
-    if (m.promotion != core::PieceType::None) s += 1'050'000;
-    s += history[m.from][m.to];
+    if (m.isCapture()) s += 1'100'000 + mvv_lva_fast(pos, m);
+    if (m.promotion() != core::PieceType::None) s += 1'050'000;
+    s += history[m.from()][m.to()];
     return s;
   };
 
@@ -880,8 +880,8 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       int sa = score_root_move(a, rootTT, haveRootTT);
       int sb = score_root_move(b, rootTT, haveRootTT);
       if (sa != sb) return sa > sb;
-      if (a.from != b.from) return a.from < b.from;
-      return a.to < b.to;
+      if (a.from() != b.from()) return a.from() < b.from();
+      return a.to() < b.to();
     });
 
     // Ergebnis-Container pro Move

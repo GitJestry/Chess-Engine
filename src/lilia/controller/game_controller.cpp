@@ -81,7 +81,7 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
       this->m_game_view.clearAllHighlights();
       if (!this->m_move_history.empty()) {
         const MoveView &info = this->m_move_history.back();
-        this->m_selection_manager.setLastMove(info.move.from, info.move.to);
+        this->m_selection_manager.setLastMove(info.move.from(), info.move.to());
         this->m_selection_manager.highlightLastMove();
       }
       this->syncCapturedPieces();
@@ -291,7 +291,7 @@ void GameController::handleEvent(const sf::Event &event) {
       m_game_view.setBoardFen(m_fen_history[m_fen_index]);
       m_game_view.selectMove(idx);
       const MoveView &info = m_move_history[idx];
-      m_selection_manager.setLastMove(info.move.from, info.move.to);
+      m_selection_manager.setLastMove(info.move.from(), info.move.to());
       m_game_view.clearAllHighlights();
       m_selection_manager.highlightLastMove();
       m_sound_manager.playEffect(info.sound);
@@ -779,8 +779,8 @@ void GameController::updatePremovePreviews() {
 
 void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMove, bool onClick) {
   invalidateLegalCache();
-  const core::Square from = move.from;
-  const core::Square to = move.to;
+  const core::Square from = move.from();
+  const core::Square to = move.to();
 
   // 1) Resolve drag conflicts
   if (m_dragging && m_drag_from == from) {
@@ -802,7 +802,7 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
   // 3) En-passant victim square for visuals
   core::Square epVictimSq = core::NO_SQUARE;
   const core::Color moverColorBefore = ~m_chess_game.getGameState().sideToMove;
-  if (move.isEnPassant) {
+  if (move.isEnPassant()) {
     epVictimSq = (moverColorBefore == core::Color::White) ? static_cast<core::Square>(to - 8)
                                                           : static_cast<core::Square>(to + 8);
   }
@@ -810,11 +810,11 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
   // 3b) Resolve captured piece type (prefer pending/cached info from premove
   // path)
   core::PieceType capturedType = core::PieceType::None;
-  if (move.isCapture) {
+  if (move.isCapture()) {
     if (m_pending_capture_type != core::PieceType::None) {
       capturedType = m_pending_capture_type;
     } else {
-      core::Square capSq = move.isEnPassant ? epVictimSq : to;
+      core::Square capSq = move.isEnPassant() ? epVictimSq : to;
       capturedType = m_game_view.getPieceType(capSq);
     }
   }
@@ -823,23 +823,23 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
   const bool skipAnim = m_skip_next_move_animation;
 
   // If we already applied the instant premove, remove the EP victim now
-  if (skipAnim && move.isEnPassant && epVictimSq != core::NO_SQUARE) {
+  if (skipAnim && move.isEnPassant() && epVictimSq != core::NO_SQUARE) {
     m_game_view.removePiece(epVictimSq);
   }
 
   // 4) Main mover (animate unless we’re in the instant/premove path)
   if (!skipAnim) {
     if (onClick)
-      m_game_view.animationMovePiece(from, to, epVictimSq, move.promotion);
+      m_game_view.animationMovePiece(from, to, epVictimSq, move.promotion());
     else
-      m_game_view.animationDropPiece(from, to, epVictimSq, move.promotion);
+      m_game_view.animationDropPiece(from, to, epVictimSq, move.promotion());
   }
 
   // 5) Castling rook
-  if (move.castle != model::CastleSide::None) {
+  if (move.castle() != model::CastleSide::None) {
     const core::Square rookFrom =
-        m_chess_game.getRookSquareFromCastleside(move.castle, moverColorBefore);
-    const core::Square rookTo = (move.castle == model::CastleSide::KingSide)
+        m_chess_game.getRookSquareFromCastleside(move.castle(), moverColorBefore);
+    const core::Square rookTo = (move.castle() == model::CastleSide::KingSide)
                                     ? static_cast<core::Square>(to - 1)
                                     : static_cast<core::Square>(to + 1);
 
@@ -869,17 +869,17 @@ void GameController::movePieceAndClear(const model::Move &move, bool isPlayerMov
   view::sound::Effect effect;
   if (m_chess_game.isKingInCheck(sideToMoveNow))
     effect = view::sound::Effect::Check;
-  else if (move.promotion != core::PieceType::None)
+  else if (move.promotion() != core::PieceType::None)
     effect = view::sound::Effect::Promotion;
-  else if (move.isCapture)
+  else if (move.isCapture())
     effect = view::sound::Effect::Capture;
-  else if (move.castle != model::CastleSide::None)
+  else if (move.castle() != model::CastleSide::None)
     effect = view::sound::Effect::Castle;
   else
     effect = isPlayerMove ? view::sound::Effect::PlayerMove : view::sound::Effect::EnemyMove;
 
   m_sound_manager.playEffect(effect);
-  if (move.isCapture) m_game_view.addCapturedPiece(moverColorBefore, capturedType);
+  if (move.isCapture()) m_game_view.addCapturedPiece(moverColorBefore, capturedType);
   m_move_history.push_back({move, moverColorBefore, capturedType, effect, m_eval_cp.load()});
 
   // 7) Safe premove processing (queue head)
@@ -938,7 +938,7 @@ void GameController::snapAndReturn(core::Square sq, core::MousePos cur) {
 [[nodiscard]] bool GameController::isPromotion(core::Square a, core::Square b) {
   ensureLegalCache();
   for (const auto &m : *m_cached_moves) {
-    if (m.from == a && m.to == b && m.promotion != core::PieceType::None) return true;
+    if (m.from() == a && m.to() == b && m.promotion() != core::PieceType::None) return true;
   }
   return false;
 }
@@ -979,13 +979,13 @@ const std::vector<core::Square> &GameController::getAttackSquares(core::Square p
     m_pseudo_buffer.clear();
     m_movegen.generatePseudoLegalMoves(board, st, m_pseudo_buffer);
     for (const auto &m : m_pseudo_buffer)
-      if (m.from == pieceSQ) m_attack_buffer.push_back(m.to);
+      if (m.from() == pieceSQ) m_attack_buffer.push_back(m.to());
     return m_attack_buffer;
   }
 
   ensureLegalCache();
   for (const auto &m : *m_cached_moves)
-    if (m.from == pieceSQ) m_attack_buffer.push_back(m.to);
+    if (m.from() == pieceSQ) m_attack_buffer.push_back(m.to());
   return m_attack_buffer;
 }
 
@@ -1270,7 +1270,7 @@ bool GameController::hasCurrentLegalMove(core::Square from, core::Square to) con
 
   ensureLegalCache();
   for (const auto &m : *m_cached_moves) {
-    if (m.from == from && m.to == to) return true;
+    if (m.from() == from && m.to() == to) return true;
   }
   return false;
 }
@@ -1391,7 +1391,7 @@ bool GameController::isPseudoLegalPremove(core::Square from, core::Square to) co
   m_movegen.generatePseudoLegalMoves(board, st, m_pseudo_buffer);
 
   for (const auto &m : m_pseudo_buffer)
-    if (m.from == from && m.to == to) return true;
+    if (m.from() == from && m.to() == to) return true;
 
   return false;
 }
@@ -1463,7 +1463,7 @@ void GameController::syncCapturedPieces() {
   m_game_view.clearCapturedPieces();
   for (std::size_t i = 0; i < m_fen_index; ++i) {
     const MoveView &mv = m_move_history[i];
-    if (mv.move.isCapture) {
+    if (mv.move.isCapture()) {
       m_game_view.addCapturedPiece(mv.moverColor, mv.capturedType);
     }
   }
@@ -1483,34 +1483,34 @@ void GameController::stepBackward() {
     m_game_view.setBoardFen(m_fen_history[m_fen_index]);
     const MoveView &info = m_move_history[m_fen_index - 1];
     core::Square epVictim = core::NO_SQUARE;
-    if (info.move.isEnPassant) {
+    if (info.move.isEnPassant()) {
       epVictim = (info.moverColor == core::Color::White)
-                     ? static_cast<core::Square>(info.move.to - 8)
-                     : static_cast<core::Square>(info.move.to + 8);
+                     ? static_cast<core::Square>(info.move.to() - 8)
+                     : static_cast<core::Square>(info.move.to() + 8);
     }
     m_game_view.animationMovePiece(
-        info.move.to, info.move.from, core::NO_SQUARE, core::PieceType::None,
+        info.move.to(), info.move.from(), core::NO_SQUARE, core::PieceType::None,
         [this, info, epVictim]() {
-          if (info.move.isCapture) {
-            core::Square capSq = info.move.isEnPassant ? epVictim : info.move.to;
+          if (info.move.isCapture()) {
+            core::Square capSq = info.move.isEnPassant() ? epVictim : info.move.to();
             m_game_view.addPiece(info.capturedType, ~info.moverColor, capSq);
           }
-          if (info.move.promotion != core::PieceType::None) {
-            m_game_view.removePiece(info.move.from);
-            m_game_view.addPiece(core::PieceType::Pawn, info.moverColor, info.move.from);
+          if (info.move.promotion() != core::PieceType::None) {
+            m_game_view.removePiece(info.move.from());
+            m_game_view.addPiece(core::PieceType::Pawn, info.moverColor, info.move.from());
           }
         });
-    if (info.move.castle != model::CastleSide::None) {
+    if (info.move.castle() != model::CastleSide::None) {
       const core::Square rookFrom =
-          m_chess_game.getRookSquareFromCastleside(info.move.castle, info.moverColor);
-      const core::Square rookTo = (info.move.castle == model::CastleSide::KingSide)
-                                      ? static_cast<core::Square>(info.move.to - 1)
-                                      : static_cast<core::Square>(info.move.to + 1);
+          m_chess_game.getRookSquareFromCastleside(info.move.castle(), info.moverColor);
+      const core::Square rookTo = (info.move.castle() == model::CastleSide::KingSide)
+                                      ? static_cast<core::Square>(info.move.to() - 1)
+                                      : static_cast<core::Square>(info.move.to() + 1);
       m_game_view.animationMovePiece(rookTo, rookFrom);
     }
     --m_fen_index;
     m_game_view.selectMove(m_fen_index ? m_fen_index - 1 : static_cast<std::size_t>(-1));
-    m_selection_manager.setLastMove(info.move.from, info.move.to);
+    m_selection_manager.setLastMove(info.move.from(), info.move.to());
     m_game_view.clearAllHighlights();
     m_selection_manager.highlightLastMove();
     m_sound_manager.playEffect(info.sound);
@@ -1541,20 +1541,20 @@ void GameController::stepForward() {
     m_game_view.setBoardFen(m_fen_history[m_fen_index]);
     const MoveView &info = m_move_history[m_fen_index];
     core::Square epVictim = core::NO_SQUARE;
-    if (info.move.isEnPassant) {
+    if (info.move.isEnPassant()) {
       epVictim = (info.moverColor == core::Color::White)
-                     ? static_cast<core::Square>(info.move.to - 8)
-                     : static_cast<core::Square>(info.move.to + 8);
+                     ? static_cast<core::Square>(info.move.to() - 8)
+                     : static_cast<core::Square>(info.move.to() + 8);
       m_game_view.removePiece(epVictim);
-    } else if (info.move.isCapture) {
-      m_game_view.removePiece(info.move.to);
+    } else if (info.move.isCapture()) {
+      m_game_view.removePiece(info.move.to());
     }
-    if (info.move.castle != model::CastleSide::None) {
+    if (info.move.castle() != model::CastleSide::None) {
       const core::Square rookFrom =
-          m_chess_game.getRookSquareFromCastleside(info.move.castle, info.moverColor);
-      const core::Square rookTo = (info.move.castle == model::CastleSide::KingSide)
-                                      ? static_cast<core::Square>(info.move.to - 1)
-                                      : static_cast<core::Square>(info.move.to + 1);
+          m_chess_game.getRookSquareFromCastleside(info.move.castle(), info.moverColor);
+      const core::Square rookTo = (info.move.castle() == model::CastleSide::KingSide)
+                                      ? static_cast<core::Square>(info.move.to() - 1)
+                                      : static_cast<core::Square>(info.move.to() + 1);
       m_game_view.animationMovePiece(rookFrom, rookTo);
     }
 
@@ -1570,12 +1570,12 @@ void GameController::stepForward() {
         m_premove_suspended = false;
       }
     };
-    m_game_view.animationMovePiece(info.move.from, info.move.to, epVictim, info.move.promotion,
-                                   onMainMoveDone);
+    m_game_view.animationMovePiece(info.move.from(), info.move.to(), epVictim,
+                                   info.move.promotion(), onMainMoveDone);
 
     ++m_fen_index;
     m_game_view.selectMove(m_fen_index ? m_fen_index - 1 : static_cast<std::size_t>(-1));
-    m_selection_manager.setLastMove(info.move.from, info.move.to);
+    m_selection_manager.setLastMove(info.move.from(), info.move.to());
     m_game_view.clearAllHighlights();
     m_selection_manager.highlightLastMove();
     m_sound_manager.playEffect(info.sound);

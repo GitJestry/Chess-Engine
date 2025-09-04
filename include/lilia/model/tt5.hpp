@@ -178,9 +178,8 @@ class TT5 {
         value < std::numeric_limits<int16_t>::min()   ? std::numeric_limits<int16_t>::min()
         : value > std::numeric_limits<int16_t>::max() ? std::numeric_limits<int16_t>::max()
                                                       : value);
-    const std::int16_t se16 = static_cast<std::int16_t>(
-        std::clamp(staticEval, std::numeric_limits<int16_t>::min(),
-                   std::numeric_limits<int16_t>::max()));
+    const std::int16_t se16 = static_cast<std::int16_t>(std::clamp(
+        staticEval, std::numeric_limits<int16_t>::min(), std::numeric_limits<int16_t>::max()));
     const std::uint16_t mv16 = pack_move16(best);
 
     // 1) Update same key if present (no data read needed)
@@ -260,20 +259,20 @@ class TT5 {
 
   // --- move packing (16 bit) ---
   static inline std::uint16_t pack_move16(const Move& m) noexcept {
-    const std::uint16_t from = static_cast<std::uint16_t>(static_cast<unsigned>(m.from) & 0x3F);
-    const std::uint16_t to = static_cast<std::uint16_t>(static_cast<unsigned>(m.to) & 0x3F);
+    const std::uint16_t from = static_cast<std::uint16_t>(static_cast<unsigned>(m.from()) & 0x3F);
+    const std::uint16_t to = static_cast<std::uint16_t>(static_cast<unsigned>(m.to()) & 0x3F);
     const std::uint16_t promo =
-        static_cast<std::uint16_t>(static_cast<unsigned>(m.promotion) & 0x0F);
+        static_cast<std::uint16_t>(static_cast<unsigned>(m.promotion()) & 0x0F);
     return static_cast<std::uint16_t>(from | (to << 6) | (promo << 12));
   }
   static inline Move unpack_move16(std::uint16_t v) noexcept {
     Move m{};
-    m.from = static_cast<core::Square>(v & 0x3F);
-    m.to = static_cast<core::Square>((v >> 6) & 0x3F);
-    m.promotion = static_cast<core::PieceType>((v >> 12) & 0x0F);
-    m.isCapture = false;
-    m.isEnPassant = false;
-    m.castle = CastleSide::None;
+    m.set_from(static_cast<core::Square>(v & 0x3F));
+    m.set_to(static_cast<core::Square>((v >> 6) & 0x3F));
+    m.set_promotion(static_cast<core::PieceType>((v >> 12) & 0x0F));
+    m.set_capture(false);
+    m.set_enpassant(false);
+    m.set_castle(CastleSide::None);
     return m;
   }
 

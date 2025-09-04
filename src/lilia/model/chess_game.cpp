@@ -74,7 +74,7 @@ void ChessGame::doMoveUCI(const std::string& uciMove) {
 std::optional<Move> ChessGame::getMove(core::Square from, core::Square to) {
   const auto& moves = generateLegalMoves();
   for (const auto& m : moves) {
-    if (m.from == from && m.to == to) return m;
+    if (m.from() == from && m.to() == to) return m;
   }
   return std::nullopt;
 }
@@ -284,7 +284,7 @@ bb::Piece ChessGame::getPiece(core::Square sq) {
 void ChessGame::doMove(core::Square from, core::Square to, core::PieceType promotion) {
   const auto& moves = generateLegalMoves();
   for (const auto& m : moves) {
-    if (m.from == from && m.to == to && m.promotion == promotion) {
+    if (m.from() == from && m.to() == to && m.promotion() == promotion) {
       m_position.doMove(m);
       break;  // execute once
     }

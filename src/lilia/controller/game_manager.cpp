@@ -10,11 +10,12 @@ namespace lilia::controller {
 
 GameManager::GameManager(model::ChessGame &model) : m_game(model) {}
 
-GameManager::~GameManager() { stopGame(); }
+GameManager::~GameManager() {
+  stopGame();
+}
 
-void GameManager::startGame(const std::string &fen, bool whiteIsBot,
-                            bool blackIsBot, int whiteThinkTimeMs,
-                            int whiteDepth, int blackThinkTimeMs,
+void GameManager::startGame(const std::string &fen, bool whiteIsBot, bool blackIsBot,
+                            int whiteThinkTimeMs, int whiteDepth, int blackThinkTimeMs,
                             int blackDepth) {
   std::lock_guard lock(m_mutex);
   m_game.setPosition(fen);
@@ -47,7 +48,7 @@ void GameManager::update([[maybe_unused]] float dt) {
       model::Move mv = m_bot_future.get();
 
       m_bot_future = std::future<model::Move>();
-      if (!(mv.from == core::NO_SQUARE && mv.to == core::NO_SQUARE)) {
+      if (!(mv.from() == core::NO_SQUARE && mv.to() == core::NO_SQUARE)) {
         applyMoveAndNotify(mv, false);
       }
       startBotIfNeeded();
@@ -55,20 +56,18 @@ void GameManager::update([[maybe_unused]] float dt) {
   }
 }
 
-bool GameManager::requestUserMove(core::Square from, core::Square to,
-                                  bool onClick, core::PieceType promotion) {
+bool GameManager::requestUserMove(core::Square from, core::Square to, bool onClick,
+                                  core::PieceType promotion) {
   std::lock_guard lock(m_mutex);
-  if (m_waiting_promotion)
-    return false; // waiting on previous promotion
-  if (!isHuman(m_game.getGameState().sideToMove))
-    return false;
+  if (m_waiting_promotion) return false;  // waiting on previous promotion
+  if (!isHuman(m_game.getGameState().sideToMove)) return false;
 
   const auto &moves = m_game.generateLegalMoves();
   for (const auto &m : moves) {
-    if (m.from == from && m.to == to) {
-      if (m.promotion != core::PieceType::None) {
+    if (m.from() == from && m.to() == to) {
+      if (m.promotion() != core::PieceType::None) {
         // If caller already provided promotion piece, apply immediately.
-        if (promotion != core::PieceType::None && promotion == m.promotion) {
+        if (promotion != core::PieceType::None && promotion == m.promotion()) {
           applyMoveAndNotify(m, onClick);
           startBotIfNeeded();
           return true;
@@ -77,8 +76,7 @@ bool GameManager::requestUserMove(core::Square from, core::Square to,
         m_waiting_promotion = true;
         m_promotion_from = from;
         m_promotion_to = to;
-        if (onPromotionRequested_)
-          onPromotionRequested_(to);
+        if (onPromotionRequested_) onPromotionRequested_(to);
         return false;
       }
 
@@ -93,13 +91,11 @@ bool GameManager::requestUserMove(core::Square from, core::Square to,
 
 void GameManager::completePendingPromotion(core::PieceType promotion) {
   std::lock_guard lock(m_mutex);
-  if (!m_waiting_promotion)
-    return;
+  if (!m_waiting_promotion) return;
 
   const auto &moves = m_game.generateLegalMoves();
   for (const auto &m : moves) {
-    if (m.from == m_promotion_from && m.to == m_promotion_to &&
-        m.promotion == promotion) {
+    if (m.from() == m_promotion_from && m.to() == m_promotion_to && m.promotion() == promotion) {
       applyMoveAndNotify(m, true);
       m_waiting_promotion = false;
       startBotIfNeeded();
@@ -114,17 +110,15 @@ void GameManager::completePendingPromotion(core::PieceType promotion) {
 
 void GameManager::applyMoveAndNotify(const model::Move &mv, bool onClick) {
   const core::Color mover = m_game.getGameState().sideToMove;
-  m_game.doMove(mv.from, mv.to, mv.promotion);
+  m_game.doMove(mv.from(), mv.to(), mv.promotion());
 
   bool wasPlayerMove = isHuman(mover);
 
-  if (onMoveExecuted_)
-    onMoveExecuted_(mv, wasPlayerMove, onClick);
+  if (onMoveExecuted_) onMoveExecuted_(mv, wasPlayerMove, onClick);
 
   auto result = m_game.getResult();
   if (result != core::GameResult::ONGOING) {
-    if (onGameEnd_)
-      onGameEnd_(result);
+    if (onGameEnd_) onGameEnd_(result);
     // cancel any running bot
     m_cancel_bot.store(true);
   }
@@ -149,8 +143,7 @@ void GameManager::startBotIfNeeded() {
   }
 }
 
-void GameManager::setBotForColor(core::Color color,
-                                 std::unique_ptr<IPlayer> bot) {
+void GameManager::setBotForColor(core::Color color, std::unique_ptr<IPlayer> bot) {
   std::lock_guard lock(m_mutex);
   if (color == core::Color::White)
     m_white_player = std::move(bot);
@@ -159,8 +152,7 @@ void GameManager::setBotForColor(core::Color color,
 }
 
 bool GameManager::isHuman(core::Color color) const {
-  const IPlayer *p = (color == core::Color::White) ? m_white_player.get()
-                                                   : m_black_player.get();
+  const IPlayer *p = (color == core::Color::White) ? m_white_player.get() : m_black_player.get();
   return !p || p->isHuman();
 }
 
@@ -168,4 +160,4 @@ bool GameManager::isHumanTurn() const {
   return isHuman(m_game.getGameState().sideToMove);
 }
 
-} // namespace lilia::controller
+}  // namespace lilia::controller
