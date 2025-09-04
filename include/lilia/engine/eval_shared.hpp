@@ -3,7 +3,7 @@
 #include <array>
 #include <cstdint>
 
-#include "lilia/model/core/bitboard.hpp"  // bringt lilia::core::PieceType/Square idR schon mit
+#include "lilia/model/core/bitboard.hpp"
 
 namespace lilia::engine {
 using namespace lilia::core;
@@ -13,52 +13,52 @@ inline constexpr int mirror_sq_black(int sq) noexcept {
   return sq ^ 56;
 }
 
-// Pawns
-constexpr int ISO_P = 12;
-constexpr int DOUBLED_P = 16;
-constexpr int BACKWARD_P = 10;
+// Pawns (slightly harsher on weaknesses; stronger passer scaling)
+constexpr int ISO_P = 14;
+constexpr int DOUBLED_P = 20;
+constexpr int BACKWARD_P = 12;
 constexpr int PHALANX = 6;
-constexpr int CANDIDATE_P = 6;
-constexpr int CONNECTED_PASSERS = 12;
-constexpr int PASSED_MG[8] = {0, 8, 16, 26, 44, 70, 110, 0};
-constexpr int PASSED_EG[8] = {0, 12, 22, 36, 56, 85, 130, 0};
-constexpr int PASS_BLOCK = 8;
-constexpr int PASS_SUPP = 6;
-constexpr int PASS_FREE = 8;
-constexpr int PASS_KBOOST = 6;
-constexpr int PASS_KBLOCK = 6;
+constexpr int CANDIDATE_P = 8;
+constexpr int CONNECTED_PASSERS = 18;
+constexpr int PASSED_MG[8] = {0, 10, 20, 34, 60, 96, 150, 0};
+constexpr int PASSED_EG[8] = {0, 16, 28, 48, 80, 128, 200, 0};
+constexpr int PASS_BLOCK = 10;
+constexpr int PASS_SUPP = 8;
+constexpr int PASS_FREE = 10;
+constexpr int PASS_KBOOST = 10;
+constexpr int PASS_KBLOCK = 12;
 
-// King safety
-constexpr int KS_W_N = 18, KS_W_B = 18, KS_W_R = 10, KS_W_Q = 38;
-constexpr int KS_RING_BONUS = 2, KS_MISS_SHIELD = 7, KS_OPEN_FILE = 12, KS_RQ_LOS = 6,
-              KS_CLAMP = 220;
+// King safety (more SF-like pressure weighting & clamp)
+constexpr int KS_W_N = 20, KS_W_B = 20, KS_W_R = 16, KS_W_Q = 40;
+constexpr int KS_RING_BONUS = 3, KS_MISS_SHIELD = 10, KS_OPEN_FILE = 14, KS_RQ_LOS = 8,
+              KS_CLAMP = 256;
 
-// King pawn shelter / storm
-static constexpr int SHELTER[8] = {0, 0, 2, 6, 12, 18, 24, 28};
-static constexpr int STORM[8] = {0, 6, 10, 14, 18, 22, 26, 30};
+// King pawn shelter / storm (slightly steeper)
+static constexpr int SHELTER[8] = {0, 0, 3, 7, 14, 21, 28, 32};
+static constexpr int STORM[8] = {0, 8, 12, 16, 20, 24, 28, 32};
 
-// Pieces/style
-constexpr int BISHOP_PAIR = 38;
-constexpr int BAD_BISHOP_PER_PAWN = 2;
-constexpr int OUTPOST_KN = 24;
-constexpr int CENTER_CTRL = 6;
-constexpr int KNIGHT_RIM = 12;
-constexpr int ROOK_OPEN = 16;
-constexpr int ROOK_SEMI = 8;
-constexpr int ROOK_ON_7TH = 20;
+// Pieces/style (a bit more classical)
+constexpr int BISHOP_PAIR = 44;
+constexpr int BAD_BISHOP_PER_PAWN = 3;
+constexpr int OUTPOST_KN = 28;
+constexpr int CENTER_CTRL = 8;
+constexpr int KNIGHT_RIM = 16;
+constexpr int ROOK_OPEN = 20;
+constexpr int ROOK_SEMI = 10;
+constexpr int ROOK_ON_7TH = 24;
 constexpr int CONNECTED_ROOKS = 18;
-constexpr int ROOK_BEHIND_PASSER = 18;
+constexpr int ROOK_BEHIND_PASSER = 22;
 
-// Threats
-constexpr int THR_PAWN_MINOR = 12, THR_PAWN_ROOK = 18, THR_PAWN_QUEEN = 26;
-constexpr int HANG_MINOR = 14, HANG_ROOK = 20, HANG_QUEEN = 28;
-constexpr int MINOR_ON_QUEEN = 8;
+// Threats (slightly tougher on hanging pieces / pawn threats)
+constexpr int THR_PAWN_MINOR = 16, THR_PAWN_ROOK = 22, THR_PAWN_QUEEN = 28;
+constexpr int HANG_MINOR = 16, HANG_ROOK = 24, HANG_QUEEN = 36;
+constexpr int MINOR_ON_QUEEN = 10;
 
-// Space
-constexpr int SPACE_BASE = 2;
+// Space (tiny nudge)
+constexpr int SPACE_BASE = 3;
 
-// Endgame scaling
-constexpr int OPP_BISHOPS_SCALE = 192;  // /256 (baseline)
+// Endgame scaling (opposite bishops a bit more drawish)
+constexpr int OPP_BISHOPS_SCALE = 176;  // /256
 
 // =============================================================================
 // Values & phase
@@ -86,7 +86,7 @@ inline constexpr std::array<int, 6> VAL_MG = {82, 337, 365, 477, 1025, 0};
 inline constexpr std::array<int, 6> VAL_EG = {94, 281, 297, 512, 936, 0};
 inline constexpr std::array<int, 6> PHASE_W = {0, 1, 1, 2, 4, 0};
 
-// -------- PSTs (mg/eg) – exakt wie in deiner Eval --------
+// -------- PSTs (mg/eg) – unchanged --------
 inline constexpr std::array<int, 64> PST_P_MG = {
     0,  0,  0,  0,  0,  0,  0,  0,  6,  6,  2,  -6, -6, 2,  6,  6,  4,  -2, -3, 2,  2,  -3,
     -2, 4,  6,  8,  12, 16, 16, 12, 8,  6,  8,  12, 18, 24, 24, 18, 12, 8,  12, 18, 24, 28,

@@ -1,8 +1,8 @@
 #include "lilia/view/game_view.hpp"
 
+#include <SFML/Window/Mouse.hpp>
 #include <algorithm>
 
-#include <SFML/Window/Mouse.hpp>
 #include "lilia/bot/bot_info.hpp"
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
@@ -101,9 +101,9 @@ void GameView::render() {
   m_highlight_manager.renderHover(m_window);
 
   // REAL pieces below animations
+  m_highlight_manager.renderRightClick(m_window);
   m_piece_manager.renderPieces(m_window, m_chess_animator);
   m_highlight_manager.renderAttack(m_window);
-  m_highlight_manager.renderRightClick(m_window);
 
   // Animations and ghosts: ensure promotion overlay stays on top
   const bool inPromotion = isInPromotionSelection();
