@@ -865,8 +865,9 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     std::atomic<int> fullScore{std::numeric_limits<int>::min()};
   };
 
-  for (int depth = 1; depth <= std::max(1, maxDepth); ++depth) {
-    if (stop && stop->load()) break;
+  try {
+    for (int depth = 1; depth <= std::max(1, maxDepth); ++depth) {
+      if (stop && stop->load()) break;
 
     // Re-Order Root-Moves
     model::Move rootTT{};
@@ -945,41 +946,45 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       Search worker(tt, eval_, cfg);
       worker.stopFlag = stop;
 
-      for (;;) {
-        if (stop && stop->load()) break;
-        int i = idx.fetch_add(1, std::memory_order_relaxed);
-        if (i >= total) break;
+      try {
+        for (;;) {
+          if (stop && stop->load()) break;
+          int i = idx.fetch_add(1, std::memory_order_relaxed);
+          if (i >= total) break;
 
-        const model::Move m = rootMoves[i];
-        model::Position child = pos;
-        if (!child.doMove(m)) continue;
+          const model::Move m = rootMoves[i];
+          model::Position child = pos;
+          if (!child.doMove(m)) continue;
 
-        tt.prefetch(child.hash());
-        worker.prevMove[0] = m;
-        model::Move ref{};
+          tt.prefetch(child.hash());
+          worker.prevMove[0] = m;
+          model::Move ref{};
 
-        int localAlpha = sharedAlpha.load(std::memory_order_relaxed);
+          int localAlpha = sharedAlpha.load(std::memory_order_relaxed);
 
-        uint64_t before = worker.getStats().nodes;
-        int sN = -worker.negamax(child, depth - 1, -(localAlpha + 1), -localAlpha, 1, ref);
-        sN = std::clamp(sN, -MATE + 1, MATE - 1);
-        nodesAcc.fetch_add(worker.getStats().nodes - before, std::memory_order_relaxed);
-
-        results[i].nullScore.store(sN, std::memory_order_relaxed);
-
-        if (sN >= localAlpha && !(stop && stop->load())) {
-          before = worker.getStats().nodes;
-          int sF = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
-          sF = std::clamp(sF, -MATE + 1, MATE - 1);
+          uint64_t before = worker.getStats().nodes;
+          int sN = -worker.negamax(child, depth - 1, -(localAlpha + 1), -localAlpha, 1, ref);
+          sN = std::clamp(sN, -MATE + 1, MATE - 1);
           nodesAcc.fetch_add(worker.getStats().nodes - before, std::memory_order_relaxed);
 
-          results[i].fullScore.store(sF, std::memory_order_relaxed);
+          results[i].nullScore.store(sN, std::memory_order_relaxed);
 
-          int cur = localAlpha;
-          while (sF > cur &&
-                 !sharedAlpha.compare_exchange_weak(cur, sF, std::memory_order_relaxed)) {
+          if (sN >= localAlpha && !(stop && stop->load())) {
+            before = worker.getStats().nodes;
+            int sF = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+            sF = std::clamp(sF, -MATE + 1, MATE - 1);
+            nodesAcc.fetch_add(worker.getStats().nodes - before, std::memory_order_relaxed);
+
+            results[i].fullScore.store(sF, std::memory_order_relaxed);
+
+            int cur = localAlpha;
+            while (sF > cur &&
+                   !sharedAlpha.compare_exchange_weak(cur, sF, std::memory_order_relaxed)) {
+            }
           }
         }
+      } catch (const SearchStoppedException&) {
+        // graceful stop
       }
     };
 
@@ -989,6 +994,10 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     for (int t = 0; t < workers; ++t) {
       futs.emplace_back(pool.submit([&, tid = t] { workerFn(tid); }));
     }
+
+    // Hauptthread beteiligt sich ebenfalls an der Arbeit
+    workerFn(-1);
+
     for (auto& f : futs) {
       try {
         f.get();
@@ -1068,6 +1077,9 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
 
     if (is_mate_score(stats.bestScore)) break;
     lastScoreGuess = bestScore;
+  }
+  } catch (const SearchStoppedException&) {
+    // Abbruch durch gesetztes Stop-Flag – teilweise Resultate behalten
   }
 
   this->stopFlag.reset();
