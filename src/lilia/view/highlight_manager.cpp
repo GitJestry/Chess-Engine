@@ -53,8 +53,8 @@ void HighlightManager::renderRightClick(sf::RenderWindow& window) {
   for (const auto& kv : m_hl_rclick_arrows) {
     auto fromPos = m_board_view_ref.getSquareScreenPos(kv.second.first);
     auto toPos = m_board_view_ref.getSquareScreenPos(kv.second.second);
-    sf::Vector2f start{fromPos.x + sqSize * 0.5f, fromPos.y + sqSize * 0.5f};
-    sf::Vector2f end{toPos.x + sqSize * 0.5f, toPos.y + sqSize * 0.5f};
+    sf::Vector2f start = fromPos;
+    sf::Vector2f end = toPos;
     sf::Vector2f diff = end - start;
     float len = std::sqrt(diff.x * diff.x + diff.y * diff.y);
     if (len <= 0.1f) continue;
