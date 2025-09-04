@@ -33,5 +33,6 @@ static const int base_value[6] = {100, 320, 330, 500, 900, 20000};
 constexpr int INF = 32000;
 constexpr int MATE = 30000;
 constexpr int MAX_PLY = 128;
-constexpr int MATE_THR = MATE - 512;  // Mate threshold for detection/encoding
+constexpr int MATE_THR = MATE - 512;        // Mate threshold for detection/encoding
+static constexpr int VALUE_INF = MATE - 1;  // nie größer als Mate!
 }  // namespace lilia::engine

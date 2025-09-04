@@ -13,6 +13,74 @@ inline constexpr int mirror_sq_black(int sq) noexcept {
   return sq ^ 56;
 }
 
+// Pawns
+constexpr int ISO_P = 12;
+constexpr int DOUBLED_P = 16;
+constexpr int BACKWARD_P = 10;
+constexpr int PHALANX = 6;
+constexpr int CANDIDATE_P = 6;
+constexpr int CONNECTED_PASSERS = 12;
+constexpr int PASSED_MG[8] = {0, 8, 16, 26, 44, 70, 110, 0};
+constexpr int PASSED_EG[8] = {0, 12, 22, 36, 56, 85, 130, 0};
+constexpr int PASS_BLOCK = 8;
+constexpr int PASS_SUPP = 6;
+constexpr int PASS_FREE = 8;
+constexpr int PASS_KBOOST = 6;
+constexpr int PASS_KBLOCK = 6;
+
+// King safety
+constexpr int KS_W_N = 18, KS_W_B = 18, KS_W_R = 10, KS_W_Q = 38;
+constexpr int KS_RING_BONUS = 2, KS_MISS_SHIELD = 7, KS_OPEN_FILE = 12, KS_RQ_LOS = 6,
+              KS_CLAMP = 220;
+
+// King pawn shelter / storm
+static constexpr int SHELTER[8] = {0, 0, 2, 6, 12, 18, 24, 28};
+static constexpr int STORM[8] = {0, 6, 10, 14, 18, 22, 26, 30};
+
+// Pieces/style
+constexpr int BISHOP_PAIR = 38;
+constexpr int BAD_BISHOP_PER_PAWN = 2;
+constexpr int OUTPOST_KN = 24;
+constexpr int CENTER_CTRL = 6;
+constexpr int KNIGHT_RIM = 12;
+constexpr int ROOK_OPEN = 16;
+constexpr int ROOK_SEMI = 8;
+constexpr int ROOK_ON_7TH = 20;
+constexpr int CONNECTED_ROOKS = 18;
+constexpr int ROOK_BEHIND_PASSER = 18;
+
+// Threats
+constexpr int THR_PAWN_MINOR = 12, THR_PAWN_ROOK = 18, THR_PAWN_QUEEN = 26;
+constexpr int HANG_MINOR = 14, HANG_ROOK = 20, HANG_QUEEN = 28;
+constexpr int MINOR_ON_QUEEN = 8;
+
+// Space
+constexpr int SPACE_BASE = 2;
+
+// Endgame scaling
+constexpr int OPP_BISHOPS_SCALE = 192;  // /256 (baseline)
+
+// =============================================================================
+// Values & phase
+// =============================================================================
+constexpr int MAX_PHASE = 24;  // sum both sides
+constexpr int TEMPO_MG = 14;
+constexpr int TEMPO_EG = 6;
+
+// =============================================================================
+// Mobility profiles (unchanged)
+// =============================================================================
+static constexpr int KN_MOB_MG[9] = {-16, -8, -4, 0, 4, 8, 12, 16, 18};
+static constexpr int KN_MOB_EG[9] = {-12, -6, -2, 2, 6, 10, 12, 14, 16};
+static constexpr int BI_MOB_MG[14] = {-22, -12, -6, -2, 2, 6, 10, 14, 18, 22, 24, 26, 28, 30};
+static constexpr int BI_MOB_EG[14] = {-18, -10, -4, 0, 4, 8, 12, 16, 20, 24, 26, 28, 30, 32};
+static constexpr int RO_MOB_MG[15] = {-20, -12, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 32, 34, 36};
+static constexpr int RO_MOB_EG[15] = {-10, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 34, 36, 38, 40};
+static constexpr int QU_MOB_MG[28] = {-10, -8, -6, -4, -2, 0,  2,  4,  6,  8,  10, 12, 14, 16,
+                                      18,  20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44};
+static constexpr int QU_MOB_EG[28] = {-6, -4, -2, 0,  2,  4,  6,  8,  10, 12, 14, 16, 18, 20,
+                                      22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48};
+
 // -------- piece values & phase (white-POV) --------
 inline constexpr std::array<int, 6> VAL_MG = {82, 337, 365, 477, 1025, 0};
 inline constexpr std::array<int, 6> VAL_EG = {94, 281, 297, 512, 936, 0};
