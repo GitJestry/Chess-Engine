@@ -122,6 +122,11 @@ EvalBar::EvalBar() : EvalBar::Entity() {
   m_toggle_text.setCharacterSize(15);
 }
 
+void EvalBar::setFlipped(bool flipped) {
+  m_flipped = flipped;
+  update(static_cast<int>(m_target_eval));
+}
+
 void EvalBar::setPosition(const Entity::Position& pos) {
   Entity::setPosition(pos);
   m_black_background.setPosition(getPosition());
@@ -196,11 +201,8 @@ void EvalBar::render(sf::RenderWindow& window) {
     const bool whiteAdv = (m_display_eval >= 0.f);
     sf::RectangleShape strip({W, 3.f});
     strip.setFillColor(whiteAdv ? sf::Color(255, 255, 255, 70) : sf::Color(255, 255, 255, 30));
-    if (whiteAdv) {
-      strip.setPosition(left, snapf(top + H - 3.f));
-    } else {
-      strip.setPosition(left, snapf(top));
-    }
+    bool bottom = (whiteAdv != m_flipped);
+    strip.setPosition(left, snapf(bottom ? top + H - 3.f : top));
     window.draw(strip);
   }
 
@@ -271,15 +273,16 @@ void EvalBar::update(int eval) {
   float xPos = getPosition().x;
   float yPos = getPosition().y;
 
+  bool whiteAdv = (m_display_eval >= 0.f);
   if (m_has_result && m_result == "1/2-1/2") {
     m_score_text.setFillColor(sf::Color(20, 20, 26));
     yPos = getPosition().y;
-  } else if (m_display_eval >= 0.f) {
-    m_score_text.setFillColor(sf::Color(20, 20, 26));  // slightly darker than pure black
-    yPos += barHalfHeight - offset * 1.5f;             // compensate baseline
+  } else if (whiteAdv) {
+    m_score_text.setFillColor(sf::Color(20, 20, 26));
+    yPos += (m_flipped ? -barHalfHeight + offset : barHalfHeight - offset * 1.5f);
   } else {
     m_score_text.setFillColor(sf::Color(230, 238, 255));
-    yPos -= barHalfHeight - offset;
+    yPos += (m_flipped ? barHalfHeight - offset * 1.5f : -barHalfHeight + offset);
   }
 
   m_score_text.setPosition(snapf(xPos), snapf(yPos));
@@ -306,9 +309,10 @@ void EvalBar::scaleToEval(float e) {
   const float sy = whitePx / whiteOrig.y;
   m_white_fill_eval.setScale(sx, sy);
 
-  // keep white anchored to the bottom (origin is center)
+  // keep white anchored to the appropriate side (origin is center)
   const auto p = getPosition();
-  m_white_fill_eval.setPosition(Entity::Position{p.x, p.y + (H - whitePx) * 0.5f});
+  float offset = (H - whitePx) * 0.5f;
+  m_white_fill_eval.setPosition(Entity::Position{p.x, m_flipped ? p.y - offset : p.y + offset});
 
   // make sure background hugs full bar
   auto bgOrig = m_black_background.getOriginalSize();

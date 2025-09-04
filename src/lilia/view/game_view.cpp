@@ -60,6 +60,7 @@ GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
 
   // board orientation
   m_board_view.setFlipped(flipped);
+  m_eval_bar.setFlipped(flipped);
 
   // initial layout
   layout(m_window.getSize().x, m_window.getSize().y);
@@ -310,6 +311,7 @@ Entity::Position GameView::getPieceSize(core::Square pos) const {
 
 void GameView::toggleBoardOrientation() {
   m_board_view.toggleFlipped();
+  m_eval_bar.setFlipped(m_board_view.isFlipped());
   std::swap(m_top_player, m_bottom_player);
   std::swap(m_white_player, m_black_player);
   std::swap(m_top_clock, m_bottom_clock);

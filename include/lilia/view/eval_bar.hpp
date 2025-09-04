@@ -25,6 +25,8 @@ class EvalBar : Entity {
   void toggleVisibility();
   [[nodiscard]] bool isOnToggle(core::MousePos mousePos) const;
 
+  void setFlipped(bool flipped);
+
  private:
   void scaleToEval(float e);
   Entity m_black_background;
@@ -38,6 +40,7 @@ class EvalBar : Entity {
   float m_target_eval{0.f};
   bool m_has_result{false};
   std::string m_result;
+  bool m_flipped{false};
 };
 
 }  // namespace lilia::view
