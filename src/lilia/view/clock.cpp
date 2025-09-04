@@ -88,6 +88,8 @@ Clock::Clock() {
   m_box.setSize({baseW, baseH});
   m_box.setOutlineThickness(1.f);
   m_box.setOutlineColor(kOutline);
+  m_box_base_color = kDarkBG;
+  m_box.setFillColor(m_box_base_color);
 
   // Overlay: used to dim inactive clock / gently tint active
   m_overlay.setSize({baseW, baseH});
@@ -118,9 +120,17 @@ Clock::Clock() {
   m_text.setStyle(sf::Text::Style::Bold);
 }
 
+void Clock::applyFillColor() {
+  if (m_low_time) {
+    m_box.setFillColor(sf::Color(220, 70, 70));
+  } else {
+    m_box.setFillColor(m_box_base_color);
+  }
+}
+
 void Clock::setPlayerColor(core::Color color) {
   if (color == core::Color::White) {
-    m_box.setFillColor(kLightBG);
+    m_box_base_color = kLightBG;
     m_text.setFillColor(kDarkText);
     m_text_base_color = kDarkText;
     m_is_light_theme = true;
@@ -129,7 +139,7 @@ void Clock::setPlayerColor(core::Color color) {
     m_icon_circle.setOutlineColor(iconCol);
     m_icon_hand.setFillColor(iconCol);
   } else {
-    m_box.setFillColor(kDarkBG);
+    m_box_base_color = kDarkBG;
     m_text.setFillColor(kLightText);
     m_text_base_color = kLightText;
     m_is_light_theme = false;
@@ -138,6 +148,7 @@ void Clock::setPlayerColor(core::Color color) {
     m_icon_circle.setOutlineColor(iconCol);
     m_icon_hand.setFillColor(iconCol);
   }
+  applyFillColor();
 }
 
 void Clock::setPosition(const sf::Vector2f& pos) {
@@ -162,13 +173,13 @@ void Clock::setPosition(const sf::Vector2f& pos) {
 
 void Clock::setTime(float seconds) {
   m_text.setString(formatTime(seconds));
-
-  // Highlight low time in red and show tenths of seconds below 20s
-  if (seconds <= 20.f) {
-    m_text.setFillColor(sf::Color(220, 70, 70));
+  m_low_time = seconds <= 20.f;
+  if (m_low_time) {
+    m_text.setFillColor(sf::Color::White);
   } else {
     m_text.setFillColor(m_text_base_color);
   }
+  applyFillColor();
 
   // ensure the text fits: grow width if needed (height stays the same)
   const auto tb = m_text.getLocalBounds();
@@ -200,7 +211,7 @@ void Clock::setActive(bool active) {
   if (active) {
     // Manipulate fill for clarity on both themes:
     const sf::Color tweakedFill = isLightTheme ? darken(baseFill, 18) : lighten(baseFill, 16);
-    m_box.setFillColor(tweakedFill);
+    m_box_base_color = tweakedFill;
 
     // Accent outline
     m_box.setOutlineThickness(2.f);
@@ -212,13 +223,14 @@ void Clock::setActive(bool active) {
     m_overlay.setFillColor(tint);
   } else {
     // restore neutral appearance
-    m_box.setFillColor(baseFill);
+    m_box_base_color = baseFill;
     m_box.setOutlineThickness(1.f);
     m_box.setOutlineColor(kOutline);
     m_overlay.setFillColor(sf::Color(0, 0, 0, 100));  // dim
     // reset hand to "12 o'clock" when inactive
     m_icon_hand.setRotation(-90.f);
   }
+  applyFillColor();
 }
 
 void Clock::render(sf::RenderWindow& window) {
