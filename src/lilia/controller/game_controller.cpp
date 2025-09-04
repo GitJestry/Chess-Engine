@@ -1630,6 +1630,8 @@ void GameController::stepForward() {
         m_game_view.setClockActive(std::nullopt);
     }
     syncCapturedPieces();
+    if (m_fen_index == m_fen_history.size() - 1)
+      m_game_view.restoreRightClickHighlights();
   }
 
   // (Restoration of premove visuals when returning to head now happens
