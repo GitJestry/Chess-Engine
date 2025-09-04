@@ -1,5 +1,6 @@
 #pragma once
 #include <unordered_map>
+#include <utility>
 
 #include "../chess_types.hpp"
 #include "board_view.hpp"
@@ -17,6 +18,7 @@ class HighlightManager {
   void highlightHoverSquare(core::Square pos);
   void highlightPremoveSquare(core::Square pos);
   void highlightRightClickSquare(core::Square pos);
+  void highlightRightClickArrow(core::Square from, core::Square to);
   void clearAllHighlights();
   void clearNonPremoveHighlights();
   void clearAttackHighlights();
@@ -43,6 +45,8 @@ class HighlightManager {
   std::unordered_map<core::Square, Entity> m_hl_hover_squares;
   std::unordered_map<core::Square, Entity> m_hl_premove_squares;
   std::unordered_map<core::Square, Entity> m_hl_rclick_squares;
+  std::unordered_map<unsigned int, std::pair<core::Square, core::Square>>
+      m_hl_rclick_arrows;
 };
 
 }  // namespace lilia::view

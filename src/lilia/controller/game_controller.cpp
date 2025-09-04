@@ -8,6 +8,7 @@
 #include <SFML/Window/Mouse.hpp>
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <iostream>
 #include <string>
 
@@ -354,11 +355,13 @@ void GameController::handleEvent(const sf::Event &event) {
       if (event.mouseButton.button == sf::Mouse::Left)
         onMousePressed(core::MousePos(event.mouseButton.x, event.mouseButton.y));
       else if (event.mouseButton.button == sf::Mouse::Right)
-        onRightClick(core::MousePos(event.mouseButton.x, event.mouseButton.y));
+        onRightPressed(core::MousePos(event.mouseButton.x, event.mouseButton.y));
       break;
     case sf::Event::MouseButtonReleased:
       if (event.mouseButton.button == sf::Mouse::Left)
         onMouseReleased(core::MousePos(event.mouseButton.x, event.mouseButton.y));
+      else if (event.mouseButton.button == sf::Mouse::Right)
+        onRightReleased(core::MousePos(event.mouseButton.x, event.mouseButton.y));
       break;
     case sf::Event::MouseLeft:
       break;
@@ -476,12 +479,29 @@ void GameController::onMouseReleased(core::MousePos pos) {
   onMouseMove(pos);
 }
 
-void GameController::onRightClick(core::MousePos pos) {
-  const core::Square sq = m_game_view.mousePosToSquare(pos);
-  if (!isValid(sq)) return;
-  const bool hasPiece = hasVirtualPiece(sq);
-  if (!hasPiece) clearPremove();
-  m_game_view.highlightRightClickSquare(sq);
+void GameController::onRightPressed(core::MousePos pos) {
+  m_right_mouse_down = true;
+  m_right_press_time = std::chrono::steady_clock::now();
+  m_right_drag_from = m_game_view.mousePosToSquare(pos);
+}
+
+void GameController::onRightReleased(core::MousePos pos) {
+  if (!m_right_mouse_down) return;
+  m_right_mouse_down = false;
+  const core::Square endSq = m_game_view.mousePosToSquare(pos);
+  const core::Square startSq = m_right_drag_from;
+  m_right_drag_from = core::NO_SQUARE;
+  if (!isValid(startSq) || !isValid(endSq)) return;
+
+  auto elapsed = std::chrono::steady_clock::now() - m_right_press_time;
+  bool heldLong = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() > 200;
+  if (startSq != endSq && heldLong) {
+    m_game_view.highlightRightClickArrow(startSq, endSq);
+  } else {
+    const bool hasPiece = hasVirtualPiece(endSq);
+    if (!hasPiece) clearPremove();
+    m_game_view.highlightRightClickSquare(endSq);
+  }
 }
 
 /* -------------------- Main loop hooks -------------------- */

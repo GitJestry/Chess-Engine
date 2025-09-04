@@ -99,6 +99,7 @@ class GameView {
   void highlightHoverSquare(core::Square pos);
   void highlightPremoveSquare(core::Square pos);
   void highlightRightClickSquare(core::Square pos);
+  void highlightRightClickArrow(core::Square from, core::Square to);
   void clearHighlightSquare(core::Square pos);
   void clearHighlightHoverSquare(core::Square pos);
   void clearHighlightPremoveSquare(core::Square pos);
