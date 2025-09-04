@@ -25,6 +25,7 @@ class InputManager {
   void setOnDrop(DropCallback cb);
 
   void processEvent(const sf::Event& event);
+  void cancelDrag();
 
  private:
   bool m_dragging = false;                     ///< Indicates whether a drag operation is active.

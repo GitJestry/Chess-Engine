@@ -51,6 +51,11 @@ void InputManager::processEvent(const sf::Event& event) {
   }
 }
 
+void InputManager::cancelDrag() {
+  m_dragging = false;
+  m_drag_start.reset();
+}
+
 [[nodiscard]] bool InputManager::isClick(const core::MousePos& start, const core::MousePos& end,
                                          int threshold) const {
   int dx = end.x - start.x;
