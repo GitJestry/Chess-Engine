@@ -19,7 +19,7 @@ class ModalView {
   bool isResignOpen() const;
 
   // Game over
-  void showGameOver(const std::string& msg, sf::Vector2f centerOnBoard);
+  void showGameOver(const std::string& msg, bool won, sf::Vector2f centerOnBoard);
   void hideGameOver();
   bool isGameOverOpen() const;
 
@@ -69,6 +69,14 @@ class ModalView {
   sf::Text m_title;
   sf::Text m_msg;
 
+  // trophy icon
+  bool m_showTrophy = false;
+  sf::ConvexShape m_trophyCup;
+  sf::RectangleShape m_trophyStem;
+  sf::RectangleShape m_trophyBase;
+  sf::CircleShape m_trophyHandleL;
+  sf::CircleShape m_trophyHandleR;
+
   // buttons (rectangles + labels)
   sf::RectangleShape m_btnLeft, m_btnRight;
   sf::Text m_lblLeft, m_lblRight;
@@ -78,6 +86,7 @@ class ModalView {
 
   // layout helpers
   void layoutCommon(sf::Vector2f center, sf::Vector2f panelSize);
+  void layoutGameOverExtras();
   void stylePrimaryButton(sf::RectangleShape& btn, sf::Text& lbl);
   void styleSecondaryButton(sf::RectangleShape& btn, sf::Text& lbl);
   static inline float snapf(float v) { return std::round(v); }

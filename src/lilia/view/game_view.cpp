@@ -227,8 +227,11 @@ bool GameView::isOnResignNo(core::MousePos mousePos) const {
 
 void GameView::showGameOverPopup(const std::string &msg, bool humanWinner) {
   auto center = m_board_view.getPosition();
-  m_modal.showGameOver(msg, {center.x, center.y});
-  if (humanWinner && msg.find("won") != std::string::npos) {
+  bool won = humanWinner &&
+             (msg.find("won") != std::string::npos ||
+              msg.find("win") != std::string::npos);
+  m_modal.showGameOver(msg, won, {center.x, center.y});
+  if (won) {
     m_particles.emitConfetti(center, static_cast<float>(constant::WINDOW_PX_SIZE), 200);
   }
 }
