@@ -649,7 +649,7 @@ static int king_safety_raw(const std::array<Bitboard, 6>& W, const std::array<Bi
   auto ring_attacks = [&](int ksq, const std::array<Bitboard, 6>& opp, bool kingIsWhite) {
     if (ksq < 0) return 0;
     Bitboard ring = M.kingRing[ksq];
-    Bitboard ringSafe = ring & ~(kingIsWhite ? bPA : wPA);  // von gegnerischen Bauern befreit
+    Bitboard ringSafe = ring;
 
     int power = 0;
     int cnt = 0;
@@ -803,18 +803,6 @@ inline bool pawns_on_both_wings(Bitboard pawns) noexcept {
 
 static int bishop_pair_term(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
   int s = 0;
-  auto bothWings = [](Bitboard pawns) {
-    // a–d vs e–h (Flügeltrennung)
-    Bitboard left = 0, right = 0;
-    for (int f = 0; f <= 3; ++f) left |= (1ULL << f);
-    for (int f = 4; f <= 7; ++f) right |= (1ULL << f);
-    Bitboard filesLeft = 0, filesRight = 0;
-    for (int r = 0; r < 8; ++r) {
-      filesLeft |= ((pawns >> (r * 8)) & 0xFFULL) & left ? (0xFFULL << (r * 8)) : 0;
-      filesRight |= ((pawns >> (r * 8)) & 0xFFULL) & right ? (0xFFULL << (r * 8)) : 0;
-    }
-    return (filesLeft & pawns) && (filesRight & pawns);
-  };
   int bonusW = 0, bonusB = 0;
   if (popcnt(W[2]) >= 2) {
     bonusW = BISHOP_PAIR + (pawns_on_both_wings(W[0]) ? 6 : 0);
@@ -1666,8 +1654,10 @@ int Evaluator::evaluate(model::Position& pos) const {
   mg_add += dev * std::min(curPhase, 12) / 12;
   eg_add += dev / 8;
 
-  mg_add += rim + outp + ract + badB + spc + block + trop;
-  eg_add += (rim / 2) + (outp / 2) + (ract / 3) + (badB / 3) + (spc / 4) + (block / 2) + trop / 6;
+  // later line — drop `+ ract` from both MG/EG:
+  mg_add += rim + outp /* + ract */ + badB + spc + block + trop;
+  eg_add +=
+      (rim / 2) + (outp / 2) /* + (ract / 3) */ + (badB / 3) + (spc / 4) + (block / 2) + (trop / 6);
 
   // Rook-EG-Extras & King-Activity & Passed-Pawn-Race
   eg_add += rook_endgame_extras_eg(W, B, W[0], B[0], occ);
