@@ -43,15 +43,17 @@ LILIA_ALWAYS_INLINE SideSets side_sets(const Board& b, Color c) noexcept {
 constexpr bb::Bitboard compute_between_single(int ai, int bi) noexcept {
   if (ai == bi) return 0ULL;
   const int d = bi - ai;
+  const int ar = ai / 8, br = bi / 8;
+  const int af = ai % 8, bf = bi % 8;
   int step = 0;
-  if (d % 9 == 0)
-    step = (d > 0 ? 9 : -9);
-  else if (d % 7 == 0)
-    step = (d > 0 ? 7 : -7);
-  else if (ai / 8 == bi / 8)
+  if (ar == br)
     step = (d > 0 ? 1 : -1);
-  else if ((ai % 8) == (bi % 8))
+  else if (af == bf)
     step = (d > 0 ? 8 : -8);
+  else if (d % 9 == 0 && (br - ar) == (bf - af))
+    step = (d > 0 ? 9 : -9);
+  else if (d % 7 == 0 && (br - ar) == (af - bf))
+    step = (d > 0 ? 7 : -7);
   else
     return 0ULL;
 
