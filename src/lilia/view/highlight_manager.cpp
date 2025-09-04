@@ -48,17 +48,34 @@ void HighlightManager::renderRightClickSquares(sf::RenderWindow& window) {
 void HighlightManager::renderRightClickArrows(sf::RenderWindow& window) {
   const sf::Color col(255, 80, 80, 170);
   const float sqSize = static_cast<float>(constant::SQUARE_PX_SIZE);
-  const float thickness = sqSize * 0.15f;
-  const float headLength = sqSize * 0.45f;
-  const float headWidth = sqSize * 0.45f;
-  const float edgeOffset = sqSize * 0.5f * 0.9f;
+
+  // Thicker arrow like chess.com
+  const float thickness = sqSize * 0.2f;    // was 0.15f
+  const float headLength = sqSize * 0.38f;  // slight bump for better proportion
+  const float headWidth = sqSize * 0.48f;
+  // add near your other constants
+  const float jointOverlap = thickness * 0.5f;  // cover elbow seam
+  // Pull the start off the square center toward the edge.
+  const float edgeOffset = sqSize * 0.5f * 0.8f;  // ~90% to the edge
+
+  auto clipSegmentEnds = [&](sf::Vector2f a, sf::Vector2f b, float clipA,
+                             float clipB) -> std::pair<sf::Vector2f, sf::Vector2f> {
+    sf::Vector2f d = b - a;
+    float len = std::sqrt(d.x * d.x + d.y * d.y);
+    if (len <= 1e-3f) return {a, b};
+    sf::Vector2f u = d / len;  // unit direction
+    return {a + u * clipA, b - u * clipB};
+  };
 
   auto drawSegment = [&](sf::Vector2f s, sf::Vector2f e, bool arrowHead) {
     sf::Vector2f diff = e - s;
     float len = std::sqrt(diff.x * diff.x + diff.y * diff.y);
     if (len <= 0.1f) return;
+
     float angle = std::atan2(diff.y, diff.x) * 180.f / std::numbers::pi_v<float>;
     float bodyLen = arrowHead ? std::max(0.f, len - headLength) : len;
+
+    // Body
     sf::RectangleShape body({bodyLen, thickness});
     body.setFillColor(col);
     body.setOrigin(0.f, thickness / 2.f);
@@ -66,9 +83,10 @@ void HighlightManager::renderRightClickArrows(sf::RenderWindow& window) {
     body.setRotation(angle);
     window.draw(body);
 
+    // Head (tip at e)
     if (arrowHead) {
       sf::ConvexShape head(3);
-      head.setPoint(0, {0.f, 0.f});
+      head.setPoint(0, {0.f, 0.f});  // tip at 'e'
       head.setPoint(1, {-headLength, headWidth / 2.f});
       head.setPoint(2, {-headLength, -headWidth / 2.f});
       head.setFillColor(col);
@@ -81,8 +99,10 @@ void HighlightManager::renderRightClickArrows(sf::RenderWindow& window) {
   for (const auto& kv : m_hl_rclick_arrows) {
     core::Square fromSq = kv.second.first;
     core::Square toSq = kv.second.second;
-    auto fromPos = m_board_view_ref.getSquareScreenPos(fromSq);
-    auto toPos = m_board_view_ref.getSquareScreenPos(toSq);
+    if (fromSq == toSq) continue;
+
+    sf::Vector2f fromPos = m_board_view_ref.getSquareScreenPos(fromSq);
+    sf::Vector2f toPos = m_board_view_ref.getSquareScreenPos(toSq);
 
     int fx = static_cast<int>(fromSq) & 7;
     int fy = static_cast<int>(fromSq) >> 3;
@@ -93,32 +113,26 @@ void HighlightManager::renderRightClickArrows(sf::RenderWindow& window) {
     bool knight = (adx == 1 && ady == 2) || (adx == 2 && ady == 1);
 
     if (knight) {
+      // Choose the elbow square so the path is orthogonal (like chess.com)
       int cornerFile = (ady > adx) ? fx : tx;
       int cornerRank = (ady > adx) ? ty : fy;
-      core::Square cornerSq = static_cast<core::Square>(
-          cornerFile + cornerRank * constant::BOARD_SIZE);
+      core::Square cornerSq =
+          static_cast<core::Square>(cornerFile + cornerRank * constant::BOARD_SIZE);
       sf::Vector2f corner = m_board_view_ref.getSquareScreenPos(cornerSq);
 
-      int dx1 = cornerFile - fx;
-      int dy1 = cornerRank - fy;
-      sf::Vector2f start = fromPos;
-      start.x += (dx1 > 0 ? edgeOffset : dx1 < 0 ? -edgeOffset : 0.f);
-      start.y += (dy1 > 0 ? edgeOffset : dy1 < 0 ? -edgeOffset : 0.f);
+      // Leg 1: from start edge to corner, but extend PAST corner a bit
+      auto [leg1Start, leg1End] = clipSegmentEnds(fromPos, corner, edgeOffset, -jointOverlap);
 
-      drawSegment(start, corner, false);
-      drawSegment(corner, toPos, true);
-      sf::CircleShape joint(thickness / 2.f);
-      joint.setOrigin(thickness / 2.f, thickness / 2.f);
-      joint.setFillColor(col);
-      joint.setPosition(corner);
-      window.draw(joint);
+      // Leg 2: start a bit BEFORE the corner so it overlaps into it
+      auto [leg2Start, leg2End] = clipSegmentEnds(corner, toPos, -jointOverlap, 0.f);
+
+      // Draw order: leg1 body, then leg2 body+head to keep the join clean
+      drawSegment(leg1Start, leg1End, /*arrowHead=*/false);
+      drawSegment(leg2Start, leg2End, /*arrowHead=*/true);
     } else {
-      sf::Vector2f start = fromPos;
-      int sgnX = (tx > fx) ? 1 : (tx < fx ? -1 : 0);
-      int sgnY = (ty > fy) ? 1 : (ty < fy ? -1 : 0);
-      start.x += sgnX * edgeOffset;
-      start.y += sgnY * edgeOffset;
-      drawSegment(start, toPos, true);
+      // Straight/diagonal: clip only the start; end stays at square center.
+      auto [start, end] = clipSegmentEnds(fromPos, toPos, edgeOffset, 0.f);
+      drawSegment(start, end, /*arrowHead=*/true);
     }
   }
 }
@@ -177,8 +191,7 @@ std::vector<core::Square> HighlightManager::getRightClickSquares() const {
   return out;
 }
 
-std::vector<std::pair<core::Square, core::Square>>
-HighlightManager::getRightClickArrows() const {
+std::vector<std::pair<core::Square, core::Square>> HighlightManager::getRightClickArrows() const {
   std::vector<std::pair<core::Square, core::Square>> out;
   out.reserve(m_hl_rclick_arrows.size());
   for (const auto& kv : m_hl_rclick_arrows) out.push_back(kv.second);
@@ -199,7 +212,9 @@ void HighlightManager::clearNonPremoveHighlights() {
   m_hl_rclick_squares.clear();
   m_hl_rclick_arrows.clear();
 }
-void HighlightManager::clearAttackHighlights() { m_hl_attack_squares.clear(); }
+void HighlightManager::clearAttackHighlights() {
+  m_hl_attack_squares.clear();
+}
 void HighlightManager::clearHighlightSquare(core::Square pos) {
   m_hl_select_squares.erase(pos);
 }
