@@ -197,6 +197,11 @@ void PlayerInfoView::setPositionClamped(const Entity::Position& pos,
   setPosition(clamped);
 }
 
+void PlayerInfoView::setBoardCenter(float centerX) {
+  m_boardCenter = centerX;
+  layoutCaptured();
+}
+
 void PlayerInfoView::render(sf::RenderWindow& window) {
   // ultra-subtle shadow & bevel on avatar frame
   const auto fb = m_frame.getGlobalBounds();
@@ -256,15 +261,13 @@ void PlayerInfoView::clearCapturedPieces() {
 void PlayerInfoView::layoutCaptured() {
   const float capH = std::clamp(kIconFrameSize - 6.f, kCapMinH, kCapMaxH);
 
-  auto nameG = m_name.getGlobalBounds();
-  auto eloG = m_elo.getGlobalBounds();
-  const float rightText = std::max(nameG.left + nameG.width, eloG.left + eloG.width);
-  const float baseX = snapf(rightText + kTextGap);
-  const float baseY = snapf(m_frame.getPosition().y + (kIconFrameSize - capH) * 0.5f);
+  const float baseY =
+      snapf(m_frame.getPosition().y + (kIconFrameSize - capH) * 0.5f);
 
   if (m_capturedPieces.empty()) {
     auto tb = m_noCaptures.getLocalBounds();
     const float boxW = tb.width + 2.f * kCapPad;
+    const float baseX = snapf(m_boardCenter - boxW * 0.5f);
     m_captureBox.setSize({boxW, capH});
     m_captureBox.setPosition({baseX, baseY});
 
@@ -275,28 +278,40 @@ void PlayerInfoView::layoutCaptured() {
   }
 
   const float targetH = capH - 2.f * kCapPad;
+  std::vector<sf::Vector2f> sizes;
+  sizes.reserve(m_capturedPieces.size());
   float x = kCapPad;
 
   for (auto& piece : m_capturedPieces) {
     const auto orig = piece.getOriginalSize();
-    if (orig.x <= 0.f || orig.y <= 0.f) continue;
+    if (orig.x <= 0.f || orig.y <= 0.f) {
+      sizes.emplace_back(0.f, 0.f);
+      continue;
+    }
 
     const float s = (targetH / orig.y) * 1.1f;  // fit height (no overscale)
     piece.setScale(s, s);
 
-    const float w = orig.x * s;
-    const float h = orig.y * s;
-
-    const float px = baseX * 1.035f + x;          // (kept on purpose)
-    const float py = baseY + (capH - h) * 2.20f;  // (kept on purpose)
-    piece.setPosition(snap({px, py}));
-
-    x += w * kPieceAdvance;
+    const auto size = piece.getCurrentSize();
+    sizes.push_back(size);
+    x += size.x * kPieceAdvance;
   }
 
   const float contentW = x + kCapPad;
+  const float baseX = snapf(m_boardCenter - contentW * 0.5f);
   m_captureBox.setSize({contentW, capH});
   m_captureBox.setPosition({baseX, baseY});
+
+  float posX = kCapPad;
+  for (std::size_t i = 0; i < m_capturedPieces.size(); ++i) {
+    auto& piece = m_capturedPieces[i];
+    auto size = sizes[i];
+    if (size.x <= 0.f || size.y <= 0.f) continue;
+    const float px = baseX + posX;
+    const float py = baseY + (capH - size.y) * 2.20f;  // (kept on purpose)
+    piece.setPosition(snap({px, py}));
+    posX += size.x * kPieceAdvance;
+  }
 }
 
 }  // namespace lilia::view
