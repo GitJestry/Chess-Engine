@@ -40,10 +40,6 @@ constexpr float kTipPadX = 8.f;
 constexpr float kTipPadY = 5.f;
 constexpr float kTipArrowH = 6.f;
 
-// Toast
-constexpr float kToastDur = 1.6f;
-constexpr float kToastFade = 0.5f;
-
 // Fonts
 constexpr unsigned kMoveNumberFontSize = 14;
 constexpr unsigned kMoveFontSize = 15;
@@ -55,7 +51,6 @@ constexpr unsigned kTipFontSize = 13;
 
 // ---------- Module-local UI state (no header change needed) ----------
 static bool g_prevLeftDown = false;
-static bool g_toastVisible = false;
 static sf::Clock g_toastClock;
 static bool g_copySuccess = false;
 static sf::Clock g_copyClock;
@@ -231,9 +226,9 @@ void drawReload(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered) 
 void drawFenIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered, bool success) {
   if (success) {
     // green check mark
-    const float s = slot.width * 0.6f;
-    const float x = snapf(slot.left + (slot.width - s) * 0.5f);
-    const float y = snapf(slot.top + (slot.height - s) * 0.5f);
+    const float s = slot.width * 1.2f;
+    const float x = snapf(slot.left + (slot.width - s));
+    const float y = snapf(slot.top + (slot.height - s));
     sf::Color col(40, 170, 40);
 
     sf::VertexArray check(sf::LinesStrip, 3);
@@ -650,7 +645,8 @@ void MoveListView::render(sf::RenderWindow& window) const {
     if (!blackMove.empty()) {
       sf::Text b(blackMove, m_font, kMoveFontSize);
       b.setStyle(sf::Text::Bold);
-      b.setFillColor((m_selected_move == i * 2 + 1) ? constant::COL_TEXT : constant::COL_MUTED_TEXT);
+      b.setFillColor((m_selected_move == i * 2 + 1) ? constant::COL_TEXT
+                                                    : constant::COL_MUTED_TEXT);
       b.setPosition(snapf(x), snapf(y));
       window.draw(b);
       x += b.getLocalBounds().width + kMoveGap;
@@ -722,46 +718,11 @@ void MoveListView::render(sf::RenderWindow& window) const {
     if (leftDown && !g_prevLeftDown && hovFen) {
       // Copy to clipboard and show toast
       sf::Clipboard::setString(m_fen_str);
-      g_toastVisible = true;
       g_toastClock.restart();
       g_copySuccess = true;
       g_copyClock.restart();
     }
     g_prevLeftDown = leftDown;
-  }
-
-  // --- Toast render ("Copied") inside this view ---
-  if (g_toastVisible) {
-    float t = g_toastClock.getElapsedTime().asSeconds();
-    if (t >= kToastDur) {
-      g_toastVisible = false;
-    } else {
-      float alpha = 1.f;
-      if (t > kToastDur - kToastFade) alpha = std::clamp((kToastDur - t) / kToastFade, 0.f, 1.f);
-
-      sf::Text msg("Copied", m_font, 14);
-      auto mb = msg.getLocalBounds();
-      float padX = 14.f, padY = 8.f;
-      sf::Vector2f sz(mb.width + padX * 2.f, mb.height + padY * 2.f);
-
-      // bottom-center of the sidebar panel
-      sf::Vector2f pos(snapf((m_width - sz.x) * 0.5f), snapf(m_height - kFooterH - sz.y - 10.f));
-
-      sf::RectangleShape bg({sz.x, sz.y});
-      bg.setPosition(pos);
-      sf::Color bgCol = constant::COL_TOOLTIP_BG;
-      bgCol.a = static_cast<sf::Uint8>(alpha * 220);
-      bg.setFillColor(bgCol);
-      bg.setOutlineThickness(1.f);
-      sf::Color outlineCol = constant::COL_BORDER_LIGHT;
-      outlineCol.a = static_cast<sf::Uint8>(alpha * 200);
-      bg.setOutlineColor(outlineCol);
-      window.draw(bg);
-
-      msg.setFillColor(sf::Color(255, 255, 255, static_cast<sf::Uint8>(alpha * 255)));
-      msg.setPosition(snapf(pos.x + padX - mb.left), snapf(pos.y + padY - mb.top));
-      window.draw(msg);
-    }
   }
 
   window.setView(oldView);

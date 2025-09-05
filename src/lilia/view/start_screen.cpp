@@ -238,8 +238,7 @@ StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
 
   setupUI();
   applyTheme();
-  m_listener_id =
-      ColorPaletteManager::get().addListener([this]() { applyTheme(); });
+  m_listener_id = ColorPaletteManager::get().addListener([this]() { applyTheme(); });
 }
 
 StartScreen::~StartScreen() {
