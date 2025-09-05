@@ -20,7 +20,7 @@ ColorPaletteManager::ColorPaletteManager() {
   registerPalette(constant::STR_COL_PALETTE_DEFAULT, ColorPalette{});
   registerPalette(constant::STR_COL_PALETTE_RED_NOIR, PALETTE_ROSE_NOIR);
 
-  m_active = "default";
+  m_active = constant::STR_COL_PALETTE_DEFAULT;
 }
 
 void ColorPaletteManager::registerPalette(const std::string& name, const ColorPalette& palette) {
