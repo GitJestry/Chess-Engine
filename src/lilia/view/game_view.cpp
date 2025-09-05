@@ -533,6 +533,8 @@ void GameView::layout(unsigned int width, unsigned int height) {
       {boardLeft + 5.f,
        boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 15.f},
       m_window.getSize());
+  m_top_player.setBoardCenter(boardCenterX);
+  m_bottom_player.setBoardCenter(boardCenterX);
 
   float clockX = boardLeft + static_cast<float>(constant::WINDOW_PX_SIZE) -
                  Clock::WIDTH * 0.85f;

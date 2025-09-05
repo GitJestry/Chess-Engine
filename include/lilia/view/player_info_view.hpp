@@ -21,6 +21,7 @@ class PlayerInfoView {
   void setInfo(const PlayerInfo& info);
   void setPlayerColor(core::Color color);
   void setPositionClamped(const Entity::Position& pos, const sf::Vector2u& viewportSize);
+  void setBoardCenter(float centerX);
   void render(sf::RenderWindow& window);
 
   void addCapturedPiece(core::PieceType type, core::Color color);
@@ -39,6 +40,7 @@ class PlayerInfoView {
   sf::Text m_noCaptures;
   core::Color m_playerColor{core::Color::White};
   Entity::Position m_position{};
+  float m_boardCenter{0.f};
   std::vector<Entity> m_capturedPieces;
   std::vector<std::pair<core::PieceType, core::Color>> m_capturedInfo;
   std::string m_iconPath;
