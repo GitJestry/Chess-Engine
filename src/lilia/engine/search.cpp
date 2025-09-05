@@ -13,6 +13,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 #include "lilia/engine/config.hpp"
@@ -786,7 +787,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
 std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_len) {
   std::vector<model::Move> pv;
-  std::vector<uint64_t> seen;
+  std::unordered_set<uint64_t> seen;
+  pv.reserve(max_len);
   seen.reserve(max_len);
   for (int i = 0; i < max_len; ++i) {
     model::TTEntry5 tte{};
@@ -798,8 +800,7 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
     pv.push_back(m);
 
     uint64_t h = pos.hash();
-    if (std::find(seen.begin(), seen.end(), h) != seen.end()) break;  // TT-Loop erkannt
-    seen.push_back(h);
+    if (!seen.insert(h).second) break;  // TT-Loop erkannt
   }
   return pv;
 }
