@@ -14,6 +14,7 @@ namespace lilia::view {
 class Clock {
  public:
   Clock();
+  ~Clock();
 
   void setPlayerColor(core::Color color);
   void setPosition(const sf::Vector2f& pos);
@@ -40,6 +41,8 @@ class Clock {
   bool m_is_light_theme{false};
   sf::CircleShape m_icon_circle;
   sf::RectangleShape m_icon_hand;
+
+  ColorPaletteManager::ListenerID m_listener_id{0};
 
   void applyFillColor();
 };
