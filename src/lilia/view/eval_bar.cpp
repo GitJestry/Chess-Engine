@@ -343,6 +343,11 @@ void EvalBar::onPaletteChanged() {
       TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_WHITE));
   m_score_text.setFillColor(constant::COL_SCORE_TEXT_DARK);
   m_toggle_text.setFillColor(constant::COL_TEXT);
+  // Refresh textures in case the underlying palette-dependent images changed.
+  m_black_background.setTexture(
+      TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_BLACK));
+  m_white_fill_eval.setTexture(
+      TextureTable::getInstance().get(constant::STR_TEXTURE_EVAL_WHITE));
 }
 
 void EvalBar::reset() {
