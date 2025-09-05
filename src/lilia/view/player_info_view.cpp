@@ -100,8 +100,7 @@ PlayerInfoView::PlayerInfoView() {
   m_captureBox.setOutlineColor(sf::Color::Transparent);
 
   applyTheme();
-  m_listener_id =
-      ColorPaletteManager::get().addListener([this]() { applyTheme(); });
+  m_listener_id = ColorPaletteManager::get().addListener([this]() { applyTheme(); });
 }
 
 PlayerInfoView::~PlayerInfoView() {
@@ -261,8 +260,7 @@ void PlayerInfoView::clearCapturedPieces() {
 void PlayerInfoView::layoutCaptured() {
   const float capH = std::clamp(kIconFrameSize - 6.f, kCapMinH, kCapMaxH);
 
-  const float baseY =
-      snapf(m_frame.getPosition().y + (kIconFrameSize - capH) * 0.5f);
+  const float baseY = snapf(m_frame.getPosition().y + (kIconFrameSize - capH) * 0.5f);
 
   if (m_capturedPieces.empty()) {
     auto tb = m_noCaptures.getLocalBounds();
@@ -297,7 +295,7 @@ void PlayerInfoView::layoutCaptured() {
     x += size.x * kPieceAdvance;
   }
 
-  const float contentW = x + kCapPad;
+  const float contentW = x + kCapPad - 4.f;
   const float baseX = snapf(m_boardCenter - contentW * 0.5f);
   m_captureBox.setSize({contentW, capH});
   m_captureBox.setPosition({baseX, baseY});
@@ -307,7 +305,7 @@ void PlayerInfoView::layoutCaptured() {
     auto& piece = m_capturedPieces[i];
     auto size = sizes[i];
     if (size.x <= 0.f || size.y <= 0.f) continue;
-    const float px = baseX + posX;
+    const float px = baseX + posX + 6.f;
     const float py = baseY + (capH - size.y) * 2.20f;  // (kept on purpose)
     piece.setPosition(snap({px, py}));
     posX += size.x * kPieceAdvance;
