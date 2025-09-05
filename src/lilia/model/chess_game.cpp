@@ -35,6 +35,15 @@ inline core::Square stringToSquare(std::string_view sv) noexcept {
   return static_cast<core::Square>(file + rank * 8);
 }
 
+inline int parseInt(std::string_view sv) noexcept {
+  int val = 0;
+  for (char c : sv) {
+    if (c < '0' || c > '9') break;
+    val = val * 10 + (c - '0');
+  }
+  return val;
+}
+
 }  // namespace
 
 // ---------------- Public API ----------------
@@ -200,18 +209,11 @@ void ChessGame::setPosition(const std::string& fen) {
   // Clocks (robust parse)
   int hm = 0, fm = 1;
   if (!halfmoveClock.empty()) {
-    try {
-      hm = std::stoi(std::string(halfmoveClock));
-    } catch (...) {
-      hm = 0;
-    }
+    hm = parseInt(halfmoveClock);
   }
   if (!fullmoveNumber.empty()) {
-    try {
-      fm = std::stoi(std::string(fullmoveNumber));
-    } catch (...) {
-      fm = 1;
-    }
+    fm = parseInt(fullmoveNumber);
+    if (fm == 0) fm = 1;
   }
   m_position.getState().halfmoveClock = hm;
   m_position.getState().fullmoveNumber = fm;
