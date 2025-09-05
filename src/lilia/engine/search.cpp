@@ -229,14 +229,10 @@ inline void bump_node_or_stop(const std::shared_ptr<std::atomic<std::uint64_t>>&
                               std::uint64_t limit,
                               const std::shared_ptr<std::atomic<bool>>& stopFlag) {
   if (!counter) return;
-  for (;;) {
-    std::uint64_t prev = counter->load(std::memory_order_relaxed);
-    if (limit && prev >= limit) {
-      if (stopFlag) stopFlag->store(true, std::memory_order_relaxed);
-      throw SearchStoppedException();
-    }
-    if (counter->compare_exchange_weak(prev, prev + 1, std::memory_order_relaxed))
-      break;  // successfully took a ticket
+  std::uint64_t prev = counter->fetch_add(1, std::memory_order_relaxed);
+  if (limit && prev >= limit) {
+    if (stopFlag) stopFlag->store(true, std::memory_order_relaxed);
+    throw SearchStoppedException();
   }
 }
 
