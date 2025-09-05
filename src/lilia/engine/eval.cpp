@@ -7,7 +7,6 @@
 #include <cassert>
 #include <cstdint>
 #include <limits>
-#include <mutex>
 
 #include "lilia/engine/config.hpp"
 #include "lilia/engine/eval_acc.hpp"
@@ -61,79 +60,84 @@ struct Masks {
   std::array<Bitboard, 64> wShield{}, bShield{};
   std::array<Bitboard, 64> frontSpanW{}, frontSpanB{};
 };
-static Masks M;
-static std::once_flag once_masks;
-static void init_masks() {
-  std::call_once(once_masks, [] {
-    for (int sq = 0; sq < 64; ++sq) {
-      int f = file_of(sq), r = rank_of(sq);
-      Bitboard fm = 0;
-      for (int rr = 0; rr < 8; ++rr) fm |= sq_bb((Square)((rr << 3) | f));
-      M.file[sq] = fm;
-      Bitboard adj = 0;
-      if (f > 0)
-        for (int rr = 0; rr < 8; ++rr) adj |= sq_bb((Square)((rr << 3) | (f - 1)));
-      if (f < 7)
-        for (int rr = 0; rr < 8; ++rr) adj |= sq_bb((Square)((rr << 3) | (f + 1)));
-      M.adjFiles[sq] = adj;
+consteval Masks init_masks() {
+  Masks m{};
+  for (int sq = 0; sq < 64; ++sq) {
+    int f = file_of(static_cast<Square>(sq));
+    int r = rank_of(static_cast<Square>(sq));
 
-      Bitboard pw = 0;
-      for (int rr = r + 1; rr < 8; ++rr)
-        for (int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ++ff)
-          pw |= sq_bb((Square)((rr << 3) | ff));
-      Bitboard pb = 0;
-      for (int rr = r - 1; rr >= 0; --rr)
-        for (int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ++ff)
-          pb |= sq_bb((Square)((rr << 3) | ff));
-      M.wPassed[sq] = pw;
-      M.bPassed[sq] = pb;
+    Bitboard fm = 0;
+    for (int rr = 0; rr < 8; ++rr) fm |= sq_bb(static_cast<Square>((rr << 3) | f));
+    m.file[sq] = fm;
 
-      Bitboard wf = 0;
-      for (int rr = r + 1; rr < 8; ++rr) wf |= sq_bb((Square)((rr << 3) | f));
-      M.wFront[sq] = wf;
-      M.frontSpanW[sq] = wf;
+    Bitboard adj = 0;
+    if (f > 0)
+      for (int rr = 0; rr < 8; ++rr)
+        adj |= sq_bb(static_cast<Square>((rr << 3) | (f - 1)));
+    if (f < 7)
+      for (int rr = 0; rr < 8; ++rr)
+        adj |= sq_bb(static_cast<Square>((rr << 3) | (f + 1)));
+    m.adjFiles[sq] = adj;
 
-      Bitboard bf = 0;
-      for (int rr = r - 1; rr >= 0; --rr) bf |= sq_bb((Square)((rr << 3) | f));
-      M.bFront[sq] = bf;
-      M.frontSpanB[sq] = bf;
+    Bitboard pw = 0;
+    for (int rr = r + 1; rr < 8; ++rr)
+      for (int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ++ff)
+        pw |= sq_bb(static_cast<Square>((rr << 3) | ff));
+    Bitboard pb = 0;
+    for (int rr = r - 1; rr >= 0; --rr)
+      for (int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ++ff)
+        pb |= sq_bb(static_cast<Square>((rr << 3) | ff));
+    m.wPassed[sq] = pw;
+    m.bPassed[sq] = pb;
 
-      Bitboard ring = 0;
-      for (int dr = -2; dr <= 2; ++dr)
-        for (int df = -2; df <= 2; ++df) {
-          int nr = r + dr, nf = f + df;
-          if (0 <= nr && nr < 8 && 0 <= nf && nf < 8) ring |= sq_bb((Square)((nr << 3) | nf));
-        }
-      M.kingRing[sq] = ring;
+    Bitboard wf = 0;
+    for (int rr = r + 1; rr < 8; ++rr)
+      wf |= sq_bb(static_cast<Square>((rr << 3) | f));
+    m.wFront[sq] = wf;
+    m.frontSpanW[sq] = wf;
 
-      auto mkShield = [&](bool w) {
-        Bitboard sh = 0;
-        if (w) {
-          for (int dr = 1; dr <= 2; ++dr) {
-            int nr = r + dr;
-            if (nr >= 8) break;
-            for (int df = -1; df <= 1; ++df) {
-              int nf = f + df;
-              if (0 <= nf && nf < 8) sh |= sq_bb((Square)((nr << 3) | nf));
-            }
-          }
-        } else {
-          for (int dr = 1; dr <= 2; ++dr) {
-            int nr = r - dr;
-            if (nr < 0) break;
-            for (int df = -1; df <= 1; ++df) {
-              int nf = f + df;
-              if (0 <= nf && nf < 8) sh |= sq_bb((Square)((nr << 3) | nf));
-            }
-          }
-        }
-        return sh;
-      };
-      M.wShield[sq] = mkShield(true);
-      M.bShield[sq] = mkShield(false);
+    Bitboard bf = 0;
+    for (int rr = r - 1; rr >= 0; --rr)
+      bf |= sq_bb(static_cast<Square>((rr << 3) | f));
+    m.bFront[sq] = bf;
+    m.frontSpanB[sq] = bf;
+
+    Bitboard ring = 0;
+    for (int dr = -2; dr <= 2; ++dr)
+      for (int df = -2; df <= 2; ++df) {
+        int nr = r + dr, nf = f + df;
+        if (0 <= nr && nr < 8 && 0 <= nf && nf < 8)
+          ring |= sq_bb(static_cast<Square>((nr << 3) | nf));
+      }
+    m.kingRing[sq] = ring;
+
+    Bitboard shW = 0;
+    for (int dr = 1; dr <= 2; ++dr) {
+      int nr = r + dr;
+      if (nr >= 8) break;
+      for (int df = -1; df <= 1; ++df) {
+        int nf = f + df;
+        if (0 <= nf && nf < 8)
+          shW |= sq_bb(static_cast<Square>((nr << 3) | nf));
+      }
     }
-  });
+    m.wShield[sq] = shW;
+
+    Bitboard shB = 0;
+    for (int dr = 1; dr <= 2; ++dr) {
+      int nr = r - dr;
+      if (nr < 0) break;
+      for (int df = -1; df <= 1; ++df) {
+        int nf = f + df;
+        if (0 <= nf && nf < 8)
+          shB |= sq_bb(static_cast<Square>((nr << 3) | nf));
+      }
+    }
+    m.bShield[sq] = shB;
+  }
+  return m;
 }
+static constexpr Masks M = init_masks();
 
 // =============================================================================
 // Tunables – structure & style
@@ -1318,7 +1322,6 @@ struct Evaluator::Impl {
   std::atomic<uint32_t> age{1};
 };
 Evaluator::Evaluator() noexcept {
-  init_masks();
   m_impl = new Impl();
 }
 Evaluator::~Evaluator() noexcept {
