@@ -54,8 +54,8 @@ class Board {
   std::array<std::uint8_t, 64> m_piece_on{};
 
   // Helper
-  static inline std::uint8_t pack_piece(bb::Piece p) noexcept;
-  static inline bb::Piece unpack_piece(std::uint8_t pp) noexcept;
+  static constexpr std::uint8_t pack_piece(bb::Piece p) noexcept;
+  static constexpr bb::Piece unpack_piece(std::uint8_t pp) noexcept;
 };
 
 }  // namespace lilia::model
@@ -71,7 +71,7 @@ inline void Board::clear() noexcept {
   m_piece_on.fill(0);
 }
 
-inline std::uint8_t Board::pack_piece(bb::Piece p) noexcept {
+constexpr std::uint8_t Board::pack_piece(bb::Piece p) noexcept {
   if (p.type == core::PieceType::None) return 0;
   const int ti = detail::type_index(p.type);  // 0..5
   assert(ti >= 0 && ti < 6 && "Invalid PieceType");
@@ -79,7 +79,7 @@ inline std::uint8_t Board::pack_piece(bb::Piece p) noexcept {
   return static_cast<std::uint8_t>((ti + 1) | (c << 3));  // low3: (ti+1), bit3: color
 }
 
-inline bb::Piece Board::unpack_piece(std::uint8_t pp) noexcept {
+constexpr bb::Piece Board::unpack_piece(std::uint8_t pp) noexcept {
   if (pp == 0) return bb::Piece{core::PieceType::None, core::Color::White};
   const int ti = (pp & 0x7) - 1;  // 0..5
   const core::PieceType pt = static_cast<core::PieceType>(ti);
