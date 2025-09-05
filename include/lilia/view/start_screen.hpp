@@ -57,6 +57,7 @@ class StartScreen {
   std::size_t m_whiteBotSelection{0};
   bool m_showWhiteBotList{false};
   bool m_whiteListForceHide{false};
+  float m_whiteBotListAnim{0.f};
 
   sf::RectangleShape m_blackPlayerBtn;
   sf::RectangleShape m_blackBotBtn;
@@ -67,6 +68,7 @@ class StartScreen {
   std::size_t m_blackBotSelection{0};
   bool m_showBlackBotList{false};
   bool m_blackListForceHide{false};
+  float m_blackBotListAnim{0.f};
 
   sf::RectangleShape m_startBtn;
   sf::Text m_startText;
@@ -79,6 +81,7 @@ class StartScreen {
   std::size_t m_paletteSelection{0};
   bool m_showPaletteList{false};
   bool m_paletteListForceHide{false};
+  float m_paletteListAnim{0.f};
 
   // FEN popup UI
   bool m_showFenPopup{false};
