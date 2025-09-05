@@ -51,18 +51,6 @@ constexpr unsigned kSubHeaderFontSize = 16;
 constexpr unsigned kTipFontSize = 13;
 
 // ---------- Colors (theme) ----------
-const sf::Color colSidebarBG(36, 41, 54);  // panel body
-const sf::Color colHeaderBG(42, 48, 63);   // header/footer
-const sf::Color colListBG(33, 38, 50);     // list background
-const sf::Color colRowEven(44, 50, 66);
-const sf::Color colRowOdd(38, 44, 58);
-const sf::Color colBorder(120, 140, 170, 50);   // hairlines
-const sf::Color colAccent(100, 190, 255);       // accent
-const sf::Color colAccentHover(120, 205, 255);  // hover lift
-
-const sf::Color colText(240, 244, 255);
-const sf::Color colMuted(180, 186, 205);
-const sf::Color colTooltipBG(20, 24, 32, 230);
 
 // ---------- Module-local UI state (no header change needed) ----------
 static bool g_prevLeftDown = false;
@@ -110,13 +98,13 @@ void drawSoftShadowRect(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color b
 void drawStripShadow(sf::RenderTarget& t, float x, float y, float w) {
   sf::RectangleShape s({w, 2.f});
   s.setPosition(snapf(x), snapf(y));
-  s.setFillColor(sf::Color(0, 0, 0, 70));
+  s.setFillColor(constant::COL_SHADOW_BAR);
   t.draw(s);
 }
 
 // Beveled slot (footer control)
 void drawBevelSlot3D(sf::RenderWindow& win, const sf::FloatRect& r, bool hovered) {
-  sf::Color base = hovered ? sf::Color(58, 66, 84) : sf::Color(50, 56, 72);
+  sf::Color base = hovered ? constant::COL_HOVER_BG : constant::COL_SLOT_BASE;
 
   // body
   sf::RectangleShape body({r.width, r.height});
@@ -138,9 +126,9 @@ void drawBevelSlot3D(sf::RenderWindow& win, const sf::FloatRect& r, bool hovered
   // border (hairline)
   sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
   inset.setPosition(r.left + 1.f, r.top + 1.f);
-  inset.setFillColor(sf::Color(0, 0, 0, 0));
+  inset.setFillColor(sf::Color::Transparent);
   inset.setOutlineThickness(1.f);
-  inset.setOutlineColor(hovered ? sf::Color(140, 200, 240, 90) : colBorder);
+  inset.setOutlineColor(hovered ? constant::COL_ACCENT_OUTLINE : constant::COL_BORDER_LIGHT);
   win.draw(inset);
 }
 
@@ -160,7 +148,7 @@ void drawChevron(sf::RenderWindow& win, const sf::FloatRect& slot, bool left, bo
     tri.setPoint(1, {x0 + s, y0 + s * 0.5f});
     tri.setPoint(2, {x0, y0 + s});
   }
-  tri.setFillColor(hovered ? colAccentHover : colText);
+  tri.setFillColor(hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT);
   win.draw(tri);
 }
 
@@ -174,7 +162,7 @@ void drawCrossX(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered) 
   bar1.setOrigin(s * 0.5f, thick * 0.5f);
   bar1.setPosition(snapf(cx), snapf(cy));
   bar1.setRotation(45.f);
-  bar1.setFillColor(hovered ? colAccentHover : colText);
+  bar1.setFillColor(hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT);
 
   sf::RectangleShape bar2 = bar1;
   bar2.setRotation(-45.f);
@@ -193,17 +181,17 @@ void drawRobot(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered) {
   head.setPosition(snapf(cx), snapf(cy + s * 0.04f));
   head.setFillColor(sf::Color::Transparent);
   head.setOutlineThickness(2.f);
-  head.setOutlineColor(hovered ? colAccentHover : colText);
+  head.setOutlineColor(hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT);
 
   sf::RectangleShape antenna({2.f, s * 0.16f});
   antenna.setOrigin(1.f, antenna.getSize().y);
   antenna.setPosition(snapf(cx), snapf(cy - s * 0.30f));
-  antenna.setFillColor(hovered ? colAccentHover : colText);
+  antenna.setFillColor(hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT);
 
   sf::RectangleShape eyeL({s * 0.08f, s * 0.10f});
   eyeL.setOrigin(eyeL.getSize() * 0.5f);
   eyeL.setPosition(snapf(cx - s * 0.12f), snapf(cy - s * 0.02f));
-  eyeL.setFillColor(hovered ? colAccentHover : colText);
+  eyeL.setFillColor(hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT);
 
   sf::RectangleShape eyeR = eyeL;
   eyeR.setPosition(snapf(cx + s * 0.12f), snapf(cy - s * 0.02f));
@@ -225,7 +213,7 @@ void drawReload(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered) 
   ring.setPosition(snapf(cx), snapf(cy));
   ring.setFillColor(sf::Color::Transparent);
   ring.setOutlineThickness(2.f);
-  ring.setOutlineColor(hovered ? colAccentHover : colText);
+  ring.setOutlineColor(hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT);
   win.draw(ring);
 
   // arrow head on top-right
@@ -233,7 +221,7 @@ void drawReload(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered) 
   arrow.setPoint(0, {cx + s * 0.12f, cy - s * 0.55f});
   arrow.setPoint(1, {cx + s * 0.42f, cy - s * 0.40f});
   arrow.setPoint(2, {cx + s * 0.15f, cy - s * 0.25f});
-  arrow.setFillColor(hovered ? colAccentHover : colText);
+  arrow.setFillColor(hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT);
   win.draw(arrow);
 }
 
@@ -246,7 +234,7 @@ void drawFenIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered)
                     snapf(slot.top + (slot.height - h) * 0.5f));
   sheet.setFillColor(sf::Color::Transparent);
   sheet.setOutlineThickness(2.f);
-  sheet.setOutlineColor(hovered ? colAccentHover : colText);
+  sheet.setOutlineColor(hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT);
   win.draw(sheet);
 
   const float fold = w * 0.25f;
@@ -254,7 +242,7 @@ void drawFenIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered)
   corner.setPoint(0, {sheet.getPosition().x + w - fold, sheet.getPosition().y});
   corner.setPoint(1, {sheet.getPosition().x + w, sheet.getPosition().y});
   corner.setPoint(2, {sheet.getPosition().x + w, sheet.getPosition().y + fold});
-  corner.setFillColor(hovered ? colAccentHover : colText);
+  corner.setFillColor(hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT);
   win.draw(corner);
 }
 
@@ -262,7 +250,7 @@ void drawFenIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered)
 void drawTooltip(sf::RenderWindow& win, const sf::Vector2f center, const std::string& label,
                  const sf::Font& font) {
   sf::Text t(label, font, kTipFontSize);
-  t.setFillColor(colText);
+  t.setFillColor(constant::COL_TEXT);
   auto b = t.getLocalBounds();
 
   const float w = b.width + 2.f * kTipPadX;
@@ -273,15 +261,15 @@ void drawTooltip(sf::RenderWindow& win, const sf::Vector2f center, const std::st
   // shadow
   sf::RectangleShape shadow({w, h});
   shadow.setPosition(x + 2.f, y + 2.f);
-  shadow.setFillColor(sf::Color(0, 0, 0, 60));
+  shadow.setFillColor(constant::COL_SHADOW_LIGHT);
   win.draw(shadow);
 
   // body
   sf::RectangleShape body({w, h});
   body.setPosition(x, y);
-  body.setFillColor(colTooltipBG);
+  body.setFillColor(constant::COL_TOOLTIP_BG);
   body.setOutlineThickness(1.f);
-  body.setOutlineColor(colBorder);
+  body.setOutlineColor(constant::COL_BORDER_LIGHT);
   win.draw(body);
 
   // arrow
@@ -289,7 +277,7 @@ void drawTooltip(sf::RenderWindow& win, const sf::Vector2f center, const std::st
   arrow.setPoint(0, {center.x - 6.f, y + h});
   arrow.setPoint(1, {center.x + 6.f, y + h});
   arrow.setPoint(2, {center.x, y + h + kTipArrowH});
-  arrow.setFillColor(colTooltipBG);
+  arrow.setFillColor(constant::COL_TOOLTIP_BG);
   win.draw(arrow);
 
   // text
@@ -433,45 +421,45 @@ void MoveListView::render(sf::RenderWindow& window) const {
   {
     const sf::FloatRect panelRect(0.f, 0.f, static_cast<float>(m_width),
                                   static_cast<float>(m_height));
-    drawSoftShadowRect(window, panelRect, sf::Color(0, 0, 0, 90));
+    drawSoftShadowRect(window, panelRect, constant::COL_SHADOW_MEDIUM);
     // outer hairline
     sf::RectangleShape border({panelRect.width + 2.f, panelRect.height + 2.f});
     border.setPosition(snapf(panelRect.left - 1.f), snapf(panelRect.top - 1.f));
-    border.setFillColor(colBorder);
+    border.setFillColor(constant::COL_BORDER_LIGHT);
     window.draw(border);
   }
 
   // --- Background layers ---
   sf::RectangleShape bg({static_cast<float>(m_width), static_cast<float>(m_height)});
   bg.setPosition(0.f, 0.f);
-  bg.setFillColor(colSidebarBG);
+  bg.setFillColor(constant::COL_SIDEBAR_BG);
   window.draw(bg);
 
   // left separator (toward board)
   sf::RectangleShape leftLine({1.f, static_cast<float>(m_height)});
   leftLine.setPosition(0.f, 0.f);
-  leftLine.setFillColor(colBorder);
+  leftLine.setFillColor(constant::COL_BORDER_LIGHT);
   window.draw(leftLine);
 
   // header stack
   sf::RectangleShape headerBG({static_cast<float>(m_width), kHeaderH});
   headerBG.setPosition(0.f, 0.f);
-  headerBG.setFillColor(colHeaderBG);
+  headerBG.setFillColor(constant::COL_HEADER);
   window.draw(headerBG);
 
   sf::RectangleShape fenBG({static_cast<float>(m_width), kFenH});
   fenBG.setPosition(0.f, kHeaderH);
-  fenBG.setFillColor(colListBG);
+  fenBG.setFillColor(constant::COL_LIST_BG);
   window.draw(fenBG);
 
   sf::RectangleShape subBG({static_cast<float>(m_width), kSubHeaderH});
   subBG.setPosition(0.f, kHeaderH + kFenH);
-  subBG.setFillColor(colListBG);
+  subBG.setFillColor(constant::COL_LIST_BG);
   window.draw(subBG);
 
   // hairlines
   sf::RectangleShape sep({static_cast<float>(m_width), 1.f});
-  sep.setFillColor(colBorder);
+  sep.setFillColor(constant::COL_BORDER_LIGHT);
   sep.setPosition(0.f, kHeaderH);
   window.draw(sep);
   sep.setPosition(0.f, kHeaderH + kFenH);
@@ -488,13 +476,13 @@ void MoveListView::render(sf::RenderWindow& window) const {
   // list background
   sf::RectangleShape listBG({static_cast<float>(m_width), listH - topY});
   listBG.setPosition(0.f, topY);
-  listBG.setFillColor(colListBG);
+  listBG.setFillColor(constant::COL_LIST_BG);
   window.draw(listBG);
 
   // --- Titles ---
   sf::Text header(m_any_bot ? "Play Bots" : "2 Player", m_font, kHeaderFontSize);
   header.setStyle(sf::Text::Bold);
-  header.setFillColor(colText);
+  header.setFillColor(constant::COL_TEXT);
   auto hb = header.getLocalBounds();
   header.setPosition(snapf((m_width - hb.width) / 2.f - hb.left),
                      snapf((kHeaderH - hb.height) / 2.f - hb.top - 2.f));
@@ -502,7 +490,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
 
   sf::Text sub("Move List", m_font, kSubHeaderFontSize);
   sub.setStyle(sf::Text::Bold);
-  sub.setFillColor(colMuted);
+  sub.setFillColor(constant::COL_MUTED_TEXT);
   auto sb = sub.getLocalBounds();
   sub.setPosition(snapf((m_width - sb.width) / 2.f - sb.left),
                   snapf(kHeaderH + kFenH + (kSubHeaderH - sb.height) / 2.f - sb.top - 2.f));
@@ -516,7 +504,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
   sf::Text probe("", m_font, kMoveFontSize);
   std::string fenDisp = ellipsizeRightKeepTail("FEN: " + m_fen_str, probe, availW);
   sf::Text fenTxt(fenDisp, m_font, kMoveFontSize);
-  fenTxt.setFillColor(colMuted);
+  fenTxt.setFillColor(constant::COL_MUTED_TEXT);
   auto fb = fenTxt.getLocalBounds();
   fenTxt.setPosition(snapf(textX), snapf(kHeaderH + (kFenH - fb.height) / 2.f - fb.top - 2.f));
   window.draw(fenTxt);
@@ -541,7 +529,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
 
     sf::RectangleShape row({static_cast<float>(m_width), kRowH});
     row.setPosition(0.f, snapf(y));
-    row.setFillColor((i % 2 == 0) ? colRowEven : colRowOdd);
+    row.setFillColor((i % 2 == 0) ? constant::COL_ROW_EVEN : constant::COL_ROW_ODD);
     window.draw(row);
   }
 
@@ -552,12 +540,12 @@ void MoveListView::render(sf::RenderWindow& window) const {
       // subtle lift + left accent
       sf::RectangleShape hi({static_cast<float>(m_width), kRowH});
       hi.setPosition(0.f, snapf(y));
-      hi.setFillColor(sf::Color(80, 100, 120, 40));
+      hi.setFillColor(constant::COL_MOVE_HIGHLIGHT);
       window.draw(hi);
 
       sf::RectangleShape bar({3.f, kRowH});
       bar.setPosition(0.f, snapf(y));
-      bar.setFillColor(colAccent);
+      bar.setFillColor(constant::COL_ACCENT);
       window.draw(bar);
     }
   }
@@ -570,7 +558,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
     if (i == m_lines.size() && !m_result.empty()) {
       sf::Text res(m_result, m_font, kMoveFontSize);
       res.setStyle(sf::Text::Bold);
-      res.setFillColor(colMuted);
+      res.setFillColor(constant::COL_MUTED_TEXT);
       auto rb = res.getLocalBounds();
       res.setPosition(snapf((m_width - rb.width) / 2.f - rb.left), snapf(y));
       window.draw(res);
@@ -598,7 +586,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
     }
 
     sf::Text num(numberStr, m_font, kMoveNumberFontSize);
-    num.setFillColor(colMuted);
+    num.setFillColor(constant::COL_MUTED_TEXT);
     num.setPosition(snapf(kPaddingX), snapf(y));
     window.draw(num);
 
@@ -606,7 +594,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
 
     sf::Text w(whiteMove, m_font, kMoveFontSize);
     w.setStyle(sf::Text::Bold);
-    w.setFillColor((m_selected_move == i * 2) ? colText : colMuted);
+    w.setFillColor((m_selected_move == i * 2) ? constant::COL_TEXT : constant::COL_MUTED_TEXT);
     w.setPosition(snapf(x), snapf(y));
     window.draw(w);
     x += w.getLocalBounds().width + kMoveGap;
@@ -614,7 +602,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
     if (!blackMove.empty()) {
       sf::Text b(blackMove, m_font, kMoveFontSize);
       b.setStyle(sf::Text::Bold);
-      b.setFillColor((m_selected_move == i * 2 + 1) ? colText : colMuted);
+      b.setFillColor((m_selected_move == i * 2 + 1) ? constant::COL_TEXT : constant::COL_MUTED_TEXT);
       b.setPosition(snapf(x), snapf(y));
       window.draw(b);
       x += b.getLocalBounds().width + kMoveGap;
@@ -623,7 +611,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
     if (!result.empty()) {
       sf::Text r(result, m_font, kMoveFontSize);
       r.setStyle(sf::Text::Bold);
-      r.setFillColor(colMuted);
+      r.setFillColor(constant::COL_MUTED_TEXT);
       r.setPosition(snapf(x), snapf(y));
       window.draw(r);
     }
@@ -634,7 +622,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
   // --- Footer / beveled controls ---
   sf::RectangleShape optionBG({static_cast<float>(m_width), m_option_height});
   optionBG.setPosition(0.f, listH);
-  optionBG.setFillColor(colHeaderBG);
+  optionBG.setFillColor(constant::COL_HEADER);
   window.draw(optionBG);
 
   // hover detection (in local coords)
@@ -711,9 +699,13 @@ void MoveListView::render(sf::RenderWindow& window) const {
 
       sf::RectangleShape bg({sz.x, sz.y});
       bg.setPosition(pos);
-      bg.setFillColor(sf::Color(20, 24, 32, static_cast<sf::Uint8>(alpha * 220)));
+      sf::Color bgCol = constant::COL_TOOLTIP_BG;
+      bgCol.a = static_cast<sf::Uint8>(alpha * 220);
+      bg.setFillColor(bgCol);
       bg.setOutlineThickness(1.f);
-      bg.setOutlineColor(sf::Color(120, 140, 170, static_cast<sf::Uint8>(alpha * 200)));
+      sf::Color outlineCol = constant::COL_BORDER_LIGHT;
+      outlineCol.a = static_cast<sf::Uint8>(alpha * 200);
+      bg.setOutlineColor(outlineCol);
       window.draw(bg);
 
       msg.setFillColor(sf::Color(255, 255, 255, static_cast<sf::Uint8>(alpha * 255)));

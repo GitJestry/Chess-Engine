@@ -39,14 +39,7 @@ class ModalView {
   bool hitClose(sf::Vector2f p) const;
 
  private:
-  // theme (kept local to avoid touching your constants)
-  const sf::Color colPanel = sf::Color(36, 41, 54, 230);     // #242936
-  const sf::Color colHeader = sf::Color(42, 48, 63, 255);    // #2A303F
-  const sf::Color colBorder = sf::Color(120, 140, 170, 60);  // hairline
-  const sf::Color colText = sf::Color(240, 244, 255);
-  const sf::Color colMuted = sf::Color(180, 186, 205);
-  const sf::Color colAccent = sf::Color(100, 190, 255);  // #64BEFF
-  const sf::Color colOverlay = sf::Color(0, 0, 0, 120);
+  // colors sourced from render_constants.hpp
 
   // geometry
   sf::Vector2u m_windowSize{};

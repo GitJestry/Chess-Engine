@@ -11,13 +11,7 @@
 namespace lilia::view {
 
 namespace {
-// Theme colors (in sync with the app)
-const sf::Color kOutline(120, 140, 170, 180);
-const sf::Color kLightBG(210, 215, 230);    // white side clock bg
-const sf::Color kDarkBG(33, 38, 50);        // black side clock bg
-const sf::Color kDarkText(26, 22, 30);      // text on light bg
-const sf::Color kLightText(210, 224, 255);  // text on dark bg
-const sf::Color kAccent(225, 225, 235);     // silver highlight accent
+// Theme colors (sourced from render_constants.hpp)
 
 // layout
 constexpr float kScale = 0.80f;  // 20% smaller
@@ -86,25 +80,25 @@ Clock::Clock() {
 
   m_box.setSize({baseW, baseH});
   m_box.setOutlineThickness(1.f);
-  m_box.setOutlineColor(kOutline);
-  m_box_base_color = kDarkBG;
+  m_box.setOutlineColor(constant::COL_BORDER);
+  m_box_base_color = constant::COL_DARK_BG;
   m_box.setFillColor(m_box_base_color);
 
   // Overlay: used to dim inactive clock / gently tint active
   m_overlay.setSize({baseW, baseH});
-  m_overlay.setFillColor(sf::Color(0, 0, 0, 100));  // default: dim
+  m_overlay.setFillColor(constant::COL_OVERLAY_DIM);  // default: dim
 
   // Small "analog" indicator (only when active)
   m_icon_circle.setRadius(kIconRadius);
   m_icon_circle.setOrigin(kIconRadius, kIconRadius);
   m_icon_circle.setFillColor(sf::Color::Transparent);
   m_icon_circle.setOutlineThickness(2.f);   // stays crisp
-  m_icon_circle.setOutlineColor(kOutline);  // setPlayerColor() will adjust
+  m_icon_circle.setOutlineColor(constant::COL_BORDER);  // setPlayerColor() will adjust
 
   m_icon_hand.setSize({kIconRadius - 2.f, 1.f});
-  m_icon_hand.setFillColor(kOutline);  // setPlayerColor() will adjust
+  m_icon_hand.setFillColor(constant::COL_BORDER);  // setPlayerColor() will adjust
   m_icon_hand.setOutlineThickness(1.f);
-  m_icon_hand.setOutlineColor(kOutline);
+  m_icon_hand.setOutlineColor(constant::COL_BORDER);
   m_icon_hand.setOrigin(0.f, 0.5f);
   m_icon_hand.setRotation(-90.f);  // up
 
@@ -113,15 +107,15 @@ Clock::Clock() {
 
   m_text.setFont(m_font);
   m_text.setCharacterSize(18);
-  m_text.setFillColor(kLightText);  // setPlayerColor() will adjust
-  m_text_base_color = kLightText;
+  m_text.setFillColor(constant::COL_LIGHT_TEXT);  // setPlayerColor() will adjust
+  m_text_base_color = constant::COL_LIGHT_TEXT;
   m_is_light_theme = false;
   m_text.setStyle(sf::Text::Style::Bold);
 }
 
 void Clock::applyFillColor() {
   if (m_low_time) {
-    m_box.setFillColor(sf::Color(220, 70, 70));
+    m_box.setFillColor(constant::COL_LOW_TIME);
   } else {
     m_box.setFillColor(m_box_base_color);
   }
@@ -129,21 +123,21 @@ void Clock::applyFillColor() {
 
 void Clock::setPlayerColor(core::Color color) {
   if (color == core::Color::White) {
-    m_box_base_color = kLightBG;
-    m_text.setFillColor(kDarkText);
-    m_text_base_color = kDarkText;
+    m_box_base_color = constant::COL_LIGHT_BG;
+    m_text.setFillColor(constant::COL_DARK_TEXT);
+    m_text_base_color = constant::COL_DARK_TEXT;
     m_is_light_theme = true;
     // Darker accent so it pops on light bg
-    sf::Color iconCol = lerp(kAccent, kDarkText, 0.45f);
+    sf::Color iconCol = lerp(constant::COL_CLOCK_ACCENT, constant::COL_DARK_TEXT, 0.45f);
     m_icon_circle.setOutlineColor(iconCol);
     m_icon_hand.setFillColor(iconCol);
   } else {
-    m_box_base_color = kDarkBG;
-    m_text.setFillColor(kLightText);
-    m_text_base_color = kLightText;
+    m_box_base_color = constant::COL_DARK_BG;
+    m_text.setFillColor(constant::COL_LIGHT_TEXT);
+    m_text_base_color = constant::COL_LIGHT_TEXT;
     m_is_light_theme = false;
     // Lighter accent so it pops on dark bg
-    sf::Color iconCol = lerp(kAccent, kLightText, 0.25f);
+    sf::Color iconCol = lerp(constant::COL_CLOCK_ACCENT, constant::COL_LIGHT_TEXT, 0.25f);
     m_icon_circle.setOutlineColor(iconCol);
     m_icon_hand.setFillColor(iconCol);
   }
@@ -205,7 +199,8 @@ void Clock::setActive(bool active) {
 
   // Determine base theme from stored flag rather than current text color
   const bool isLightTheme = m_is_light_theme;
-  const sf::Color baseFill = isLightTheme ? kLightBG : kDarkBG;
+  const sf::Color baseFill =
+      isLightTheme ? constant::COL_LIGHT_BG : constant::COL_DARK_BG;
 
   if (active) {
     // Manipulate fill for clarity on both themes:
@@ -214,18 +209,19 @@ void Clock::setActive(bool active) {
 
     // Accent outline
     m_box.setOutlineThickness(2.f);
-    m_box.setOutlineColor(lerp(kOutline, kAccent, 0.65f));
+    m_box.setOutlineColor(
+        lerp(constant::COL_BORDER, constant::COL_CLOCK_ACCENT, 0.65f));
 
     // Gentle accent tint overlay
-    sf::Color tint = kAccent;
+    sf::Color tint = constant::COL_CLOCK_ACCENT;
     tint.a = 28;  // subtle
     m_overlay.setFillColor(tint);
   } else {
     // restore neutral appearance
     m_box_base_color = baseFill;
     m_box.setOutlineThickness(1.f);
-    m_box.setOutlineColor(kOutline);
-    m_overlay.setFillColor(sf::Color(0, 0, 0, 100));  // dim
+    m_box.setOutlineColor(constant::COL_BORDER);
+    m_overlay.setFillColor(constant::COL_OVERLAY_DIM);  // dim
     // reset hand to "12 o'clock" when inactive
     m_icon_hand.setRotation(-90.f);
   }
@@ -242,7 +238,7 @@ void Clock::render(sf::RenderWindow& window) {
     // thin accent strip
     sf::RectangleShape strip({kActiveStripW, m_box.getSize().y});
     strip.setPosition(m_box.getPosition());
-    strip.setFillColor(kAccent);
+    strip.setFillColor(constant::COL_CLOCK_ACCENT);
     window.draw(strip);
 
     // --- simple ticking animation: 90° per second ---

@@ -46,7 +46,7 @@ void HighlightManager::renderRightClickSquares(sf::RenderWindow& window) {
   renderEntitiesToBoard(m_hl_rclick_squares, window);
 }
 void HighlightManager::renderRightClickArrows(sf::RenderWindow& window) {
-  const sf::Color col(255, 80, 80, 170);
+  const sf::Color col = constant::COL_RCLICK_HIGHLIGHT;
   const float sqSize = static_cast<float>(constant::SQUARE_PX_SIZE);
 
   // Thicker arrow like chess.com

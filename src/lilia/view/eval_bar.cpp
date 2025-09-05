@@ -18,19 +18,10 @@
 
 namespace {
 
-// Theme (kept in sync with the rest of the UI)
-const sf::Color colPanelBG(42, 48, 63);
-const sf::Color colListBG(33, 38, 50);
-const sf::Color colHeaderBG(42, 48, 63);
-const sf::Color colHoverBG(58, 66, 84);
-const sf::Color colBorder(120, 140, 170, 50);
-const sf::Color colText(240, 244, 255);
-const sf::Color colMuted(180, 186, 205);
-const sf::Color colAccent(100, 190, 255);
-const sf::Color colAccentHover(120, 205, 255);
+namespace constant = lilia::view::constant;
 
-// Micro shadow
-const sf::Color colShadow(0, 0, 0, 60);
+// Theme (kept in sync with the rest of the UI)
+// (colors now come from render_constants.hpp)
 
 inline float snapf(float v) {
   return std::round(v);
@@ -51,7 +42,7 @@ inline void drawSoftShadowRect(sf::RenderTarget& t, const sf::FloatRect& r, int 
     float grow = static_cast<float>(i) * step;
     sf::RectangleShape s({r.width + 2.f * grow, r.height + 2.f * grow});
     s.setPosition(snapf(r.left - grow), snapf(r.top - grow));
-    sf::Color sc = colShadow;
+    sf::Color sc = constant::COL_SHADOW_LIGHT;
     sc.a = static_cast<sf::Uint8>(22 * i);
     s.setFillColor(sc);
     t.draw(s);
@@ -86,9 +77,9 @@ inline void drawBevelAround(sf::RenderTarget& t, const sf::FloatRect& r, sf::Col
   // hairline inside
   sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
   inset.setPosition(snapf(r.left + 1.f), snapf(r.top + 1.f));
-  inset.setFillColor(sf::Color(0, 0, 0, 0));
+  inset.setFillColor(sf::Color::Transparent);
   inset.setOutlineThickness(1.f);
-  inset.setOutlineColor(sf::Color(120, 140, 170, 40));
+  inset.setOutlineColor(constant::COL_BORDER_BEVEL);
   t.draw(inset);
 }
 
@@ -150,8 +141,10 @@ void EvalBar::render(sf::RenderWindow& window) {
     // tiny shadow + gradient body
     drawSoftShadowRect(window, m_toggle_bounds, /*layers=*/1, /*step=*/2.f);
 
-    sf::Color top = m_visible ? lighten(colAccent, 30) : lighten(colHeaderBG, 10);
-    sf::Color bot = m_visible ? darken(colAccent, 25) : darken(colHeaderBG, 12);
+    sf::Color top = m_visible ? lighten(constant::COL_ACCENT, 30)
+                              : lighten(constant::COL_HEADER, 10);
+    sf::Color bot = m_visible ? darken(constant::COL_ACCENT, 25)
+                              : darken(constant::COL_HEADER, 12);
     if (hov) {
       top = lighten(top, 12);
       bot = lighten(bot, 8);
@@ -159,13 +152,15 @@ void EvalBar::render(sf::RenderWindow& window) {
     drawVerticalGradientRect(window, m_toggle_bounds, top, bot);
 
     // bevel ring
-    drawBevelAround(window, m_toggle_bounds, m_visible ? colAccent : colHeaderBG);
+    drawBevelAround(window, m_toggle_bounds,
+                   m_visible ? constant::COL_ACCENT : constant::COL_HEADER);
 
     // label
     m_toggle_text.setString(m_visible ? "ON" : "OFF");
     auto tb = m_toggle_text.getLocalBounds();
     m_toggle_text.setOrigin(tb.left + tb.width / 2.f, tb.top + tb.height / 2.f);
-    m_toggle_text.setFillColor(hov ? colText : (m_visible ? sf::Color::Black : colText));
+    m_toggle_text.setFillColor(hov ? constant::COL_TEXT
+                                  : (m_visible ? sf::Color::Black : constant::COL_TEXT));
     m_toggle_text.setPosition(snapf(m_toggle_bounds.left + m_toggle_bounds.width / 2.f),
                               snapf(m_toggle_bounds.top + m_toggle_bounds.height / 2.f - 1.f));
     window.draw(m_toggle_text);
@@ -192,7 +187,7 @@ void EvalBar::render(sf::RenderWindow& window) {
   {
     sf::RectangleShape mid({W, 1.f});
     mid.setPosition(left, snapf(top + H * 0.5f));
-    mid.setFillColor(sf::Color(120, 140, 170, 60));
+    mid.setFillColor(constant::COL_BORDER);
     window.draw(mid);
   }
 
@@ -200,14 +195,14 @@ void EvalBar::render(sf::RenderWindow& window) {
   {
     const bool whiteAdv = (m_display_eval >= 0.f);
     sf::RectangleShape strip({W, 3.f});
-    strip.setFillColor(whiteAdv ? sf::Color(255, 255, 255, 70) : sf::Color(255, 255, 255, 30));
+    strip.setFillColor(whiteAdv ? constant::COL_WHITE_DIM : constant::COL_WHITE_FAINT);
     bool bottom = (whiteAdv != m_flipped);
     strip.setPosition(left, snapf(bottom ? top + H - 3.f : top));
     window.draw(strip);
   }
 
   // subtle bevel ring
-  drawBevelAround(window, barRect, colPanelBG);
+  drawBevelAround(window, barRect, constant::COL_HEADER);
 
   // score text (already positioned/colored in update())
   if (m_has_result && m_result == "1/2-1/2") {
@@ -275,13 +270,13 @@ void EvalBar::update(int eval) {
 
   bool whiteAdv = (m_display_eval >= 0.f);
   if (m_has_result && m_result == "1/2-1/2") {
-    m_score_text.setFillColor(sf::Color(20, 20, 26));
+    m_score_text.setFillColor(constant::COL_SCORE_TEXT_DARK);
     yPos = getPosition().y;
   } else if (whiteAdv) {
-    m_score_text.setFillColor(sf::Color(20, 20, 26));
+    m_score_text.setFillColor(constant::COL_SCORE_TEXT_DARK);
     yPos += (m_flipped ? -barHalfHeight + offset : barHalfHeight - offset * 1.5f);
   } else {
-    m_score_text.setFillColor(sf::Color(230, 238, 255));
+    m_score_text.setFillColor(constant::COL_SCORE_TEXT_LIGHT);
     yPos += (m_flipped ? barHalfHeight - offset * 1.5f : -barHalfHeight + offset);
   }
 

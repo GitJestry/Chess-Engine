@@ -78,7 +78,7 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
     if (s_font_loaded) s_font.setSmooth(false);
   }
 
-  const sf::Color outlineCol(52, 58, 74, 120);
+  const sf::Color outlineCol = constant::COL_BOARD_OUTLINE;
   const float outlineThick = 5.f;
   const int textSize = 60;
 

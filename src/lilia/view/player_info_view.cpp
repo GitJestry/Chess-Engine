@@ -9,19 +9,7 @@
 namespace lilia::view {
 
 namespace {
-// Palette in sync with the app
-const sf::Color kFrameFill(42, 48, 63);            // #2A303F (frame body)
-const sf::Color kFrameOutline(120, 140, 170, 60);  // subtle hairline
-const sf::Color kNameColor(240, 244, 255);         // text
-const sf::Color kEloColor(180, 186, 205);          // muted text
-
-// Capture box fills
-const sf::Color kBoxDark(33, 38, 50);
-const sf::Color kBoxLight(210, 215, 230);
-
-// Much lighter shadow + smaller spread
-const sf::Color kShadow(0, 0, 0, 60);
-const sf::Color kBevelBorder(120, 140, 170, 40);
+// Palette in sync with the app (colors come from render_constants.hpp)
 
 // Layout
 constexpr float kIconFrameSize = 32.f;
@@ -55,7 +43,7 @@ inline void drawSoftShadowRect(sf::RenderTarget& t, const sf::FloatRect& r, int 
     float grow = static_cast<float>(i) * step;  // 2px or 4px total spread
     sf::RectangleShape s({r.width + 2.f * grow, r.height + 2.f * grow});
     s.setPosition(snapf(r.left - grow), snapf(r.top - grow));
-    sf::Color sc = kShadow;
+    sf::Color sc = constant::COL_SHADOW_LIGHT;
     sc.a = static_cast<sf::Uint8>(22 * i);  // faint
     s.setFillColor(sc);
     t.draw(s);
@@ -76,9 +64,9 @@ inline void drawBevelAround(sf::RenderTarget& t, const sf::FloatRect& r, sf::Col
 
   sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
   inset.setPosition(snapf(r.left + 1.f), snapf(r.top + 1.f));
-  inset.setFillColor(sf::Color(0, 0, 0, 0));
+  inset.setFillColor(sf::Color::Transparent);
   inset.setOutlineThickness(1.f);
-  inset.setOutlineColor(kBevelBorder);
+  inset.setOutlineColor(constant::COL_BORDER_BEVEL);
   t.draw(inset);
 }
 
@@ -86,8 +74,8 @@ inline void drawBevelAround(sf::RenderTarget& t, const sf::FloatRect& r, sf::Col
 
 PlayerInfoView::PlayerInfoView() {
   // 32x32 icon frame
-  m_frame.setFillColor(kFrameFill);
-  m_frame.setOutlineColor(kFrameOutline);
+  m_frame.setFillColor(constant::COL_HEADER);
+  m_frame.setOutlineColor(constant::COL_BORDER);
   m_frame.setOutlineThickness(kIconOutline);
   m_frame.setSize({kIconFrameSize, kIconFrameSize});
 
@@ -96,12 +84,12 @@ PlayerInfoView::PlayerInfoView() {
 
     m_name.setFont(m_font);
     m_name.setCharacterSize(16);
-    m_name.setFillColor(kNameColor);
+    m_name.setFillColor(constant::COL_TEXT);
     m_name.setStyle(sf::Text::Bold);
 
     m_elo.setFont(m_font);
     m_elo.setCharacterSize(15);
-    m_elo.setFillColor(kEloColor);
+    m_elo.setFillColor(constant::COL_MUTED_TEXT);
     m_elo.setStyle(sf::Text::Regular);
 
     m_noCaptures.setFont(m_font);
@@ -117,11 +105,11 @@ PlayerInfoView::PlayerInfoView() {
 void PlayerInfoView::setPlayerColor(core::Color color) {
   m_playerColor = color;
   if (m_playerColor == core::Color::White) {
-    m_captureBox.setFillColor(kBoxLight);
-    m_noCaptures.setFillColor(kFrameFill);
+    m_captureBox.setFillColor(constant::COL_LIGHT_BG);
+    m_noCaptures.setFillColor(constant::COL_HEADER);
   } else {
-    m_captureBox.setFillColor(kBoxDark);
-    m_noCaptures.setFillColor(kEloColor);
+    m_captureBox.setFillColor(constant::COL_DARK_BG);
+    m_noCaptures.setFillColor(constant::COL_MUTED_TEXT);
   }
 }
 
@@ -183,7 +171,7 @@ void PlayerInfoView::render(sf::RenderWindow& window) {
   const auto fb = m_frame.getGlobalBounds();
   drawSoftShadowRect(window, fb, /*layers*/ 1, /*step*/ 2.f);
   window.draw(m_frame);
-  drawBevelAround(window, fb, kFrameFill);
+  drawBevelAround(window, fb, constant::COL_HEADER);
 
   m_icon.draw(window);
   window.draw(m_name);
