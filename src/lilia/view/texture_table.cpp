@@ -16,6 +16,11 @@ TextureTable::TextureTable() = default;
 
 TextureTable::~TextureTable() = default;
 
+void TextureTable::reloadForPalette() {
+  m_textures.clear();
+  preLoad();
+}
+
 void TextureTable::load(const std::string& name, const sf::Color& color, sf::Vector2u size) {
   auto it = m_textures.find(name);
   if (it != m_textures.end()) return;

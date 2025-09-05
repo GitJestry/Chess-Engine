@@ -2,6 +2,7 @@
 
 #include "lilia/view/col_palette/rose_noir.hpp"
 #include "lilia/view/render_constants.hpp"
+#include "lilia/view/texture_table.hpp"
 
 namespace lilia::view {
 
@@ -32,6 +33,7 @@ void ColorPaletteManager::setPalette(const std::string& name) {
   auto it = m_palettes.find(name);
   if (it != m_palettes.end()) {
     loadPalette(it->second);
+    TextureTable::getInstance().reloadForPalette();
     m_active = name;
   }
 }
