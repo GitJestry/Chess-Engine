@@ -13,7 +13,7 @@ namespace lilia::model {
 
 class ChessGame {
  public:
-  ChessGame() = default;
+  ChessGame();
 
   void setPosition(const std::string& fen);
   void buildHash();

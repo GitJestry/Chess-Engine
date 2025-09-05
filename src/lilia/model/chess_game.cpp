@@ -39,6 +39,11 @@ inline core::Square stringToSquare(std::string_view sv) noexcept {
 
 // ---------------- Public API ----------------
 
+ChessGame::ChessGame() {
+  m_pseudo_moves.reserve(256);
+  m_legal_moves.reserve(256);
+}
+
 void ChessGame::doMoveUCI(const std::string& uciMove) {
   const size_t len = uciMove.size();
   if (len < 4) return;
