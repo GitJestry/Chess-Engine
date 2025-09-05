@@ -276,10 +276,6 @@ void StartScreen::setupUI() {
     opt.label.setFont(m_font);
     opt.label.setCharacterSize(14);
     std::string label = names[i];
-    if (names[i] == constant::STR_COL_PALETTE_DEFAULT)
-      label = "Default";
-    else if (names[i] == constant::STR_COL_PALETTE_ROSE_NOIR)
-      label = "Red Noir";
     opt.label.setString(label);
     opt.label.setFillColor(colText);
     leftCenterText(opt.label, opt.box.getGlobalBounds(), 8.f);

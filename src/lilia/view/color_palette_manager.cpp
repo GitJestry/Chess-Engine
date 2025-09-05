@@ -1,5 +1,6 @@
 #include "lilia/view/color_palette_manager.hpp"
 
+#include "lilia/view/col_palette/chess_com.hpp"
 #include "lilia/view/col_palette/rose_noir.hpp"
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
@@ -20,6 +21,7 @@ ColorPaletteManager::ColorPaletteManager() {
 
   registerPalette(constant::STR_COL_PALETTE_DEFAULT, ColorPalette{});
   registerPalette(constant::STR_COL_PALETTE_ROSE_NOIR, roseNoirPalette());
+  registerPalette(constant::STR_COL_PALETTE_CHESS_COM, chessComPalette());
 
   m_active = constant::STR_COL_PALETTE_DEFAULT;
 }
@@ -56,6 +58,8 @@ ColorPaletteManager::ListenerID ColorPaletteManager::addListener(std::function<v
   return id;
 }
 
-void ColorPaletteManager::removeListener(ListenerID id) { m_listeners.erase(id); }
+void ColorPaletteManager::removeListener(ListenerID id) {
+  m_listeners.erase(id);
+}
 
 }  // namespace lilia::view

@@ -42,8 +42,9 @@ constexpr float ANIM_MOVE_SPEED = .05f;
 #define X(name, defaultValue) inline sf::Color& name = ColorPaletteManager::get().palette().name;
 LILIA_COLOR_PALETTE(X)
 #undef X
-inline constexpr std::string_view STR_COL_PALETTE_DEFAULT{"default_col"};
-inline constexpr std::string_view STR_COL_PALETTE_ROSE_NOIR{"rose_noir_col"};
+inline constexpr std::string_view STR_COL_PALETTE_DEFAULT{"Default"};
+inline constexpr std::string_view STR_COL_PALETTE_ROSE_NOIR{"Rose noir"};
+inline constexpr std::string_view STR_COL_PALETTE_CHESS_COM{"Chess.com"};
 
 const std::string STR_TEXTURE_WHITE = "white";
 const std::string STR_TEXTURE_BLACK = "black";
