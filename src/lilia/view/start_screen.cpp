@@ -281,6 +281,14 @@ void StartScreen::setupUI() {
     leftCenterText(opt.label, opt.box.getGlobalBounds(), 8.f);
     m_paletteOptions.push_back(opt);
   }
+  const std::string& activeName = ColorPaletteManager::get().activePalette();
+  m_paletteSelection = 0;
+  for (std::size_t i = 0; i < names.size(); ++i) {
+    if (names[i] == activeName) {
+      m_paletteSelection = i;
+      break;
+    }
+  }
 
   // Headings
   m_whiteLabel.setFont(m_font);
@@ -607,35 +615,26 @@ static void drawPanelWithShadow(sf::RenderWindow& win, const sf::Vector2f& topLe
 }
 
 bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
-  if (contains(m_paletteButton.getGlobalBounds(), pos)) {
-    m_showPaletteList = !m_showPaletteList;
-    return false;
-  }
   if (m_showPaletteList) {
-    std::string selectedPalette;
-    for (auto& opt : m_paletteOptions) {
+    for (std::size_t i = 0; i < m_paletteOptions.size(); ++i) {
+      auto& opt = m_paletteOptions[i];
       if (contains(opt.box.getGlobalBounds(), pos)) {
-        selectedPalette = opt.name;
-        break;
+        ColorPaletteManager::get().setPalette(opt.name);
+        setupUI();
+        m_showPaletteList = false;
+        m_paletteListForceHide = true;
+        return false;
       }
-    }
-    if (!selectedPalette.empty()) {
-      ColorPaletteManager::get().setPalette(selectedPalette);
-      setupUI();
-      m_showPaletteList = false;
-      return false;
     }
   }
 
   // White toggles
   if (contains(m_whitePlayerBtn.getGlobalBounds(), pos)) {
     cfg.whiteIsBot = false;
-    m_showWhiteBotList = false;
     return false;
   }
   if (contains(m_whiteBotBtn.getGlobalBounds(), pos)) {
     cfg.whiteIsBot = true;
-    m_showWhiteBotList = !m_showWhiteBotList;
     return false;
   }
   if (m_showWhiteBotList) {
@@ -643,8 +642,10 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
       if (contains(m_whiteBotOptions[i].box.getGlobalBounds(), pos)) {
         m_whiteBotSelection = i;
         cfg.whiteBot = m_whiteBotOptions[i].type;
+        cfg.whiteIsBot = true;
         m_whiteBotText.setString(botDisplayName(cfg.whiteBot));
         m_showWhiteBotList = false;
+        m_whiteListForceHide = true;
         return false;
       }
     }
@@ -653,12 +654,10 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
   // Black toggles
   if (contains(m_blackPlayerBtn.getGlobalBounds(), pos)) {
     cfg.blackIsBot = false;
-    m_showBlackBotList = false;
     return false;
   }
   if (contains(m_blackBotBtn.getGlobalBounds(), pos)) {
     cfg.blackIsBot = true;
-    m_showBlackBotList = !m_showBlackBotList;
     return false;
   }
   if (m_showBlackBotList) {
@@ -666,8 +665,10 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
       if (contains(m_blackBotOptions[i].box.getGlobalBounds(), pos)) {
         m_blackBotSelection = i;
         cfg.blackBot = m_blackBotOptions[i].type;
+        cfg.blackIsBot = true;
         m_blackBotText.setString(botDisplayName(cfg.blackBot));
         m_showBlackBotList = false;
+        m_blackListForceHide = true;
         return false;
       }
     }
@@ -690,44 +691,6 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
 
   // Start
   if (contains(m_startBtn.getGlobalBounds(), pos)) return true;
-
-  // Close lists only if clicking outside both buttons AND both lists
-  bool inWhiteButton = contains(m_whiteBotBtn.getGlobalBounds(), pos);
-  bool inBlackButton = contains(m_blackBotBtn.getGlobalBounds(), pos);
-  bool inPaletteButton = contains(m_paletteButton.getGlobalBounds(), pos);
-  bool inWhiteList = false;
-  if (m_showWhiteBotList) {
-    for (auto& o : m_whiteBotOptions) {
-      if (contains(o.box.getGlobalBounds(), pos)) {
-        inWhiteList = true;
-        break;
-      }
-    }
-  }
-  bool inBlackList = false;
-  if (m_showBlackBotList) {
-    for (auto& o : m_blackBotOptions) {
-      if (contains(o.box.getGlobalBounds(), pos)) {
-        inBlackList = true;
-        break;
-      }
-    }
-  }
-  bool inPaletteList = false;
-  if (m_showPaletteList) {
-    for (auto& p : m_paletteOptions) {
-      if (contains(p.box.getGlobalBounds(), pos)) {
-        inPaletteList = true;
-        break;
-      }
-    }
-  }
-  if (!(inWhiteButton || inWhiteList || inBlackButton || inBlackList || inPaletteButton ||
-        inPaletteList)) {
-    m_showWhiteBotList = false;
-    m_showBlackBotList = false;
-    m_showPaletteList = false;
-  }
 
   return false;
 }
@@ -783,18 +746,22 @@ StartConfig StartScreen::run() {
     drawVerticalGradient(m_window, colBGTop, colBGBottom);
 
     // palette selector
-    bool palHover = m_showPaletteList || contains(m_paletteButton.getGlobalBounds(), m_mousePos);
+    bool palHover = contains(m_paletteButton.getGlobalBounds(), m_mousePos) || m_showPaletteList;
     m_paletteButton.setFillColor(palHover ? colButtonActive : colButton);
     m_paletteText.setFillColor(colText);
     m_window.draw(m_paletteButton);
     m_window.draw(m_paletteText);
     if (m_showPaletteList) {
-      for (auto& opt : m_paletteOptions) {
-        bool hov = contains(opt.box.getGlobalBounds(), m_mousePos);
-        opt.box.setFillColor(hov ? colButtonActive : colButton);
-        opt.label.setFillColor(colText);
-        m_window.draw(opt.box);
-        m_window.draw(opt.label);
+      for (std::size_t i = 0; i < m_paletteOptions.size(); ++i) {
+        const auto& opt = m_paletteOptions[i];
+        auto r = opt.box.getGlobalBounds();
+        bool hov = contains(r, m_mousePos);
+        bool sel = (i == m_paletteSelection);
+        drawBevelButton3D(m_window, r, sel ? colButtonActive : colButton, hov, sel);
+        sf::Text label = opt.label;
+        leftCenterText(label, r, 8.f);
+        m_window.draw(label);
+        if (sel) drawAccentInset(m_window, r, colAccent);
       }
     }
 
@@ -836,7 +803,8 @@ StartConfig StartScreen::run() {
     {
       auto humanR = m_whitePlayerBtn.getGlobalBounds();
       auto botR = m_whiteBotBtn.getGlobalBounds();
-      bool hovH = contains(humanR, m_mousePos), hovB = contains(botR, m_mousePos);
+      bool hovH = contains(humanR, m_mousePos);
+      bool hovB = contains(botR, m_mousePos) || m_showWhiteBotList;
       bool selH = !cfg.whiteIsBot, selB = cfg.whiteIsBot;
       drawBevelButton3D(m_window, humanR, selH ? colButtonActive : colButton, hovH, selH);
       centerText(m_whitePlayerText, humanR);
@@ -852,7 +820,8 @@ StartConfig StartScreen::run() {
     {
       auto humanR = m_blackPlayerBtn.getGlobalBounds();
       auto botR = m_blackBotBtn.getGlobalBounds();
-      bool hovH = contains(humanR, m_mousePos), hovB = contains(botR, m_mousePos);
+      bool hovH = contains(humanR, m_mousePos);
+      bool hovB = contains(botR, m_mousePos) || m_showBlackBotList;
       bool selH = !cfg.blackIsBot, selB = cfg.blackIsBot;
       drawBevelButton3D(m_window, humanR, selH ? colButtonActive : colButton, hovH, selH);
       centerText(m_blackPlayerText, humanR);
@@ -1037,6 +1006,25 @@ StartConfig StartScreen::run() {
       }
       if (e.type == sf::Event::MouseMoved) {
         m_mousePos = {(float)e.mouseMove.x, (float)e.mouseMove.y};
+        auto updateHover = [&](bool& show, bool& forceHide, const sf::FloatRect& btn,
+                               const auto& options) {
+          bool overBtn = contains(btn, m_mousePos);
+          bool overList = false;
+          for (const auto& opt : options) {
+            if (contains(opt.box.getGlobalBounds(), m_mousePos)) {
+              overList = true;
+              break;
+            }
+          }
+          if (!(overBtn || overList)) forceHide = false;
+          show = !forceHide && (overBtn || overList);
+        };
+        updateHover(m_showPaletteList, m_paletteListForceHide, m_paletteButton.getGlobalBounds(),
+                    m_paletteOptions);
+        updateHover(m_showWhiteBotList, m_whiteListForceHide, m_whiteBotBtn.getGlobalBounds(),
+                    m_whiteBotOptions);
+        updateHover(m_showBlackBotList, m_blackListForceHide, m_blackBotBtn.getGlobalBounds(),
+                    m_blackBotOptions);
       }
 
       // Keyboard

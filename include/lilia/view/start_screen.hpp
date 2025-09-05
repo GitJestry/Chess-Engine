@@ -76,7 +76,9 @@ class StartScreen {
   sf::RectangleShape m_paletteButton;
   sf::Text m_paletteText;
   std::vector<PaletteOption> m_paletteOptions;
+  std::size_t m_paletteSelection{0};
   bool m_showPaletteList{false};
+  bool m_paletteListForceHide{false};
 
   // FEN popup UI
   bool m_showFenPopup{false};
