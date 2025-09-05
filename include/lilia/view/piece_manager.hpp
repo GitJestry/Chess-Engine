@@ -30,6 +30,9 @@ class PieceManager {
   void removePiece(core::Square pos);
   void removeAll();
 
+  // Resolve the piece type/color on the given square. These helpers consult
+  // the main board state as well as any hidden or stashed pieces created
+  // during premove previews so callers always receive the actual piece info.
   [[nodiscard]] core::PieceType getPieceType(core::Square pos) const;
   [[nodiscard]] core::Color getPieceColor(core::Square pos) const;
   [[nodiscard]] bool hasPieceOnSquare(core::Square pos) const;
