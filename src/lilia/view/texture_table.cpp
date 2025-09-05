@@ -90,7 +90,7 @@ void main()
     ring.setPosition(size * 0.5f, size * 0.5f);
     ring.setFillColor(sf::Color::Transparent);
     ring.setOutlineThickness(-thickness);
-    ring.setOutlineColor(sf::Color(120, 120, 120, 65));
+    ring.setOutlineColor(constant::COL_MARKER);
     rt.draw(ring, sf::BlendAlpha);
     rt.display();
     return rt.getTexture();
@@ -102,7 +102,8 @@ void main()
   float halfThickness = (thickness_px * 0.5f) / (float)size;
   float softness = 3.0f / (float)size;
 
-  sf::Glsl::Vec4 col(120.f / 255.f, 120.f / 255.f, 120.f / 255.f, 65.f / 255.f);
+  sf::Glsl::Vec4 col(constant::COL_MARKER.r / 255.f, constant::COL_MARKER.g / 255.f,
+                     constant::COL_MARKER.b / 255.f, constant::COL_MARKER.a / 255.f);
 
   shader.setUniform("resolution", sf::Glsl::Vec2((float)size, (float)size));
   shader.setUniform("color", col);
@@ -169,7 +170,7 @@ void main()
     core.setOrigin(maxRadius, maxRadius);
     core.setPosition(size * 0.5f, size * 0.5f);
 
-    core.setFillColor(sf::Color(120, 120, 120, 65));
+    core.setFillColor(constant::COL_MARKER);
     rt.draw(core, sf::BlendAlpha);
     rt.display();
     return rt.getTexture();
@@ -179,7 +180,8 @@ void main()
   float radius_frac = maxRadius_px / (float)size;
   float softness = 3.0f / (float)size;
 
-  sf::Glsl::Vec4 col(120.f / 255.f, 120.f / 255.f, 120.f / 255.f, 65.f / 255.f);
+  sf::Glsl::Vec4 col(constant::COL_MARKER.r / 255.f, constant::COL_MARKER.g / 255.f,
+                     constant::COL_MARKER.b / 255.f, constant::COL_MARKER.a / 255.f);
 
   shader.setUniform("resolution", sf::Glsl::Vec2((float)size, (float)size));
   shader.setUniform("color", col);
@@ -205,7 +207,7 @@ void main()
   sf::RectangleShape rect(sf::Vector2f(size - thickness, size - thickness));
   rect.setPosition(thickness / 2.f, thickness / 2.f);
   rect.setFillColor(sf::Color::Transparent);
-  rect.setOutlineColor(sf::Color(180, 220, 120, 110));
+  rect.setOutlineColor(constant::COL_HOVER_OUTLINE);
   rect.setOutlineThickness(thickness);
 
   rt.draw(rect);
@@ -355,7 +357,8 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
 
 [[nodiscard]] sf::Texture makeRoundedRectShadowTexture(
     unsigned int width, unsigned int height, float rectWidth_px, float rectHeight_px,
-    float radius_px = 6.f, float blur_px = 12.f, sf::Color shadowColor = sf::Color(0, 0, 0, 140),
+    float radius_px = 6.f, float blur_px = 12.f,
+    sf::Color shadowColor = constant::COL_SHADOW_STRONG,
     float offsetY_px = 4.f) {
   sf::RenderTexture rt;
   rt.create(width, height);
@@ -412,22 +415,18 @@ static sf::VertexArray makeFullQuadVA(unsigned int width, unsigned int height) {
 }
 
 void TextureTable::preLoad() {
-  load(constant::STR_TEXTURE_EVAL_WHITE, sf::Color(236, 240, 255));
-  load(constant::STR_TEXTURE_EVAL_BLACK, sf::Color(42, 48, 63));
+  load(constant::STR_TEXTURE_EVAL_WHITE, constant::COL_EVAL_WHITE);
+  load(constant::STR_TEXTURE_EVAL_BLACK, constant::COL_EVAL_BLACK);
 
   // Board squares
-  load(constant::STR_TEXTURE_WHITE, sf::Color(230, 235, 244));  // #E6EBF4  light slate
-  load(constant::STR_TEXTURE_BLACK, sf::Color(94, 107, 135));  // #5E6B87  slate blue (not too dark)
+  load(constant::STR_TEXTURE_WHITE, constant::COL_BOARD_LIGHT);  // #E6EBF4  light slate
+  load(constant::STR_TEXTURE_BLACK, constant::COL_BOARD_DARK);   // #5E6B87  slate blue (not too dark)
 
   // Overlays
-  load(constant::STR_TEXTURE_SELECTHLIGHT,
-       sf::Color(100, 190, 255, 170));  // #64BEFF, matches accent
-  load(constant::STR_TEXTURE_PREMOVEHLIGHT,
-       sf::Color(180, 120, 255, 160));  // purple-ish premove highlight
-  load(constant::STR_TEXTURE_WARNINGHLIGHT,
-       sf::Color(255, 102, 102, 190));  // #FF6666, clear check alert
-  load(constant::STR_TEXTURE_RCLICKHLIGHT,
-       sf::Color(255, 80, 80, 170));  // red-ish right-click highlight
+  load(constant::STR_TEXTURE_SELECTHLIGHT, constant::COL_SELECT_HIGHLIGHT);  // accent
+  load(constant::STR_TEXTURE_PREMOVEHLIGHT, constant::COL_PREMOVE_HIGHLIGHT);
+  load(constant::STR_TEXTURE_WARNINGHLIGHT, constant::COL_WARNING_HIGHLIGHT);
+  load(constant::STR_TEXTURE_RCLICKHLIGHT, constant::COL_RCLICK_HIGHLIGHT);
 
   m_textures[constant::STR_TEXTURE_ATTACKHLIGHT] =
       std::move(makeAttackDotTexture(constant::ATTACK_DOT_PX_SIZE));

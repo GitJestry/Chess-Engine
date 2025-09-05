@@ -11,14 +11,6 @@
 namespace lilia::view {
 
 namespace {
-const sf::Color colText(240, 244, 255);
-const sf::Color colAccentHover(120, 205, 255);
-
-const sf::Color colDisc(52, 58, 74, 150);       // base disc (translucent)
-const sf::Color colDiscHover(60, 68, 86, 180);  // hover disc
-const sf::Color colShadow(0, 0, 0, 90);         // drop shadow (radial)
-const sf::Color colBorder(120, 140, 170, 60);
-const sf::Color colTooltipBG(20, 24, 32, 230);
 
 inline float snapf(float v) {
   return std::round(v);
@@ -46,7 +38,7 @@ void drawRadialShadow(sf::RenderTarget& t, sf::Vector2f center, float radius) {
     s.setOrigin(R, R);
     s.setPosition(snapf(center.x), snapf(center.y + radius * 0.35f));  // offset downward
     s.setScale(1.f, squash);
-    sf::Color c = colShadow;
+    sf::Color c = constant::COL_SHADOW_MEDIUM;
     c.a = static_cast<sf::Uint8>(std::max(0.f, alpha0 * (1.f - i / float(layers))));
     s.setFillColor(c);
     t.draw(s);
@@ -65,7 +57,7 @@ void drawTooltip(sf::RenderWindow& win, const sf::Vector2f center, const std::st
 
   constexpr float padX = 8.f, padY = 5.f, arrowH = 6.f;
   sf::Text t(label, s_font, 13);
-  t.setFillColor(colText);
+  t.setFillColor(constant::COL_TEXT);
   auto b = t.getLocalBounds();
   const float w = b.width + 2.f * padX;
   const float h = b.height + 2.f * padY;
@@ -75,15 +67,15 @@ void drawTooltip(sf::RenderWindow& win, const sf::Vector2f center, const std::st
   // shadow
   sf::RectangleShape shadow({w, h});
   shadow.setPosition(x + 2.f, y + 2.f);
-  shadow.setFillColor(sf::Color(0, 0, 0, 60));
+  shadow.setFillColor(constant::COL_SHADOW_LIGHT);
   win.draw(shadow);
 
   // body
   sf::RectangleShape body({w, h});
   body.setPosition(x, y);
-  body.setFillColor(colTooltipBG);
+  body.setFillColor(constant::COL_TOOLTIP_BG);
   body.setOutlineThickness(1.f);
-  body.setOutlineColor(colBorder);
+  body.setOutlineColor(constant::COL_BORDER);
   win.draw(body);
 
   // arrow
@@ -91,7 +83,7 @@ void drawTooltip(sf::RenderWindow& win, const sf::Vector2f center, const std::st
   arrow.setPoint(0, {center.x - 6.f, y + h});
   arrow.setPoint(1, {center.x + 6.f, y + h});
   arrow.setPoint(2, {center.x, y + h + arrowH});
-  arrow.setFillColor(colTooltipBG);
+  arrow.setFillColor(constant::COL_TOOLTIP_BG);
   win.draw(arrow);
 
   // text
@@ -113,9 +105,9 @@ void drawFlipIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered
   sf::CircleShape disc(R);
   disc.setOrigin(R, R);
   disc.setPosition(snapf(cx), snapf(cy));
-  disc.setFillColor(hovered ? colDiscHover : colDisc);
+  disc.setFillColor(hovered ? constant::COL_DISC_HOVER : constant::COL_DISC);
   disc.setOutlineThickness(1.f);
-  disc.setOutlineColor(hovered ? sf::Color(140, 200, 240, 90) : colBorder);
+  disc.setOutlineColor(hovered ? constant::COL_ACCENT_OUTLINE : constant::COL_BORDER);
   win.draw(disc);
 
   // inner bevel rings
@@ -142,10 +134,10 @@ void drawFlipIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered
   ring.setPosition(snapf(cx), snapf(cy));
   ring.setFillColor(sf::Color::Transparent);
   ring.setOutlineThickness(2.f);
-  ring.setOutlineColor(hovered ? colAccentHover : colText);
+  ring.setOutlineColor(hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT);
   win.draw(ring);
 
-  const sf::Color ico = hovered ? colAccentHover : colText;
+  const sf::Color ico = hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT;
   const float triS = size * 0.22f;
 
   // Arrowheads placed tangentially to ring

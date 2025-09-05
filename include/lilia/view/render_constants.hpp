@@ -1,5 +1,7 @@
 #pragma once
 #include "../constants.hpp"
+#include <SFML/Graphics/Color.hpp>
+#include "color_palette_manager.hpp"
 
 namespace lilia::view::constant {
 constexpr unsigned int BOARD_SIZE = 8;
@@ -33,6 +35,11 @@ constexpr unsigned int HOVER_PX_SIZE = SQUARE_PX_SIZE;
 
 constexpr float ANIM_SNAP_SPEED = .005f;
 constexpr float ANIM_MOVE_SPEED = .05f;
+
+// ------------------ Color palette ------------------
+#define X(name, defaultValue) inline sf::Color& name = ColorPaletteManager::get().palette().name;
+LILIA_COLOR_PALETTE(X)
+#undef X
 
 const std::string STR_TEXTURE_WHITE = "white";
 const std::string STR_TEXTURE_BLACK = "black";
@@ -80,3 +87,4 @@ const std::string SFX_GAME_ENDS_NAME = "game_ends";
 const std::string SFX_PREMOVE_NAME = "pre_move";
 
 }  // namespace lilia::view::constant
+

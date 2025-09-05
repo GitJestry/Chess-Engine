@@ -5,6 +5,8 @@
 #include <cmath>
 #include <sstream>
 
+#include "lilia/view/render_constants.hpp"
+
 namespace lilia::view {
 
 namespace {
@@ -46,7 +48,7 @@ inline void drawBevelButton3D(sf::RenderTarget& t, const sf::FloatRect& r, sf::C
   // Drop shadow
   sf::RectangleShape shadow({r.width, r.height});
   shadow.setPosition(snapf(r.left), snapf(r.top + 2.f));
-  shadow.setFillColor(sf::Color(0, 0, 0, 90));
+  shadow.setFillColor(constant::COL_SHADOW_MEDIUM);
   t.draw(shadow);
 
   // Body color variations
@@ -73,7 +75,7 @@ inline void drawBevelButton3D(sf::RenderTarget& t, const sf::FloatRect& r, sf::C
   // Thin inset stroke to crisp edges
   sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
   inset.setPosition(snapf(r.left + 1.f), snapf(r.top + 1.f));
-  inset.setFillColor(sf::Color(0, 0, 0, 0));
+  inset.setFillColor(sf::Color::Transparent);
   inset.setOutlineThickness(1.f);
   inset.setOutlineColor(darken(bodyCol, 18));
   t.draw(inset);
@@ -83,7 +85,7 @@ inline void drawBevelButton3D(sf::RenderTarget& t, const sf::FloatRect& r, sf::C
 inline void drawAccentInset(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color accent) {
   sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
   inset.setPosition(snapf(r.left + 1.f), snapf(r.top + 1.f));
-  inset.setFillColor(sf::Color(0, 0, 0, 0));
+  inset.setFillColor(sf::Color::Transparent);
   inset.setOutlineThickness(1.f);
   inset.setOutlineColor(accent);
   t.draw(inset);
@@ -143,15 +145,15 @@ inline void drawCloseGlyph(sf::RenderTarget& t, const sf::FloatRect& r, bool hov
 // ------------------ Class impl ------------------
 
 ModalView::ModalView() {
-  m_panel.setFillColor(colPanel);
-  m_border.setFillColor(colBorder);
-  m_overlay.setFillColor(colOverlay);
+  m_panel.setFillColor(constant::COL_PANEL);
+  m_border.setFillColor(constant::COL_BORDER);
+  m_overlay.setFillColor(constant::COL_OVERLAY);
 
-  m_title.setFillColor(colText);
+  m_title.setFillColor(constant::COL_TEXT);
   m_title.setCharacterSize(20);
   m_title.setStyle(sf::Text::Bold);
 
-  m_msg.setFillColor(colMuted);
+  m_msg.setFillColor(constant::COL_MUTED_TEXT);
   m_msg.setCharacterSize(16);
 
   m_btnLeft.setSize({120.f, 36.f});
@@ -245,7 +247,7 @@ void ModalView::layoutCommon(sf::Vector2f center, sf::Vector2f panelSize) {
 
   m_btnClose.setSize({closeSize, closeSize});
   m_btnClose.setPosition(cx, cy);
-  m_btnClose.setFillColor(colHeader);  // matches your header color
+  m_btnClose.setFillColor(constant::COL_HEADER);  // matches your header color
 
   m_hitClose = m_btnClose.getGlobalBounds();
 }
@@ -259,7 +261,7 @@ void ModalView::layoutGameOverExtras() {
   float textTop = top + 40.f;
 
   if (m_showTrophy) {
-    const sf::Color gold(212, 175, 55);
+    const sf::Color gold = constant::COL_GOLD;
     const float cupW = 60.f;
     const float cupH = 40.f;
     const float stemH = 10.f;
@@ -308,15 +310,15 @@ void ModalView::layoutGameOverExtras() {
 }
 
 void ModalView::stylePrimaryButton(sf::RectangleShape& btn, sf::Text& lbl) {
-  btn.setFillColor(colAccent);
+  btn.setFillColor(constant::COL_ACCENT);
   btn.setOutlineThickness(0.f);
   lbl.setFillColor(sf::Color::Black);
 }
 
 void ModalView::styleSecondaryButton(sf::RectangleShape& btn, sf::Text& lbl) {
-  btn.setFillColor(colHeader);
+  btn.setFillColor(constant::COL_HEADER);
   btn.setOutlineThickness(0.f);
-  lbl.setFillColor(colText);
+  lbl.setFillColor(constant::COL_TEXT);
 }
 
 // -------- Resign --------
@@ -383,7 +385,7 @@ void ModalView::drawPanel(sf::RenderWindow& win) const {
 
   // Soft shadow behind panel
   const sf::FloatRect panelRect = m_panel.getGlobalBounds();
-  drawSoftShadowRect(win, panelRect, sf::Color(0, 0, 0, 90));
+  drawSoftShadowRect(win, panelRect, constant::COL_SHADOW_MEDIUM);
 
   // Frame + panel body
   win.draw(m_border);
@@ -422,11 +424,13 @@ void ModalView::drawPanel(sf::RenderWindow& win) const {
   // Beveled buttons with hover/pressed
   drawBevelButton3D(win, leftR, m_btnLeft.getFillColor(), hovLeft, pressLeft);
   drawBevelButton3D(win, rightR, m_btnRight.getFillColor(), hovRight, pressRight);
-  drawBevelButton3D(win, closeR, colHeader, hovClose, pressClose);
+  drawBevelButton3D(win, closeR, constant::COL_HEADER, hovClose, pressClose);
 
-  // Accent inset on whichever is primary (filled with colAccent)
-  if (m_btnLeft.getFillColor() == colAccent) drawAccentInset(win, leftR, sf::Color::White);
-  if (m_btnRight.getFillColor() == colAccent) drawAccentInset(win, rightR, sf::Color::White);
+  // Accent inset on whichever is primary (filled with COL_ACCENT)
+  if (m_btnLeft.getFillColor() == constant::COL_ACCENT)
+    drawAccentInset(win, leftR, sf::Color::White);
+  if (m_btnRight.getFillColor() == constant::COL_ACCENT)
+    drawAccentInset(win, rightR, sf::Color::White);
 
   // Labels for the main buttons
   win.draw(m_lblLeft);

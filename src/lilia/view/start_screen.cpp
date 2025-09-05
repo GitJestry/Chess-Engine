@@ -10,6 +10,7 @@
 
 #include "lilia/bot/bot_info.hpp"
 #include "lilia/view/render_constants.hpp"
+#include "lilia/view/color_palette_manager.hpp"
 
 namespace lilia::view {
 
@@ -31,25 +32,22 @@ constexpr float CHIP_GAP = 10.f;
 constexpr float TOGGLE_W = TIME_W * 0.80f;
 constexpr float TOGGLE_H = 30.f;
 
-// Colors
-sf::Color colBGTop(24, 29, 38);
-sf::Color colBGBottom(16, 19, 26);
-
-sf::Color colPanel(36, 41, 54, 150);
-sf::Color colTextPanel(36, 41, 54);
-sf::Color colPanelBorder(180, 186, 205, 50);
-
-sf::Color colButton(58, 64, 80);
-sf::Color colButtonActive(92, 98, 120);
-sf::Color colAccent(100, 190, 255);
-sf::Color colText(240, 244, 255);
-sf::Color colSubtle(180, 186, 205);
-sf::Color colTimeOff(86, 64, 96);
-
-sf::Color colInput(44, 50, 66);
-sf::Color colInputBorder(120, 140, 180);
-sf::Color colValid(86, 180, 130);
-sf::Color colInvalid(220, 90, 90);
+// Colors sourced from palette manager
+#define colBGTop ColorPaletteManager::get().palette().COL_BG_TOP
+#define colBGBottom ColorPaletteManager::get().palette().COL_BG_BOTTOM
+#define colPanel ColorPaletteManager::get().palette().COL_PANEL_TRANS
+#define colTextPanel ColorPaletteManager::get().palette().COL_PANEL
+#define colPanelBorder ColorPaletteManager::get().palette().COL_PANEL_BORDER_ALT
+#define colButton ColorPaletteManager::get().palette().COL_BUTTON
+#define colButtonActive ColorPaletteManager::get().palette().COL_BUTTON_ACTIVE
+#define colAccent ColorPaletteManager::get().palette().COL_ACCENT
+#define colText ColorPaletteManager::get().palette().COL_TEXT
+#define colSubtle ColorPaletteManager::get().palette().COL_MUTED_TEXT
+#define colTimeOff ColorPaletteManager::get().palette().COL_TIME_OFF
+#define colInput ColorPaletteManager::get().palette().COL_INPUT_BG
+#define colInputBorder ColorPaletteManager::get().palette().COL_INPUT_BORDER
+#define colValid ColorPaletteManager::get().palette().COL_VALID
+#define colInvalid ColorPaletteManager::get().palette().COL_INVALID
 
 // --------- Utils ---------
 inline float snapf(float v) {
@@ -230,6 +228,11 @@ StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
   m_logoTex.loadFromFile(constant::STR_FILE_PATH_ICON_LILIA_START_SCREEN);
   m_logo.setTexture(m_logoTex);
 
+  // palette icon
+  m_paletteTex.loadFromFile(constant::STR_FILE_PATH_ICON_SETTINGS);
+  m_paletteIcon.setTexture(m_paletteTex);
+  m_paletteIcon.setScale(0.5f, 0.5f);
+
   // FEN starts empty => STANDARD unless user provides one
   m_fenString.clear();
 
@@ -243,6 +246,28 @@ StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
 
 void StartScreen::setupUI() {
   const sf::Vector2u ws = m_window.getSize();
+
+  // palette icon position and options
+  m_paletteIcon.setPosition(20.f, ws.y - m_paletteIcon.getGlobalBounds().height - 20.f);
+  m_paletteOptions.clear();
+  float itemH = 24.f;
+  float width = 120.f;
+  float left = m_paletteIcon.getPosition().x;
+  float bottom = m_paletteIcon.getPosition().y - 6.f;
+  const auto& names = ColorPaletteManager::get().paletteNames();
+  for (std::size_t i = 0; i < names.size(); ++i) {
+    PaletteOption opt;
+    opt.name = names[i];
+    opt.box.setSize({width, itemH});
+    opt.box.setPosition(snap({left, bottom - (i + 1) * (itemH + 4.f)}));
+    opt.box.setFillColor(colButton);
+    opt.label.setFont(m_font);
+    opt.label.setCharacterSize(14);
+    opt.label.setString(names[i]);
+    opt.label.setFillColor(colText);
+    leftCenterText(opt.label, opt.box.getGlobalBounds(), 8.f);
+    m_paletteOptions.push_back(opt);
+  }
 
   // Headings
   m_whiteLabel.setFont(m_font);
@@ -362,7 +387,7 @@ void StartScreen::setupUI() {
 
   m_timePanel.setSize({TIME_W, TIME_H});
   m_timePanel.setPosition(snap({timeX, timeY}));
-  m_timePanel.setFillColor(sf::Color(42, 48, 63));
+  m_timePanel.setFillColor(ColorPaletteManager::get().palette().COL_HEADER);
   m_timePanel.setOutlineThickness(1.f);
   m_timePanel.setOutlineColor(colPanelBorder);
 
@@ -511,6 +536,21 @@ static void drawPanelWithShadow(sf::RenderWindow& win, const sf::Vector2f& topLe
 }
 
 bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
+  if (contains(m_paletteIcon.getGlobalBounds(), pos)) {
+    m_showPaletteList = !m_showPaletteList;
+    return false;
+  }
+  if (m_showPaletteList) {
+    for (auto& opt : m_paletteOptions) {
+      if (contains(opt.box.getGlobalBounds(), pos)) {
+        ColorPaletteManager::get().setPalette(opt.name);
+        setupUI();
+        m_showPaletteList = false;
+        return false;
+      }
+    }
+  }
+
   // White toggles
   if (contains(m_whitePlayerBtn.getGlobalBounds(), pos)) {
     cfg.whiteIsBot = false;
@@ -578,6 +618,7 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
   // Close lists only if clicking outside both buttons AND both lists
   bool inWhiteButton = contains(m_whiteBotBtn.getGlobalBounds(), pos);
   bool inBlackButton = contains(m_blackBotBtn.getGlobalBounds(), pos);
+  bool inPaletteIcon = contains(m_paletteIcon.getGlobalBounds(), pos);
   bool inWhiteList = false;
   if (m_showWhiteBotList) {
     for (auto& o : m_whiteBotOptions) {
@@ -596,9 +637,20 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
       }
     }
   }
-  if (!(inWhiteButton || inWhiteList || inBlackButton || inBlackList)) {
+  bool inPaletteList = false;
+  if (m_showPaletteList) {
+    for (auto& p : m_paletteOptions) {
+      if (contains(p.box.getGlobalBounds(), pos)) {
+        inPaletteList = true;
+        break;
+      }
+    }
+  }
+  if (!(inWhiteButton || inWhiteList || inBlackButton || inBlackList || inPaletteIcon ||
+        inPaletteList)) {
     m_showWhiteBotList = false;
     m_showBlackBotList = false;
+    m_showPaletteList = false;
   }
 
   return false;
@@ -655,6 +707,15 @@ StartConfig StartScreen::run() {
   auto drawUI = [&]() {
     drawVerticalGradient(m_window, colBGTop, colBGBottom);
 
+    // palette selector
+    m_window.draw(m_paletteIcon);
+    if (m_showPaletteList) {
+      for (auto& opt : m_paletteOptions) {
+        m_window.draw(opt.box);
+        m_window.draw(opt.label);
+      }
+    }
+
     // faint logo
     if (m_logoTex.getSize().x > 0 && m_logoTex.getSize().y > 0) {
       sf::Sprite logoBG(m_logoTex);
@@ -665,7 +726,7 @@ StartConfig StartScreen::run() {
       auto lb = logoBG.getLocalBounds();
       logoBG.setOrigin(lb.width, 0.f);
       logoBG.setPosition(snapf((float)ws.x - 24.f), snapf(24.f));
-      logoBG.setColor(sf::Color(150, 120, 255, 70));
+      logoBG.setColor(ColorPaletteManager::get().palette().COL_LOGO_BG);
       m_window.draw(logoBG, sf::RenderStates(sf::BlendAlpha));
     }
 
@@ -756,11 +817,11 @@ StartConfig StartScreen::run() {
       // simple inner lines (not shadows)
       sf::RectangleShape top({gb.width, 1.f});
       top.setPosition(gb.left, gb.top);
-      top.setFillColor(sf::Color(255, 255, 255, 18));
+      top.setFillColor(ColorPaletteManager::get().palette().COL_TOP_HILIGHT);
       m_window.draw(top);
       sf::RectangleShape bot({gb.width, 1.f});
       bot.setPosition(gb.left, gb.top + gb.height - 1.f);
-      bot.setFillColor(sf::Color(0, 0, 0, 40));
+      bot.setFillColor(ColorPaletteManager::get().palette().COL_BOTTOM_SHADOW);
       m_window.draw(bot);
 
       m_window.draw(m_timeTitle);
@@ -858,7 +919,7 @@ StartConfig StartScreen::run() {
         float y = ws.y - bh - 24.f;
         sf::RectangleShape bg({bw, bh});
         bg.setPosition(snapf(x), snapf(y));
-        bg.setFillColor(sf::Color(36, 41, 54, 220));
+        bg.setFillColor(ColorPaletteManager::get().palette().COL_PANEL_ALPHA220);
         bg.setOutlineThickness(1.f);
         bg.setOutlineColor(colPanelBorder);
         m_window.draw(bg);

@@ -27,6 +27,12 @@ struct BotOption {
   sf::Text label;
 };
 
+struct PaletteOption {
+  std::string name;
+  sf::RectangleShape box;
+  sf::Text label;
+};
+
 class StartScreen {
  public:
   explicit StartScreen(sf::RenderWindow &window);
@@ -63,6 +69,12 @@ class StartScreen {
   sf::RectangleShape m_startBtn;
   sf::Text m_startText;
   sf::Text m_creditText;
+
+  // Palette selection UI
+  sf::Texture m_paletteTex;
+  sf::Sprite m_paletteIcon;
+  std::vector<PaletteOption> m_paletteOptions;
+  bool m_showPaletteList{false};
 
   // FEN popup UI
   bool m_showFenPopup{false};
