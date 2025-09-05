@@ -1,7 +1,9 @@
 #include "lilia/view/color_palette_manager.hpp"
 
 #include "lilia/view/col_palette/chess_com.hpp"
+#include "lilia/view/col_palette/kintsugi_jade.hpp"
 #include "lilia/view/col_palette/rose_noir.hpp"
+#include "lilia/view/col_palette/soft_pink.hpp"
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
 
@@ -21,8 +23,9 @@ ColorPaletteManager::ColorPaletteManager() {
 
   registerPalette(constant::STR_COL_PALETTE_DEFAULT, ColorPalette{});
   registerPalette(constant::STR_COL_PALETTE_ROSE_NOIR, roseNoirPalette());
-  registerPalette(constant::STR_COL_PALETTE_CHESS_COM, chessComPalette());
-
+  registerPalette(constant::STR_COL_PALETTE_GREEN_IVORY, chessComPalette());
+  registerPalette(constant::STR_COL_PALETTE_SOFT_PINK, softPinkPalette());
+  registerPalette(constant::STR_COL_PALETTE_KINTSUGI, kintsugiJadePalette());
   m_active = constant::STR_COL_PALETTE_DEFAULT;
 }
 

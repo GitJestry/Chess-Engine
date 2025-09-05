@@ -2,94 +2,94 @@
 
 namespace lilia::view {
 
-// Chess.com — green & parchment board, brand-green accents, dark neutral UI
+// Chess.com — grün/beige Board, dunkle UI-Chrome
 const ColorPalette& chessComPalette() {
   static const ColorPalette palette = [] {
     ColorPalette p{};
 
-    // Board
-    p.COL_BOARD_LIGHT = sf::Color(238, 238, 210);      // #EEEED2  (parchment)
-    p.COL_BOARD_DARK = sf::Color(118, 150, 86);        // #769656  (classic green)
-    p.COL_BOARD_OUTLINE = sf::Color(63, 74, 60, 120);  // #3F4A3C with alpha
+    // --- Board (deine Vorgaben) ---
+    p.COL_BOARD_LIGHT = sf::Color(235, 236, 208);       // #EBECD0
+    p.COL_BOARD_DARK = sf::Color(115, 149, 82);         // #739552
+    p.COL_BOARD_OUTLINE = sf::Color(79, 109, 52, 140);  // #4F6D34 with alpha
 
-    // Accents & interactive
-    p.COL_ACCENT = sf::Color(92, 171, 60);                   // #5CAB3C (brand green)
-    p.COL_ACCENT_HOVER = sf::Color(107, 193, 75);            // brighter green
-    p.COL_ACCENT_OUTLINE = sf::Color(92, 171, 60, 90);       // soft green outline
-    p.COL_SELECT_HIGHLIGHT = sf::Color(92, 171, 60, 170);    // on-brand select
-    p.COL_PREMOVE_HIGHLIGHT = sf::Color(74, 144, 226, 160);  // #4A90E2 (premove blue)
-    p.COL_WARNING_HIGHLIGHT = sf::Color(230, 126, 34, 190);  // #E67E22 (warning)
-    p.COL_RCLICK_HIGHLIGHT = sf::Color(92, 171, 60, 170);    // green ping
-    p.COL_HOVER_OUTLINE = sf::Color(255, 246, 204, 110);     // warm light outline
-    p.COL_MOVE_HIGHLIGHT = sf::Color(92, 171, 60, 48);       // subtle green wash
-    p.COL_MARKER = sf::Color(92, 171, 60, 65);               // quiet marker
+    // --- Accents & interactive ---
+    p.COL_ACCENT = sf::Color(141, 174, 108);                 // #8DAE6C (aus Dark-Square abgeleitet)
+    p.COL_ACCENT_HOVER = sf::Color(155, 184, 123);           // #9BB87B
+    p.COL_ACCENT_OUTLINE = sf::Color(141, 174, 108, 90);     // weicher Grün-Outline
+    p.COL_SELECT_HIGHLIGHT = sf::Color(247, 247, 105, 170);  // #F7F769 last-move gelb
+    p.COL_PREMOVE_HIGHLIGHT = sf::Color(75, 144, 255, 160);  // #4B90FF premove blau
+    p.COL_WARNING_HIGHLIGHT = sf::Color(226, 87, 76, 200);   // #E2574C Warnung
+    p.COL_RCLICK_HIGHLIGHT = sf::Color(141, 174, 108, 170);  // grüner Ping
+    p.COL_HOVER_OUTLINE = sf::Color(222, 222, 221, 110);     // #DEDEDD leichte Kante
+    p.COL_MOVE_HIGHLIGHT = sf::Color(141, 174, 108, 48);     // dezente Grün-Wash
+    p.COL_MARKER = sf::Color(141, 174, 108, 65);             // ruhiger Marker
 
-    // Text
-    p.COL_TEXT = sf::Color(250, 250, 247);        // near-white
-    p.COL_MUTED_TEXT = sf::Color(200, 212, 195);  // soft sage gray
-    p.COL_LIGHT_TEXT = sf::Color(255, 255, 255);
-    p.COL_DARK_TEXT = sf::Color(15, 18, 13);
+    // --- Text (deine Vorgabe) ---
+    p.COL_TEXT = sf::Color(222, 222, 221);        // #DEDEDD
+    p.COL_MUTED_TEXT = sf::Color(185, 184, 182);  // sanftes Grau
+    p.COL_LIGHT_TEXT = sf::Color(245, 245, 244);
+    p.COL_DARK_TEXT = sf::Color(18, 17, 15);
 
-    // Evaluation bars
-    p.COL_EVAL_WHITE = sf::Color(255, 255, 255);
-    p.COL_EVAL_BLACK = sf::Color(30, 31, 27);
+    // --- Evaluation bars (deine Vorgaben) ---
+    p.COL_EVAL_WHITE = sf::Color(255, 255, 255);  // #FFFFFF
+    p.COL_EVAL_BLACK = sf::Color(64, 61, 57);     // #403D39
 
-    // Panels & chrome (dark, slightly green-tinted neutrals)
-    p.COL_PANEL = sf::Color(24, 30, 22, 230);
-    p.COL_HEADER = sf::Color(47, 58, 44);  // #2F3A2C
-    p.COL_SIDEBAR_BG = sf::Color(18, 22, 16);
-    p.COL_LIST_BG = sf::Color(20, 24, 18);
-    p.COL_ROW_EVEN = sf::Color(24, 28, 22);
-    p.COL_ROW_ODD = sf::Color(22, 26, 20);
-    p.COL_HOVER_BG = sf::Color(38, 46, 34);
-    p.COL_SLOT_BASE = sf::Color(38, 44, 36);
-    p.COL_BUTTON = sf::Color(40, 48, 38);
-    p.COL_BUTTON_ACTIVE = sf::Color(70, 84, 66);
-    p.COL_PANEL_TRANS = sf::Color(24, 30, 22, 150);
-    p.COL_PANEL_BORDER_ALT = sf::Color(192, 220, 188, 50);
+    // --- Panels & Chrome (auf Grundlage deiner Move-List/Background) ---
+    p.COL_PANEL = sf::Color(48, 46, 43, 230);               // #302E2B mit Alpha
+    p.COL_HEADER = sf::Color(38, 37, 34);                   // #262522
+    p.COL_SIDEBAR_BG = sf::Color(33, 32, 30);               // #21201E
+    p.COL_LIST_BG = sf::Color(38, 37, 34);                  // #262522
+    p.COL_ROW_EVEN = sf::Color(38, 37, 34);                 // #262522
+    p.COL_ROW_ODD = sf::Color(33, 32, 30);                  // #21201E
+    p.COL_HOVER_BG = sf::Color(58, 56, 52);                 // #3A3834
+    p.COL_SLOT_BASE = sf::Color(42, 41, 38);                // #2A2926
+    p.COL_BUTTON = sf::Color(58, 58, 54);                   // #3A3A36
+    p.COL_BUTTON_ACTIVE = sf::Color(92, 126, 74);           // #5C7E4A aktiver Grün-Ton
+    p.COL_PANEL_TRANS = sf::Color(48, 46, 43, 150);         // #302E2B mit mehr Transparenz
+    p.COL_PANEL_BORDER_ALT = sf::Color(222, 222, 221, 50);  // #DEDEDD zarte Trennlinie
 
-    // Backgrounds / gradients
-    p.COL_LIGHT_BG = sf::Color(232, 241, 224);  // soft paper green
-    p.COL_DARK_BG = sf::Color(12, 16, 10);
-    p.COL_BG_TOP = sf::Color(10, 13, 9);
-    p.COL_BG_BOTTOM = sf::Color(7, 10, 6);
+    // --- Backgrounds / Gradients (dunkel, an #302E2B orientiert) ---
+    p.COL_LIGHT_BG = sf::Color(58, 56, 52);   // #3A3834
+    p.COL_DARK_BG = sf::Color(26, 25, 23);    // #1A1917
+    p.COL_BG_TOP = sf::Color(48, 46, 43);     // #302E2B
+    p.COL_BG_BOTTOM = sf::Color(38, 37, 34);  // #262522
 
-    // Tooltip, discs, borders
-    p.COL_TOOLTIP_BG = sf::Color(12, 16, 11, 230);
-    p.COL_DISC = sf::Color(34, 42, 32, 150);
-    p.COL_DISC_HOVER = sf::Color(40, 50, 38, 180);
-    p.COL_BORDER = sf::Color(170, 190, 160, 60);
-    p.COL_BORDER_LIGHT = sf::Color(170, 190, 160, 50);
-    p.COL_BORDER_BEVEL = sf::Color(170, 190, 160, 40);
+    // --- Tooltip, Discs, Borders ---
+    p.COL_TOOLTIP_BG = sf::Color(30, 29, 27, 230);      // #1E1D1B mit Alpha
+    p.COL_DISC = sf::Color(58, 58, 54, 150);            // #3A3A36
+    p.COL_DISC_HOVER = sf::Color(68, 68, 64, 180);      // #444440
+    p.COL_BORDER = sf::Color(159, 168, 153, 60);        // #9FA899 grünliches Grau
+    p.COL_BORDER_LIGHT = sf::Color(159, 168, 153, 50);  // #9FA899
+    p.COL_BORDER_BEVEL = sf::Color(159, 168, 153, 40);  // #9FA899
 
-    // Inputs
-    p.COL_INPUT_BG = sf::Color(28, 34, 28);
-    p.COL_INPUT_BORDER = sf::Color(150, 180, 145);
+    // --- Inputs ---
+    p.COL_INPUT_BG = sf::Color(36, 35, 33);         // #242321
+    p.COL_INPUT_BORDER = sf::Color(164, 164, 159);  // #A4A49F
 
-    // Time, score, misc
-    p.COL_CLOCK_ACCENT = sf::Color(250, 255, 245);
-    p.COL_TIME_OFF = sf::Color(139, 46, 46);  // muted red for low time
-    p.COL_SCORE_TEXT_DARK = sf::Color(12, 16, 11);
-    p.COL_SCORE_TEXT_LIGHT = sf::Color(244, 255, 240);
-    p.COL_INVALID = sf::Color(194, 58, 58);  // semantic error
+    // --- Time, Score, Misc ---
+    p.COL_CLOCK_ACCENT = sf::Color(244, 244, 242);      // #F4F4F2
+    p.COL_TIME_OFF = sf::Color(62, 93, 55);             // #3E5D37
+    p.COL_SCORE_TEXT_DARK = sf::Color(20, 20, 18);      // #141412
+    p.COL_SCORE_TEXT_LIGHT = sf::Color(237, 237, 235);  // #EDEDEB
+    p.COL_INVALID = sf::Color(200, 70, 70);             // semantisches Fehlerrot
 
-    // Brand / logo & overlays
-    p.COL_LOGO_BG = sf::Color(92, 171, 60, 70);  // brand green wash
+    // --- Brand / Logo & Overlays ---
+    p.COL_LOGO_BG = sf::Color(141, 174, 108, 70);  // #8DAE6C Glow
     p.COL_TOP_HILIGHT = sf::Color(255, 255, 255, 18);
     p.COL_BOTTOM_SHADOW = sf::Color(0, 0, 0, 40);
-    p.COL_PANEL_ALPHA220 = sf::Color(24, 30, 22, 220);
+    p.COL_PANEL_ALPHA220 = sf::Color(48, 46, 43, 220);  // #302E2B
 
-    // Shadows
+    // --- Shadows ---
     p.COL_SHADOW_LIGHT = sf::Color(0, 0, 0, 60);
     p.COL_SHADOW_MEDIUM = sf::Color(0, 0, 0, 90);
     p.COL_SHADOW_STRONG = sf::Color(0, 0, 0, 140);
     p.COL_SHADOW_BAR = sf::Color(0, 0, 0, 70);
 
-    // Overlays
+    // --- Overlays ---
     p.COL_OVERLAY_DIM = sf::Color(0, 0, 0, 100);
     p.COL_OVERLAY = sf::Color(0, 0, 0, 120);
 
-    // Leave GOLD/WHITE_* and VALID as defaults unless you want to lock them to theme hues.
+    // GOLD/WHITE_* und VALID bleiben auf Defaults, außer du willst sie fixen.
     return p;
   }();
 
