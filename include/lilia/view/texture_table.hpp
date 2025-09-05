@@ -18,6 +18,9 @@ class TextureTable {
 
   void preLoad();
 
+  // Reload textures that depend on the current color palette.
+  void reloadForPalette();
+
  private:
   void load(const std::string& name, const sf::Color& color, sf::Vector2u size = {1, 1});
 
