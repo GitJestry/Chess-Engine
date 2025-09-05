@@ -125,10 +125,27 @@ void PlayerInfoView::applyTheme() {
   m_name.setFillColor(constant::COL_TEXT);
   m_elo.setFillColor(constant::COL_MUTED_TEXT);
   setPlayerColor(m_playerColor);
+  if (!m_iconPath.empty()) {
+    m_icon.setTexture(TextureTable::getInstance().get(m_iconPath));
+  }
+  m_capturedPieces.clear();
+  for (auto [type, color] : m_capturedInfo) {
+    std::uint8_t numTypes = 6;
+    std::string filename = constant::ASSET_PIECES_FILE_PATH + std::string("/piece_") +
+                           std::to_string(static_cast<std::uint8_t>(type) +
+                                          numTypes * static_cast<std::uint8_t>(color)) +
+                           ".png";
+    const sf::Texture& texture = TextureTable::getInstance().get(filename);
+    Entity piece(texture);
+    piece.setScale(1.f, 1.f);
+    m_capturedPieces.push_back(std::move(piece));
+  }
+  layoutCaptured();
 }
 
 void PlayerInfoView::setInfo(const PlayerInfo& info) {
-  m_icon.setTexture(TextureTable::getInstance().get(info.iconPath));
+  m_iconPath = info.iconPath;
+  m_icon.setTexture(TextureTable::getInstance().get(m_iconPath));
 
   const auto size = m_icon.getOriginalSize();
   if (size.x > 0.f && size.y > 0.f) {
@@ -207,6 +224,7 @@ void PlayerInfoView::render(sf::RenderWindow& window) {
 }
 
 void PlayerInfoView::addCapturedPiece(core::PieceType type, core::Color color) {
+  m_capturedInfo.emplace_back(type, color);
   std::uint8_t numTypes = 6;
   std::string filename = constant::ASSET_PIECES_FILE_PATH + "/piece_" +
                          std::to_string(static_cast<std::uint8_t>(type) +
@@ -223,12 +241,14 @@ void PlayerInfoView::addCapturedPiece(core::PieceType type, core::Color color) {
 void PlayerInfoView::removeCapturedPiece() {
   if (!m_capturedPieces.empty()) {
     m_capturedPieces.pop_back();
+    if (!m_capturedInfo.empty()) m_capturedInfo.pop_back();
     layoutCaptured();
   }
 }
 
 void PlayerInfoView::clearCapturedPieces() {
   m_capturedPieces.clear();
+  m_capturedInfo.clear();
   layoutCaptured();
 }
 

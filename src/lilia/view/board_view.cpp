@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 
+#include "lilia/view/color_palette_manager.hpp"
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
 
@@ -171,12 +172,27 @@ BoardView::BoardView()
     : m_board({constant::WINDOW_PX_SIZE / 2, constant::WINDOW_PX_SIZE / 2}),
       m_flip_pos(),
       m_flip_size(0.f),
-      m_flipped(false) {}
+      m_flipped(false) {
+  m_paletteListener =
+      ColorPaletteManager::get().addListener([this]() { onPaletteChanged(); });
+}
+
+BoardView::~BoardView() {
+  ColorPaletteManager::get().removeListener(m_paletteListener);
+}
 
 void BoardView::init() {
   m_board.init(TextureTable::getInstance().get(constant::STR_TEXTURE_WHITE),
                TextureTable::getInstance().get(constant::STR_TEXTURE_BLACK),
                TextureTable::getInstance().get(constant::STR_TEXTURE_TRANSPARENT));
+  setPosition(getPosition());
+}
+
+void BoardView::onPaletteChanged() {
+  m_board.init(TextureTable::getInstance().get(constant::STR_TEXTURE_WHITE),
+               TextureTable::getInstance().get(constant::STR_TEXTURE_BLACK),
+               TextureTable::getInstance().get(constant::STR_TEXTURE_TRANSPARENT));
+  m_board.setFlipped(m_flipped);
   setPosition(getPosition());
 }
 

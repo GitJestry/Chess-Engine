@@ -6,6 +6,7 @@
 #include <numbers>
 #include <vector>
 
+#include "lilia/view/color_palette_manager.hpp"
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
 
@@ -14,11 +15,19 @@ namespace lilia::view {
 HighlightManager::HighlightManager(const BoardView& boardRef)
     : m_board_view_ref(boardRef),
       m_hl_attack_squares(),
+      m_attack_is_capture(),
       m_hl_select_squares(),
       m_hl_hover_squares(),
       m_hl_premove_squares(),
       m_hl_rclick_squares(),
-      m_hl_rclick_arrows() {}
+      m_hl_rclick_arrows() {
+  m_paletteListener =
+      ColorPaletteManager::get().addListener([this]() { onPaletteChanged(); });
+}
+
+HighlightManager::~HighlightManager() {
+  ColorPaletteManager::get().removeListener(m_paletteListener);
+}
 
 void HighlightManager::renderEntitiesToBoard(std::unordered_map<core::Square, Entity>& map,
                                              sf::RenderWindow& window) {
@@ -145,10 +154,12 @@ void HighlightManager::highlightSquare(core::Square pos) {
 void HighlightManager::highlightAttackSquare(core::Square pos) {
   Entity newAttackHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_ATTACKHLIGHT));
   m_hl_attack_squares[pos] = std::move(newAttackHlight);
+  m_attack_is_capture[pos] = false;
 }
 void HighlightManager::highlightCaptureSquare(core::Square pos) {
   Entity newCaptureHlight(TextureTable::getInstance().get(constant::STR_TEXTURE_CAPTUREHLIGHT));
   m_hl_attack_squares[pos] = std::move(newCaptureHlight);
+  m_attack_is_capture[pos] = true;
 }
 
 void HighlightManager::highlightHoverSquare(core::Square pos) {
@@ -204,6 +215,7 @@ void HighlightManager::clearAllHighlights() {
   m_hl_premove_squares.clear();
   m_hl_rclick_squares.clear();
   m_hl_rclick_arrows.clear();
+  m_attack_is_capture.clear();
 }
 void HighlightManager::clearNonPremoveHighlights() {
   m_hl_select_squares.clear();
@@ -211,9 +223,11 @@ void HighlightManager::clearNonPremoveHighlights() {
   m_hl_hover_squares.clear();
   m_hl_rclick_squares.clear();
   m_hl_rclick_arrows.clear();
+  m_attack_is_capture.clear();
 }
 void HighlightManager::clearAttackHighlights() {
   m_hl_attack_squares.clear();
+  m_attack_is_capture.clear();
 }
 void HighlightManager::clearHighlightSquare(core::Square pos) {
   m_hl_select_squares.erase(pos);
@@ -230,6 +244,33 @@ void HighlightManager::clearPremoveHighlights() {
 void HighlightManager::clearRightClickHighlights() {
   m_hl_rclick_squares.clear();
   m_hl_rclick_arrows.clear();
+}
+
+void HighlightManager::onPaletteChanged() {
+  for (auto& [sq, ent] : m_hl_select_squares) {
+    ent.setTexture(
+        TextureTable::getInstance().get(constant::STR_TEXTURE_SELECTHLIGHT));
+  }
+  for (auto& [sq, ent] : m_hl_attack_squares) {
+    bool capture = m_attack_is_capture[sq];
+    ent.setTexture(TextureTable::getInstance().get(
+        capture ? constant::STR_TEXTURE_CAPTUREHLIGHT
+                : constant::STR_TEXTURE_ATTACKHLIGHT));
+  }
+  for (auto& [sq, ent] : m_hl_hover_squares) {
+    ent.setTexture(
+        TextureTable::getInstance().get(constant::STR_TEXTURE_HOVERHLIGHT));
+  }
+  for (auto& [sq, ent] : m_hl_premove_squares) {
+    ent.setTexture(
+        TextureTable::getInstance().get(constant::STR_TEXTURE_PREMOVEHLIGHT));
+    ent.setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
+  }
+  for (auto& [sq, ent] : m_hl_rclick_squares) {
+    ent.setTexture(
+        TextureTable::getInstance().get(constant::STR_TEXTURE_RCLICKHLIGHT));
+    ent.setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
+  }
 }
 
 }  // namespace lilia::view

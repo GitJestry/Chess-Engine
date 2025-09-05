@@ -40,6 +40,8 @@ class PlayerInfoView {
   core::Color m_playerColor{core::Color::White};
   Entity::Position m_position{};
   std::vector<Entity> m_capturedPieces;
+  std::vector<std::pair<core::PieceType, core::Color>> m_capturedInfo;
+  std::string m_iconPath;
 
   ColorPaletteManager::ListenerID m_listener_id{0};
 
