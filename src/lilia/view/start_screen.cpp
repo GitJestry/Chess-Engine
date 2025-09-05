@@ -237,6 +237,13 @@ StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
   m_timeEnabled = false;
 
   setupUI();
+  applyTheme();
+  m_listener_id =
+      ColorPaletteManager::get().addListener([this]() { applyTheme(); });
+}
+
+StartScreen::~StartScreen() {
+  ColorPaletteManager::get().removeListener(m_listener_id);
 }
 
 void StartScreen::setupUI() {
@@ -508,6 +515,64 @@ void StartScreen::setupUI() {
   m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
   updateTimeToggle();
   layoutTimeControls();
+}
+
+void StartScreen::applyTheme() {
+  m_paletteText.setFillColor(colText);
+  m_paletteButton.setFillColor(colButton);
+  for (auto& opt : m_paletteOptions) {
+    opt.box.setFillColor(colButton);
+    opt.label.setFillColor(colText);
+  }
+
+  m_whiteLabel.setFillColor(colText);
+  m_blackLabel.setFillColor(colText);
+
+  m_whitePlayerBtn.setFillColor(colButton);
+  m_whiteBotBtn.setFillColor(colButton);
+  m_whitePlayerText.setFillColor(colText);
+  m_whiteBotText.setFillColor(colText);
+  m_blackPlayerBtn.setFillColor(colButton);
+  m_blackBotBtn.setFillColor(colButton);
+  m_blackPlayerText.setFillColor(colText);
+  m_blackBotText.setFillColor(colText);
+
+  m_startBtn.setFillColor(colAccent);
+  m_startText.setFillColor(sf::Color::Black);
+
+  m_fenErrorText.setFillColor(colInvalid);
+  m_fenInputBox.setFillColor(colInput);
+  m_fenInputBox.setOutlineColor(colInputBorder);
+  m_fenInputText.setFillColor(colText);
+
+  for (auto& opt : m_whiteBotOptions) {
+    opt.box.setFillColor(colButton);
+    opt.label.setFillColor(colText);
+  }
+  for (auto& opt : m_blackBotOptions) {
+    opt.box.setFillColor(colButton);
+    opt.label.setFillColor(colText);
+  }
+
+  m_timePanel.setFillColor(ColorPaletteManager::get().palette().COL_HEADER);
+  m_timePanel.setOutlineColor(colPanelBorder);
+  m_timeTitle.setFillColor(colSubtle);
+  m_timeMain.setFillColor(colText);
+  m_timeMinusBtn.setFillColor(colButton);
+  m_timePlusBtn.setFillColor(colButton);
+  m_minusTxt.setFillColor(colText);
+  m_incLabel.setFillColor(colSubtle);
+  m_incValue.setFillColor(colText);
+  m_incMinusBtn.setFillColor(colButton);
+  m_incPlusBtn.setFillColor(colButton);
+  m_incMinusTxt.setFillColor(colText);
+
+  for (auto& c : m_presets) {
+    c.box.setFillColor(colButton);
+    c.label.setFillColor(colText);
+  }
+
+  updateTimeToggle();
 }
 
 void StartScreen::updateTimeToggle() {
