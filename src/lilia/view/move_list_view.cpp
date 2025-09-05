@@ -320,6 +320,13 @@ std::string ellipsizeRightKeepTail(const std::string& s, sf::Text& probe, float 
 
 MoveListView::MoveListView() {
   m_font.loadFromFile(constant::STR_FILE_PATH_FONT);
+  m_paletteListener =
+      ColorPaletteManager::get().addListener([this]() { onPaletteChanged(); });
+  onPaletteChanged();
+}
+
+MoveListView::~MoveListView() {
+  ColorPaletteManager::get().removeListener(m_paletteListener);
 }
 
 void MoveListView::setPosition(const Entity::Position& pos) {
@@ -724,7 +731,6 @@ void MoveListView::render(sf::RenderWindow& window) const {
     }
     g_prevLeftDown = leftDown;
   }
-
   window.setView(oldView);
 }
 
@@ -810,6 +816,10 @@ MoveListView::Option MoveListView::getOptionAt(const Entity::Position& pos) cons
 
 void MoveListView::setGameOver(bool over) {
   m_game_over = over;
+}
+
+void MoveListView::onPaletteChanged() {
+  m_toastTextColor = constant::COL_TEXT;
 }
 
 }  // namespace lilia::view

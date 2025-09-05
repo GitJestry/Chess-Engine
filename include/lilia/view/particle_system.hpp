@@ -5,10 +5,14 @@
 #include <SFML/System/Vector2.hpp>
 #include <vector>
 
+#include "render_constants.hpp"
+
 namespace lilia::view {
 
 class ParticleSystem {
-public:
+ public:
+  ParticleSystem();
+  ~ParticleSystem();
   struct Particle {
     sf::CircleShape shape;
     sf::Vector2f velocity;
@@ -29,6 +33,9 @@ public:
 
 private:
   std::vector<Particle> m_particles;
+  ColorPaletteManager::ListenerID m_paletteListener{0};
+
+  void onPaletteChanged();
 };
 
 } // namespace lilia::view
