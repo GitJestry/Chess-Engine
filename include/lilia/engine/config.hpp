@@ -3,7 +3,8 @@
 
 namespace lilia::engine {
 struct EngineConfig {
-  int maxDepth = 12;            // etwas tiefer, ID hilft Stabilität
+  int maxDepth = 12;  // etwas tiefer, ID hilft Stabilität
+  std::uint64_t maxNodes = 100000;
   std::size_t ttSizeMb = 1024;  // mehr TT entspannt Aspiration/Transpositionen
   bool useNullMove = true;      // gut für Mittelspiel, QS-Fixes mindern Risiken
   bool useLMR = true;           // leichte Reduktionen sind ok

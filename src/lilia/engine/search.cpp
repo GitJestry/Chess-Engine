@@ -225,17 +225,26 @@ int Search::signed_eval(model::Position& pos) {
   return std::clamp(v, -MATE + 1, MATE - 1);
 }
 
+inline void bump_node_or_stop(const std::shared_ptr<std::atomic<std::uint64_t>>& counter,
+                              std::uint64_t limit,
+                              const std::shared_ptr<std::atomic<bool>>& stopFlag) {
+  if (!counter) return;
+  for (;;) {
+    std::uint64_t prev = counter->load(std::memory_order_relaxed);
+    if (limit && prev >= limit) {
+      if (stopFlag) stopFlag->store(true, std::memory_order_relaxed);
+      throw SearchStoppedException();
+    }
+    if (counter->compare_exchange_weak(prev, prev + 1, std::memory_order_relaxed))
+      break;  // successfully took a ticket
+  }
+}
+
 // ---------- Quiescence + QTT ----------
 
 int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   stats.nodes++;
-  if (sharedNodes) {
-    auto now = sharedNodes->fetch_add(1, std::memory_order_relaxed) + 1;
-    if (nodeLimit && now >= nodeLimit) {
-      if (stopFlag) stopFlag->store(true, std::memory_order_relaxed);
-      throw SearchStoppedException();
-    }
-  }
+  bump_node_or_stop(sharedNodes, nodeLimit, stopFlag);
   check_stop(stopFlag);
 
   if (ply >= MAX_PLY - 2) return signed_eval(pos);
@@ -412,13 +421,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int ply,
                     model::Move& refBest, int parentStaticEval) {
   stats.nodes++;
-  if (sharedNodes) {
-    auto now = sharedNodes->fetch_add(1, std::memory_order_relaxed) + 1;
-    if (nodeLimit && now >= nodeLimit) {
-      if (stopFlag) stopFlag->store(true, std::memory_order_relaxed);
-      throw SearchStoppedException();
-    }
-  }
+  bump_node_or_stop(sharedNodes, nodeLimit, stopFlag);
   check_stop(stopFlag);
 
   if (ply >= MAX_PLY - 2) return signed_eval(pos);
@@ -931,8 +934,9 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
             }
           }
         } catch (const SearchStoppedException&) {
-          // Stop cleanly with whatever we have so far
           if (stop) stop->store(true, std::memory_order_relaxed);
+          // sync reported nodes with the shared counter before returning
+          stats.nodes = sharedNodeCounter->load(std::memory_order_relaxed);
           update_time_stats();
           this->stopFlag.reset();
           return stats.bestScore;
@@ -1147,6 +1151,7 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     lastScoreGuess = bestScore;
   }
 
+  stats.nodes = sharedNodeCounter->load(std::memory_order_relaxed);
   this->stopFlag.reset();
   update_time_stats();
   return stats.bestScore;
