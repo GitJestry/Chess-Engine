@@ -265,13 +265,13 @@ void StartScreen::setupUI() {
   float itemH = 24.f;
   float width = 120.f;
   float left = m_paletteButton.getPosition().x;
-  float bottom = m_paletteButton.getPosition().y - 6.f;
+  float bottom = m_paletteButton.getPosition().y;
   const auto& names = ColorPaletteManager::get().paletteNames();
   for (std::size_t i = 0; i < names.size(); ++i) {
     PaletteOption opt;
     opt.name = names[i];
     opt.box.setSize({width, itemH});
-    opt.box.setPosition(snap({left, bottom - (i + 1) * (itemH + 4.f)}));
+    opt.box.setPosition(snap({left, bottom - (i + 1) * itemH}));
     opt.box.setFillColor(colButton);
     opt.label.setFont(m_font);
     opt.label.setCharacterSize(14);
@@ -381,7 +381,7 @@ void StartScreen::setupUI() {
       BotOption opt;
       opt.type = bots[i];
       opt.box.setSize({BTN_W, LIST_ITEM_H});
-      opt.box.setPosition(snapf(left), snapf(top + (float)i * (LIST_ITEM_H + 6.f)));
+      opt.box.setPosition(snapf(left), snapf(top + (float)i * LIST_ITEM_H));
       opt.box.setFillColor(colButton);
       opt.label.setFont(m_font);
       opt.label.setCharacterSize(16);
@@ -392,9 +392,9 @@ void StartScreen::setupUI() {
     }
   };
   buildList(m_whiteBotOptions, m_whiteBotBtn.getPosition().x,
-            m_whiteBotBtn.getPosition().y + BTN_H + 8.f);
+            m_whiteBotBtn.getPosition().y + BTN_H);
   buildList(m_blackBotOptions, m_blackBotBtn.getPosition().x,
-            m_blackBotBtn.getPosition().y + BTN_H + 8.f);
+            m_blackBotBtn.getPosition().y + BTN_H);
 
   // Time block
   const float timeX = x0 + (PANEL_W - TIME_W) * 0.5f;
@@ -746,22 +746,32 @@ StartConfig StartScreen::run() {
     drawVerticalGradient(m_window, colBGTop, colBGBottom);
 
     // palette selector
-    bool palHover = contains(m_paletteButton.getGlobalBounds(), m_mousePos) || m_showPaletteList;
+    bool palHover = contains(m_paletteButton.getGlobalBounds(), m_mousePos) || m_showPaletteList ||
+                    m_paletteListAnim > 0.f;
     m_paletteButton.setFillColor(palHover ? colButtonActive : colButton);
     m_paletteText.setFillColor(colText);
     m_window.draw(m_paletteButton);
     m_window.draw(m_paletteText);
-    if (m_showPaletteList) {
+    if (m_paletteListAnim > 0.f) {
       for (std::size_t i = 0; i < m_paletteOptions.size(); ++i) {
         const auto& opt = m_paletteOptions[i];
         auto r = opt.box.getGlobalBounds();
         bool hov = contains(r, m_mousePos);
         bool sel = (i == m_paletteSelection);
-        drawBevelButton3D(m_window, r, sel ? colButtonActive : colButton, hov, sel);
+        sf::Color base = sel ? colButtonActive : colButton;
+        base.a = static_cast<sf::Uint8>(base.a * m_paletteListAnim);
+        drawBevelButton3D(m_window, r, base, hov, sel);
         sf::Text label = opt.label;
+        sf::Color lc = label.getFillColor();
+        lc.a = static_cast<sf::Uint8>(lc.a * m_paletteListAnim);
+        label.setFillColor(lc);
         leftCenterText(label, r, 8.f);
         m_window.draw(label);
-        if (sel) drawAccentInset(m_window, r, colAccent);
+        if (sel) {
+          sf::Color ac = colAccent;
+          ac.a = static_cast<sf::Uint8>(ac.a * m_paletteListAnim);
+          drawAccentInset(m_window, r, ac);
+        }
       }
     }
 
@@ -804,7 +814,7 @@ StartConfig StartScreen::run() {
       auto humanR = m_whitePlayerBtn.getGlobalBounds();
       auto botR = m_whiteBotBtn.getGlobalBounds();
       bool hovH = contains(humanR, m_mousePos);
-      bool hovB = contains(botR, m_mousePos) || m_showWhiteBotList;
+      bool hovB = contains(botR, m_mousePos) || m_showWhiteBotList || m_whiteBotListAnim > 0.f;
       bool selH = !cfg.whiteIsBot, selB = cfg.whiteIsBot;
       drawBevelButton3D(m_window, humanR, selH ? colButtonActive : colButton, hovH, selH);
       centerText(m_whitePlayerText, humanR);
@@ -821,7 +831,7 @@ StartConfig StartScreen::run() {
       auto humanR = m_blackPlayerBtn.getGlobalBounds();
       auto botR = m_blackBotBtn.getGlobalBounds();
       bool hovH = contains(humanR, m_mousePos);
-      bool hovB = contains(botR, m_mousePos) || m_showBlackBotList;
+      bool hovB = contains(botR, m_mousePos) || m_showBlackBotList || m_blackBotListAnim > 0.f;
       bool selH = !cfg.blackIsBot, selB = cfg.blackIsBot;
       drawBevelButton3D(m_window, humanR, selH ? colButtonActive : colButton, hovH, selH);
       centerText(m_blackPlayerText, humanR);
@@ -834,21 +844,30 @@ StartConfig StartScreen::run() {
     }
 
     // Bot dropdowns
-    auto drawBotList = [&](const std::vector<BotOption>& list, std::size_t selIdx) {
+    auto drawBotList = [&](const std::vector<BotOption>& list, std::size_t selIdx, float anim) {
       for (std::size_t i = 0; i < list.size(); ++i) {
         const auto& opt = list[i];
         auto r = opt.box.getGlobalBounds();
         bool hov = contains(r, m_mousePos);
         bool sel = (i == selIdx);
-        drawBevelButton3D(m_window, r, sel ? colButtonActive : colButton, hov, sel);
+        sf::Color base = sel ? colButtonActive : colButton;
+        base.a = static_cast<sf::Uint8>(base.a * anim);
+        drawBevelButton3D(m_window, r, base, hov, sel);
         sf::Text label = opt.label;
+        sf::Color lc = label.getFillColor();
+        lc.a = static_cast<sf::Uint8>(lc.a * anim);
+        label.setFillColor(lc);
         leftCenterText(label, r, 10.f);
         m_window.draw(label);
-        if (sel) drawAccentInset(m_window, r, colAccent);
+        if (sel) {
+          sf::Color ac = colAccent;
+          ac.a = static_cast<sf::Uint8>(ac.a * anim);
+          drawAccentInset(m_window, r, ac);
+        }
       }
     };
-    if (m_showWhiteBotList) drawBotList(m_whiteBotOptions, m_whiteBotSelection);
-    if (m_showBlackBotList) drawBotList(m_blackBotOptions, m_blackBotSelection);
+    if (m_whiteBotListAnim > 0.f) drawBotList(m_whiteBotOptions, m_whiteBotSelection, m_whiteBotListAnim);
+    if (m_blackBotListAnim > 0.f) drawBotList(m_blackBotOptions, m_blackBotSelection, m_blackBotListAnim);
 
     // Time toggle
     {
@@ -994,7 +1013,9 @@ StartConfig StartScreen::run() {
   };
 
   // Loop
+  sf::Clock frameClock;
   while (m_window.isOpen()) {
+    float dt = frameClock.restart().asSeconds();
     sf::Event e{};
     while (m_window.pollEvent(e)) {
       if (e.type == sf::Event::Closed) {
@@ -1194,6 +1215,17 @@ StartConfig StartScreen::run() {
         m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
       });
     }
+
+    auto animateList = [&](bool show, float& anim) {
+      const float speed = 10.f;
+      if (show)
+        anim = std::min(1.f, anim + speed * dt);
+      else
+        anim = std::max(0.f, anim - speed * dt);
+    };
+    animateList(m_showPaletteList, m_paletteListAnim);
+    animateList(m_showWhiteBotList, m_whiteBotListAnim);
+    animateList(m_showBlackBotList, m_blackBotListAnim);
 
     // draw
     m_window.clear();
