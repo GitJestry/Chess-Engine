@@ -46,6 +46,7 @@ struct TTEntry5 {
 // 0: use low bits of Zobrist (klassisch), 1: simple mixer (xor-shift)
 #define TT5_INDEX_MIX 0
 #endif
+#define TT_DETERMINISTIC 1
 
 // -----------------------------------------------------------------------------
 // Internal packed entry & cluster
@@ -161,14 +162,120 @@ class TT5 {
     if (probe_into(key, tmp)) return tmp;
     return std::nullopt;
   }
-
-  // --- Store ---
+#ifndef TT_DETERMINISTIC
+  // --- LIGHT DETERMINISTIC, LOW-OVERHEAD STORE ---
   void store(std::uint64_t key, int32_t value, int16_t depth, Bound bound, const Move& best,
              int16_t staticEval = std::numeric_limits<int16_t>::min()) noexcept {
     Cluster& c = table_[index(key)];
     LILIA_PREFETCHW_L1(&c);
 
     const std::uint8_t age = static_cast<std::uint8_t>(generation_.load(std::memory_order_relaxed));
+    const std::uint16_t keyLo = static_cast<std::uint16_t>(key);
+    const std::uint16_t keyHi = static_cast<std::uint16_t>(key >> 48);
+
+    const std::uint8_t depth8 =
+        static_cast<std::uint8_t>(depth < 0 ? 0 : (depth > 255 ? 255 : depth));
+    const std::int16_t v16 = static_cast<std::int16_t>(std::clamp(
+        value, (int)std::numeric_limits<int16_t>::min(), (int)std::numeric_limits<int16_t>::max()));
+    const std::int16_t se16 = static_cast<std::int16_t>(std::clamp(
+        staticEval, std::numeric_limits<int16_t>::min(), std::numeric_limits<int16_t>::max()));
+    const std::uint16_t mv16 = pack_move16(best);
+
+    auto bound_strength = [](Bound b) -> int {
+      return b == Bound::Exact ? 2 : (b == Bound::Lower ? 1 : 0);
+    };
+
+    auto info_depth = [](std::uint64_t info) -> unsigned {
+      return (unsigned)((info >> INFO_DEPTH_SHIFT) & 0xFFu);
+    };
+    auto info_bound = [](std::uint64_t info) -> Bound {
+      return (Bound)((info >> INFO_BOUND_SHIFT) & 0x3u);
+    };
+    auto info_keyhi = [](std::uint64_t info) -> std::uint16_t {
+      return (std::uint16_t)((info >> INFO_KEYHI_SHIFT) & 0xFFFFu);
+    };
+    auto info_age = [](std::uint64_t info) -> std::uint8_t {
+      return (std::uint8_t)((info >> INFO_AGE_SHIFT) & 0xFFu);
+    };
+
+    const std::uint64_t newData = (std::uint64_t)mv16 | ((std::uint64_t)(std::uint16_t)v16 << 16) |
+                                  ((std::uint64_t)(std::uint16_t)se16 << 32) |
+                                  ((std::uint64_t)keyHi << 48);
+
+    const std::uint64_t newInfo = INFO_VALID_MASK | (std::uint64_t)keyLo |
+                                  ((std::uint64_t)age << INFO_AGE_SHIFT) |
+                                  ((std::uint64_t)depth8 << INFO_DEPTH_SHIFT) |
+                                  ((std::uint64_t)(std::uint8_t)bound << INFO_BOUND_SHIFT) |
+                                  ((std::uint64_t)keyHi << INFO_KEYHI_SHIFT);
+
+    auto strictly_better = [&](std::uint64_t oldInfo) -> bool {
+      // Depth first, then bound strength, then freshness (age), finally key parity.
+      const unsigned od = info_depth(oldInfo);
+      const Bound ob = info_bound(oldInfo);
+      const int obS = bound_strength(ob);
+      const int nbS = bound_strength(bound);
+
+      if (depth8 != od) return depth8 > od;
+      if (nbS != obS) return nbS > obS;
+      const int freshOld = 255 - (uint8_t)(age - info_age(oldInfo));
+      const int freshNew = 255;  // new is current generation
+      if (freshNew != freshOld) return freshNew > freshOld;
+      // final deterministic tie-break:
+      return (info_keyhi(oldInfo) & 1u) == 0u;  // replace when old parity is 0
+    };
+
+    // 1) Same-key update: single CAS if we are better/equal
+    for (auto& ent : c.e) {
+      std::uint64_t oldInfo = ent.info.load(std::memory_order_acquire);
+      if ((oldInfo & INFO_VALID_MASK) == 0ull) continue;
+      if ((oldInfo & INFO_KEYLO_MASK) != keyLo) continue;
+      if (info_keyhi(oldInfo) != keyHi) continue;
+
+      if (!strictly_better(oldInfo)) return;  // keep the better/equal one
+
+      ent.data.store(newData, std::memory_order_relaxed);
+      (void)ent.info.compare_exchange_strong(oldInfo, newInfo, std::memory_order_release,
+                                             std::memory_order_acquire);
+      return;  // regardless of CAS success, don’t loop — avoid stalls
+    }
+
+    // 2) Free slot: one CAS
+    for (auto& ent : c.e) {
+      std::uint64_t expected = 0ull;
+      ent.data.store(newData, std::memory_order_relaxed);
+      if (ent.info.compare_exchange_strong(expected, newInfo, std::memory_order_release,
+                                           std::memory_order_relaxed))
+        return;
+    }
+
+    // 3) Replacement: pick victim by your heuristic; replace only if strictly better; one CAS try
+    int victim = 0;
+    int bestScore = repl_score(c.e[0], age);
+    for (int i = 1; i < 4; ++i) {
+      const int sc = repl_score(c.e[i], age);
+      if (sc < bestScore) {
+        bestScore = sc;
+        victim = i;
+      }
+    }
+
+    auto& ent = c.e[victim];
+    std::uint64_t oldInfo = ent.info.load(std::memory_order_acquire);
+    if (!strictly_better(oldInfo)) return;
+
+    ent.data.store(newData, std::memory_order_relaxed);
+    (void)ent.info.compare_exchange_strong(oldInfo, newInfo, std::memory_order_release,
+                                           std::memory_order_acquire);
+    // if CAS fails, we just drop it — cheap and deterministic enough
+  }
+#else
+  void store(std::uint64_t key, int32_t value, int16_t depth, Bound bound, const Move& best,
+             int16_t staticEval = std::numeric_limits<int16_t>::min()) noexcept {
+    Cluster& c = table_[index(key)];
+    LILIA_PREFETCHW_L1(&c);
+
+    const std::uint8_t curAge =
+        static_cast<std::uint8_t>(generation_.load(std::memory_order_relaxed));
     const std::uint16_t keyLo = static_cast<std::uint16_t>(key);
     const std::uint16_t keyHi = static_cast<std::uint16_t>(key >> 48);
 
@@ -182,71 +289,107 @@ class TT5 {
         staticEval, std::numeric_limits<int16_t>::min(), std::numeric_limits<int16_t>::max()));
     const std::uint16_t mv16 = pack_move16(best);
 
-    // 1) Update same key if present (no data read needed)
+    auto bound_strength = [](Bound b) constexpr -> int {
+      return b == Bound::Exact ? 2 : (b == Bound::Lower ? 1 : 0);
+    };
+
+    auto info_quality = [&](std::uint64_t info) -> uint32_t {
+      if ((info & INFO_VALID_MASK) == 0ull) return 0;  // empty
+      const std::uint8_t age = static_cast<std::uint8_t>((info >> INFO_AGE_SHIFT) & 0xFFu);
+      const std::uint8_t dep = static_cast<std::uint8_t>((info >> INFO_DEPTH_SHIFT) & 0xFFu);
+      const Bound bnd = static_cast<Bound>((info >> INFO_BOUND_SHIFT) & 0x3u);
+      const std::uint16_t kHi = static_cast<std::uint16_t>((info >> INFO_KEYHI_SHIFT) & 0xFFFFu);
+      const int fresh = 255 - static_cast<std::uint8_t>(curAge - age);  // higher = fresher
+      // depth (most important) | bound | freshness | deterministic tie (key parity)
+      return (static_cast<uint32_t>(dep) << 16) |
+             (static_cast<uint32_t>(bound_strength(bnd)) << 12) |
+             (static_cast<uint32_t>(fresh) << 4) | (kHi & 0x1u);
+    };
+
+    auto new_quality = [&](std::uint16_t kHi) -> uint32_t {
+      const int fresh = 255;  // brand-new this generation
+      return (static_cast<uint32_t>(depth8) << 16) |
+             (static_cast<uint32_t>(bound_strength(bound)) << 12) |
+             (static_cast<uint32_t>(fresh) << 4) | (kHi & 0x1u);
+    };
+
+    const std::uint64_t newData =
+        (static_cast<std::uint64_t>(mv16) & 0xFFFFull) |
+        (static_cast<std::uint64_t>(static_cast<std::uint16_t>(v16)) << 16) |
+        (static_cast<std::uint64_t>(static_cast<std::uint16_t>(se16)) << 32) |
+        (static_cast<std::uint64_t>(keyHi) << 48);
+
+    const std::uint64_t newInfoTemplate =
+        INFO_VALID_MASK | (static_cast<std::uint64_t>(keyLo)) |
+        (static_cast<std::uint64_t>(curAge) << INFO_AGE_SHIFT) |
+        (static_cast<std::uint64_t>(depth8) << INFO_DEPTH_SHIFT) |
+        (static_cast<std::uint64_t>(static_cast<std::uint8_t>(bound)) << INFO_BOUND_SHIFT) |
+        (static_cast<std::uint64_t>(keyHi) << INFO_KEYHI_SHIFT);
+
+    const uint32_t newQ = new_quality(keyHi);
+
+    // 1) Try same-key update with CAS + deterministic predicate
     for (auto& ent : c.e) {
-      const std::uint64_t info1 = ent.info.load(std::memory_order_acquire);
-
-      if ((info1 & INFO_VALID_MASK) == 0ull) continue;
-      if ((info1 & INFO_KEYLO_MASK) != keyLo) continue;
-
+      std::uint64_t oldInfo = ent.info.load(std::memory_order_acquire);
+      if ((oldInfo & INFO_VALID_MASK) == 0ull) continue;
+      if ((oldInfo & INFO_KEYLO_MASK) != keyLo) continue;
       const std::uint16_t infoKeyHi =
-          static_cast<std::uint16_t>((info1 >> INFO_KEYHI_SHIFT) & 0xFFFFu);
+          static_cast<std::uint16_t>((oldInfo >> INFO_KEYHI_SHIFT) & 0xFFFFu);
       if (infoKeyHi != keyHi) continue;
 
-      const std::uint8_t od = static_cast<std::uint8_t>((info1 >> INFO_DEPTH_SHIFT) & 0xFFu);
-      const Bound ob = static_cast<Bound>((info1 >> INFO_BOUND_SHIFT) & 0x3u);
+      // If the existing entry is "better or equal", keep it.
+      const uint32_t oldQ = info_quality(oldInfo);
+      if (oldQ > newQ) return;
 
-      // conservative policy: keep stronger bounds/deeper
-      const unsigned oldD = od;
-      const unsigned newD = depth8;
-      bool replace = true;
-      if (bound == Bound::Upper && (ob == Bound::Exact || ob == Bound::Lower) && oldD > newD) {
-        replace = false;
-      } else if (bound != Bound::Exact) {
-        if (oldD > newD + 1u && ob != Bound::Upper) replace = false;
-      }
-
-      if (!replace) return;
-
-      const std::uint64_t newData =
-          (static_cast<std::uint64_t>(mv16) & 0xFFFFull) |
-          (static_cast<std::uint64_t>(static_cast<std::uint16_t>(v16)) << 16) |
-          (static_cast<std::uint64_t>(static_cast<std::uint16_t>(se16)) << 32) |
-          (static_cast<std::uint64_t>(keyHi) << 48);
-
-      const std::uint64_t newInfo =
-          INFO_VALID_MASK | (static_cast<std::uint64_t>(keyLo)) |
-          (static_cast<std::uint64_t>(age) << INFO_AGE_SHIFT) |
-          (static_cast<std::uint64_t>(depth8) << INFO_DEPTH_SHIFT) |
-          (static_cast<std::uint64_t>(static_cast<std::uint8_t>(bound)) << INFO_BOUND_SHIFT) |
-          (static_cast<std::uint64_t>(keyHi) << INFO_KEYHI_SHIFT);
-
+      // Otherwise, attempt to replace deterministically.
       ent.data.store(newData, std::memory_order_relaxed);
-      ent.info.store(newInfo, std::memory_order_release);
-      return;
+      if (ent.info.compare_exchange_strong(oldInfo, newInfoTemplate, std::memory_order_release,
+                                           std::memory_order_acquire)) {
+        return;
+      }
+      // CAS failed -> someone else updated; restart same-key loop.
+      // We could loop a few times, but a single restart of the outer loop suffices.
+      // (fall through to fresh-slot / replacement below)
     }
 
-    // 2) Free slot (info VALID bit == 0)
+    // 2) Try to claim a free slot (CAS from empty)
     for (auto& ent : c.e) {
-      const std::uint64_t info1 = ent.info.load(std::memory_order_relaxed);
-      if ((info1 & INFO_VALID_MASK) == 0ull) {
-        write_entry(ent, keyLo, keyHi, age, depth8, bound, mv16, v16, se16);
+      std::uint64_t expected = 0ull;
+      ent.data.store(newData, std::memory_order_relaxed);
+      if (ent.info.compare_exchange_strong(expected, newInfoTemplate, std::memory_order_release,
+                                           std::memory_order_relaxed)) {
         return;
       }
     }
 
-    // 3) Replacement: choose victim by heuristic
+    // 3) Replacement: choose victim by your heuristic, but guard with quality CAS
     int victim = 0;
-    int bestScore = repl_score(c.e[0], age);
+    int bestScore = repl_score(c.e[0], curAge);
     for (int i = 1; i < 4; ++i) {
-      const int sc = repl_score(c.e[i], age);
+      const int sc = repl_score(c.e[i], curAge);
       if (sc < bestScore) {
         bestScore = sc;
         victim = i;
       }
     }
-    write_entry(c.e[victim], keyLo, keyHi, age, depth8, bound, mv16, v16, se16);
+
+    auto& ent = c.e[victim];
+
+    for (int tries = 0; tries < 4; ++tries) {
+      std::uint64_t oldInfo = ent.info.load(std::memory_order_acquire);
+      const uint32_t oldQ = info_quality(oldInfo);
+      if (oldQ > newQ) return;  // Victim is actually stronger — keep it (deterministic).
+
+      ent.data.store(newData, std::memory_order_relaxed);
+      if (ent.info.compare_exchange_strong(oldInfo, newInfoTemplate, std::memory_order_release,
+                                           std::memory_order_acquire)) {
+        return;
+      }
+      // someone else changed the victim; retry a couple times
+    }
+    // Give up silently if contention is extreme.
   }
+#endif
 
  private:
   // --- bitfield constants ---
