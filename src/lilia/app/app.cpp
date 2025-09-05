@@ -10,6 +10,7 @@
 #include "lilia/view/game_view.hpp"
 #include "lilia/view/start_screen.hpp"
 #include "lilia/view/texture_table.hpp"
+#include "lilia/view/render_constants.hpp"
 
 namespace lilia::app {
 
@@ -73,7 +74,8 @@ int App::run() {
           gameController.handleEvent(event);
         }
         gameController.update(deltaSeconds);
-        drawVerticalGradient(window, sf::Color{24, 29, 38}, sf::Color{16, 19, 26});
+        drawVerticalGradient(window, view::constant::COL_BG_TOP,
+                             view::constant::COL_BG_BOTTOM);
         gameController.render();
         window.display();
       }
