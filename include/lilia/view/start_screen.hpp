@@ -7,6 +7,7 @@
 
 #include "lilia/bot/bot_info.hpp"
 #include "lilia/constants.hpp"
+#include "lilia/view/color_palette_manager.hpp"
 
 namespace lilia::view {
 
@@ -36,6 +37,7 @@ struct PaletteOption {
 class StartScreen {
  public:
   explicit StartScreen(sf::RenderWindow &window);
+  ~StartScreen();
   StartConfig run();
 
  private:
@@ -125,7 +127,10 @@ class StartScreen {
   // mouse (for hover + in-bounds while holding)
   sf::Vector2f m_mousePos{0.f, 0.f};
 
+  ColorPaletteManager::ListenerID m_listener_id{0};
+
   void setupUI();
+  void applyTheme();
   bool handleMouse(sf::Vector2f pos, StartConfig &cfg);
   bool handleFenMouse(sf::Vector2f pos, StartConfig &cfg);
   bool isValidFen(const std::string &fen);
