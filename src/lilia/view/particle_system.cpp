@@ -1,26 +1,26 @@
 #include "lilia/view/particle_system.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <random>
 
 namespace lilia::view {
 
-void ParticleSystem::emitConfetti(const sf::Vector2f &center, float boardSize, std::size_t count) {
+void ParticleSystem::emitConfetti(const sf::Vector2f &center,
+                                  const sf::Vector2f &windowSize,
+                                  std::size_t count) {
   // Seed once per thread instead of every call
   static thread_local std::mt19937 rng{std::random_device{}()};
 
-  std::uniform_real_distribution<float> xDist(center.x - boardSize / 2.f,
-                                              center.x + boardSize / 2.f);
-  // Give particles a wider horizontal spread and faster upward launch
-  std::uniform_real_distribution<float> vxDist(-200.f, 200.f);
-  std::uniform_real_distribution<float> vyDist(-1800.f, -1400.f);
-
-  // Wider spread of sizes for more noticeable variation
+  std::uniform_real_distribution<float> xDist(center.x - windowSize.x / 2.f,
+                                              center.x + windowSize.x / 2.f);
+  std::uniform_real_distribution<float> vxDist(-50.f, 50.f);
+  std::uniform_real_distribution<float> vyDist(-900.f, -600.f);
   std::uniform_real_distribution<float> radiusDist(1.5f, 6.0f);
+  std::uniform_real_distribution<float> phaseDist(0.f, 6.2831853f);
 
-  float startY = center.y + boardSize / 2.f;
+  float startY = center.y + windowSize.y / 2.f;
 
-  // Avoid repeated reallocations if you’re emitting a bunch
   if (m_particles.capacity() < m_particles.size() + count) {
     m_particles.reserve(m_particles.size() + count);
   }
@@ -30,21 +30,23 @@ void ParticleSystem::emitConfetti(const sf::Vector2f &center, float boardSize, s
     float radius = radiusDist(rng);
 
     sf::CircleShape shape(radius);
-    shape.setFillColor(sf::Color::White);  // <-- pure white
+    shape.setFillColor(sf::Color::White);
     shape.setOrigin(radius, radius);
     shape.setPosition({x, startY});
 
     sf::Vector2f velocity{vxDist(rng), vyDist(rng)};
-    // Longer lifetime so particles have time to fall back down
-    m_particles.push_back(Particle{shape, velocity, 4.f, startY});
+    float lifetime = 6.f;
+    float phase = phaseDist(rng);
+    m_particles.push_back(
+        Particle{shape, velocity, lifetime, startY, lifetime, false, phase});
   }
 }
 
 void ParticleSystem::update(float dt) {
-  // Simple gravity and slight horizontal jitter to simulate confetti drift
-  static constexpr float gravity = 1900.f;  // pixels per second^2
+  static constexpr float upwardGravity = 400.f;
+  static constexpr float downwardGravity = 80.f;
   static thread_local std::mt19937 rng{std::random_device{}()};
-  std::uniform_real_distribution<float> jitterDist(-10.f, 10.f);
+  std::uniform_real_distribution<float> jitterDist(-15.f, 15.f);
 
   for (auto it = m_particles.begin(); it != m_particles.end();) {
     it->lifetime -= dt;
@@ -53,12 +55,25 @@ void ParticleSystem::update(float dt) {
       continue;
     }
 
-    // Apply gravity and some horizontal randomness
+    if (!it->falling && it->velocity.y >= 0.f) {
+      it->falling = true;
+    }
+
+    float gravity = it->falling ? downwardGravity : upwardGravity;
     it->velocity.y += gravity * dt;
     it->velocity.x += jitterDist(rng) * dt;
-    it->shape.move(it->velocity * dt);
 
-    // Remove when particle reaches the bottom of the board again
+    float t = it->totalLifetime - it->lifetime;
+    float wiggle = std::sin(t * 8.f + it->phase) * 20.f;
+    it->shape.move({(it->velocity.x + wiggle) * dt, it->velocity.y * dt});
+
+    if (it->lifetime < 3.f) {
+      sf::Color c = it->shape.getFillColor();
+      c.a = static_cast<sf::Uint8>(255 *
+                                   std::clamp(it->lifetime / 3.f, 0.f, 1.f));
+      it->shape.setFillColor(c);
+    }
+
     if (it->shape.getPosition().y >= it->floorY) {
       it = m_particles.erase(it);
     } else {
@@ -73,12 +88,8 @@ void ParticleSystem::render(sf::RenderWindow &window) {
   }
 }
 
-void ParticleSystem::clear() {
-  m_particles.clear();
-}
+void ParticleSystem::clear() { m_particles.clear(); }
 
-bool ParticleSystem::empty() const {
-  return m_particles.empty();
-}
+bool ParticleSystem::empty() const { return m_particles.empty(); }
 
-}  // namespace lilia::view
+} // namespace lilia::view
