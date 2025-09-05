@@ -1,6 +1,5 @@
 #pragma once
 #include <array>
-#include <optional>
 
 #include "core/model_types.hpp"
 
@@ -15,7 +14,7 @@ class Board {
   // API unverändert
   void setPiece(core::Square sq, bb::Piece p) noexcept;
   void removePiece(core::Square sq) noexcept;
-  std::optional<bb::Piece> getPiece(core::Square sq) const noexcept;
+  bb::Piece getPiece(core::Square sq) const noexcept;
 
   bb::Bitboard getPieces(core::Color c) const { return m_color_occ[bb::ci(c)]; }
   bb::Bitboard getAllPieces() const { return m_all_occ; }

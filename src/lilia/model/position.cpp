@@ -110,15 +110,16 @@ bool Position::isPseudoLegal(const Move& m) const {
   if (!on_board_0_63(m.from()) || !on_board_0_63(m.to()) || m.from() == m.to()) return false;
 
   const auto fromP = m_board.getPiece(m.from());
-  if (!fromP || fromP->color != m_state.sideToMove) return false;
+  if (fromP.type == core::PieceType::None || fromP.color != m_state.sideToMove) return false;
 
   const auto toP = m_board.getPiece(m.to());
-  const core::Color us = fromP->color, them = ~us;
-  const bool isCap = (m.isEnPassant() ? true : (toP && toP->color == them));
+  const core::Color us = fromP.color, them = ~us;
+  const bool isCap =
+      (m.isEnPassant() ? true : (toP.type != core::PieceType::None && toP.color == them));
   const bb::Bitboard occ = m_board.getAllPieces();
 
   using PT = core::PieceType;
-  switch (fromP->type) {
+  switch (fromP.type) {
     case PT::Pawn: {
       const int df = (int)m.to() - (int)m.from();
       const int fromRank = bb::rank_of(m.from());
@@ -157,38 +158,42 @@ bool Position::isPseudoLegal(const Move& m) const {
         const core::Square capSq =
             white ? static_cast<core::Square>(m.to() - 8) : static_cast<core::Square>(m.to() + 8);
         const auto capP = m_board.getPiece(capSq);
-        return capP && capP->color == them && capP->type == PT::Pawn;
+        return capP.type != core::PieceType::None && capP.color == them && capP.type == PT::Pawn;
       } else {
-        if (!toP || toP->color != them) return false;
+        if (toP.type == core::PieceType::None || toP.color != them) return false;
         return white ? (df == 7 || df == 9) : (df == -7 || df == -9);
       }
     }
 
     case PT::Knight: {
       const bb::Bitboard atk = bb::knight_attacks_from(m.from());
-      return (atk & bb::sq_bb(m.to())) && (!toP || toP->color == them);
+      return (atk & bb::sq_bb(m.to())) &&
+             (toP.type == core::PieceType::None || toP.color == them);
     }
 
     case PT::Bishop: {
       const bb::Bitboard ray = magic::sliding_attacks(magic::Slider::Bishop, m.from(), occ);
-      return (ray & bb::sq_bb(m.to())) && (!toP || toP->color == them);
+      return (ray & bb::sq_bb(m.to())) &&
+             (toP.type == core::PieceType::None || toP.color == them);
     }
 
     case PT::Rook: {
       const bb::Bitboard ray = magic::sliding_attacks(magic::Slider::Rook, m.from(), occ);
-      return (ray & bb::sq_bb(m.to())) && (!toP || toP->color == them);
+      return (ray & bb::sq_bb(m.to())) &&
+             (toP.type == core::PieceType::None || toP.color == them);
     }
 
     case PT::Queen: {
       const bb::Bitboard ray = magic::sliding_attacks(magic::Slider::Bishop, m.from(), occ) |
                                magic::sliding_attacks(magic::Slider::Rook, m.from(), occ);
-      return (ray & bb::sq_bb(m.to())) && (!toP || toP->color == them);
+      return (ray & bb::sq_bb(m.to())) &&
+             (toP.type == core::PieceType::None || toP.color == them);
     }
 
     case PT::King: {
       // Normal king step
       if (bb::king_attacks_from(m.from()) & bb::sq_bb(m.to())) {
-        return (!toP || toP->color == them);
+        return (toP.type == core::PieceType::None || toP.color == them);
       }
       // Castling (rare → we can afford the full legality here)
       if (us == core::Color::White) {
@@ -247,8 +252,8 @@ bool Position::see(const model::Move& m) const {
   if (!m.isCapture() && !m.isEnPassant()) return true;
 
   const auto fromP = m_board.getPiece(m.from());
-  if (!fromP) return true;
-  const Color us = fromP->color;
+  if (fromP.type == PieceType::None) return true;
+  const Color us = fromP.color;
   const Color them = Color(~us);
   const Square to = m.to();
 
@@ -272,14 +277,14 @@ bool Position::see(const model::Move& m) const {
     occ &= ~bb::sq_bb(capSq);  // remove the pawn that is actually captured
   } else {
     const auto cap = m_board.getPiece(to);
-    if (!cap) return true;  // nothing to win/lose
-    captured = cap->type;
+    if (cap.type == PieceType::None) return true;  // nothing to win/lose
+    captured = cap.type;
     occ &= ~bb::sq_bb(to);
   }
 
   // Move our piece onto 'to'
   occ &= ~bb::sq_bb(m.from());
-  PieceType curOnTo = (m.promotion() != PieceType::None) ? m.promotion() : fromP->type;
+  PieceType curOnTo = (m.promotion() != PieceType::None) ? m.promotion() : fromP.type;
   occ |= bb::sq_bb(to);
 
   // Attackers to 'to' given occupancy (helpers)
@@ -373,11 +378,11 @@ bool Position::doMove(const Move& m) {
 
   core::Color us = m_state.sideToMove;
   auto fromPiece = m_board.getPiece(m.from());
-  if (!fromPiece || fromPiece->color != us) return false;
+  if (fromPiece.type == core::PieceType::None || fromPiece.color != us) return false;
 
   // Promotions robust validieren
   if (m.promotion() != core::PieceType::None) {
-    if (fromPiece->type != core::PieceType::Pawn) return false;
+    if (fromPiece.type != core::PieceType::Pawn) return false;
     const int toRank = bb::rank_of(m.to());
     const bool onPromoRank = (us == core::Color::White) ? (toRank == 7) : (toRank == 0);
     if (!onPromoRank) return false;
@@ -482,12 +487,12 @@ void Position::applyMove(const Move& m, StateInfo& st) {
   m_state.enPassantSquare = core::NO_SQUARE;
 
   const auto fromPiece = m_board.getPiece(m.from());
-  if (!fromPiece) return;
-  const bool movingPawn = (fromPiece->type == core::PieceType::Pawn);
+  if (fromPiece.type == core::PieceType::None) return;
+  const bool movingPawn = (fromPiece.type == core::PieceType::Pawn);
 
   // Detect castling
   bool isCastleMove = (m.castle() != CastleSide::None);
-  if (!isCastleMove && fromPiece->type == core::PieceType::King) {
+  if (!isCastleMove && fromPiece.type == core::PieceType::King) {
     if (us == core::Color::White && m.from() == bb::E1 &&
         (m.to() == core::Square{6} || m.to() == core::Square{2}))
       isCastleMove = true;
@@ -502,7 +507,7 @@ void Position::applyMove(const Move& m, StateInfo& st) {
     const int df = (int)m.to() - (int)m.from();
     const bool diag = (df == 7 || df == 9 || df == -7 || df == -9);
     if (diag && prevEP != core::NO_SQUARE && m.to() == prevEP) {
-      if (!m_board.getPiece(m.to()).has_value()) isEP = true;
+      if (m_board.getPiece(m.to()).type == core::PieceType::None) isEP = true;
     }
   }
 
@@ -510,7 +515,7 @@ void Position::applyMove(const Move& m, StateInfo& st) {
   bool isCap = m.isCapture();
   if (!isCap && !isEP) {
     auto cap = m_board.getPiece(m.to());
-    if (cap && cap->color == them) isCap = true;
+    if (cap.type != core::PieceType::None && cap.color == them) isCap = true;
   }
 
   // Determine captured piece and store in state
@@ -518,17 +523,19 @@ void Position::applyMove(const Move& m, StateInfo& st) {
     const core::Square capSq = (us == core::Color::White) ? static_cast<core::Square>(m.to() - 8)
                                                           : static_cast<core::Square>(m.to() + 8);
     auto cap = m_board.getPiece(capSq);
-    st.captured = cap.value_or(bb::Piece{core::PieceType::Pawn, them});
+    if (cap.type == core::PieceType::None) cap = bb::Piece{core::PieceType::Pawn, them};
+    st.captured = cap;
     st.captured.type = core::PieceType::Pawn;
   } else if (isCap) {
     auto cap = m_board.getPiece(m.to());
-    st.captured = cap.value_or(bb::Piece{core::PieceType::None, them});
+    if (cap.type == core::PieceType::None) cap = bb::Piece{core::PieceType::None, them};
+    st.captured = cap;
   } else {
     st.captured = bb::Piece{core::PieceType::None, them};
   }
 
   // ===== fast paths =====
-  bb::Piece placed = *fromPiece;
+  bb::Piece placed = fromPiece;
   const bool fastQuiet =
       (!isCap && !isEP && !isCastleMove && m.promotion() == core::PieceType::None);
   const bool fastCap = (isCap && !isEP && !isCastleMove && m.promotion() == core::PieceType::None &&
@@ -578,10 +585,10 @@ void Position::applyMove(const Move& m, StateInfo& st) {
     }
 
     if (m.promotion() != core::PieceType::None) {
-      evalAcc_.remove_piece(us, fromPiece->type, (int)m.from());
+      evalAcc_.remove_piece(us, fromPiece.type, (int)m.from());
       evalAcc_.add_piece(us, placed.type, (int)m.to());
     } else {
-      evalAcc_.move_piece(us, fromPiece->type, (int)m.from(), (int)m.to());
+      evalAcc_.move_piece(us, fromPiece.type, (int)m.from(), (int)m.to());
     }
 
     hashXorPiece(us, placed.type, m.to());
@@ -707,22 +714,24 @@ void Position::unapplyMove(const StateInfo& st) {
 
   // Fast: no capture & no promotion
   if (m.promotion() == core::PieceType::None && st.captured.type == core::PieceType::None) {
-    if (auto moving = m_board.getPiece(m.to())) {
-      evalAcc_.move_piece(us, moving->type, (int)m.to(), (int)m.from());
-      hashXorPiece(us, moving->type, m.to());
+    auto moving = m_board.getPiece(m.to());
+    if (moving.type != core::PieceType::None) {
+      evalAcc_.move_piece(us, moving.type, (int)m.to(), (int)m.from());
+      hashXorPiece(us, moving.type, m.to());
       m_board.movePiece_noCapture(m.to(), m.from());
-      hashXorPiece(us, moving->type, m.from());
+      hashXorPiece(us, moving.type, m.from());
     }
     return;
   }
 
   // Fast: non-promotion capture
   if (m.promotion() == core::PieceType::None && st.captured.type != core::PieceType::None) {
-    if (auto moving = m_board.getPiece(m.to())) {
-      evalAcc_.move_piece(us, moving->type, (int)m.to(), (int)m.from());
-      hashXorPiece(us, moving->type, m.to());
+    auto moving = m_board.getPiece(m.to());
+    if (moving.type != core::PieceType::None) {
+      evalAcc_.move_piece(us, moving.type, (int)m.to(), (int)m.from());
+      hashXorPiece(us, moving.type, m.to());
       m_board.movePiece_noCapture(m.to(), m.from());
-      hashXorPiece(us, moving->type, m.from());
+      hashXorPiece(us, moving.type, m.from());
     }
     if (m.isEnPassant()) {
       const core::Square capSq = (us == core::Color::White) ? static_cast<core::Square>(m.to() - 8)
@@ -739,19 +748,20 @@ void Position::unapplyMove(const StateInfo& st) {
   }
 
   // Slow: promotions / mixed cases
-  if (auto moving = m_board.getPiece(m.to())) {
+  auto moving = m_board.getPiece(m.to());
+  if (moving.type != core::PieceType::None) {
     m_board.removePiece(m.to());
-    bb::Piece placed = *moving;
+    bb::Piece placed = moving;
     if (m.promotion() != core::PieceType::None) placed.type = core::PieceType::Pawn;
 
     if (m.promotion() != core::PieceType::None) {
-      evalAcc_.remove_piece(us, moving->type, (int)m.to());
+      evalAcc_.remove_piece(us, moving.type, (int)m.to());
       evalAcc_.add_piece(us, core::PieceType::Pawn, (int)m.from());
     } else {
-      evalAcc_.move_piece(us, moving->type, (int)m.to(), (int)m.from());
+      evalAcc_.move_piece(us, moving.type, (int)m.to(), (int)m.from());
     }
 
-    hashXorPiece(us, moving->type, m.to());
+    hashXorPiece(us, moving.type, m.to());
     hashXorPiece(us, placed.type, m.from());
     m_board.setPiece(m.from(), placed);
   } else {

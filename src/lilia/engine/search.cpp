@@ -181,7 +181,7 @@ static inline bool quiet_pawn_push_creates_attack(const model::Board& b, const m
   if (m.isCapture() || m.promotion() != PT::None) return false;
 
   auto mover = b.getPiece(m.from());
-  if (!mover || mover->type != PT::Pawn) return false;
+  if (mover.type != PT::Pawn) return false;
 
   const model::bb::Bitboard toBB = model::bb::sq_bb(m.to());
   const model::bb::Bitboard atk = (us == core::Color::White)
@@ -376,7 +376,8 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     if (m.isEnPassant())
       capVal = base_value[(int)core::PieceType::Pawn];
     else if (m.isCapture()) {
-      if (auto cap = pos.getBoard().getPiece(m.to())) capVal = base_value[(int)cap->type];
+      auto cap = pos.getBoard().getPiece(m.to());
+      if (cap.type != core::PieceType::None) capVal = base_value[(int)cap.type];
     }
 
     int promoGain = 0;
@@ -563,12 +564,15 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         s += 180'000;  // feinjustierbar (150–250k)
       }
       auto moverOpt = board.getPiece(m.from());
-      const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
+      const core::PieceType moverPt =
+          (moverOpt.type != core::PieceType::None) ? moverOpt.type : core::PieceType::Pawn;
       core::PieceType capPt = core::PieceType::Pawn;
       if (m.isEnPassant())
         capPt = core::PieceType::Pawn;
-      else if (auto cap = board.getPiece(m.to()))
-        capPt = cap->type;
+      else {
+        auto cap = board.getPiece(m.to());
+        if (cap.type != core::PieceType::None) capPt = cap.type;
+      }
 
       const int mvv = mvv_lva_fast(pos, m);
       const int ch = captureHist[pidx(moverPt)][m.to()][pidx(capPt)];
@@ -578,7 +582,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         s = CAP_BASE_GOOD + mvv + (ch >> 2);
     } else {
       auto moverOpt = board.getPiece(m.from());
-      const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
+      const core::PieceType moverPt =
+          (moverOpt.type != core::PieceType::None) ? moverOpt.type : core::PieceType::Pawn;
       s = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
       if (m == killers[kply][0] || m == killers[kply][1]) s += KILLER_BASE;
       if (prevOk && m == cm) s += CM_BASE + (counterHist[prev.from()][prev.to()] >> 1);
@@ -605,12 +610,14 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // pre info
     auto moverOpt = board.getPiece(m.from());
-    const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
+    const core::PieceType moverPt =
+        (moverOpt.type != core::PieceType::None) ? moverOpt.type : core::PieceType::Pawn;
     core::PieceType capPt = core::PieceType::Pawn;
     if (m.isEnPassant())
       capPt = core::PieceType::Pawn;
     else if (m.isCapture()) {
-      if (auto cap = board.getPiece(m.to())) capPt = cap->type;
+      auto cap = board.getPiece(m.to());
+      if (cap.type != core::PieceType::None) capPt = cap.type;
     }
 
     // LMP
@@ -683,8 +690,10 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       int capVal = 0;
       if (m.isEnPassant())
         capVal = base_value[(int)core::PieceType::Pawn];
-      else if (auto cap = board.getPiece(m.to()))
-        capVal = base_value[(int)cap->type];
+      else {
+        auto cap = board.getPiece(m.to());
+        if (cap.type != core::PieceType::None) capVal = base_value[(int)cap.type];
+      }
       const int PROBCUT_MARGIN = 180;
       if (staticEval + capVal + PROBCUT_MARGIN >= beta) {
         const int red = 3;

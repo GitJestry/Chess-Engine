@@ -109,9 +109,9 @@ void Board::removePiece(core::Square sq) noexcept {
   m_piece_on[s] = 0;
 }
 
-std::optional<bb::Piece> Board::getPiece(core::Square sq) const noexcept {
+bb::Piece Board::getPiece(core::Square sq) const noexcept {
   const std::uint8_t packed = m_piece_on[static_cast<int>(sq)];
-  if (!packed) return std::nullopt;
+  if (!packed) return {};
   return unpack_piece(packed);
 }
 

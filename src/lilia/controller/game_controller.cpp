@@ -670,17 +670,17 @@ bool GameController::enqueuePremove(core::Square from, core::Square to) {
   model::Position pos = getPositionAfterPremoves();
 
   auto moverOpt = pos.getBoard().getPiece(from);
-  if (!moverOpt) return false;
+  if (moverOpt.type == core::PieceType::None) return false;
 
-  const core::PieceType moverType = moverOpt->type;
-  const core::Color moverColor = moverOpt->color;
+  const core::PieceType moverType = moverOpt.type;
+  const core::Color moverColor = moverOpt.color;
 
   // Capture info from virtual board
   core::PieceType capType = core::PieceType::None;
   core::Color capColor = core::Color::White;
-  if (auto cap = pos.getBoard().getPiece(to)) {
-    capType = cap->type;
-    capColor = cap->color;
+  if (auto cap = pos.getBoard().getPiece(to); cap.type != core::PieceType::None) {
+    capType = cap.type;
+    capColor = cap.color;
   }
 
   // Promotion? -> defer until user selects piece type
@@ -746,14 +746,14 @@ void GameController::updatePremovePreviews() {
 
   for (const auto &pm : m_premove_queue) {
     auto moverOpt = pos.getBoard().getPiece(pm.from);
-    if (!moverOpt) {
+    if (moverOpt.type == core::PieceType::None) {
       // If the mover is unexpectedly missing in the virtual chain, skip drawing but
       // still keep the chain consistent by not crashing.
       continue;
     }
 
-    const core::PieceType movingType = moverOpt->type;
-    const core::Color movingCol = moverOpt->color;
+    const core::PieceType movingType = moverOpt.type;
+    const core::Color movingCol = moverOpt.color;
 
     // Draw the ghost for this premove (promotion handled by view).
     m_game_view.showPremovePiece(pm.from, pm.to, pm.promotion);
@@ -772,7 +772,7 @@ void GameController::updatePremovePreviews() {
 
     // Remove captured piece (incl. potential en-passant victim).
     if (pm.capturedType != core::PieceType::None) {
-      if (pos.getBoard().getPiece(pm.to)) {
+      if (pos.getBoard().getPiece(pm.to).type != core::PieceType::None) {
         pos.getBoard().removePiece(pm.to);
       } else if (movingType == core::PieceType::Pawn &&
                  ((static_cast<int>(pm.from) ^ static_cast<int>(pm.to)) & 7)) {
@@ -785,7 +785,7 @@ void GameController::updatePremovePreviews() {
     }
 
     // Move the piece and handle promotion.
-    model::bb::Piece moving = *moverOpt;
+    model::bb::Piece moving = moverOpt;
     pos.getBoard().removePiece(pm.from);
     if (pm.promotion != core::PieceType::None) moving.type = pm.promotion;
     pos.getBoard().setPiece(pm.to, moving);
@@ -797,9 +797,10 @@ void GameController::updatePremovePreviews() {
                                                 : static_cast<core::Square>(pm.to - 2);
       core::Square rookTo = (pm.to > pm.from) ? static_cast<core::Square>(pm.to - 1)
                                               : static_cast<core::Square>(pm.to + 1);
-      if (auto rook = pos.getBoard().getPiece(rookFrom)) {
+      auto rook = pos.getBoard().getPiece(rookFrom);
+      if (rook.type != core::PieceType::None) {
         pos.getBoard().removePiece(rookFrom);
-        pos.getBoard().setPiece(rookTo, *rook);
+        pos.getBoard().setPiece(rookTo, rook);
       }
     }
   }
@@ -1316,19 +1317,19 @@ model::Position GameController::getPositionAfterPremoves() const {
   if (m_premove_queue.empty()) return pos;
   for (const auto &pm : m_premove_queue) {
     auto moverOpt = pos.getBoard().getPiece(pm.from);
-    if (!moverOpt) break;
+    if (moverOpt.type == core::PieceType::None) break;
 
     // Keep side to move stable so previews chain for the same color
     pos.getState().sideToMove = pm.moverColor;
 
     // Remove captured piece (including potential en-passant victim)
     if (pm.capturedType != core::PieceType::None) {
-      if (pos.getBoard().getPiece(pm.to)) {
+      if (pos.getBoard().getPiece(pm.to).type != core::PieceType::None) {
         pos.getBoard().removePiece(pm.to);
-      } else if (moverOpt->type == core::PieceType::Pawn &&
-                 ((static_cast<int>(pm.from) ^ static_cast<int>(pm.to)) & 7)) {
+      } else if (moverOpt.type == core::PieceType::Pawn &&
+                 ((static_cast<int)(pm.from) ^ static_cast<int>(pm.to)) & 7)) {
         // Diagonal pawn move onto empty square -> en-passant capture
-        core::Square epSq = (moverOpt->color == core::Color::White)
+        core::Square epSq = (moverOpt.color == core::Color::White)
                                 ? static_cast<core::Square>(pm.to - 8)
                                 : static_cast<core::Square>(pm.to + 8);
         pos.getBoard().removePiece(epSq);
@@ -1336,7 +1337,7 @@ model::Position GameController::getPositionAfterPremoves() const {
     }
 
     // Move the piece, ignoring normal legality
-    model::bb::Piece moving = *moverOpt;
+    model::bb::Piece moving = moverOpt;
     pos.getBoard().removePiece(pm.from);
     if (pm.promotion != core::PieceType::None) moving.type = pm.promotion;
     pos.getBoard().setPiece(pm.to, moving);
@@ -1348,9 +1349,10 @@ model::Position GameController::getPositionAfterPremoves() const {
                                                 : static_cast<core::Square>(pm.to - 2);
       core::Square rookTo = (pm.to > pm.from) ? static_cast<core::Square>(pm.to - 1)
                                               : static_cast<core::Square>(pm.to + 1);
-      if (auto rook = pos.getBoard().getPiece(rookFrom)) {
+      auto rook = pos.getBoard().getPiece(rookFrom);
+      if (rook.type != core::PieceType::None) {
         pos.getBoard().removePiece(rookFrom);
-        pos.getBoard().setPiece(rookTo, *rook);
+        pos.getBoard().setPiece(rookTo, rook);
       }
     }
   }
@@ -1363,7 +1365,8 @@ model::bb::Piece GameController::getPieceConsideringPremoves(core::Square sq) co
   // steals selection")
   if (!m_premove_queue.empty()) {
     model::Position pos = getPositionAfterPremoves();
-    if (auto virt = pos.getBoard().getPiece(sq)) return *virt;
+    auto virt = pos.getBoard().getPiece(sq);
+    if (virt.type != core::PieceType::None) return virt;
   }
   return m_chess_game.getPiece(sq);
 }
@@ -1379,16 +1382,17 @@ bool GameController::isPseudoLegalPremove(core::Square from, core::Square to) co
   // Work from the virtual position AFTER already queued premoves
   model::Position pos = getPositionAfterPremoves();
   auto pcOpt = pos.getBoard().getPiece(from);
-  if (!pcOpt) return false;
-  const core::PieceType vType = pcOpt->type;
-  const core::Color vCol = pcOpt->color;
+  if (pcOpt.type == core::PieceType::None) return false;
+  const core::PieceType vType = pcOpt.type;
+  const core::Color vCol = pcOpt.color;
 
   // Allow castling premove: king moves two squares toward own rook (standard)
   if (vType == core::PieceType::King &&
       std::abs(static_cast<int>(to) - static_cast<int>(from)) == 2) {
     core::Square rookSq =
         (to > from) ? static_cast<core::Square>(from + 3) : static_cast<core::Square>(from - 4);
-    if (pos.getBoard().getPiece(rookSq) && pos.getBoard().getPiece(rookSq)->color == vCol) {
+    auto rook = pos.getBoard().getPiece(rookSq);
+    if (rook.type != core::PieceType::None && rook.color == vCol) {
       return true;
     }
   }

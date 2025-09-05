@@ -13,12 +13,16 @@ inline int mvv_lva_fast(const model::Position& pos, const model::Move& m) {
   core::PieceType victimType = core::PieceType::Pawn;
   if (m.isEnPassant()) {
     victimType = core::PieceType::Pawn;
-  } else if (auto vp = b.getPiece(m.to())) {
-    victimType = vp->type;
+  } else {
+    auto vp = b.getPiece(m.to());
+    if (vp.type != core::PieceType::None) {
+      victimType = vp.type;
+    }
   }
 
   core::PieceType attackerType = core::PieceType::Pawn;
-  if (auto ap = b.getPiece(m.from())) attackerType = ap->type;
+  auto ap = b.getPiece(m.from());
+  if (ap.type != core::PieceType::None) attackerType = ap.type;
 
   const int vVictim = base_value[static_cast<int>(victimType)];
   const int vAttacker = base_value[static_cast<int>(attackerType)];

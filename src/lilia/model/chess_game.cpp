@@ -277,8 +277,7 @@ void ChessGame::setResult(core::GameResult res) {
 }
 
 bb::Piece ChessGame::getPiece(core::Square sq) {
-  auto opt = m_position.getBoard().getPiece(sq);
-  return opt.value_or(bb::Piece{core::PieceType::None, core::Color::White});
+  return m_position.getBoard().getPiece(sq);
 }
 
 void ChessGame::doMove(core::Square from, core::Square to, core::PieceType promotion) {
@@ -311,13 +310,13 @@ std::string ChessGame::getFen() const {
     for (int file = 0; file < 8; ++file) {
       const core::Square sq = static_cast<core::Square>(rank * 8 + file);
       const auto piece = board.getPiece(sq);
-      if (piece.has_value()) {
+      if (piece.type != core::PieceType::None) {
         if (empty) {
           oss << empty;
           empty = 0;
         }
         char ch;
-        switch (piece->type) {
+        switch (piece.type) {
           case core::PieceType::King:
             ch = 'k';
             break;
@@ -340,7 +339,7 @@ std::string ChessGame::getFen() const {
             ch = '?';
             break;
         }
-        if (piece->color == core::Color::White) ch = static_cast<char>(std::toupper(ch));
+        if (piece.color == core::Color::White) ch = static_cast<char>(std::toupper(ch));
         oss << ch;
       } else {
         ++empty;
