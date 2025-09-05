@@ -9,8 +9,8 @@
 #include <unordered_map>
 
 #include "lilia/bot/bot_info.hpp"
-#include "lilia/view/render_constants.hpp"
 #include "lilia/view/color_palette_manager.hpp"
+#include "lilia/view/render_constants.hpp"
 
 namespace lilia::view {
 
@@ -231,7 +231,6 @@ StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
   // palette icon
   m_paletteTex.loadFromFile(constant::STR_FILE_PATH_ICON_SETTINGS);
   m_paletteIcon.setTexture(m_paletteTex);
-  m_paletteIcon.setScale(0.5f, 0.5f);
 
   // FEN starts empty => STANDARD unless user provides one
   m_fenString.clear();
@@ -700,7 +699,6 @@ StartConfig StartScreen::run() {
   bool toastVisible = false;
   sf::Clock toastClock;
   std::string toastMsg;
-
   // Caret blink
   sf::Clock caretClock;
 

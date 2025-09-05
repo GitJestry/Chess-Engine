@@ -1,8 +1,9 @@
 #pragma once
-#include "color_palette.hpp"
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "col_palette/color_palette.hpp"
 
 namespace lilia::view {
 
@@ -36,4 +37,3 @@ class ColorPaletteManager {
 };
 
 }  // namespace lilia::view
-

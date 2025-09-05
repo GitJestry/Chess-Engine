@@ -1,5 +1,8 @@
 #include "lilia/view/color_palette_manager.hpp"
 
+#include "lilia/view/col_palette/rose_noir.hpp"
+#include "lilia/view/render_constants.hpp"
+
 namespace lilia::view {
 
 ColorPaletteManager& ColorPaletteManager::get() {
@@ -8,19 +11,14 @@ ColorPaletteManager& ColorPaletteManager::get() {
 }
 
 ColorPaletteManager::ColorPaletteManager() {
-#define X(name, defaultValue) \
+#define X(name, defaultValue)    \
   m_default.name = defaultValue; \
   m_current.name = defaultValue;
   LILIA_COLOR_PALETTE(X)
 #undef X
 
-  registerPalette("default", ColorPalette{});
-
-  ColorPalette red;
-  red.COL_BOARD_LIGHT = sf::Color(255, 200, 200);
-  red.COL_BOARD_DARK = sf::Color(160, 50, 50);
-  red.COL_ACCENT = sf::Color(200, 60, 60);
-  registerPalette("red stream", red);
+  registerPalette(constant::STR_COL_PALETTE_DEFAULT, ColorPalette{});
+  registerPalette(constant::STR_COL_PALETTE_RED_NOIR, PALETTE_ROSE_NOIR);
 
   m_active = "default";
 }
