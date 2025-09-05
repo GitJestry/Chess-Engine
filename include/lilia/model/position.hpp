@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <vector>
+#include <unordered_map>
 
 #include "../engine/eval_acc.hpp"
 #include "board.hpp"
@@ -44,6 +45,9 @@ class Position {
       }
     }
     m_state.pawnKey = pk;
+
+    repetitionCount.clear();
+    repetitionCount[m_hash] = 1;
   }
 
   // Make/Unmake
@@ -71,6 +75,7 @@ class Position {
   bb::Bitboard m_hash = 0;
   engine::EvalAcc evalAcc_;
   std::vector<NullState> m_null_history;
+  std::unordered_map<bb::Bitboard, int> repetitionCount;
 
   // interne Helfer
   void applyMove(const Move& m, StateInfo& st);

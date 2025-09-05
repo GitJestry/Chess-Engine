@@ -85,15 +85,7 @@ bool Position::checkMoveRule() {
 }
 
 bool Position::checkRepetition() {
-  int count = 0;
-  const int n = (int)m_history.size();
-  const int lim = std::min<int>(n, m_state.halfmoveClock);
-  for (int back = 2; back <= lim; back += 2) {
-    const int idx = n - back;
-    if (idx < 0) break;
-    if (m_history[idx].zobristKey == m_hash && ++count >= 2) return true;
-  }
-  return false;
+  return repetitionCount[m_hash] >= 3;
 }
 
 bool Position::inCheck() const {
@@ -420,11 +412,13 @@ bool Position::doMove(const Move& m) {
   }
 
   m_history.push_back(st);
+  repetitionCount[m_hash]++;
   return true;
 }
 
 void Position::undoMove() {
   if (m_history.empty()) return;
+  repetitionCount[m_hash]--;
   StateInfo st = m_history.back();
   unapplyMove(st);
   m_hash = st.zobristKey;
@@ -450,11 +444,13 @@ bool Position::doNullMove() {
   if (m_state.sideToMove == core::Color::White) ++m_state.fullmoveNumber;
 
   m_null_history.push_back(st);
+  repetitionCount[m_hash]++;
   return true;
 }
 
 void Position::undoNullMove() {
   if (m_null_history.empty()) return;
+  repetitionCount[m_hash]--;
   NullState st = m_null_history.back();
   m_null_history.pop_back();
 
