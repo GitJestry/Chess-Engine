@@ -196,9 +196,8 @@ inline void Board::movePiece_withCapture(core::Square from, core::Square capSq,
 
   // Decode captured (must exist)
   assert(captured.type != core::PieceType::None);
-  const std::uint8_t capPacked = pack_piece(captured);
-  const int c_ti = (capPacked & 0x7) - 1;   // 0..5
-  const int c_ci = (capPacked >> 3) & 0x1;  // 0/1
+  const int c_ti = detail::type_index(captured.type);
+  const int c_ci = bb::ci(captured.color);
   assert(c_ti >= 0 && c_ti < 6);
 
   const bb::Bitboard fromBB = bb::sq_bb(from);
