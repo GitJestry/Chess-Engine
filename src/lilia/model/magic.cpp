@@ -4,14 +4,18 @@
 #include <cassert>
 #include <cstdint>
 #include <functional>
+#ifdef LILIA_MAGIC_BUILD_TOOL
 #include <iostream>
+#endif
 #include <limits>
 #include <random>
 #include <vector>
 
 #include "lilia/model/core/random.hpp"
 #include "lilia/model/generated/magic_constants.hpp"
+#ifdef LILIA_MAGIC_BUILD_TOOL
 #include "lilia/model/magic_serializer.hpp"
+#endif
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
 #if defined(__BMI2__) || defined(_MSC_VER)
@@ -32,8 +36,10 @@ static std::array<Magic, 64> g_rook_magic{};
 static std::array<Magic, 64> g_bishop_magic{};
 
 // -------------------- alte (kompatible) Vektor-Tabellen --------------------
+#ifdef LILIA_MAGIC_BUILD_TOOL
 static std::array<std::vector<bb::Bitboard>, 64> g_rook_table;
 static std::array<std::vector<bb::Bitboard>, 64> g_bishop_table;
+#endif
 
 // -------------------- NEU: flache Arenen + Offsets/Längen ------------------
 // Magic-indiziert
@@ -81,6 +87,7 @@ static inline uint64_t index_for_occ(bb::Bitboard occ, bb::Bitboard mask, bb::Bi
   return raw & mask_idx;
 }
 
+#ifdef LILIA_MAGIC_BUILD_TOOL
 static inline void build_table_for_square(Slider s, int sq, bb::Bitboard mask, bb::Bitboard magic,
                                           uint8_t shift, std::vector<bb::Bitboard>& outTable) {
   const int bits = bb::popcount(mask);
@@ -179,6 +186,8 @@ static inline bool find_magic_for_square(Slider s, int sq, bb::Bitboard mask,
   return false;
 }
 
+#endif  // LILIA_MAGIC_BUILD_TOOL
+
 static inline bb::Bitboard rook_relevant_mask(core::Square sq) {
   bb::Bitboard mask = 0ULL;
   int r = bb::rank_of(sq), f = bb::file_of(sq);
@@ -211,6 +220,7 @@ static inline void build_masks() {
 
 // ------------------------- Magics & Vektor-Tabellen -------------------------
 
+#ifdef LILIA_MAGIC_BUILD_TOOL
 static inline void generate_all_magics_and_tables() {
   build_masks();
 
@@ -234,8 +244,6 @@ static inline void generate_all_magics_and_tables() {
   }
 }
 
-// ---------------------- Flat-Pack (Magic-indiziert) -------------------------
-
 static inline void pack_magic_vectors_to_flat(const std::array<std::vector<bb::Bitboard>, 64>& src,
                                               std::array<std::uint32_t, 64>& off,
                                               std::array<std::uint16_t, 64>& len,
@@ -257,6 +265,7 @@ static inline void pack_magic_vectors_to_flat(const std::array<std::vector<bb::B
     }
   }
 }
+#endif  // LILIA_MAGIC_BUILD_TOOL
 
 // ---------------------- PEXT-Tabellen (flat) --------------------------------
 
@@ -320,25 +329,14 @@ static bool cpu_has_bmi2() {
 // ---------------------- Init -------------------------------------------------
 
 void init_magics() {
-#ifdef LILIA_MAGIC_HAVE_CONSTANTS
-  using namespace lilia::model::magic::constants;
-
   build_masks();
 
-  // Magic Konstanten
+#if defined(LILIA_MAGIC_HAVE_CONSTANTS)
+  using namespace lilia::model::magic::constants;
+
   for (int i = 0; i < 64; ++i) {
     g_rook_magic[i] = {srook_magic[i].magic, srook_magic[i].shift};
     g_bishop_magic[i] = {sbishop_magic[i].magic, sbishop_magic[i].shift};
-  }
-
-  // (A) Falls dein Serializer bereits FLAT ausgibt:
-  //   Definiere in der generierten Header-Datei: LILIA_MAGIC_FLAT_CONSTANTS
-  //   und stelle folgende Arrays bereit:
-  //     - srook_off[64], srook_len[64], srook_arena[...]
-  //     - sbishop_off[64], sbishop_len[64], sbishop_arena[...]
-  //   Dann übernehmen wir diese 1:1 ohne Repack.
-#ifdef LILIA_MAGIC_FLAT_CONSTANTS
-  for (int i = 0; i < 64; ++i) {
     g_r_off_magic[i] = srook_off[i];
     g_r_len_magic[i] = srook_len[i];
     g_b_off_magic[i] = sbishop_off[i];
@@ -346,24 +344,15 @@ void init_magics() {
   }
   g_r_arena_magic.assign(srook_arena, srook_arena + srook_arena_size);
   g_b_arena_magic.assign(sbishop_arena, sbishop_arena + sbishop_arena_size);
-#else
-  // (B) Kompatibel zu den alten Vektor-Konstanten:
-  for (int i = 0; i < 64; ++i) {
-    g_rook_table[i] = srook_table[i];
-    g_bishop_table[i] = sbishop_table[i];
-  }
-  pack_magic_vectors_to_flat(g_rook_table, g_r_off_magic, g_r_len_magic, g_r_arena_magic);
-  pack_magic_vectors_to_flat(g_bishop_table, g_b_off_magic, g_b_len_magic, g_b_arena_magic);
-#endif
 
-#else
-  // Ohne Konstanten: Magics suchen + Tabellen bauen, dann packen
+#elif defined(LILIA_MAGIC_BUILD_TOOL)
   generate_all_magics_and_tables();
   pack_magic_vectors_to_flat(g_rook_table, g_r_off_magic, g_r_len_magic, g_r_arena_magic);
   pack_magic_vectors_to_flat(g_bishop_table, g_b_off_magic, g_b_len_magic, g_b_arena_magic);
-
-  // Optional weiter serialisieren (kannst du beibehalten)
   serialize_magics_to_header("include/lilia/model/generated/magic_constants.hpp");
+
+#else
+#error "Magic constants missing: define LILIA_MAGIC_HAVE_CONSTANTS or LILIA_MAGIC_BUILD_TOOL"
 #endif
 
   // PEXT-Fast-Path opportunistisch
@@ -423,6 +412,7 @@ const std::array<Magic, 64>& rook_magics() {
 const std::array<Magic, 64>& bishop_magics() {
   return g_bishop_magic;
 }
+#ifdef LILIA_MAGIC_BUILD_TOOL
 // Die alten vector<...>-Getter bleiben zur Kompatibilität bestehen:
 const std::array<std::vector<bb::Bitboard>, 64>& rook_tables() {
   return g_rook_table;
@@ -430,5 +420,6 @@ const std::array<std::vector<bb::Bitboard>, 64>& rook_tables() {
 const std::array<std::vector<bb::Bitboard>, 64>& bishop_tables() {
   return g_bishop_table;
 }
+#endif
 
 }  // namespace lilia::model::magic
