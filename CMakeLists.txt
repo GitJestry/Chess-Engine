@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.21) # for $<TARGET_RUNTIME_DLLS:...>
 project(ChessEngine_Lilia VERSION 1.0 LANGUAGES CXX)
 
 # C++ standard
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Default build type for single-config generators (Make/Ninja)
