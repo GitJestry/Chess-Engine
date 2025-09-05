@@ -19,8 +19,6 @@ class Engine {
   ~Engine();
 
   static void init() {
-    // Zobrist inner once_flag
-    model::Zobrist::init();
     static std::once_flag magic_once;
     std::call_once(magic_once, []() { lilia::model::magic::init_magics(); });
   }
