@@ -6,6 +6,7 @@
 #include "lilia/engine/eval.hpp"  // <- Evaluator
 #include "lilia/engine/move_order.hpp"
 #include "lilia/engine/search.hpp"
+#include "lilia/engine/thread_pool.hpp"
 #include "lilia/model/core/magic.hpp"
 
 namespace lilia::engine {
@@ -28,6 +29,9 @@ struct Engine::Impl {
     } else {
       cfg.threads = std::clamp(cfg.threads, 1, logical);
     }
+
+    // Initialize thread pool once using the configured thread count
+    ThreadPool::instance(cfg.threads);
 
     eval = std::make_shared<Evaluator>();
     search = std::make_unique<Search>(tt, eval, cfg);

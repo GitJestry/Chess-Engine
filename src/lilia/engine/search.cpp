@@ -11,7 +11,6 @@
 #include <limits>
 #include <memory>
 #include <mutex>
-#include <thread>
 #include <unordered_set>
 #include <vector>
 
@@ -839,11 +838,10 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     return 0;
   }
 
-  // Thread-Pool setup
-  auto& pool = ThreadPool::instance(maxThreads);
-  const int hw = (int)std::thread::hardware_concurrency();
-  const int threads = std::max(1, maxThreads > 0 ? maxThreads : (hw > 0 ? hw : 1));
-  pool.maybe_resize(threads);
+  // Thread-Pool setup (pool initialized at engine startup)
+  auto& pool = ThreadPool::instance();
+  const int threads =
+      std::max(1, maxThreads > 0 ? std::min(maxThreads, cfg.threads) : cfg.threads);
 
   // Aspiration seed
   int lastScoreGuess = 0;

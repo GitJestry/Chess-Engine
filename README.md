@@ -53,6 +53,10 @@ The engine currently uses **TT5**, a compact 16‑byte entry table with two‑st
 - `liliaengine` speaks the [UCI protocol](https://en.wikipedia.org/wiki/Universal_Chess_Interface) and can be plugged into any UCI-compatible GUI.
 - The engine can also be linked as a library; see `examples/main.cpp` for a minimal integration example.
 
+### Thread configuration
+Lock the search to a specific number of threads by setting `EngineConfig::threads` or via the UCI `Threads` option. The engine
+uses this value deterministically and does not resize the thread pool based on runtime hardware queries.
+
 ## Acknowledgements
 - Graphics, windowing and audio are provided by [SFML](https://www.sfml-dev.org/).
 - This setup is currently optimized for **Windows 64-bit** architecture.
