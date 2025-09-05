@@ -111,7 +111,15 @@ Clock::Clock() {
   m_text_base_color = constant::COL_LIGHT_TEXT;
   m_is_light_theme = false;
   m_text.setStyle(sf::Text::Style::Bold);
+
+  m_listener_id =
+      ColorPaletteManager::get().addListener([this]() {
+        setPlayerColor(m_is_light_theme ? core::Color::White : core::Color::Black);
+        setActive(m_active);
+      });
 }
+
+Clock::~Clock() { ColorPaletteManager::get().removeListener(m_listener_id); }
 
 void Clock::applyFillColor() {
   if (m_low_time) {

@@ -145,17 +145,6 @@ inline void drawCloseGlyph(sf::RenderTarget& t, const sf::FloatRect& r, bool hov
 // ------------------ Class impl ------------------
 
 ModalView::ModalView() {
-  m_panel.setFillColor(constant::COL_PANEL);
-  m_border.setFillColor(constant::COL_BORDER);
-  m_overlay.setFillColor(constant::COL_OVERLAY);
-
-  m_title.setFillColor(constant::COL_TEXT);
-  m_title.setCharacterSize(20);
-  m_title.setStyle(sf::Text::Bold);
-
-  m_msg.setFillColor(constant::COL_MUTED_TEXT);
-  m_msg.setCharacterSize(16);
-
   m_btnLeft.setSize({120.f, 36.f});
   m_btnRight.setSize({120.f, 36.f});
 
@@ -166,7 +155,13 @@ ModalView::ModalView() {
   // Close button (vector glyph will be drawn; keep text object unused)
   m_lblClose.setCharacterSize(16);
   m_lblClose.setString("");
+
+  applyTheme();
+  m_listener_id =
+      ColorPaletteManager::get().addListener([this]() { applyTheme(); });
 }
+
+ModalView::~ModalView() { ColorPaletteManager::get().removeListener(m_listener_id); }
 
 void ModalView::loadFont(const std::string& fontPath) {
   if (m_font.getInfo().family.empty()) {
@@ -319,6 +314,32 @@ void ModalView::styleSecondaryButton(sf::RectangleShape& btn, sf::Text& lbl) {
   btn.setFillColor(constant::COL_HEADER);
   btn.setOutlineThickness(0.f);
   lbl.setFillColor(constant::COL_TEXT);
+}
+
+void ModalView::applyTheme() {
+  m_panel.setFillColor(constant::COL_PANEL);
+  m_border.setFillColor(constant::COL_BORDER);
+  m_overlay.setFillColor(constant::COL_OVERLAY);
+  m_title.setFillColor(constant::COL_TEXT);
+  m_title.setCharacterSize(20);
+  m_title.setStyle(sf::Text::Bold);
+  m_msg.setFillColor(constant::COL_MUTED_TEXT);
+  m_msg.setCharacterSize(16);
+  m_btnClose.setFillColor(constant::COL_HEADER);
+
+  if (m_openResign) {
+    stylePrimaryButton(m_btnLeft, m_lblLeft);
+    styleSecondaryButton(m_btnRight, m_lblRight);
+  } else if (m_openGameOver) {
+    styleSecondaryButton(m_btnLeft, m_lblLeft);
+    stylePrimaryButton(m_btnRight, m_lblRight);
+  } else {
+    styleSecondaryButton(m_btnLeft, m_lblLeft);
+    styleSecondaryButton(m_btnRight, m_lblRight);
+  }
+  if (m_openGameOver && m_showTrophy) {
+    layoutGameOverExtras();
+  }
 }
 
 // -------- Resign --------

@@ -2,6 +2,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <functional>
 
 #include "col_palette/color_palette.hpp"
 
@@ -25,6 +26,11 @@ class ColorPaletteManager {
   PaletteColors& palette() { return m_current; }
   const PaletteColors& defaultPalette() const { return m_default; }
   const std::vector<std::string>& paletteNames() const { return m_order; }
+  const std::string& activePalette() const { return m_active; }
+
+  using ListenerID = std::size_t;
+  ListenerID addListener(std::function<void()> listener);
+  void removeListener(ListenerID id);
 
  private:
   ColorPaletteManager();
@@ -34,6 +40,8 @@ class ColorPaletteManager {
   std::unordered_map<std::string, ColorPalette> m_palettes;
   std::vector<std::string> m_order;
   std::string m_active;
+  std::unordered_map<ListenerID, std::function<void()>> m_listeners;
+  ListenerID m_nextListenerId{0};
 };
 
 }  // namespace lilia::view

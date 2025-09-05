@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include <SFML/Graphics.hpp>
+#include "color_palette_manager.hpp"
 
 namespace lilia::view {
 
@@ -9,6 +10,7 @@ namespace lilia::view {
 class ModalView {
  public:
   ModalView();
+  ~ModalView();
 
   // Must be called once (or let it succeed if already loaded)
   void loadFont(const std::string& fontPath);
@@ -82,6 +84,8 @@ class ModalView {
   void layoutGameOverExtras();
   void stylePrimaryButton(sf::RectangleShape& btn, sf::Text& lbl);
   void styleSecondaryButton(sf::RectangleShape& btn, sf::Text& lbl);
+  void applyTheme();
+  ColorPaletteManager::ListenerID m_listener_id{0};
   static inline float snapf(float v) { return std::round(v); }
 };
 

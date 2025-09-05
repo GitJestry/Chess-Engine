@@ -9,12 +9,14 @@
 #include "entity.hpp"
 #include "lilia/chess_types.hpp"
 #include "lilia/player_info.hpp"
+#include "color_palette_manager.hpp"
 
 namespace lilia::view {
 
 class PlayerInfoView {
  public:
  PlayerInfoView();
+  ~PlayerInfoView();
 
   void setInfo(const PlayerInfo& info);
   void setPlayerColor(core::Color color);
@@ -38,6 +40,10 @@ class PlayerInfoView {
   core::Color m_playerColor{core::Color::White};
   Entity::Position m_position{};
   std::vector<Entity> m_capturedPieces;
+
+  ColorPaletteManager::ListenerID m_listener_id{0};
+
+  void applyTheme();
 
   void layoutCaptured();
 };

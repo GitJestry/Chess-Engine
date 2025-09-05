@@ -74,8 +74,6 @@ inline void drawBevelAround(sf::RenderTarget& t, const sf::FloatRect& r, sf::Col
 
 PlayerInfoView::PlayerInfoView() {
   // 32x32 icon frame
-  m_frame.setFillColor(constant::COL_HEADER);
-  m_frame.setOutlineColor(constant::COL_BORDER);
   m_frame.setOutlineThickness(kIconOutline);
   m_frame.setSize({kIconFrameSize, kIconFrameSize});
 
@@ -100,6 +98,14 @@ PlayerInfoView::PlayerInfoView() {
   // let bevel define the edge; remove extra outline thickness on the box
   m_captureBox.setOutlineThickness(0.f);
   m_captureBox.setOutlineColor(sf::Color::Transparent);
+
+  applyTheme();
+  m_listener_id =
+      ColorPaletteManager::get().addListener([this]() { applyTheme(); });
+}
+
+PlayerInfoView::~PlayerInfoView() {
+  ColorPaletteManager::get().removeListener(m_listener_id);
 }
 
 void PlayerInfoView::setPlayerColor(core::Color color) {
@@ -111,6 +117,14 @@ void PlayerInfoView::setPlayerColor(core::Color color) {
     m_captureBox.setFillColor(constant::COL_DARK_BG);
     m_noCaptures.setFillColor(constant::COL_MUTED_TEXT);
   }
+}
+
+void PlayerInfoView::applyTheme() {
+  m_frame.setFillColor(constant::COL_HEADER);
+  m_frame.setOutlineColor(constant::COL_BORDER);
+  m_name.setFillColor(constant::COL_TEXT);
+  m_elo.setFillColor(constant::COL_MUTED_TEXT);
+  setPlayerColor(m_playerColor);
 }
 
 void PlayerInfoView::setInfo(const PlayerInfo& info) {

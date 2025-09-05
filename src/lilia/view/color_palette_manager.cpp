@@ -35,6 +35,9 @@ void ColorPaletteManager::setPalette(const std::string& name) {
     loadPalette(it->second);
     TextureTable::getInstance().reloadForPalette();
     m_active = name;
+    for (auto& [id, fn] : m_listeners) {
+      if (fn) fn();
+    }
   }
 }
 
@@ -43,5 +46,13 @@ void ColorPaletteManager::loadPalette(const ColorPalette& palette) {
   LILIA_COLOR_PALETTE(X)
 #undef X
 }
+
+ColorPaletteManager::ListenerID ColorPaletteManager::addListener(std::function<void()> listener) {
+  ListenerID id = m_nextListenerId++;
+  m_listeners[id] = std::move(listener);
+  return id;
+}
+
+void ColorPaletteManager::removeListener(ListenerID id) { m_listeners.erase(id); }
 
 }  // namespace lilia::view
