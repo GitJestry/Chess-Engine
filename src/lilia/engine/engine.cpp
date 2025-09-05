@@ -66,7 +66,8 @@ std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxD
 
   // 1) Suche ausführen – niemals Exceptions nach außen lassen
   try {
-    (void)pimpl->search->search_root_parallel(pos, maxDepth, stop, pimpl->cfg.threads);
+    (void)pimpl->search->search_root_parallel(pos, maxDepth, stop, pimpl->cfg.threads
+                                              /*,pimpl->cfg.maxNodes*/);
   } catch (...) {
     // Wir fallen gleich auf TT/Legal zurück; keine Weitergabe
   }
