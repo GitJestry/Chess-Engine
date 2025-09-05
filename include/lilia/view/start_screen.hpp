@@ -71,8 +71,8 @@ class StartScreen {
   sf::Text m_creditText;
 
   // Palette selection UI
-  sf::Texture m_paletteTex;
-  sf::Sprite m_paletteIcon;
+  sf::RectangleShape m_paletteButton;
+  sf::Text m_paletteText;
   std::vector<PaletteOption> m_paletteOptions;
   bool m_showPaletteList{false};
 

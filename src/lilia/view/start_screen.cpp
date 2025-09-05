@@ -228,10 +228,6 @@ StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
   m_logoTex.loadFromFile(constant::STR_FILE_PATH_ICON_LILIA_START_SCREEN);
   m_logo.setTexture(m_logoTex);
 
-  // palette icon
-  m_paletteTex.loadFromFile(constant::STR_FILE_PATH_ICON_SETTINGS);
-  m_paletteIcon.setTexture(m_paletteTex);
-
   // FEN starts empty => STANDARD unless user provides one
   m_fenString.clear();
 
@@ -246,13 +242,24 @@ StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
 void StartScreen::setupUI() {
   const sf::Vector2u ws = m_window.getSize();
 
-  // palette icon position and options
-  m_paletteIcon.setPosition(20.f, ws.y - m_paletteIcon.getGlobalBounds().height - 20.f);
+  // palette button position and options
+  m_paletteText.setFont(m_font);
+  m_paletteText.setString("Color Theme");
+  m_paletteText.setCharacterSize(16);
+  m_paletteText.setFillColor(colText);
+  auto tb = m_paletteText.getLocalBounds();
+  float pad = 8.f;
+  m_paletteButton.setSize({tb.width + pad * 2.f, tb.height + pad * 2.f});
+  m_paletteButton.setFillColor(colButton);
+  m_paletteButton.setPosition(20.f, ws.y - m_paletteButton.getSize().y - 20.f);
+  m_paletteText.setPosition(snapf(m_paletteButton.getPosition().x + pad - tb.left),
+                            snapf(m_paletteButton.getPosition().y + pad - tb.top));
+
   m_paletteOptions.clear();
   float itemH = 24.f;
   float width = 120.f;
-  float left = m_paletteIcon.getPosition().x;
-  float bottom = m_paletteIcon.getPosition().y - 6.f;
+  float left = m_paletteButton.getPosition().x;
+  float bottom = m_paletteButton.getPosition().y - 6.f;
   const auto& names = ColorPaletteManager::get().paletteNames();
   for (std::size_t i = 0; i < names.size(); ++i) {
     PaletteOption opt;
@@ -262,7 +269,12 @@ void StartScreen::setupUI() {
     opt.box.setFillColor(colButton);
     opt.label.setFont(m_font);
     opt.label.setCharacterSize(14);
-    opt.label.setString(names[i]);
+    std::string label = names[i];
+    if (names[i] == constant::STR_COL_PALETTE_DEFAULT)
+      label = "Default";
+    else if (names[i] == constant::STR_COL_PALETTE_RED_NOIR)
+      label = "Red Noir";
+    opt.label.setString(label);
     opt.label.setFillColor(colText);
     leftCenterText(opt.label, opt.box.getGlobalBounds(), 8.f);
     m_paletteOptions.push_back(opt);
@@ -535,7 +547,7 @@ static void drawPanelWithShadow(sf::RenderWindow& win, const sf::Vector2f& topLe
 }
 
 bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
-  if (contains(m_paletteIcon.getGlobalBounds(), pos)) {
+  if (contains(m_paletteButton.getGlobalBounds(), pos)) {
     m_showPaletteList = !m_showPaletteList;
     return false;
   }
@@ -617,7 +629,7 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
   // Close lists only if clicking outside both buttons AND both lists
   bool inWhiteButton = contains(m_whiteBotBtn.getGlobalBounds(), pos);
   bool inBlackButton = contains(m_blackBotBtn.getGlobalBounds(), pos);
-  bool inPaletteIcon = contains(m_paletteIcon.getGlobalBounds(), pos);
+  bool inPaletteButton = contains(m_paletteButton.getGlobalBounds(), pos);
   bool inWhiteList = false;
   if (m_showWhiteBotList) {
     for (auto& o : m_whiteBotOptions) {
@@ -645,7 +657,7 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
       }
     }
   }
-  if (!(inWhiteButton || inWhiteList || inBlackButton || inBlackList || inPaletteIcon ||
+  if (!(inWhiteButton || inWhiteList || inBlackButton || inBlackList || inPaletteButton ||
         inPaletteList)) {
     m_showWhiteBotList = false;
     m_showBlackBotList = false;
@@ -706,9 +718,16 @@ StartConfig StartScreen::run() {
     drawVerticalGradient(m_window, colBGTop, colBGBottom);
 
     // palette selector
-    m_window.draw(m_paletteIcon);
+    bool palHover = m_showPaletteList || contains(m_paletteButton.getGlobalBounds(), m_mousePos);
+    m_paletteButton.setFillColor(palHover ? colButtonActive : colButton);
+    m_paletteText.setFillColor(colText);
+    m_window.draw(m_paletteButton);
+    m_window.draw(m_paletteText);
     if (m_showPaletteList) {
       for (auto& opt : m_paletteOptions) {
+        bool hov = contains(opt.box.getGlobalBounds(), m_mousePos);
+        opt.box.setFillColor(hov ? colButtonActive : colButton);
+        opt.label.setFillColor(colText);
         m_window.draw(opt.box);
         m_window.draw(opt.label);
       }
