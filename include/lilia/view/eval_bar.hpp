@@ -4,6 +4,7 @@
 #include <string>
 
 #include "../controller/mousepos.hpp"
+#include "color_palette_manager.hpp"
 #include "entity.hpp"
 
 namespace sf {
