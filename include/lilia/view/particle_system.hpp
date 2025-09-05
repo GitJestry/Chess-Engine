@@ -14,10 +14,13 @@ public:
     sf::Vector2f velocity;
     float lifetime;
     float floorY; // y position where particle should disappear
+    float totalLifetime;
+    bool falling;
+    float phase; // random phase for per-particle wiggle
   };
 
-  // Emit confetti across the board starting from the bottom edge.
-  void emitConfetti(const sf::Vector2f &center, float boardSize,
+  // Emit confetti across the window starting from the bottom edge.
+  void emitConfetti(const sf::Vector2f &center, const sf::Vector2f &windowSize,
                     std::size_t count);
   void update(float dt);
   void render(sf::RenderWindow &window);
