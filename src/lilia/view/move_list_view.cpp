@@ -4,6 +4,7 @@
 #include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/ConvexShape.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
+#include <SFML/Graphics/VertexArray.hpp>
 #include <SFML/Graphics/View.hpp>
 #include <SFML/Window/Clipboard.hpp>
 #include <SFML/Window/Mouse.hpp>
@@ -56,6 +57,8 @@ constexpr unsigned kTipFontSize = 13;
 static bool g_prevLeftDown = false;
 static bool g_toastVisible = false;
 static sf::Clock g_toastClock;
+static bool g_copySuccess = false;
+static sf::Clock g_copyClock;
 
 // ---------- Helpers ----------
 inline float snapf(float v) {
@@ -225,25 +228,46 @@ void drawReload(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered) 
   win.draw(arrow);
 }
 
-void drawFenIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered) {
-  // simple document icon with folded corner
-  const float w = slot.width * 0.8f;
-  const float h = slot.height * 0.9f;
-  sf::RectangleShape sheet({w, h});
-  sheet.setPosition(snapf(slot.left + (slot.width - w) * 0.5f),
-                    snapf(slot.top + (slot.height - h) * 0.5f));
-  sheet.setFillColor(sf::Color::Transparent);
-  sheet.setOutlineThickness(2.f);
-  sheet.setOutlineColor(hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT);
-  win.draw(sheet);
+void drawFenIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered, bool success) {
+  if (success) {
+    // green check mark
+    const float s = slot.width * 0.6f;
+    const float x = snapf(slot.left + (slot.width - s) * 0.5f);
+    const float y = snapf(slot.top + (slot.height - s) * 0.5f);
+    sf::Color col(40, 170, 40);
 
-  const float fold = w * 0.25f;
-  sf::ConvexShape corner(3);
-  corner.setPoint(0, {sheet.getPosition().x + w - fold, sheet.getPosition().y});
-  corner.setPoint(1, {sheet.getPosition().x + w, sheet.getPosition().y});
-  corner.setPoint(2, {sheet.getPosition().x + w, sheet.getPosition().y + fold});
-  corner.setFillColor(hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT);
-  win.draw(corner);
+    sf::VertexArray check(sf::LinesStrip, 3);
+    check[0].position = {x + s * 0.15f, y + s * 0.55f};
+    check[1].position = {x + s * 0.4f, y + s * 0.8f};
+    check[2].position = {x + s * 0.85f, y + s * 0.25f};
+    for (std::size_t i = 0; i < check.getVertexCount(); ++i) check[i].color = col;
+    win.draw(check);
+    return;
+  }
+
+  // modern two-square copy icon
+  sf::Color col = hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT;
+  const float w = slot.width * 0.55f;
+  const float h = slot.height * 0.55f;
+  const float off = w * 0.25f;
+
+  const float bx = snapf(slot.left + (slot.width - w) * 0.5f + off);
+  const float by = snapf(slot.top + (slot.height - h) * 0.5f - off);
+  sf::RectangleShape back({w, h});
+  back.setPosition(bx, by);
+  back.setFillColor(sf::Color::Transparent);
+  back.setOutlineThickness(2.f);
+  back.setOutlineColor(col);
+  win.draw(back);
+
+  const float fx = snapf(slot.left + (slot.width - w) * 0.5f - off);
+  const float fy = snapf(slot.top + (slot.height - h) * 0.5f + off);
+  sf::RectangleShape front({w, h});
+  front.setPosition(fx, fy);
+  front.setFillColor(sf::Color::Transparent);
+  front.setOutlineThickness(2.f);
+  front.setOutlineColor(col);
+  win.draw(front);
 }
 
 // Tooltip bubble with small down arrow, anchored above a slot center
@@ -498,7 +522,31 @@ void MoveListView::render(sf::RenderWindow& window) const {
 
   // FEN line (copy icon + text)
   const bool hovFen = m_bounds_fen_icon.contains(mouseLocal.x, mouseLocal.y);
-  drawFenIcon(window, m_bounds_fen_icon, hovFen);
+  bool showCheck = false;
+  if (g_copySuccess) {
+    float t = g_copyClock.getElapsedTime().asSeconds();
+    if (t < 2.f) {
+      showCheck = true;
+    } else {
+      g_copySuccess = false;
+    }
+  }
+  drawFenIcon(window, m_bounds_fen_icon, hovFen, showCheck);
+  if (showCheck) {
+    float t = g_copyClock.getElapsedTime().asSeconds();
+    float prog = t / 2.f;
+    sf::Text msg("copied!", m_font, kTipFontSize);
+    auto mb = msg.getLocalBounds();
+    sf::Vector2f center(m_bounds_fen_icon.left + m_bounds_fen_icon.width * 0.5f,
+                        m_bounds_fen_icon.top);
+    float x = snapf(center.x - mb.width * 0.5f - mb.left);
+    float y = snapf(center.y - 6.f - mb.height - mb.top - prog * 20.f);
+    sf::Color col = constant::COL_TEXT;
+    col.a = static_cast<sf::Uint8>(255 * (1.f - prog));
+    msg.setFillColor(col);
+    msg.setPosition(x, y);
+    window.draw(msg);
+  }
   float textX = m_bounds_fen_icon.left + m_bounds_fen_icon.width + 6.f;
   float availW = static_cast<float>(m_width) - textX - kPaddingX;
   sf::Text probe("", m_font, kMoveFontSize);
@@ -665,7 +713,7 @@ void MoveListView::render(sf::RenderWindow& window) const {
   if (hovFen) {
     // anchor above the icon (slightly right so it doesn't clash with the title)
     auto c = centerOf(m_bounds_fen_icon);
-    drawTooltip(window, {c.x + 10.f, c.y}, "Copy FEN", m_font);
+    drawTooltip(window, {c.x + 10.f, c.y}, "copy", m_font);
   }
 
   // --- Click-to-copy FEN + toast (handled locally; no header change) ---
@@ -676,6 +724,8 @@ void MoveListView::render(sf::RenderWindow& window) const {
       sf::Clipboard::setString(m_fen_str);
       g_toastVisible = true;
       g_toastClock.restart();
+      g_copySuccess = true;
+      g_copyClock.restart();
     }
     g_prevLeftDown = leftDown;
   }
