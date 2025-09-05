@@ -552,13 +552,18 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
     return false;
   }
   if (m_showPaletteList) {
+    std::string selectedPalette;
     for (auto& opt : m_paletteOptions) {
       if (contains(opt.box.getGlobalBounds(), pos)) {
-        ColorPaletteManager::get().setPalette(opt.name);
-        setupUI();
-        m_showPaletteList = false;
-        return false;
+        selectedPalette = opt.name;
+        break;
       }
+    }
+    if (!selectedPalette.empty()) {
+      ColorPaletteManager::get().setPalette(selectedPalette);
+      setupUI();
+      m_showPaletteList = false;
+      return false;
     }
   }
 
