@@ -160,17 +160,43 @@ void PieceManager::removeAll() {
 core::PieceType PieceManager::getPieceType(core::Square pos) const {
   auto ghost = m_premove_pieces.find(pos);
   if (ghost != m_premove_pieces.end()) return ghost->second.getType();
-  if (m_hidden_squares.count(pos) > 0) return core::PieceType::None;
-  auto it = m_pieces.find(pos);
-  return it != m_pieces.end() ? it->second.getType() : core::PieceType::None;
+
+  // Hidden squares occur when a premove ghost temporarily removes a piece
+  // from the board. Instead of reporting a default value, surface the real
+  // piece from the primary piece map or the captured-piece backup so callers
+  // see the true board state.
+  if (m_hidden_squares.count(pos) > 0) {
+    if (auto it = m_pieces.find(pos); it != m_pieces.end())
+      return it->second.getType();
+    if (auto it = m_captured_backup.find(pos); it != m_captured_backup.end())
+      return it->second.getType();
+    return core::PieceType::None;
+  }
+
+  if (auto it = m_pieces.find(pos); it != m_pieces.end())
+    return it->second.getType();
+  if (auto it = m_captured_backup.find(pos); it != m_captured_backup.end())
+    return it->second.getType();
+  return core::PieceType::None;
 }
 
 core::Color PieceManager::getPieceColor(core::Square pos) const {
   auto ghost = m_premove_pieces.find(pos);
   if (ghost != m_premove_pieces.end()) return ghost->second.getColor();
-  if (m_hidden_squares.count(pos) > 0) return core::Color::White;
-  auto it = m_pieces.find(pos);
-  return it != m_pieces.end() ? it->second.getColor() : core::Color::White;
+
+  if (m_hidden_squares.count(pos) > 0) {
+    if (auto it = m_pieces.find(pos); it != m_pieces.end())
+      return it->second.getColor();
+    if (auto it = m_captured_backup.find(pos); it != m_captured_backup.end())
+      return it->second.getColor();
+    return core::Color::White;
+  }
+
+  if (auto it = m_pieces.find(pos); it != m_pieces.end())
+    return it->second.getColor();
+  if (auto it = m_captured_backup.find(pos); it != m_captured_backup.end())
+    return it->second.getColor();
+  return core::Color::White;
 }
 
 [[nodiscard]] bool PieceManager::hasPieceOnSquare(core::Square pos) const {
