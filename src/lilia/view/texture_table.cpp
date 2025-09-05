@@ -17,20 +17,20 @@ TextureTable::TextureTable() = default;
 TextureTable::~TextureTable() = default;
 
 void TextureTable::reloadForPalette() {
-  m_textures.clear();
+  // Reload palette-dependent textures without invalidating existing pointers.
+  // Sprites keep references to the sf::Texture objects stored in the map, so
+  // we avoid clearing the container and instead overwrite the texture data of
+  // the existing entries. This keeps the object addresses stable.
   preLoad();
 }
 
 void TextureTable::load(const std::string& name, const sf::Color& color, sf::Vector2u size) {
-  auto it = m_textures.find(name);
-  if (it != m_textures.end()) return;
-
-  sf::Texture texture;
+  // Acquire (or create) the texture entry and replace its pixel data in place
+  // so that any sf::Sprite currently using this texture remains valid.
+  sf::Texture& texture = m_textures[name];
   sf::Image image;
   image.create(size.x, size.y, color);
   texture.loadFromImage(image);
-
-  m_textures[name] = std::move(texture);
 }
 
 [[nodiscard]] const sf::Texture& TextureTable::get(const std::string& filename) {
