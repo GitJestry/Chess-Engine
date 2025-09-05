@@ -1,11 +1,10 @@
 #include "lilia/engine/search.hpp"
 
-#include <math.h>
-
 #include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <cmath>
 #include <exception>
 #include <future>
 #include <iostream>
@@ -50,10 +49,6 @@ inline int decode_tt_score(int s, int ply) {
   if (s >= MATE_THR) return s - ply;
   if (s <= -MATE_THR) return s + ply;
   return s;
-}
-
-static inline bool improving(int staticEval, int parentEval) {
-  return staticEval > parentEval - 8;
 }
 static constexpr int FUT_MARGIN[4] = {0, 110, 200, 280};
 
@@ -176,23 +171,26 @@ static inline int gen_evasions(model::MoveGenerator& mg, model::Position& pos, m
   return mg.generateEvasions(pos.getBoard(), pos.getState(), buf);
 }
 
-static inline bool quiet_pawn_push_creates_attack(const model::Board& b, const model::Move& m,
-                                                  core::Color us) {
+// 0 = no immediate pawn attack; 1 = threatens Q/R/B/N; 2 = gives check
+static inline int quiet_pawn_push_signal(const model::Board& b, const model::Move& m,
+                                         core::Color us) {
   using PT = core::PieceType;
-  if (m.isCapture() || m.promotion() != PT::None) return false;
+  if (m.isCapture() || m.promotion() != PT::None) return 0;
 
   auto mover = b.getPiece(m.from());
-  if (!mover || mover->type != PT::Pawn) return false;
+  if (!mover || mover->type != PT::Pawn) return 0;
 
-  const model::bb::Bitboard toBB = model::bb::sq_bb(m.to());
-  const model::bb::Bitboard atk = (us == core::Color::White)
-                                      ? (model::bb::ne(toBB) | model::bb::nw(toBB))
-                                      : (model::bb::se(toBB) | model::bb::sw(toBB));
+  const auto toBB = model::bb::sq_bb(m.to());
+  const auto atk = (us == core::Color::White) ? (model::bb::ne(toBB) | model::bb::nw(toBB))
+                                              : (model::bb::se(toBB) | model::bb::sw(toBB));
 
-  const model::bb::Bitboard targets = b.getPieces(~us, PT::Queen) | b.getPieces(~us, PT::Rook) |
-                                      b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Knight);
+  // Check first: pushing pawn gives check?
+  if (atk & b.getPieces(~us, PT::King)) return 2;
 
-  return (atk & targets) != 0ULL;
+  // Otherwise, immediate threat on heavy/minor pieces?
+  const auto targets = b.getPieces(~us, PT::Queen) | b.getPieces(~us, PT::Rook) |
+                       b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Knight);
+  return (atk & targets) ? 1 : 0;
 }
 
 }  // namespace
@@ -230,8 +228,9 @@ inline void bump_node_or_stop(const std::shared_ptr<std::atomic<std::uint64_t>>&
                               std::uint64_t limit,
                               const std::shared_ptr<std::atomic<bool>>& stopFlag) {
   if (!counter) return;
-  std::uint64_t prev = counter->fetch_add(1, std::memory_order_relaxed);
-  if (limit && prev >= limit) {
+  // old code: std::uint64_t prev = counter->fetch_add(1, std::memory_order_relaxed);
+  const std::uint64_t cur = counter->fetch_add(1, std::memory_order_relaxed) + 1;
+  if (limit && cur >= limit) {
     if (stopFlag) stopFlag->store(true, std::memory_order_relaxed);
     throw SearchStoppedException();
   }
@@ -335,8 +334,8 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   if (stand >= beta) {
     if (!(stopFlag && stopFlag->load()))
       tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower, model::Move{});
+    return beta;
   }
-  if (stand >= beta) return beta;
   if (alpha < stand) alpha = stand;
 
   // nur Captures generieren
@@ -509,7 +508,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         int nullScore = -negamax(pos, depth - 1 - R, -beta, -beta + 1, ply + 1, refBest);
         if (nullScore >= beta) {
           if (depth >= 6) {
-            int verify = -negamax(pos, depth - 1 - R, -beta, -beta + 1, ply + 1, refBest);
+            int verify = -negamax(pos, depth - 1, -beta, -beta + 1, ply + 1, refBest);
             if (verify >= beta) return beta;
           } else
             return beta;
@@ -554,11 +553,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (haveTT && m == ttMove) {
       s = TT_BONUS;
     } else if (m.isCapture() || m.promotion() != core::PieceType::None) {
-      const auto us = pos.getState().sideToMove;
-      if (quiet_pawn_push_creates_attack(board, m, us)) {
-        // moderater Bonus, damit früh kommt, aber TT/Killer weiterhin oben bleiben
-        s += 180'000;  // feinjustierbar (150–250k)
-      }
       auto moverOpt = board.getPiece(m.from());
       const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
       core::PieceType capPt = core::PieceType::Pawn;
@@ -579,9 +573,14 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       s = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
       if (m == killers[kply][0] || m == killers[kply][1]) s += KILLER_BASE;
       if (prevOk && m == cm) s += CM_BASE + (counterHist[prev.from()][prev.to()] >> 1);
-    }
 
-    if (!m.isCapture() && m.promotion() == core::PieceType::None) {
+      // NEW: tactical quiet pawn push bonus (use signal)
+      const auto us = pos.getState().sideToMove;
+      const int sig = quiet_pawn_push_signal(board, m, us);
+      if (sig == 2)
+        s += 220'000;  // pawn push gives check
+      else if (sig == 1)
+        s += 180'000;  // immediate threat
     }
 
     scores[i] = s;
@@ -598,7 +597,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     const model::Move m = ordered[idx];
     const bool isQuiet = !m.isCapture() && (m.promotion() == core::PieceType::None);
     const auto us = pos.getState().sideToMove;
-    const bool tacticalQuiet = isQuiet && quiet_pawn_push_creates_attack(board, m, us);
+    const int qp_sig = isQuiet ? quiet_pawn_push_signal(board, m, us) : 0;
+    const bool tacticalQuiet = (qp_sig > 0);  // 2 = check, 1 = threat
 
     // pre info
     auto moverOpt = board.getPiece(m.from());
@@ -609,6 +609,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     else if (m.isCapture()) {
       if (auto cap = board.getPiece(m.to())) capPt = cap->type;
     }
+    const int capValPre = m.isCapture() ? (m.isEnPassant() ? base_value[(int)core::PieceType::Pawn]
+                                                           : base_value[(int)capPt])
+                                        : 0;
 
     // LMP
     if (!inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet) {
@@ -675,15 +678,10 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     model::Move childBest{};
     int newDepth = depth - 1;
 
-    // ProbCut (light)
+    // ProbCut (light) — use pre-move captured value
     if (!isPV && !inCheck && depth >= 5 && m.isCapture() && seeGood && mvvBefore >= 700) {
-      int capVal = 0;
-      if (m.isEnPassant())
-        capVal = base_value[(int)core::PieceType::Pawn];
-      else if (auto cap = board.getPiece(m.to()))
-        capVal = base_value[(int)cap->type];
-      const int PROBCUT_MARGIN = 180;
-      if (staticEval + capVal + PROBCUT_MARGIN >= beta) {
+      constexpr int PROBCUT_MARGIN = 180;
+      if (staticEval + capValPre + PROBCUT_MARGIN >= beta) {
         const int red = 3;
         const int probe = -negamax(pos, depth - red, -beta, -(beta - 1), ply + 1, childBest);
         if (probe >= beta) return beta;
@@ -859,6 +857,14 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     if (haveTT && m == ttMove) s += 2'500'000;
     if (m.isCapture()) s += 1'100'000 + mvv_lva_fast(pos, m);
     if (m.promotion() != core::PieceType::None) s += 1'050'000;
+    // NEW: tactical quiet pawn pushes at root
+    if (!m.isCapture() && m.promotion() == core::PieceType::None) {
+      const int sig = quiet_pawn_push_signal(pos.getBoard(), m, pos.getState().sideToMove);
+      if (sig == 2)
+        s += 220'000;
+      else if (sig == 1)
+        s += 180'000;
+    }
     s += history[m.from()][m.to()];
     return s;
   };
@@ -1116,8 +1122,6 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     NDISPLAY = std::min<int>(NDISPLAY, (int)depthCand.size());
     std::partial_sort(depthCand.begin(), depthCand.begin() + std::max(1, NDISPLAY), depthCand.end(),
                       [](const auto& a, const auto& b) { return a.first > b.first; });
-    std::sort(depthCand.begin(), depthCand.end(),
-              [](const auto& a, const auto& b) { return a.first > b.first; });
 
     update_time_stats();
 
@@ -1137,13 +1141,18 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       }
     }
 
-    stats.topMoves.clear();
+    // After building depthCand
     const int SHOW = std::min<int>(5, (int)depthCand.size());
+
+    // Ensure we actually have the best SHOW moves at the front
+    std::partial_sort(depthCand.begin(), depthCand.begin() + SHOW, depthCand.end(),
+                      [](const auto& a, const auto& b) { return a.first > b.first; });
+
+    stats.topMoves.clear();
     for (int i = 0; i < SHOW; ++i) {
       stats.topMoves.push_back(
           {depthCand[i].second, std::clamp(depthCand[i].first, -MATE + 1, MATE - 1)});
     }
-
     if (is_mate_score(stats.bestScore)) break;
     lastScoreGuess = bestScore;
   }
