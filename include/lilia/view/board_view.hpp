@@ -35,7 +35,8 @@ class BoardView {
   Entity::Position m_flip_pos{};
   float m_flip_size{0.f};
   bool m_flipped{false};
-  ColorPaletteManager::ListenerID m_paletteListener{};
+
+  ColorPaletteManager::ListenerID m_paletteListener{0};
 };
 
 }  // namespace lilia::view

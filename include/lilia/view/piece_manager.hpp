@@ -6,6 +6,7 @@
 
 #include "../controller/mousepos.hpp"
 #include "board_view.hpp"
+#include "color_palette_manager.hpp"
 #include "piece.hpp"
 
 namespace lilia::view {
@@ -17,6 +18,7 @@ class ChessAnimator;
 class PieceManager {
  public:
   PieceManager(const BoardView& boardRef);
+  ~PieceManager();
 
   void initFromFen(const std::string& fen);
 
@@ -62,6 +64,9 @@ class PieceManager {
   // Backup of pieces temporarily removed due to premove captures
   std::unordered_map<core::Square, Piece> m_captured_backup;
   std::unordered_map<core::Square, core::Square> m_premove_origin;
+  ColorPaletteManager::ListenerID m_paletteListener{0};
+
+  void onPaletteChanged();
 };
 
 }  // namespace lilia::view
