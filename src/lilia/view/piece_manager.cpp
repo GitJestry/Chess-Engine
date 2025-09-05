@@ -5,12 +5,21 @@
 #include <utility>
 
 #include "lilia/view/animation/chess_animator.hpp"
+#include "lilia/view/color_palette_manager.hpp"
 #include "lilia/view/render_constants.hpp"
 #include "lilia/view/texture_table.hpp"
 
 namespace lilia::view {
 
-PieceManager::PieceManager(const BoardView &boardRef) : m_board_view_ref(boardRef), m_pieces() {}
+PieceManager::PieceManager(const BoardView &boardRef)
+    : m_board_view_ref(boardRef), m_pieces() {
+  m_paletteListener =
+      ColorPaletteManager::get().addListener([this]() { onPaletteChanged(); });
+}
+
+PieceManager::~PieceManager() {
+  ColorPaletteManager::get().removeListener(m_paletteListener);
+}
 
 /* -------------------- FEN -------------------- */
 void PieceManager::initFromFen(const std::string &fen) {
@@ -380,6 +389,23 @@ void PieceManager::clearPremovePieces(bool restore) {
 
   m_premove_pieces.clear();
   m_premove_origin.clear();
+}
+
+void PieceManager::onPaletteChanged() {
+  auto reload = [](Piece& p) {
+    std::uint8_t numTypes = 6;
+    std::string filename = constant::ASSET_PIECES_FILE_PATH +
+                           std::string("/piece_") +
+                           std::to_string(static_cast<std::uint8_t>(p.getType()) +
+                                          numTypes * static_cast<std::uint8_t>(p.getColor())) +
+                           ".png";
+    p.setTexture(TextureTable::getInstance().get(filename));
+    p.setScale(constant::ASSET_PIECE_SCALE, constant::ASSET_PIECE_SCALE);
+  };
+
+  for (auto& [sq, piece] : m_pieces) reload(piece);
+  for (auto& [sq, piece] : m_premove_pieces) reload(piece);
+  for (auto& [sq, piece] : m_captured_backup) reload(piece);
 }
 
 }  // namespace lilia::view
