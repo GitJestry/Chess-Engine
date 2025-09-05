@@ -2,7 +2,6 @@
 
 #include <cctype>
 #include <optional>
-#include <sstream>
 #include <string_view>
 
 #include "lilia/model/move_helper.hpp"
@@ -303,7 +302,8 @@ Position& ChessGame::getPositionRefForBot() {
 }
 
 std::string ChessGame::getFen() const {
-  std::ostringstream oss;
+  std::string fen;
+  fen.reserve(100);
   const auto& board = m_position.getBoard();
 
   for (int rank = 7; rank >= 0; --rank) {
@@ -313,7 +313,7 @@ std::string ChessGame::getFen() const {
       const auto piece = board.getPiece(sq);
       if (piece.has_value()) {
         if (empty) {
-          oss << empty;
+          fen.push_back(static_cast<char>('0' + empty));
           empty = 0;
         }
         char ch;
@@ -341,37 +341,43 @@ std::string ChessGame::getFen() const {
             break;
         }
         if (piece->color == core::Color::White) ch = static_cast<char>(std::toupper(ch));
-        oss << ch;
+        fen.push_back(ch);
       } else {
         ++empty;
       }
     }
-    if (empty) oss << empty;
-    if (rank) oss << '/';
+    if (empty) fen.push_back(static_cast<char>('0' + empty));
+    if (rank) fen.push_back('/');
   }
 
   const auto& st = m_position.getState();
-  oss << ' ' << (st.sideToMove == core::Color::White ? 'w' : 'b') << ' ';
+  fen.push_back(' ');
+  fen.push_back(st.sideToMove == core::Color::White ? 'w' : 'b');
+  fen.push_back(' ');
 
-  std::string castling;
-  if (st.castlingRights & bb::Castling::WK) castling += 'K';
-  if (st.castlingRights & bb::Castling::WQ) castling += 'Q';
-  if (st.castlingRights & bb::Castling::BK) castling += 'k';
-  if (st.castlingRights & bb::Castling::BQ) castling += 'q';
-  if (castling.empty()) castling = "-";
-  oss << castling << ' ';
+  if (st.castlingRights) {
+    if (st.castlingRights & bb::Castling::WK) fen.push_back('K');
+    if (st.castlingRights & bb::Castling::WQ) fen.push_back('Q');
+    if (st.castlingRights & bb::Castling::BK) fen.push_back('k');
+    if (st.castlingRights & bb::Castling::BQ) fen.push_back('q');
+  } else {
+    fen.push_back('-');
+  }
+  fen.push_back(' ');
 
   if (st.enPassantSquare == core::NO_SQUARE) {
-    oss << '-';
+    fen.push_back('-');
   } else {
     const int sq = static_cast<int>(st.enPassantSquare);
-    const char file = static_cast<char>('a' + (sq & 7));
-    const char rank = static_cast<char>('1' + (sq >> 3));
-    oss << file << rank;
+    fen.push_back(static_cast<char>('a' + (sq & 7)));
+    fen.push_back(static_cast<char>('1' + (sq >> 3)));
   }
-  oss << ' ' << st.halfmoveClock << ' ' << st.fullmoveNumber;
+  fen.push_back(' ');
+  fen.append(std::to_string(st.halfmoveClock));
+  fen.push_back(' ');
+  fen.append(std::to_string(st.fullmoveNumber));
 
-  return oss.str();
+  return fen;
 }
 
 }  // namespace lilia::model
