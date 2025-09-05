@@ -24,17 +24,19 @@ ColorPaletteManager::ColorPaletteManager() {
   m_active = constant::STR_COL_PALETTE_DEFAULT;
 }
 
-void ColorPaletteManager::registerPalette(const std::string& name, const ColorPalette& palette) {
-  if (!m_palettes.count(name)) m_order.push_back(name);
-  m_palettes[name] = palette;
+void ColorPaletteManager::registerPalette(std::string_view name, const ColorPalette& palette) {
+  std::string key{name};
+  if (!m_palettes.count(key)) m_order.push_back(key);
+  m_palettes[std::move(key)] = palette;
 }
 
-void ColorPaletteManager::setPalette(const std::string& name) {
-  auto it = m_palettes.find(name);
+void ColorPaletteManager::setPalette(std::string_view name) {
+  std::string key{name};
+  auto it = m_palettes.find(key);
   if (it != m_palettes.end()) {
     loadPalette(it->second);
     TextureTable::getInstance().reloadForPalette();
-    m_active = name;
+    m_active = std::move(key);
     for (auto& [id, fn] : m_listeners) {
       if (fn) fn();
     }

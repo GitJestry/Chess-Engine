@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 #include <functional>
@@ -13,10 +14,10 @@ class ColorPaletteManager {
   static ColorPaletteManager& get();
 
   // Register a named palette that can be selected later
-  void registerPalette(const std::string& name, const ColorPalette& palette);
+  void registerPalette(std::string_view name, const ColorPalette& palette);
 
   // Activate a palette by name
-  void setPalette(const std::string& name);
+  void setPalette(std::string_view name);
 
   // Load a new palette directly; unspecified colors fall back to defaults
   void loadPalette(const ColorPalette& palette);
