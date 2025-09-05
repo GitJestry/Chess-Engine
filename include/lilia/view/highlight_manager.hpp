@@ -6,12 +6,14 @@
 #include "../chess_types.hpp"
 #include "board_view.hpp"
 #include "entity.hpp"
+#include "color_palette_manager.hpp"
 
 namespace lilia::view {
 
 class HighlightManager {
  public:
   HighlightManager(const BoardView& boardRef);
+  ~HighlightManager();
 
   void highlightSquare(core::Square pos);
   void highlightAttackSquare(core::Square pos);
@@ -42,6 +44,7 @@ class HighlightManager {
  private:
   void renderEntitiesToBoard(std::unordered_map<core::Square, Entity>& map,
                              sf::RenderWindow& window);
+  void rebuildTextures();
 
   const BoardView& m_board_view_ref;
 
@@ -52,6 +55,7 @@ class HighlightManager {
   std::unordered_map<core::Square, Entity> m_hl_rclick_squares;
   std::unordered_map<unsigned int, std::pair<core::Square, core::Square>>
       m_hl_rclick_arrows;
+  ColorPaletteManager::ListenerID m_palette_listener{};
 };
 
 }  // namespace lilia::view

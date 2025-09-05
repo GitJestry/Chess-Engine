@@ -18,7 +18,46 @@ HighlightManager::HighlightManager(const BoardView& boardRef)
       m_hl_hover_squares(),
       m_hl_premove_squares(),
       m_hl_rclick_squares(),
-      m_hl_rclick_arrows() {}
+      m_hl_rclick_arrows() {
+  m_palette_listener =
+      ColorPaletteManager::get().addListener([this]() { rebuildTextures(); });
+}
+
+HighlightManager::~HighlightManager() {
+  ColorPaletteManager::get().removeListener(m_palette_listener);
+}
+
+void HighlightManager::rebuildTextures() {
+  auto& table = TextureTable::getInstance();
+  for (auto& kv : m_hl_select_squares) {
+    auto& entity = kv.second;
+    entity.setTexture(table.get(constant::STR_TEXTURE_SELECTHLIGHT));
+    entity.setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
+  }
+  for (auto& kv : m_hl_attack_squares) {
+    auto& entity = kv.second;
+    auto size = entity.getOriginalSize();
+    if (size.x < static_cast<float>(constant::SQUARE_PX_SIZE)) {
+      entity.setTexture(table.get(constant::STR_TEXTURE_ATTACKHLIGHT));
+    } else {
+      entity.setTexture(table.get(constant::STR_TEXTURE_CAPTUREHLIGHT));
+    }
+  }
+  for (auto& kv : m_hl_hover_squares) {
+    auto& entity = kv.second;
+    entity.setTexture(table.get(constant::STR_TEXTURE_HOVERHLIGHT));
+  }
+  for (auto& kv : m_hl_premove_squares) {
+    auto& entity = kv.second;
+    entity.setTexture(table.get(constant::STR_TEXTURE_PREMOVEHLIGHT));
+    entity.setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
+  }
+  for (auto& kv : m_hl_rclick_squares) {
+    auto& entity = kv.second;
+    entity.setTexture(table.get(constant::STR_TEXTURE_RCLICKHLIGHT));
+    entity.setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
+  }
+}
 
 void HighlightManager::renderEntitiesToBoard(std::unordered_map<core::Square, Entity>& map,
                                              sf::RenderWindow& window) {
