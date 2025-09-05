@@ -107,11 +107,16 @@ EvalBar::EvalBar() : EvalBar::Entity() {
 
   m_score_text.setFont(m_font);
   m_score_text.setCharacterSize(constant::EVAL_BAR_FONT_SIZE);
-  m_score_text.setFillColor(sf::Color::Black);  // default (balanced → white side)
+  m_score_text.setFillColor(constant::COL_SCORE_TEXT_DARK);  // default (balanced → white side)
 
   m_toggle_text.setFont(m_font);
   m_toggle_text.setCharacterSize(15);
+  m_paletteListener =
+      ColorPaletteManager::get().addListener([this]() { onPaletteChanged(); });
+  onPaletteChanged();
 }
+
+EvalBar::~EvalBar() { ColorPaletteManager::get().removeListener(m_paletteListener); }
 
 void EvalBar::setFlipped(bool flipped) {
   m_flipped = flipped;
@@ -160,7 +165,7 @@ void EvalBar::render(sf::RenderWindow& window) {
     auto tb = m_toggle_text.getLocalBounds();
     m_toggle_text.setOrigin(tb.left + tb.width / 2.f, tb.top + tb.height / 2.f);
     m_toggle_text.setFillColor(hov ? constant::COL_TEXT
-                                  : (m_visible ? sf::Color::Black : constant::COL_TEXT));
+                                  : (m_visible ? constant::COL_SCORE_TEXT_DARK : constant::COL_TEXT));
     m_toggle_text.setPosition(snapf(m_toggle_bounds.left + m_toggle_bounds.width / 2.f),
                               snapf(m_toggle_bounds.top + m_toggle_bounds.height / 2.f - 1.f));
     window.draw(m_toggle_text);
@@ -328,6 +333,11 @@ void EvalBar::setResult(const std::string& result) {
     m_display_eval = m_target_eval = 0.f;
   }
   update(static_cast<int>(m_display_eval));
+}
+
+void EvalBar::onPaletteChanged() {
+  m_score_text.setFillColor(constant::COL_SCORE_TEXT_DARK);
+  m_toggle_text.setFillColor(constant::COL_TEXT);
 }
 
 void EvalBar::reset() {

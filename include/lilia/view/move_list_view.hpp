@@ -13,8 +13,9 @@
 namespace lilia::view {
 
 class MoveListView {
-public:
+ public:
   MoveListView();
+  ~MoveListView();
 
   void setPosition(const Entity::Position &pos);
   void setSize(unsigned int width, unsigned int height);
@@ -35,7 +36,7 @@ public:
   [[nodiscard]] Option getOptionAt(const Entity::Position &pos) const;
   void setGameOver(bool over);
 
-private:
+ private:
   sf::Font m_font;
   std::vector<std::string> m_lines;
   std::string m_result;
@@ -65,6 +66,12 @@ private:
   sf::FloatRect m_bounds_new_bot{};
   sf::FloatRect m_bounds_rematch{};
   sf::FloatRect m_bounds_fen_icon{};
+
+  // Palette
+  ColorPaletteManager::ListenerID m_paletteListener{0};
+  sf::Color m_toastTextColor{constant::COL_TEXT};
+
+  void onPaletteChanged();
 };
 
 } // namespace lilia::view

@@ -15,6 +15,7 @@ namespace lilia::view {
 class EvalBar : Entity {
  public:
   EvalBar();
+  ~EvalBar();
 
   virtual void setPosition(const Entity::Position &pos) override;
   void render(sf::RenderWindow &window);
@@ -41,6 +42,9 @@ class EvalBar : Entity {
   bool m_has_result{false};
   std::string m_result;
   bool m_flipped{false};
+
+  ColorPaletteManager::ListenerID m_paletteListener{0};
+  void onPaletteChanged();
 };
 
 }  // namespace lilia::view

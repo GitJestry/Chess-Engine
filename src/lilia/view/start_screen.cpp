@@ -325,7 +325,7 @@ void StartScreen::setupUI() {
   m_startText.setFont(m_font);
   m_startText.setString("Start Game");
   m_startText.setCharacterSize(22);
-  m_startText.setFillColor(sf::Color::Black);
+  m_startText.setFillColor(constant::COL_DARK_TEXT);
 
   // Layout anchors
   float x0 = (ws.x - PANEL_W) * 0.5f;
@@ -538,7 +538,7 @@ void StartScreen::applyTheme() {
   m_blackBotText.setFillColor(colText);
 
   m_startBtn.setFillColor(colAccent);
-  m_startText.setFillColor(sf::Color::Black);
+  m_startText.setFillColor(constant::COL_DARK_TEXT);
 
   m_fenErrorText.setFillColor(colInvalid);
   m_fenInputBox.setFillColor(colInput);
@@ -578,7 +578,7 @@ void StartScreen::applyTheme() {
 void StartScreen::updateTimeToggle() {
   if (m_timeEnabled) {
     m_timeToggleBtn.setFillColor(colAccent);
-    m_timeToggleText.setFillColor(sf::Color::Black);
+    m_timeToggleText.setFillColor(constant::COL_DARK_TEXT);
     m_timeToggleText.setString("TIME ON");
   } else {
     m_timeToggleBtn.setFillColor(colTimeOff);

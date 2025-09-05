@@ -126,7 +126,7 @@ inline void drawCloseGlyph(sf::RenderTarget& t, const sf::FloatRect& r, bool hov
   const float len = std::min(r.width, r.height) * (pressed ? 0.52f : 0.60f);
   const float thick = 2.0f;
 
-  sf::Color col = sf::Color::White;  // accent on hover
+  sf::Color col = constant::COL_LIGHT_TEXT;  // accent on hover
   if (pressed) col = darken(col, 24);
 
   sf::RectangleShape bar({len, thick});
@@ -307,7 +307,7 @@ void ModalView::layoutGameOverExtras() {
 void ModalView::stylePrimaryButton(sf::RectangleShape& btn, sf::Text& lbl) {
   btn.setFillColor(constant::COL_ACCENT);
   btn.setOutlineThickness(0.f);
-  lbl.setFillColor(sf::Color::Black);
+  lbl.setFillColor(constant::COL_DARK_TEXT);
 }
 
 void ModalView::styleSecondaryButton(sf::RectangleShape& btn, sf::Text& lbl) {
@@ -449,9 +449,9 @@ void ModalView::drawPanel(sf::RenderWindow& win) const {
 
   // Accent inset on whichever is primary (filled with COL_ACCENT)
   if (m_btnLeft.getFillColor() == constant::COL_ACCENT)
-    drawAccentInset(win, leftR, sf::Color::White);
+    drawAccentInset(win, leftR, constant::COL_LIGHT_TEXT);
   if (m_btnRight.getFillColor() == constant::COL_ACCENT)
-    drawAccentInset(win, rightR, sf::Color::White);
+    drawAccentInset(win, rightR, constant::COL_LIGHT_TEXT);
 
   // Labels for the main buttons
   win.draw(m_lblLeft);

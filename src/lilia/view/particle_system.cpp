@@ -4,7 +4,18 @@
 #include <cmath>
 #include <random>
 
+#include "lilia/view/render_constants.hpp"
+
 namespace lilia::view {
+
+ParticleSystem::ParticleSystem() {
+  m_paletteListener =
+      ColorPaletteManager::get().addListener([this]() { onPaletteChanged(); });
+}
+
+ParticleSystem::~ParticleSystem() {
+  ColorPaletteManager::get().removeListener(m_paletteListener);
+}
 
 void ParticleSystem::emitConfetti(const sf::Vector2f &center,
                                   const sf::Vector2f &windowSize,
@@ -30,7 +41,7 @@ void ParticleSystem::emitConfetti(const sf::Vector2f &center,
     float radius = radiusDist(rng);
 
     sf::CircleShape shape(radius);
-    shape.setFillColor(sf::Color::White);
+    shape.setFillColor(constant::COL_TEXT);
     shape.setOrigin(radius, radius);
     shape.setPosition({x, startY});
 
@@ -91,5 +102,11 @@ void ParticleSystem::render(sf::RenderWindow &window) {
 void ParticleSystem::clear() { m_particles.clear(); }
 
 bool ParticleSystem::empty() const { return m_particles.empty(); }
+
+void ParticleSystem::onPaletteChanged() {
+  for (auto &p : m_particles) {
+    p.shape.setFillColor(constant::COL_TEXT);
+  }
+}
 
 } // namespace lilia::view

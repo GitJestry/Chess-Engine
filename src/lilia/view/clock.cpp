@@ -176,7 +176,7 @@ void Clock::setTime(float seconds) {
   m_text.setString(formatTime(seconds));
   m_low_time = seconds <= 20.f;
   if (m_low_time) {
-    m_text.setFillColor(sf::Color::White);
+    m_text.setFillColor(constant::COL_LIGHT_TEXT);
   } else {
     m_text.setFillColor(m_text_base_color);
   }
