@@ -1,5 +1,10 @@
 #pragma once
 #include "color_palette.hpp"
+
 namespace lilia::view {
-extern const ColorPalette PALETTE_ROSE_NOIR;
-}
+
+// Returns the Rose Noir color palette. The palette is constructed on first use
+// and cached for subsequent calls.
+const ColorPalette& roseNoirPalette();
+
+}  // namespace lilia::view
