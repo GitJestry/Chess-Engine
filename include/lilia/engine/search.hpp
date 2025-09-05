@@ -67,6 +67,7 @@ class Search {
   Search& operator=(Search&&) = delete;
 
   // Root (iterative deepening, parallel auf Root-Children)
+  // maxThreads <= 0 -> use cfg.threads for deterministic thread count
   int search_root_parallel(model::Position& pos, int depth, std::shared_ptr<std::atomic<bool>> stop,
                            int maxThreads = 0, std::uint64_t maxNodes = 0);
   void set_node_limit(std::shared_ptr<std::atomic<std::uint64_t>> shared, std::uint64_t limit) {
