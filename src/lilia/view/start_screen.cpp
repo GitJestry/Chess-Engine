@@ -272,7 +272,7 @@ void StartScreen::setupUI() {
     std::string label = names[i];
     if (names[i] == constant::STR_COL_PALETTE_DEFAULT)
       label = "Default";
-    else if (names[i] == constant::STR_COL_PALETTE_RED_NOIR)
+    else if (names[i] == constant::STR_COL_PALETTE_ROSE_NOIR)
       label = "Red Noir";
     opt.label.setString(label);
     opt.label.setFillColor(colText);

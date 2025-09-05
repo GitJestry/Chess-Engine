@@ -18,7 +18,7 @@ ColorPaletteManager::ColorPaletteManager() {
 #undef X
 
   registerPalette(constant::STR_COL_PALETTE_DEFAULT, ColorPalette{});
-  registerPalette(constant::STR_COL_PALETTE_RED_NOIR, PALETTE_ROSE_NOIR);
+  registerPalette(constant::STR_COL_PALETTE_ROSE_NOIR, PALETTE_ROSE_NOIR);
 
   m_active = constant::STR_COL_PALETTE_DEFAULT;
 }

@@ -42,7 +42,7 @@ constexpr float ANIM_MOVE_SPEED = .05f;
 LILIA_COLOR_PALETTE(X)
 #undef X
 const std::string STR_COL_PALETTE_DEFAULT = "default_col";
-const std::string STR_COL_PALETTE_RED_NOIR = "red_noir_col";
+const std::string STR_COL_PALETTE_ROSE_NOIR = "rose_noir_col";
 
 const std::string STR_TEXTURE_WHITE = "white";
 const std::string STR_TEXTURE_BLACK = "black";
