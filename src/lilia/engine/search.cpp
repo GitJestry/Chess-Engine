@@ -453,18 +453,17 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   const bool inCheck = pos.inCheck();
   const int staticEval = inCheck ? 0 : signed_eval(pos);
+  // einmalig: Nicht-Bauern-Material zählen (für SNMP & Nullmove)
+  const auto& b = pos.getBoard();
+  auto countSide = [&](core::Color c) {
+    using PT = core::PieceType;
+    return model::bb::popcount(b.getPieces(c, PT::Knight) | b.getPieces(c, PT::Bishop) |
+                               b.getPieces(c, PT::Rook) | b.getPieces(c, PT::Queen));
+  };
+  const int nonP = countSide(core::Color::White) + countSide(core::Color::Black);
 
-  // SNMP
+  // SNMP (nutzt das bereits berechnete nonP)
   if (!inCheck && !isPV && depth <= 3) {
-    const int nonP = [&] {
-      using PT = core::PieceType;
-      auto countSide = [&](core::Color c) {
-        return model::bb::popcount(
-            pos.getBoard().getPieces(c, PT::Knight) | pos.getBoard().getPieces(c, PT::Bishop) |
-            pos.getBoard().getPieces(c, PT::Rook) | pos.getBoard().getPieces(c, PT::Queen));
-      };
-      return countSide(core::Color::White) + countSide(core::Color::Black);
-    }();
     if (nonP >= 6) {
       static constexpr int margins[4] = {0, 140, 200, 260};
       if (staticEval - margins[depth] >= beta) return staticEval;
@@ -547,16 +546,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
   }
 
-  // Null move pruning
-  auto nonPawnCount = [&](const model::Board& b) {
-    using PT = core::PieceType;
-    auto countSide = [&](core::Color c) {
-      return model::bb::popcount(b.getPieces(c, PT::Knight) | b.getPieces(c, PT::Bishop) |
-                                 b.getPieces(c, PT::Rook) | b.getPieces(c, PT::Queen));
-    };
-    return countSide(core::Color::White) + countSide(core::Color::Black);
-  };
-  const bool sparse = (nonPawnCount(pos.getBoard()) <= 3);
+  // Null move pruning (nutzt nonP)
+  const bool sparse = (nonP <= 3);
+
   const bool prevWasCapture = (ply > 0 && prevMove[cap_ply(ply - 1)].isCapture());
 
   if (cfg.useNullMove && depth >= 3 && !inCheck && !isPV && !sparse && !prevWasCapture) {
