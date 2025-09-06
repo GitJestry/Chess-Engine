@@ -883,7 +883,6 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
 }
 
 // ---------- Root Search (parallel, Work-Queue, with heuristic copy/merge) ----------
-
 int Search::search_root_parallel(model::Position& pos, int maxDepth,
                                  std::shared_ptr<std::atomic<bool>> stop, int maxThreads,
                                  std::uint64_t maxNodes /* = 0 */) {

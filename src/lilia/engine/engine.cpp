@@ -22,7 +22,6 @@ struct Engine::Impl {
   explicit Impl(const EngineConfig& c) : cfg(c), tt(c.ttSizeMb) {
     unsigned hw = std::thread::hardware_concurrency();
     int logical = (hw > 0 ? (int)hw : 1);
-    logical = logical - logical / 4;
 
     if (cfg.threads <= 0) {
       cfg.threads = std::max(1, logical - 1);  // auto
