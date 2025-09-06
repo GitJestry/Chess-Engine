@@ -35,6 +35,10 @@ namespace lilia::engine {
 static constexpr int PIECE_NB = 6;
 static constexpr int SQ_NB = 64;
 
+struct SearchStoppedException : public std::exception {
+  const char* what() const noexcept override { return "Search stopped"; }
+};
+
 // -----------------------------------------------------------------------------
 // SearchStats – robustere Zähler (64-bit), schlanke Ausgabeinfos
 // -----------------------------------------------------------------------------
@@ -108,6 +112,32 @@ class Search {
   void copy_heuristics_from(const Search& src);
   // Merge this worker's heuristics into the global (killers are NOT merged)
   void merge_from(const Search& other);
+
+  uint32_t tick_ = 0;
+  static constexpr uint32_t TICK_STEP = 1024;  // 256–2048 ist ok
+
+  inline void fast_tick() {
+    // billiger Hot-Path
+    ++tick_;
+    if ((tick_ & (TICK_STEP - 1)) != 0) return;
+
+    // seltener Slow-Path
+    if (sharedNodes) {
+      auto cur = sharedNodes->fetch_add(TICK_STEP, std::memory_order_relaxed) + TICK_STEP;
+      if (nodeLimit && cur >= nodeLimit) {
+        if (stopFlag) stopFlag->store(true, std::memory_order_relaxed);
+        throw SearchStoppedException();
+      }
+    }
+    if (stopFlag && stopFlag->load(std::memory_order_relaxed)) throw SearchStoppedException();
+  }
+
+  // optional: damit die letzten <TICK_STEP Restknoten noch gezählt werden
+  inline void flush_tick() {
+    if (!sharedNodes) return;
+    uint32_t rem = (tick_ & (TICK_STEP - 1));
+    if (rem) sharedNodes->fetch_add(rem, std::memory_order_relaxed);
+  }
 
   // ---------------------------------------------------------------------------
   // Daten

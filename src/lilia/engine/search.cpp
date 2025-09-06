@@ -99,10 +99,6 @@ struct NullUndoGuard {
   }
 };
 
-struct SearchStoppedException : public std::exception {
-  const char* what() const noexcept override { return "Search stopped"; }
-};
-
 inline void check_stop(const std::shared_ptr<std::atomic<bool>>& stopFlag) {
   if (stopFlag && stopFlag->load()) throw SearchStoppedException();
 }
@@ -231,12 +227,32 @@ int Search::signed_eval(model::Position& pos) {
 inline void bump_node_or_stop(const std::shared_ptr<std::atomic<std::uint64_t>>& counter,
                               std::uint64_t limit,
                               const std::shared_ptr<std::atomic<bool>>& stopFlag) {
-  if (!counter) return;
-  // old code: std::uint64_t prev = counter->fetch_add(1, std::memory_order_relaxed);
-  const std::uint64_t cur = counter->fetch_add(1, std::memory_order_relaxed) + 1;
-  if (limit && cur >= limit) {
-    if (stopFlag) stopFlag->store(true, std::memory_order_relaxed);
-    throw SearchStoppedException();
+  // Batch: nur alle 1024 Knoten atomar addieren + Stop prüfen
+  static thread_local uint32_t local = 0;
+  constexpr uint32_t TICK_STEP = 1024;
+
+  // schneller Hot-Path: nur Zähler hochzählen
+  ++local;
+
+  // alle 64 Knoten einmal billig auf stopFlag schauen (nur relaxed load)
+  if ((local & 63u) == 0u) {
+    if (stopFlag && stopFlag->load(std::memory_order_relaxed)) {
+      throw SearchStoppedException();
+    }
+  }
+
+  // seltener Slow-Path: Batch flushen + Limit prüfen
+  if ((local & (TICK_STEP - 1u)) == 0u) {
+    if (counter) {
+      std::uint64_t cur = counter->fetch_add(TICK_STEP, std::memory_order_relaxed) + TICK_STEP;
+      if (limit && cur >= limit) {
+        if (stopFlag) stopFlag->store(true, std::memory_order_relaxed);
+        throw SearchStoppedException();
+      }
+    }
+    if (stopFlag && stopFlag->load(std::memory_order_relaxed)) {
+      throw SearchStoppedException();
+    }
   }
 }
 
@@ -245,7 +261,6 @@ inline void bump_node_or_stop(const std::shared_ptr<std::atomic<std::uint64_t>>&
 int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   stats.nodes++;
   bump_node_or_stop(sharedNodes, nodeLimit, stopFlag);
-  check_stop(stopFlag);
 
   if (ply >= MAX_PLY - 2) return signed_eval(pos);
 
@@ -295,7 +310,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     bool anyLegal = false;
 
     for (int i = 0; i < n; ++i) {
-      check_stop(stopFlag);
+      if ((i & 63) == 0) check_stop(stopFlag);
       const model::Move m = ordered[i];
 
       MoveUndoGuard g(pos);
@@ -366,7 +381,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 
   for (int i = 0; i < qn; ++i) {
     const model::Move m = qord[i];
-    check_stop(stopFlag);
+    if ((i & 63) == 0) check_stop(stopFlag);
 
     if (m.isCapture() && !pos.see(m) && m.promotion() == core::PieceType::None) continue;
 
@@ -422,7 +437,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
                     model::Move& refBest, int parentStaticEval, const model::Move* excludedMove) {
   stats.nodes++;
   bump_node_or_stop(sharedNodes, nodeLimit, stopFlag);
-  check_stop(stopFlag);
 
   if (ply >= MAX_PLY - 2) return signed_eval(pos);
   if (pos.checkInsufficientMaterial() || pos.checkMoveRule() || pos.checkRepetition()) return 0;
@@ -641,7 +655,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   int moveCount = 0;
 
   for (int idx = 0; idx < n; ++idx) {
-    check_stop(stopFlag);
+    if ((idx & 63) == 0) check_stop(stopFlag);
 
     const model::Move m = ordered[idx];
     if (excludedMove && m == *excludedMove) {
