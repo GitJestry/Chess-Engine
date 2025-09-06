@@ -57,7 +57,7 @@ void drawTooltip(sf::RenderWindow& win, const sf::Vector2f center, const std::st
   if (!s_loaded) return;
 
   constexpr float padX = 8.f, padY = 5.f, arrowH = 6.f;
-  sf::Text t(label, s_font, 13);
+  sf::Text t(label, s_font, 12);
   t.setFillColor(constant::COL_TEXT);
   auto b = t.getLocalBounds();
   const float w = b.width + 2.f * padX;
@@ -173,8 +173,7 @@ BoardView::BoardView()
       m_flip_pos(),
       m_flip_size(0.f),
       m_flipped(false) {
-  m_paletteListener =
-      ColorPaletteManager::get().addListener([this]() { onPaletteChanged(); });
+  m_paletteListener = ColorPaletteManager::get().addListener([this]() { onPaletteChanged(); });
 }
 
 BoardView::~BoardView() {

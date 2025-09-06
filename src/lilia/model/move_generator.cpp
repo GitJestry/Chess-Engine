@@ -184,8 +184,7 @@ LILIA_ALWAYS_INLINE void genPawnMoves_T(const Board& board, const GameState& st,
       const bb::Bitboard fromMask = bb::sq_bb(from);
       const bool pinned = pins && (pins->pinned & fromMask);
       const bb::Bitboard allowMask = pinned ? pins->allow_mask(from) : ~0ULL;
-      if (bb::sq_bb(to) & allowMask)
-        emit(Move{from, to, PT::None, false, false, CastleSide::None});
+      if (bb::sq_bb(to) & allowMask) emit(Move{from, to, PT::None, false, false, CastleSide::None});
     }
     for (bb::Bitboard d = (dbl & targetMask); d;) {
       const core::Square to = bb::pop_lsb(d);
@@ -193,8 +192,7 @@ LILIA_ALWAYS_INLINE void genPawnMoves_T(const Board& board, const GameState& st,
       const bb::Bitboard fromMask = bb::sq_bb(from);
       const bool pinned = pins && (pins->pinned & fromMask);
       const bb::Bitboard allowMask = pinned ? pins->allow_mask(from) : ~0ULL;
-      if (bb::sq_bb(to) & allowMask)
-        emit(Move{from, to, PT::None, false, false, CastleSide::None});
+      if (bb::sq_bb(to) & allowMask) emit(Move{from, to, PT::None, false, false, CastleSide::None});
     }
     for (bb::Bitboard c = capL; c;) {
       const core::Square to = bb::pop_lsb(c);
@@ -202,8 +200,7 @@ LILIA_ALWAYS_INLINE void genPawnMoves_T(const Board& board, const GameState& st,
       const bb::Bitboard fromMask = bb::sq_bb(from);
       const bool pinned = pins && (pins->pinned & fromMask);
       const bb::Bitboard allowMask = pinned ? pins->allow_mask(from) : ~0ULL;
-      if (bb::sq_bb(to) & allowMask)
-        emit(Move{from, to, PT::None, true, false, CastleSide::None});
+      if (bb::sq_bb(to) & allowMask) emit(Move{from, to, PT::None, true, false, CastleSide::None});
     }
     for (bb::Bitboard c = capR; c;) {
       const core::Square to = bb::pop_lsb(c);
@@ -211,8 +208,7 @@ LILIA_ALWAYS_INLINE void genPawnMoves_T(const Board& board, const GameState& st,
       const bb::Bitboard fromMask = bb::sq_bb(from);
       const bool pinned = pins && (pins->pinned & fromMask);
       const bb::Bitboard allowMask = pinned ? pins->allow_mask(from) : ~0ULL;
-      if (bb::sq_bb(to) & allowMask)
-        emit(Move{from, to, PT::None, true, false, CastleSide::None});
+      if (bb::sq_bb(to) & allowMask) emit(Move{from, to, PT::None, true, false, CastleSide::None});
     }
 
     // Promotions
@@ -266,8 +262,7 @@ LILIA_ALWAYS_INLINE void genPawnMoves_T(const Board& board, const GameState& st,
       const bb::Bitboard fromMask = bb::sq_bb(from);
       const bool pinned = pins && (pins->pinned & fromMask);
       const bb::Bitboard allowMask = pinned ? pins->allow_mask(from) : ~0ULL;
-      if (bb::sq_bb(to) & allowMask)
-        emit(Move{from, to, PT::None, false, false, CastleSide::None});
+      if (bb::sq_bb(to) & allowMask) emit(Move{from, to, PT::None, false, false, CastleSide::None});
     }
     for (bb::Bitboard d = (dbl & targetMask); d;) {
       const core::Square to = bb::pop_lsb(d);
@@ -275,8 +270,7 @@ LILIA_ALWAYS_INLINE void genPawnMoves_T(const Board& board, const GameState& st,
       const bb::Bitboard fromMask = bb::sq_bb(from);
       const bool pinned = pins && (pins->pinned & fromMask);
       const bb::Bitboard allowMask = pinned ? pins->allow_mask(from) : ~0ULL;
-      if (bb::sq_bb(to) & allowMask)
-        emit(Move{from, to, PT::None, false, false, CastleSide::None});
+      if (bb::sq_bb(to) & allowMask) emit(Move{from, to, PT::None, false, false, CastleSide::None});
     }
     for (bb::Bitboard c = capL; c;) {
       const core::Square to = bb::pop_lsb(c);
@@ -284,8 +278,7 @@ LILIA_ALWAYS_INLINE void genPawnMoves_T(const Board& board, const GameState& st,
       const bb::Bitboard fromMask = bb::sq_bb(from);
       const bool pinned = pins && (pins->pinned & fromMask);
       const bb::Bitboard allowMask = pinned ? pins->allow_mask(from) : ~0ULL;
-      if (bb::sq_bb(to) & allowMask)
-        emit(Move{from, to, PT::None, true, false, CastleSide::None});
+      if (bb::sq_bb(to) & allowMask) emit(Move{from, to, PT::None, true, false, CastleSide::None});
     }
     for (bb::Bitboard c = capR; c;) {
       const core::Square to = bb::pop_lsb(c);
@@ -293,8 +286,7 @@ LILIA_ALWAYS_INLINE void genPawnMoves_T(const Board& board, const GameState& st,
       const bb::Bitboard fromMask = bb::sq_bb(from);
       const bool pinned = pins && (pins->pinned & fromMask);
       const bb::Bitboard allowMask = pinned ? pins->allow_mask(from) : ~0ULL;
-      if (bb::sq_bb(to) & allowMask)
-        emit(Move{from, to, PT::None, true, false, CastleSide::None});
+      if (bb::sq_bb(to) & allowMask) emit(Move{from, to, PT::None, true, false, CastleSide::None});
     }
 
     constexpr PT promoOrder[4] = {PT::Queen, PT::Rook, PT::Bishop, PT::Knight};
@@ -716,6 +708,108 @@ LILIA_ALWAYS_INLINE void generate_all_regular(const Board& b, const GameState& s
 }  // namespace
 
 //-- -- -- -- -- -- -- --Public APIs-- -- -- -- -- -- -- --
+// ... keep existing includes/namespace stuff ...
+
+void MoveGenerator::generateNonCapturePromotions(const Board& b, const GameState& st,
+                                                 std::vector<model::Move>& out) const {
+  if (out.capacity() < 16) out.reserve(16);
+  out.clear();
+
+  using PT = core::PieceType;
+  constexpr PT promoOrder[4] = {PT::Queen, PT::Rook, PT::Bishop, PT::Knight};
+
+  const core::Color side = st.sideToMove;
+  const bb::Bitboard occ = b.getAllPieces();
+  const bb::Bitboard pawns = b.getPieces(side, PT::Pawn);
+  const bb::Bitboard empty = ~occ;
+
+  // Pin mask (same mechanism you use elsewhere)
+  PinInfo pins;
+  compute_pins(b, side, occ, pins);
+
+  if (side == core::Color::White) {
+    const bb::Bitboard one = bb::north(pawns) & empty;
+    bb::Bitboard promoPush = one & bb::RANK_8;
+    while (promoPush) {
+      const core::Square to = bb::pop_lsb(promoPush);
+      const core::Square from = static_cast<core::Square>(to - 8);
+      const bb::Bitboard fromMask = bb::sq_bb(from);
+      const bool pinned = (pins.pinned & fromMask) != 0ULL;
+      const bb::Bitboard allowMask = pinned ? pins.allow_mask(from) : ~0ULL;
+      if (!(bb::sq_bb(to) & allowMask)) continue;
+
+      for (int i = 0; i < 4; ++i)
+        out.push_back(
+            Move{from, to, promoOrder[i], /*isCap*/ false, /*isEP*/ false, CastleSide::None});
+    }
+  } else {
+    const bb::Bitboard one = bb::south(pawns) & empty;
+    bb::Bitboard promoPush = one & bb::RANK_1;
+    while (promoPush) {
+      const core::Square to = bb::pop_lsb(promoPush);
+      const core::Square from = static_cast<core::Square>(to + 8);
+      const bb::Bitboard fromMask = bb::sq_bb(from);
+      const bool pinned = (pins.pinned & fromMask) != 0ULL;
+      const bb::Bitboard allowMask = pinned ? pins.allow_mask(from) : ~0ULL;
+      if (!(bb::sq_bb(to) & allowMask)) continue;
+
+      for (int i = 0; i < 4; ++i)
+        out.push_back(
+            Move{from, to, promoOrder[i], /*isCap*/ false, /*isEP*/ false, CastleSide::None});
+    }
+  }
+}
+
+int MoveGenerator::generateNonCapturePromotions(const Board& b, const GameState& st,
+                                                engine::MoveBuffer& buf) {
+  using PT = core::PieceType;
+  constexpr PT promoOrder[4] = {PT::Queen, PT::Rook, PT::Bishop, PT::Knight};
+
+  const int before = buf.n;
+
+  const core::Color side = st.sideToMove;
+  const bb::Bitboard occ = b.getAllPieces();
+  const bb::Bitboard pawns = b.getPieces(side, PT::Pawn);
+  const bb::Bitboard empty = ~occ;
+
+  PinInfo pins;
+  compute_pins(b, side, occ, pins);
+
+  if (side == core::Color::White) {
+    const bb::Bitboard one = bb::north(pawns) & empty;
+    bb::Bitboard promoPush = one & bb::RANK_8;
+    while (promoPush) {
+      const core::Square to = bb::pop_lsb(promoPush);
+      const core::Square from = static_cast<core::Square>(to - 8);
+      const bb::Bitboard fromMask = bb::sq_bb(from);
+      const bool pinned = (pins.pinned & fromMask) != 0ULL;
+      const bb::Bitboard allowMask = pinned ? pins.allow_mask(from) : ~0ULL;
+      if (!(bb::sq_bb(to) & allowMask)) continue;
+
+      for (int i = 0; i < 4; ++i)
+        buf.push_unchecked(
+            Move{from, to, promoOrder[i], /*isCap*/ false, /*isEP*/ false, CastleSide::None});
+    }
+  } else {
+    const bb::Bitboard one = bb::south(pawns) & empty;
+    bb::Bitboard promoPush = one & bb::RANK_1;
+    while (promoPush) {
+      const core::Square to = bb::pop_lsb(promoPush);
+      const core::Square from = static_cast<core::Square>(to + 8);
+      const bb::Bitboard fromMask = bb::sq_bb(from);
+      const bool pinned = (pins.pinned & fromMask) != 0ULL;
+      const bb::Bitboard allowMask = pinned ? pins.allow_mask(from) : ~0ULL;
+      if (!(bb::sq_bb(to) & allowMask)) continue;
+
+      for (int i = 0; i < 4; ++i)
+        buf.push_unchecked(
+            Move{from, to, promoOrder[i], /*isCap*/ false, /*isEP*/ false, CastleSide::None});
+    }
+  }
+
+  return buf.n - before;
+}
+
 void MoveGenerator::generatePseudoLegalMoves(const Board& b, const GameState& st,
                                              std::vector<model::Move>& out) const {
   if (out.capacity() < 128) out.reserve(128);

@@ -79,8 +79,8 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
   }
 
   const sf::Color outlineCol = constant::COL_BOARD_OUTLINE;
-  const float outlineThick = 5.f;
-  const int textSize = 60;
+  const float outlineThick = 4.f;
+  const int textSize = 55;
 
   // FILE-Labels (a–h)
   for (int file = 0; file < constant::BOARD_SIZE; ++file) {

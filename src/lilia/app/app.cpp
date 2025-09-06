@@ -73,6 +73,7 @@ int App::run() {
           gameController.handleEvent(event);
         }
         gameController.update(deltaSeconds);
+        window.clear(sf::Color::Black);
         drawVerticalGradient(window, view::constant::COL_BG_TOP, view::constant::COL_BG_BOTTOM);
         gameController.render();
         window.display();

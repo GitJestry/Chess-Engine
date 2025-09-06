@@ -34,7 +34,6 @@ namespace lilia::engine {
 // Für History-Tabellen: Anzahl nicht-leerer Figurtypen (Pawn..King)
 static constexpr int PIECE_NB = 6;
 static constexpr int SQ_NB = 64;
-inline int16_t contHist[PIECE_NB][SQ_NB][SQ_NB]{};  // prevPiece x prevTo x curTo
 
 // -----------------------------------------------------------------------------
 // SearchStats – robustere Zähler (64-bit), schlanke Ausgabeinfos
@@ -83,7 +82,7 @@ class Search {
  private:
   // Kernfunktionen
   int negamax(model::Position& pos, int depth, int alpha, int beta, int ply, model::Move& refBest,
-              int parentStaticEval = 0);
+              int parentStaticEval = 0, const model::Move* excludedMove = nullptr);
   int quiescence(model::Position& pos, int alpha, int beta, int ply);
   std::vector<model::Move> build_pv_from_tt(model::Position pos, int max_len = 16);
   int signed_eval(model::Position& pos);

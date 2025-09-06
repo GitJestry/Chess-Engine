@@ -14,7 +14,7 @@ struct EngineConfig {
   int threads = 0;              // 0 => auto(HW); Engine begrenzt ohnehin
   bool useLMP = true;           // Late Move Pruning (quiet, flach)
   bool useIID = true;
-  bool useSingular = true;
+  bool useSingularExt = true;
   int lmpDepthMax = 3;  // nur für Tiefe <= 3
   int lmpBase = 2;      // Schwelle ~ lmpBase + depth*depth
 

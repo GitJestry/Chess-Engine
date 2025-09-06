@@ -209,7 +209,6 @@ Search::Search(model::TT5& tt_, std::shared_ptr<const Evaluator> eval_, const En
   for (auto& row : counterMove)
     for (auto& m : row) m = model::Move{};
   for (auto& pm : prevMove) pm = model::Move{};
-  std::fill(&contHist[0][0][0], &contHist[0][0][0] + PIECE_NB * SQ_NB * SQ_NB, 0);
 
   stopFlag.reset();
   sharedNodes.reset();  // NEW
@@ -260,7 +259,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       }
     }
   }
-  const bool inCheck = (ply == 0) ? pos.inCheck() : pos.lastMoveGaveCheck();
+  const bool inCheck = pos.inCheck();
   if (inCheck) {
     // nur Evasions generieren
     int n = gen_evasions(mg, pos, genArr_[kply], engine::MAX_MOVES);
@@ -339,10 +338,10 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 
   // nur Captures generieren
   int qn = gen_caps(mg, pos, capArr_[kply], engine::MAX_MOVES);
-  if (qn <= 0) {
-    if (!(stopFlag && stopFlag->load()))
-      tt.store(parentKey, encode_tt_score(stand, kply), 0, model::Bound::Exact, model::Move{});
-    return stand;
+  // append non-capture promotions
+  if (qn < engine::MAX_MOVES) {
+    engine::MoveBuffer buf(capArr_[kply] + qn, engine::MAX_MOVES - qn);
+    qn += mg.generateNonCapturePromotions(pos.getBoard(), pos.getState(), buf);
   }
 
   // Captures sortieren via precomputed MVV-LVA Scores (keine std::sort mit Lambda im Hotpath)
@@ -414,7 +413,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 // ---------- Negamax ----------
 
 int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int ply,
-                    model::Move& refBest, int parentStaticEval) {
+                    model::Move& refBest, int parentStaticEval, const model::Move* excludedMove) {
   stats.nodes++;
   bump_node_or_stop(sharedNodes, nodeLimit, stopFlag);
   check_stop(stopFlag);
@@ -432,7 +431,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   const int origBeta = beta;
   const bool isPV = (beta - alpha > 1);
 
-  const bool inCheck = (ply == 0) ? pos.inCheck() : pos.lastMoveGaveCheck();
+  const bool inCheck = pos.inCheck();
   const int staticEval = inCheck ? 0 : signed_eval(pos);
 
   // SNMP
@@ -470,19 +469,61 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   int best = -INF;
   model::Move bestLocal{};
 
-  // TT
+  // ----- TT probe -----
   model::Move ttMove{};
   bool haveTT = false;
   int ttVal = 0;
+  model::Bound ttBound = model::Bound::Upper;  // track for SE
+  int ttStoredDepth = -1;
+
   if (model::TTEntry5 tte{}; tt.probe_into(pos.hash(), tte)) {
     haveTT = true;
     ttMove = tte.best;
     ttVal = decode_tt_score(tte.value, cap_ply(ply));
+    ttBound = tte.bound;
+    ttStoredDepth = (int)tte.depth;
+
     if (tte.depth >= depth) {
       if (tte.bound == model::Bound::Exact) return std::clamp(ttVal, -MATE + 1, MATE - 1);
       if (tte.bound == model::Bound::Lower) alpha = std::max(alpha, ttVal);
       if (tte.bound == model::Bound::Upper) beta = std::min(beta, ttVal);
       if (alpha >= beta) return std::clamp(ttVal, -MATE + 1, MATE - 1);
+    }
+  }
+
+  // ----- IID -----
+  if (cfg.useIID && !inCheck && depth >= 5) {
+    const bool weakTT = !haveTT || (ttStoredDepth < depth - 2) || (ttMove.from() == ttMove.to());
+    if (weakTT) {
+      int iidDepth = isPV ? depth - 2 : depth - 3;
+      if (iidDepth < 1) iidDepth = 1;
+
+      int a = alpha, b = isPV ? beta : (alpha + 1);
+
+      model::Move tmp{};
+      // Gleiche Node, kein Fensterflip, keine Negation
+      (void)negamax(pos, iidDepth, a, b, ply, tmp, staticEval);
+
+      // Re-proben und *Fenster nachziehen / evtl. cutoff*
+      if (model::TTEntry5 t2{}; tt.probe_into(pos.hash(), t2)) {
+        haveTT = true;
+        ttMove = t2.best;
+        ttVal = decode_tt_score(t2.value, cap_ply(ply));
+        ttBound = t2.bound;
+        ttStoredDepth = (int)t2.depth;
+
+        // Nur wenn der neue Eintrag "stark genug" ist (>= aktuelle Tiefe)
+        if (t2.depth >= depth - 1) {
+          if (t2.bound == model::Bound::Exact) return std::clamp(ttVal, -MATE + 1, MATE - 1);
+
+          if (t2.bound == model::Bound::Lower)
+            alpha = std::max(alpha, ttVal);
+          else if (t2.bound == model::Bound::Upper)
+            beta = std::min(beta, ttVal);
+
+          if (alpha >= beta) return std::clamp(ttVal, -MATE + 1, MATE - 1);
+        }
+      }
     }
   }
 
@@ -504,10 +545,13 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       NullUndoGuard ng(pos);
       if (ng.doNull()) {
         int R = (depth >= 7 ? 3 : 2);
-        int nullScore = -negamax(pos, depth - 1 - R, -beta, -beta + 1, ply + 1, refBest);
+        model::Move tmpNM{};
+        int nullScore = -negamax(pos, depth - 1 - R, -beta, -beta + 1, ply + 1, tmpNM);
+        ng.rollback();
         if (nullScore >= beta) {
           if (depth >= 6) {
-            int verify = -negamax(pos, depth - 1, -beta, -beta + 1, ply + 1, refBest);
+            model::Move tmpVerify{};
+            int verify = -negamax(pos, depth - 1, -beta, -beta + 1, ply + 1, tmpVerify);
             if (verify >= beta) return beta;
           } else
             return beta;
@@ -594,6 +638,10 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     check_stop(stopFlag);
 
     const model::Move m = ordered[idx];
+    if (excludedMove && m == *excludedMove) {
+      ++moveCount;
+      continue;
+    }
     const bool isQuiet = !m.isCapture() && (m.promotion() == core::PieceType::None);
     const auto us = pos.getState().sideToMove;
     const int qp_sig = isQuiet ? quiet_pawn_push_signal(board, m, us) : 0;
@@ -663,7 +711,34 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     const int mvvBefore =
         (m.isCapture() || m.promotion() != core::PieceType::None) ? mvv_lva_fast(pos, m) : 0;
+    int newDepth = depth - 1;
+    // ----- Singular Extension -----
+    int seExt = 0;
+    if (cfg.useSingularExt && haveTT && m == ttMove && !inCheck && depth >= 6) {
+      // Require a "strong enough" TT: not an Upper bound and stored not too shallow
+      const bool ttGood =
+          (ttBound != model::Bound::Upper) && (ttStoredDepth >= depth - 2) && (ttVal > alpha + 8);
+      if (ttGood && !is_mate_score(ttVal)) {
+        // Margin and reduction are modest and scale with depth; tune with SPSA later
+        const int R = (depth >= 8 ? 3 : 2);   // reduced search for "others"
+        const int margin = 50 + 2 * depth;    // how much worse "others" must be
+        const int singBeta = ttVal - margin;  // target bound for singularity test
 
+        // Only meaningful if singBeta is in range
+        if (singBeta > -MATE + 64) {
+          model::Move dummy{};
+          const int sDepth = std::max(1, depth - 1 - R);
+
+          // Search *all other moves* with a narrow window around singBeta,
+          // efficiently excluding the TT move via the new parameter.
+          int s = negamax(pos, sDepth, singBeta - 1, singBeta, ply, dummy, staticEval, &m);
+
+          // If "others" cannot reach singBeta, the TT move is singular -> extend by +1 ply
+          if (s < singBeta) seExt = 1;
+        }
+      }
+    }
+    newDepth += seExt;
     MoveUndoGuard g(pos);
     if (!g.doMove(m)) {
       ++moveCount;
@@ -675,14 +750,13 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     int value;
     model::Move childBest{};
-    int newDepth = depth - 1;
 
     // ProbCut (light) — use pre-move captured value
-    if (!isPV && !inCheck && depth >= 5 && m.isCapture() && seeGood && mvvBefore >= 700) {
+    if (!isPV && !inCheck && newDepth >= 5 && m.isCapture() && seeGood && mvvBefore >= 700) {
       constexpr int PROBCUT_MARGIN = 180;
       if (staticEval + capValPre + PROBCUT_MARGIN >= beta) {
         const int red = 3;
-        const int probe = -negamax(pos, depth - red, -beta, -(beta - 1), ply + 1, childBest);
+        const int probe = -negamax(pos, newDepth - red, -beta, -(beta - 1), ply + 1, childBest);
         if (probe >= beta) return beta;
       }
     }
@@ -792,7 +866,7 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
     if (!tt.probe_into(pos.hash(), tte)) break;
     model::Move m = tte.best;
 
-    if (m.from() == m.to()) break;
+    if (m.from() == m.to() || tte.bound != model::Bound::Exact) break;
     if (!pos.doMove(m)) break;
     pv.push_back(m);
 
@@ -833,15 +907,20 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
   std::vector<model::Move> rootMoves;
   mg.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), rootMoves);
   if (rootMoves.empty()) {
+    stats.nodes = sharedNodeCounter->load(std::memory_order_relaxed);
     update_time_stats();
     this->stopFlag.reset();
-    return 0;
+
+    const int score = pos.inCheck() ? mated_in(0) : 0;  // mate vs stalemate
+    stats.bestScore = score;
+    stats.bestPV.clear();
+    stats.topMoves.clear();
+    return score;
   }
 
   // Thread-Pool setup (pool initialized at engine startup)
   auto& pool = ThreadPool::instance();
-  const int threads =
-      std::max(1, maxThreads > 0 ? std::min(maxThreads, cfg.threads) : cfg.threads);
+  const int threads = std::max(1, maxThreads > 0 ? std::min(maxThreads, cfg.threads) : cfg.threads);
 
   // Aspiration seed
   int lastScoreGuess = 0;
@@ -936,9 +1015,12 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
           }
         } catch (const SearchStoppedException&) {
           if (stop) stop->store(true, std::memory_order_relaxed);
-          // sync reported nodes with the shared counter before returning
           stats.nodes = sharedNodeCounter->load(std::memory_order_relaxed);
           update_time_stats();
+          // NEW: make sure bestScore isn't stale/garbage
+          int fallback = sharedAlpha.load(std::memory_order_relaxed);
+          if (fallback == -INF) fallback = 0;  // or keep previous stats.bestScore if you prefer
+          stats.bestScore = std::clamp(fallback, -MATE + 1, MATE - 1);
           this->stopFlag.reset();
           return stats.bestScore;
         }
@@ -947,15 +1029,12 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
         results[0].nullScore.store(s, std::memory_order_relaxed);
         results[0].fullScore.store(s, std::memory_order_relaxed);
         sharedAlpha.store(s, std::memory_order_relaxed);
-        stats.nodes += worker.getStats().nodes;
       }
     }
 
     // 2) Restliche Root-Moves per Work-Queue
     const int total = (int)rootMoves.size();
     std::atomic<int> idx{1};
-
-    std::atomic<uint64_t> nodesAcc{0};
 
     auto workerFn = [&](int /*threadId*/) {
       Search worker(tt, eval_, cfg);
@@ -980,15 +1059,12 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
           uint64_t before = worker.getStats().nodes;
           int sN = -worker.negamax(child, depth - 1, -(localAlpha + 1), -localAlpha, 1, ref);
           sN = std::clamp(sN, -MATE + 1, MATE - 1);
-          nodesAcc.fetch_add(worker.getStats().nodes - before, std::memory_order_relaxed);
 
           results[i].nullScore.store(sN, std::memory_order_relaxed);
 
           if (sN >= localAlpha && !(stop && stop->load())) {
-            before = worker.getStats().nodes;
             int sF = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
             sF = std::clamp(sF, -MATE + 1, MATE - 1);
-            nodesAcc.fetch_add(worker.getStats().nodes - before, std::memory_order_relaxed);
 
             results[i].fullScore.store(sF, std::memory_order_relaxed);
 
@@ -1016,7 +1092,6 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       } catch (...) {
       }
     }
-    stats.nodes += nodesAcc.load(std::memory_order_relaxed);
 
     // --- NEW: sequential fallback so 1-thread works and to mop up any leftovers ---
     for (int i = 1; i < total; ++i) {
@@ -1027,6 +1102,8 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       model::Position child = pos;
       if (!child.doMove(rootMoves[i])) continue;
 
+      tt.prefetch(child.hash());
+
       Search worker(tt, eval_, cfg);
       worker.stopFlag = stop;
       worker.set_node_limit(sharedNodeCounter, maxNodes);  // node cap
@@ -1036,18 +1113,14 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       try {
         int localAlpha = sharedAlpha.load(std::memory_order_relaxed);
 
-        std::uint64_t before = worker.getStats().nodes;
         int sN = -worker.negamax(child, depth - 1, -(localAlpha + 1), -localAlpha, 1, ref);
         sN = std::clamp(sN, -MATE + 1, MATE - 1);
         results[i].nullScore.store(sN, std::memory_order_relaxed);
-        stats.nodes += worker.getStats().nodes - before;
 
         if (sN >= localAlpha && !(stop && stop->load())) {
-          before = worker.getStats().nodes;
           int sF = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
           sF = std::clamp(sF, -MATE + 1, MATE - 1);
           results[i].fullScore.store(sF, std::memory_order_relaxed);
-          stats.nodes += worker.getStats().nodes - before;
 
           int cur = localAlpha;
           while (sF > cur &&
@@ -1079,11 +1152,9 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
         worker.prevMove[0] = rootMoves[i];
 
         model::Move ref{};
-        std::uint64_t before = worker.getStats().nodes;
         int sF2 = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
         sF2 = std::clamp(sF2, -MATE + 1, MATE - 1);
         results[i].fullScore.store(sF2, std::memory_order_relaxed);
-        stats.nodes += worker.getStats().nodes - before;
 
         int cur = sharedAlpha.load(std::memory_order_relaxed);
         while (sF2 > cur &&
@@ -1120,7 +1191,7 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     NDISPLAY = std::min<int>(NDISPLAY, (int)depthCand.size());
     std::partial_sort(depthCand.begin(), depthCand.begin() + std::max(1, NDISPLAY), depthCand.end(),
                       [](const auto& a, const auto& b) { return a.first > b.first; });
-
+    stats.nodes = sharedNodeCounter->load(std::memory_order_relaxed);
     update_time_stats();
 
     const int bestScore = depthCand.front().first;
@@ -1173,7 +1244,6 @@ void Search::clearSearchState() {
   for (auto& row : counterMove)
     for (auto& m : row) m = model::Move{};
   for (auto& pm : prevMove) pm = model::Move{};
-  std::fill(&contHist[0][0][0], &contHist[0][0][0] + PIECE_NB * SQ_NB * SQ_NB, 0);
   stats = SearchStats{};
 }
 
