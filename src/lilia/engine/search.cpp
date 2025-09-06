@@ -383,7 +383,21 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     const model::Move m = qord[i];
     if ((i & 63) == 0) check_stop(stopFlag);
 
-    if (m.isCapture() && !pos.see(m) && m.promotion() == core::PieceType::None) continue;
+    if (m.isCapture() && m.promotion() == core::PieceType::None) {
+      // Billige Heuristik: nur SEE wenn Capture materiell verdächtig ist
+      const auto moverOptQ = pos.getBoard().getPiece(m.from());
+      const core::PieceType attackerPtQ = moverOptQ ? moverOptQ->type : core::PieceType::Pawn;
+      const int attackerValQ = base_value[(int)attackerPtQ];
+
+      int victimValQ = 0;
+      if (m.isEnPassant()) {
+        victimValQ = base_value[(int)core::PieceType::Pawn];
+      } else if (auto capQ = pos.getBoard().getPiece(m.to())) {
+        victimValQ = base_value[(int)capQ->type];
+      }
+
+      if (victimValQ < attackerValQ && !pos.see(m)) continue;
+    }
 
     const bool isQuietPromo = (m.promotion() != core::PieceType::None) && !m.isCapture();
 
@@ -399,7 +413,10 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       promoGain =
           std::max(0, base_value[(int)m.promotion()] - base_value[(int)core::PieceType::Pawn]);
 
-    if (!isQuietPromo) {
+    if (isQuietPromo) {
+      // bisher ausgenommen – jetzt mit eigenem Delta-Test
+      if (stand + promoGain + DELTA_MARGIN <= alpha) continue;
+    } else {
       if (stand + capVal + promoGain + DELTA_MARGIN <= alpha) continue;  // Delta
     }
 
@@ -710,15 +727,24 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
 
-    // SEE pruning (after futility)
+    // SEE pruning (seltener): erst billige Material-Heuristik prüfen
     bool seeGood = true;
-    if (!inCheck && ply > 0 && m.isCapture() && depth <= 5) {
-      if (!pos.see(m)) {
-        ++moveCount;
-        continue;
+    if (m.isCapture()) {
+      // Angreifer- und Opferwert (du hast capPt/moverPt & capValPre oben schon berechnet)
+      const int attackerVal = base_value[(int)moverPt];
+      const bool trivialGood = (capValPre >= attackerVal);  // klarer Tauschgewinn/gleich
+
+      if (!inCheck && ply > 0 && depth <= 5) {
+        // Nur SEE, wenn Capture materiell verdächtig ist
+        if (!trivialGood && !pos.see(m)) {
+          ++moveCount;
+          continue;  // prune fragwürdige, SEE-lose Captures flach
+        }
+        seeGood = true;  // trivial gute Captures ohne SEE durchlassen
+      } else {
+        // Tiefere Suchen / PV: SEE nur bei verdächtigen Captures
+        seeGood = trivialGood ? true : pos.see(m);
       }
-    } else if (m.isCapture()) {
-      seeGood = pos.see(m);
     }
 
     const int mvvBefore =
@@ -933,6 +959,16 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
   auto& pool = ThreadPool::instance();
   const int threads = std::max(1, maxThreads > 0 ? std::min(maxThreads, cfg.threads) : cfg.threads);
 
+  // --- Persistent Workers (wiederverwendet je Tiefe) ---
+  std::vector<std::unique_ptr<Search>> workers;
+  workers.reserve(threads);
+  for (int t = 0; t < threads; ++t) {
+    auto w = std::make_unique<Search>(tt, eval_, cfg);
+    w->stopFlag = stop;
+    w->set_node_limit(sharedNodeCounter, maxNodes);
+    workers.emplace_back(std::move(w));
+  }
+
   // Aspiration seed
   int lastScoreGuess = 0;
   if (cfg.useAspiration) {
@@ -968,10 +1004,6 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
   for (int depth = 1; depth <= std::max(1, maxDepth); ++depth) {
     if (stop && stop->load()) break;
 
-    // NEW (optional): light decay each iteration to stabilize learning
-    // (requires helper shown earlier; safe to comment out if not added yet)
-    // decay_tables(*this, 6); // ~1.6% decay per depth
-
     // Re-Order Root-Moves
     model::Move rootTT{};
     bool haveRootTT = false;
@@ -1001,10 +1033,8 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       if (child.doMove(m0)) {
         tt.prefetch(child.hash());
 
-        Search worker(tt, eval_, cfg);
-        worker.stopFlag = stop;
-        worker.set_node_limit(sharedNodeCounter, maxNodes);  // node cap
-        worker.copy_heuristics_from(*this);                  // NEW: seed heuristics
+        Search& worker = *workers[0];
+        worker.copy_heuristics_from(*this);  // seed einmal je Tiefe
         worker.prevMove[0] = m0;
 
         model::Move ref{};
@@ -1061,11 +1091,11 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     const int total = (int)rootMoves.size();
     std::atomic<int> idx{1};
 
-    auto workerFn = [&](int /*threadId*/) {
-      Search worker(tt, eval_, cfg);
-      worker.stopFlag = stop;
-      worker.set_node_limit(sharedNodeCounter, maxNodes);  // node cap
-      worker.copy_heuristics_from(*this);                  // NEW: seed from coordinator
+    // WICHTIG: benannter Parameter 'tid' verwenden
+    auto workerFn = [&](int tid) {
+      // tid ist der Index im Submit-Loop; nutze workers[tid + 1]
+      Search& worker = *workers[tid + 1];
+      worker.copy_heuristics_from(*this);  // seed je Tiefe
 
       try {
         for (;;) {
@@ -1111,10 +1141,11 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       }
     };
 
-    const int workers = std::min(total - 1, threads - 1);
+    // KEINE Namens-Kollision mit dem Vector 'workers'
+    const int numWorkers = std::min(total - 1, threads - 1);
     std::vector<std::future<void>> futs;
-    futs.reserve(workers);
-    for (int t = 0; t < workers; ++t)
+    futs.reserve(numWorkers);
+    for (int t = 0; t < numWorkers; ++t)
       futs.emplace_back(pool.submit([&, tid = t] { workerFn(tid); }));
 
     for (auto& f : futs) {
@@ -1124,11 +1155,10 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       }
     }
 
-    // --- NEW: sequential fallback worker reused across leftovers ---
-    Search fbWorker(tt, eval_, cfg);
-    fbWorker.stopFlag = stop;
-    fbWorker.set_node_limit(sharedNodeCounter, maxNodes);
-    fbWorker.copy_heuristics_from(*this);  // seed once
+    // --- Reuse persistent worker[0] als Fallback (sequenziell) ---
+    Search& fbWorker = *workers[0];
+    // optional: einmal je Tiefe reseeden
+    fbWorker.copy_heuristics_from(*this);
 
     for (int i = 1; i < total; ++i) {
       if (stop && stop->load()) break;
@@ -1175,10 +1205,8 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     try {
       const int bestAlphaNow = sharedAlpha.load(std::memory_order_relaxed);
 
-      Search confirmWorker(tt, eval_, cfg);
-      confirmWorker.stopFlag = stop;
-      confirmWorker.set_node_limit(sharedNodeCounter, maxNodes);
-      confirmWorker.copy_heuristics_from(*this);  // seed
+      Search& confirmWorker = *workers[1 < threads ? 1 : 0];
+      confirmWorker.copy_heuristics_from(*this);  // seed je Tiefe
 
       for (int i = 1; i < total; ++i) {
         if (stop && stop->load()) break;

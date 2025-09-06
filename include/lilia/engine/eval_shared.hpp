@@ -14,14 +14,14 @@ inline constexpr int mirror_sq_black(int sq) noexcept {
 }
 
 // Pawns (slightly harsher on weaknesses; stronger passer scaling)
-constexpr int ISO_P = 14;
-constexpr int DOUBLED_P = 20;
-constexpr int BACKWARD_P = 12;
-constexpr int PHALANX = 6;
-constexpr int CANDIDATE_P = 8;
-constexpr int CONNECTED_PASSERS = 18;
-constexpr int PASSED_MG[8] = {0, 10, 20, 34, 60, 96, 150, 0};
-constexpr int PASSED_EG[8] = {0, 16, 28, 48, 80, 128, 200, 0};
+constexpr int ISO_P = 12;
+constexpr int DOUBLED_P = 18;
+constexpr int BACKWARD_P = 10;
+constexpr int PHALANX = 8;
+constexpr int CANDIDATE_P = 10;
+constexpr int CONNECTED_PASSERS = 22;
+constexpr int PASSED_MG[8] = {0, 8, 16, 28, 48, 80, 130, 0};
+constexpr int PASSED_EG[8] = {0, 16, 28, 44, 72, 110, 170, 0};
 constexpr int PASS_BLOCK = 10;
 constexpr int PASS_SUPP = 8;
 constexpr int PASS_FREE = 10;
@@ -29,43 +29,43 @@ constexpr int PASS_KBOOST = 10;
 constexpr int PASS_KBLOCK = 12;
 
 // King safety (more SF-like pressure weighting & clamp)
-constexpr int KS_W_N = 20, KS_W_B = 20, KS_W_R = 16, KS_W_Q = 40;
-constexpr int KS_RING_BONUS = 3, KS_MISS_SHIELD = 10, KS_OPEN_FILE = 14, KS_RQ_LOS = 8,
-              KS_CLAMP = 256;
+constexpr int KS_W_N = 18, KS_W_B = 20, KS_W_R = 20, KS_W_Q = 32;
+constexpr int KS_RING_BONUS = 2, KS_MISS_SHIELD = 12, KS_OPEN_FILE = 16, KS_RQ_LOS = 10,
+              KS_CLAMP = 224;
 
 // King pawn shelter / storm (slightly steeper)
-static constexpr int SHELTER[8] = {0, 0, 3, 7, 14, 21, 28, 32};
-static constexpr int STORM[8] = {0, 8, 12, 16, 20, 24, 28, 32};
+static constexpr int SHELTER[8] = {0, 0, 2, 6, 12, 20, 28, 34};
+static constexpr int STORM[8] = {0, 6, 10, 14, 18, 22, 26, 30};
 
 // Pieces/style (a bit more classical)
-constexpr int BISHOP_PAIR = 44;
-constexpr int BAD_BISHOP_PER_PAWN = 3;
+constexpr int BISHOP_PAIR = 46;
+constexpr int BAD_BISHOP_PER_PAWN = 2;
 constexpr int OUTPOST_KN = 28;
-constexpr int CENTER_CTRL = 8;
-constexpr int KNIGHT_RIM = 16;
+constexpr int CENTER_CTRL = 6;
+constexpr int KNIGHT_RIM = 14;
 constexpr int ROOK_OPEN = 20;
-constexpr int ROOK_SEMI = 10;
-constexpr int ROOK_ON_7TH = 24;
+constexpr int ROOK_SEMI = 12;
+constexpr int ROOK_ON_7TH = 26;
 constexpr int CONNECTED_ROOKS = 18;
-constexpr int ROOK_BEHIND_PASSER = 22;
+constexpr int ROOK_BEHIND_PASSER = 26;
 
 // Threats (slightly tougher on hanging pieces / pawn threats)
-constexpr int THR_PAWN_MINOR = 16, THR_PAWN_ROOK = 22, THR_PAWN_QUEEN = 28;
-constexpr int HANG_MINOR = 16, HANG_ROOK = 24, HANG_QUEEN = 36;
-constexpr int MINOR_ON_QUEEN = 10;
+constexpr int THR_PAWN_MINOR = 14, THR_PAWN_ROOK = 20, THR_PAWN_QUEEN = 24;
+constexpr int HANG_MINOR = 14, HANG_ROOK = 22, HANG_QUEEN = 32;
+constexpr int MINOR_ON_QUEEN = 8;
 
 // Space (tiny nudge)
-constexpr int SPACE_BASE = 3;
+constexpr int SPACE_BASE = 5;
 
 // Endgame scaling (opposite bishops a bit more drawish)
-constexpr int OPP_BISHOPS_SCALE = 176;  // /256
+constexpr int OPP_BISHOPS_SCALE = 190;  // /256
 
 // =============================================================================
 // Values & phase
 // =============================================================================
 constexpr int MAX_PHASE = 24;  // sum both sides
-constexpr int TEMPO_MG = 14;
-constexpr int TEMPO_EG = 6;
+constexpr int TEMPO_MG = 20;
+constexpr int TEMPO_EG = 8;
 
 // =============================================================================
 // Mobility profiles (unchanged)
@@ -83,7 +83,7 @@ static constexpr int QU_MOB_EG[28] = {-6, -4, -2, 0,  2,  4,  6,  8,  10, 12, 14
 
 // -------- piece values & phase (white-POV) --------
 inline constexpr std::array<int, 6> VAL_MG = {82, 337, 365, 477, 1025, 0};
-inline constexpr std::array<int, 6> VAL_EG = {94, 281, 297, 512, 936, 0};
+inline constexpr std::array<int, 6> VAL_EG = {94, 300, 320, 500, 940, 0};
 inline constexpr std::array<int, 6> PHASE_W = {0, 1, 1, 2, 4, 0};
 
 // -------- PSTs (mg/eg) – unchanged --------
