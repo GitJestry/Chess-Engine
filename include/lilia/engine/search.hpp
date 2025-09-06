@@ -79,22 +79,6 @@ class Search {
 
   model::TT5& ttRef() noexcept { return tt; }
 
- private:
-  // Kernfunktionen
-  int negamax(model::Position& pos, int depth, int alpha, int beta, int ply, model::Move& refBest,
-              int parentStaticEval = 0, const model::Move* excludedMove = nullptr);
-  int quiescence(model::Position& pos, int alpha, int beta, int ply);
-  std::vector<model::Move> build_pv_from_tt(model::Position pos, int max_len = 16);
-  int signed_eval(model::Position& pos);
-
-  // ---------------------------------------------------------------------------
-  // Daten
-  // ---------------------------------------------------------------------------
-  model::TT5& tt;
-  model::MoveGenerator mg;
-  const EngineConfig& cfg;
-  std::shared_ptr<const Evaluator> eval_;
-
   // Killers: 2 je Ply
   alignas(64) std::array<std::array<model::Move, 2>, MAX_PLY> killers{};
 
@@ -112,6 +96,26 @@ class Search {
   // plus Counter-History-Bonus für genau diesen Antwortzug
   alignas(64) model::Move counterMove[SQ_NB][SQ_NB] = {};
   alignas(64) int16_t counterHist[SQ_NB][SQ_NB] = {};
+
+ private:
+  // Kernfunktionen
+  int negamax(model::Position& pos, int depth, int alpha, int beta, int ply, model::Move& refBest,
+              int parentStaticEval = 0, const model::Move* excludedMove = nullptr);
+  int quiescence(model::Position& pos, int alpha, int beta, int ply);
+  std::vector<model::Move> build_pv_from_tt(model::Position pos, int max_len = 16);
+  int signed_eval(model::Position& pos);
+  // Copy global heuristics into this worker (killers are reset, on purpose)
+  void copy_heuristics_from(const Search& src);
+  // Merge this worker's heuristics into the global (killers are NOT merged)
+  void merge_from(const Search& other);
+
+  // ---------------------------------------------------------------------------
+  // Daten
+  // ---------------------------------------------------------------------------
+  model::TT5& tt;
+  model::MoveGenerator mg;
+  const EngineConfig& cfg;
+  std::shared_ptr<const Evaluator> eval_;
 
   // Voriger Zug pro Ply (für CounterMove)
   std::array<model::Move, MAX_PLY> prevMove{};

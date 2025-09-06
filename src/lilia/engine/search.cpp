@@ -5,6 +5,7 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <exception>
 #include <future>
 #include <iostream>
@@ -25,6 +26,11 @@ namespace lilia::engine {
 using steady_clock = std::chrono::steady_clock;
 
 // ---------- kleine Helfer / Konstanten ----------
+inline int16_t clamp16(int x) {
+  if (x > 32767) return 32767;
+  if (x < -32768) return -32768;
+  return (int16_t)x;
+}
 
 inline int mate_in(int ply) {
   return MATE - ply;
@@ -876,7 +882,7 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
   return pv;
 }
 
-// ---------- Root Search (parallel, Work-Queue, fixes) ----------
+// ---------- Root Search (parallel, Work-Queue, with heuristic copy/merge) ----------
 
 int Search::search_root_parallel(model::Position& pos, int maxDepth,
                                  std::shared_ptr<std::atomic<bool>> stop, int maxThreads,
@@ -934,7 +940,7 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     if (haveTT && m == ttMove) s += 2'500'000;
     if (m.isCapture()) s += 1'100'000 + mvv_lva_fast(pos, m);
     if (m.promotion() != core::PieceType::None) s += 1'050'000;
-    // NEW: tactical quiet pawn pushes at root
+    // tactical quiet pawn pushes at root
     if (!m.isCapture() && m.promotion() == core::PieceType::None) {
       const int sig = quiet_pawn_push_signal(pos.getBoard(), m, pos.getState().sideToMove);
       if (sig == 2)
@@ -951,8 +957,15 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     std::atomic<int> fullScore{std::numeric_limits<int>::min()};
   };
 
+  // NEW: mutex to merge thread-local heuristics back to coordinator
+  std::mutex heurMergeMx;
+
   for (int depth = 1; depth <= std::max(1, maxDepth); ++depth) {
     if (stop && stop->load()) break;
+
+    // NEW (optional): light decay each iteration to stabilize learning
+    // (requires helper shown earlier; safe to comment out if not added yet)
+    // decay_tables(*this, 6); // ~1.6% decay per depth
 
     // Re-Order Root-Moves
     model::Move rootTT{};
@@ -982,9 +995,11 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       model::Position child = pos;
       if (child.doMove(m0)) {
         tt.prefetch(child.hash());
+
         Search worker(tt, eval_, cfg);
         worker.stopFlag = stop;
         worker.set_node_limit(sharedNodeCounter, maxNodes);  // node cap
+        worker.copy_heuristics_from(*this);                  // NEW: seed heuristics
         worker.prevMove[0] = m0;
 
         model::Move ref{};
@@ -1017,9 +1032,8 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
           if (stop) stop->store(true, std::memory_order_relaxed);
           stats.nodes = sharedNodeCounter->load(std::memory_order_relaxed);
           update_time_stats();
-          // NEW: make sure bestScore isn't stale/garbage
           int fallback = sharedAlpha.load(std::memory_order_relaxed);
-          if (fallback == -INF) fallback = 0;  // or keep previous stats.bestScore if you prefer
+          if (fallback == -INF) fallback = 0;
           stats.bestScore = std::clamp(fallback, -MATE + 1, MATE - 1);
           this->stopFlag.reset();
           return stats.bestScore;
@@ -1029,6 +1043,12 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
         results[0].nullScore.store(s, std::memory_order_relaxed);
         results[0].fullScore.store(s, std::memory_order_relaxed);
         sharedAlpha.store(s, std::memory_order_relaxed);
+
+        // NEW: merge this worker's learned heuristics back
+        {
+          std::scoped_lock lk(heurMergeMx);
+          this->merge_from(worker);
+        }
       }
     }
 
@@ -1040,6 +1060,8 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       Search worker(tt, eval_, cfg);
       worker.stopFlag = stop;
       worker.set_node_limit(sharedNodeCounter, maxNodes);  // node cap
+      worker.copy_heuristics_from(*this);                  // NEW: seed from coordinator
+
       try {
         for (;;) {
           if (stop && stop->load()) break;
@@ -1056,7 +1078,6 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
 
           int localAlpha = sharedAlpha.load(std::memory_order_relaxed);
 
-          uint64_t before = worker.getStats().nodes;
           int sN = -worker.negamax(child, depth - 1, -(localAlpha + 1), -localAlpha, 1, ref);
           sN = std::clamp(sN, -MATE + 1, MATE - 1);
 
@@ -1076,16 +1097,21 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
         }
       } catch (const SearchStoppedException&) {
         if (stop) stop->store(true, std::memory_order_relaxed);
-        // thread exits quietly
+      }
+
+      // NEW: merge once per worker (coarse, low contention)
+      {
+        std::scoped_lock lk(heurMergeMx);
+        this->merge_from(worker);
       }
     };
 
     const int workers = std::min(total - 1, threads - 1);
     std::vector<std::future<void>> futs;
     futs.reserve(workers);
-    for (int t = 0; t < workers; ++t) {
+    for (int t = 0; t < workers; ++t)
       futs.emplace_back(pool.submit([&, tid = t] { workerFn(tid); }));
-    }
+
     for (auto& f : futs) {
       try {
         f.get();
@@ -1093,7 +1119,12 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       }
     }
 
-    // --- NEW: sequential fallback so 1-thread works and to mop up any leftovers ---
+    // --- NEW: sequential fallback worker reused across leftovers ---
+    Search fbWorker(tt, eval_, cfg);
+    fbWorker.stopFlag = stop;
+    fbWorker.set_node_limit(sharedNodeCounter, maxNodes);
+    fbWorker.copy_heuristics_from(*this);  // seed once
+
     for (int i = 1; i < total; ++i) {
       if (stop && stop->load()) break;
       if (results[i].nullScore.load(std::memory_order_relaxed) != std::numeric_limits<int>::min())
@@ -1103,22 +1134,18 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       if (!child.doMove(rootMoves[i])) continue;
 
       tt.prefetch(child.hash());
-
-      Search worker(tt, eval_, cfg);
-      worker.stopFlag = stop;
-      worker.set_node_limit(sharedNodeCounter, maxNodes);  // node cap
-      worker.prevMove[0] = rootMoves[i];
+      fbWorker.prevMove[0] = rootMoves[i];
 
       model::Move ref{};
       try {
         int localAlpha = sharedAlpha.load(std::memory_order_relaxed);
 
-        int sN = -worker.negamax(child, depth - 1, -(localAlpha + 1), -localAlpha, 1, ref);
+        int sN = -fbWorker.negamax(child, depth - 1, -(localAlpha + 1), -localAlpha, 1, ref);
         sN = std::clamp(sN, -MATE + 1, MATE - 1);
         results[i].nullScore.store(sN, std::memory_order_relaxed);
 
         if (sN >= localAlpha && !(stop && stop->load())) {
-          int sF = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+          int sF = -fbWorker.negamax(child, depth - 1, -INF, INF, 1, ref);
           sF = std::clamp(sF, -MATE + 1, MATE - 1);
           results[i].fullScore.store(sF, std::memory_order_relaxed);
 
@@ -1129,13 +1156,25 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
         }
       } catch (const SearchStoppedException&) {
         if (stop) stop->store(true, std::memory_order_relaxed);
-        break;  // leave fallback loop
+        break;
       }
     }
 
-    // 3) Confirm-Pass (guarded)
+    // Merge fallback worker once
+    {
+      std::scoped_lock lk(heurMergeMx);
+      this->merge_from(fbWorker);
+    }
+
+    // 3) Confirm-Pass (guarded) — reuse a single confirm worker and merge once
     try {
       const int bestAlphaNow = sharedAlpha.load(std::memory_order_relaxed);
+
+      Search confirmWorker(tt, eval_, cfg);
+      confirmWorker.stopFlag = stop;
+      confirmWorker.set_node_limit(sharedNodeCounter, maxNodes);
+      confirmWorker.copy_heuristics_from(*this);  // seed
+
       for (int i = 1; i < total; ++i) {
         if (stop && stop->load()) break;
         const int sN = results[i].nullScore.load(std::memory_order_relaxed);
@@ -1146,13 +1185,10 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
         model::Position child = pos;
         if (!child.doMove(rootMoves[i])) continue;
 
-        Search worker(tt, eval_, cfg);
-        worker.stopFlag = stop;
-        worker.set_node_limit(sharedNodeCounter, maxNodes);  // node cap
-        worker.prevMove[0] = rootMoves[i];
+        confirmWorker.prevMove[0] = rootMoves[i];
 
         model::Move ref{};
-        int sF2 = -worker.negamax(child, depth - 1, -INF, INF, 1, ref);
+        int sF2 = -confirmWorker.negamax(child, depth - 1, -INF, INF, 1, ref);
         sF2 = std::clamp(sF2, -MATE + 1, MATE - 1);
         results[i].fullScore.store(sF2, std::memory_order_relaxed);
 
@@ -1161,13 +1197,18 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
                !sharedAlpha.compare_exchange_weak(cur, sF2, std::memory_order_relaxed)) {
         }
       }
+
+      // merge confirm worker’s heuristics once
+      {
+        std::scoped_lock lk(heurMergeMx);
+        this->merge_from(confirmWorker);
+      }
     } catch (const SearchStoppedException&) {
       if (stop) stop->store(true, std::memory_order_relaxed);
       // fall through to ranking with what we have
     }
 
     // 4) Ranking
-    // If we were interrupted this iteration, keep the previous depth's result.
     if (stop && stop->load()) {
       break;  // exits the depth loop without touching stats
     }
@@ -1181,7 +1222,6 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       depthCand.emplace_back(s, rootMoves[i]);
     }
 
-    // If nothing was searched (e.g., immediate stop), keep last stats and bail.
     bool anyScored = std::any_of(depthCand.begin(), depthCand.end(), [](const auto& p) {
       return p.first != std::numeric_limits<int>::min();
     });
@@ -1210,10 +1250,7 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       }
     }
 
-    // After building depthCand
     const int SHOW = std::min<int>(5, (int)depthCand.size());
-
-    // Ensure we actually have the best SHOW moves at the front
     std::partial_sort(depthCand.begin(), depthCand.begin() + SHOW, depthCand.end(),
                       [](const auto& a, const auto& b) { return a.first > b.first; });
 
@@ -1222,6 +1259,7 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       stats.topMoves.push_back(
           {depthCand[i].second, std::clamp(depthCand[i].first, -MATE + 1, MATE - 1)});
     }
+
     if (is_mate_score(stats.bestScore)) break;
     lastScoreGuess = bestScore;
   }
@@ -1245,6 +1283,86 @@ void Search::clearSearchState() {
     for (auto& m : row) m = model::Move{};
   for (auto& pm : prevMove) pm = model::Move{};
   stats = SearchStats{};
+}
+
+void Search::copy_heuristics_from(const Search& src) {
+  // History-like tables
+  history = src.history;  // std::array copy
+
+  std::memcpy(quietHist, src.quietHist, sizeof(quietHist));
+  std::memcpy(captureHist, src.captureHist, sizeof(captureHist));
+  std::memcpy(counterHist, src.counterHist, sizeof(counterHist));
+  std::memcpy(counterMove, src.counterMove, sizeof(counterMove));
+
+  // Killers are intentionally *not* copied (keep them local & fresh)
+  for (auto& kk : killers) {
+    kk[0] = model::Move{};
+    kk[1] = model::Move{};
+  }
+
+  // prevMove buffers are local path state; clear
+  for (auto& pm : prevMove) pm = model::Move{};
+}
+
+// EMA merge toward the worker's values: G += (L - G) / K
+static inline int16_t ema_merge(int16_t G, int16_t L, int K) {
+  int d = (int)L - (int)G;
+  return clamp16((int)G + d / K);
+}
+
+static inline void decay_tables(Search& S, int shift /* e.g. 6 => ~1.6% */) {
+  for (int f = 0; f < SQ_NB; ++f)
+    for (int t = 0; t < SQ_NB; ++t)
+      S.history[f][t] = clamp16((int)S.history[f][t] - ((int)S.history[f][t] >> shift));
+
+  for (int p = 0; p < PIECE_NB; ++p)
+    for (int t = 0; t < SQ_NB; ++t)
+      S.quietHist[p][t] = clamp16((int)S.quietHist[p][t] - ((int)S.quietHist[p][t] >> shift));
+
+  for (int mp = 0; mp < PIECE_NB; ++mp)
+    for (int t = 0; t < SQ_NB; ++t)
+      for (int cp = 0; cp < PIECE_NB; ++cp)
+        S.captureHist[mp][t][cp] =
+            clamp16((int)S.captureHist[mp][t][cp] - ((int)S.captureHist[mp][t][cp] >> shift));
+
+  for (int f = 0; f < SQ_NB; ++f)
+    for (int t = 0; t < SQ_NB; ++t)
+      S.counterHist[f][t] = clamp16((int)S.counterHist[f][t] - ((int)S.counterHist[f][t] >> shift));
+}
+
+void Search::merge_from(const Search& o) {
+  // Tuneable smoothing: smaller K = faster learning, noisier; try 4–8.
+  constexpr int K = 4;
+
+  // Base history
+  for (int f = 0; f < SQ_NB; ++f)
+    for (int t = 0; t < SQ_NB; ++t) history[f][t] = ema_merge(history[f][t], o.history[f][t], K);
+
+  // Quiet history
+  for (int p = 0; p < PIECE_NB; ++p)
+    for (int t = 0; t < SQ_NB; ++t)
+      quietHist[p][t] = ema_merge(quietHist[p][t], o.quietHist[p][t], K);
+
+  // Capture history
+  for (int mp = 0; mp < PIECE_NB; ++mp)
+    for (int t = 0; t < SQ_NB; ++t)
+      for (int cp = 0; cp < PIECE_NB; ++cp)
+        captureHist[mp][t][cp] = ema_merge(captureHist[mp][t][cp], o.captureHist[mp][t][cp], K);
+
+  // Counter history + best countermove choice
+  for (int f = 0; f < SQ_NB; ++f) {
+    for (int t = 0; t < SQ_NB; ++t) {
+      // merge scores
+      counterHist[f][t] = ema_merge(counterHist[f][t], o.counterHist[f][t], K);
+      // adopt the worker's countermove if its (merged) score is higher
+      // (cheap tie-breaker using the worker's own score)
+      if (o.counterHist[f][t] > counterHist[f][t]) {
+        counterMove[f][t] = o.counterMove[f][t];
+      }
+    }
+  }
+
+  // Killers: deliberately *not* merged.
 }
 
 }  // namespace lilia::engine
