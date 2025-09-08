@@ -780,6 +780,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       } else {
         seeGood = trivialGood ? true : pos.see(m);
       }
+    } else if (!inCheck && ply > 0 && !pos.see(m)) {
+      ++moveCount;
+      continue;  // prune quiets dropping material
     }
 
     const int mvvBefore =

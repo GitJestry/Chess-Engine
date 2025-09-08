@@ -162,8 +162,8 @@ function(lilia_set_perf_flags tgt)
 endfunction()
 
 # Apply flags
-lilia_set_perf_flags(lilia_engine)
-lilia_set_perf_flags(lilia_app)
+  lilia_set_perf_flags(lilia_engine)
+  lilia_set_perf_flags(lilia_app)
 
 # Global IPO fallback (non-MSVC)
 if (LILIA_LTO AND NOT MSVC)

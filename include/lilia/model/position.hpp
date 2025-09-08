@@ -58,6 +58,9 @@ class Position {
   bool checkRepetition();
 
   bool inCheck() const;
+  /// Static exchange evaluation. Simulates the capture sequence on the
+  /// destination square (also for quiet moves) and returns true if the net
+  /// material gain is non-negative.
   bool see(const model::Move& m) const;
   bool isPseudoLegal(const Move& m) const;
 
