@@ -20,6 +20,8 @@
 #include "lilia/engine/move_list.hpp"
 #include "lilia/engine/move_order.hpp"
 #include "lilia/engine/thread_pool.hpp"
+#include "lilia/model/core/bitboard.hpp"
+#include "lilia/model/core/magic.hpp"
 
 namespace lilia::engine {
 
@@ -192,6 +194,48 @@ static inline int quiet_pawn_push_signal(const model::Board& b, const model::Mov
   // Otherwise, immediate threat on heavy/minor pieces?
   const auto targets = b.getPieces(~us, PT::Queen) | b.getPieces(~us, PT::Rook) |
                        b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Knight);
+  return (atk & targets) ? 1 : 0;
+}
+
+// 0 = no signal; 1 = attacks high-value piece; 2 = gives check
+static inline int quiet_piece_threat_signal(const model::Board& b, const model::Move& m,
+                                            core::Color us) {
+  using PT = core::PieceType;
+  if (m.isCapture() || m.promotion() != PT::None) return 0;
+
+  auto mover = b.getPiece(m.from());
+  if (!mover || mover->type == PT::Pawn) return 0;
+
+  const auto fromBB = model::bb::sq_bb(m.from());
+  const auto toBB = model::bb::sq_bb(m.to());
+  auto occ = b.getAllPieces();
+  occ = (occ & ~fromBB) | toBB;
+
+  model::bb::Bitboard atk = 0;
+  switch (mover->type) {
+    case PT::Knight:
+      atk = model::bb::knight_attacks_from(m.to());
+      break;
+    case PT::Bishop:
+      atk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ);
+      break;
+    case PT::Rook:
+      atk = model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ);
+      break;
+    case PT::Queen:
+      atk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ) |
+            model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ);
+      break;
+    case PT::King:
+      atk = model::bb::king_attacks_from(m.to());
+      break;
+    default:
+      break;
+  }
+
+  if (atk & b.getPieces(~us, PT::King)) return 2;
+
+  const auto targets = b.getPieces(~us, PT::Queen) | b.getPieces(~us, PT::Rook);
   return (atk & targets) ? 1 : 0;
 }
 
@@ -672,11 +716,13 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       if (m == killers[kply][0] || m == killers[kply][1]) s += KILLER_BASE;
       if (prevOk && m == cm) s += CM_BASE + (counterHist[prev.from()][prev.to()] >> 1);
 
-      // NEW: tactical quiet pawn push bonus (use signal)
+      // NEW: tactical quiet piece/pawn bonuses (use signals)
       const auto us = pos.getState().sideToMove;
-      const int sig = quiet_pawn_push_signal(board, m, us);
+      const int pawn_sig = quiet_pawn_push_signal(board, m, us);
+      const int piece_sig = quiet_piece_threat_signal(board, m, us);
+      const int sig = pawn_sig > piece_sig ? pawn_sig : piece_sig;
       if (sig == 2)
-        s += 220'000;  // pawn push gives check
+        s += 220'000;  // gives check
       else if (sig == 1)
         s += 180'000;  // immediate threat
     }
@@ -700,6 +746,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     const bool isQuiet = !m.isCapture() && (m.promotion() == core::PieceType::None);
     const auto us = pos.getState().sideToMove;
     const int qp_sig = isQuiet ? quiet_pawn_push_signal(board, m, us) : 0;
+    const int qpc_sig = isQuiet ? quiet_piece_threat_signal(board, m, us) : 0;
 
     // pre info
     auto moverOpt = board.getPiece(m.from());
@@ -711,7 +758,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         isQuiet && (moverPt == core::PieceType::Queen || moverPt == core::PieceType::Rook);
 
     // Erweitere "tacticalQuiet":
-    const bool tacticalQuiet = (qp_sig > 0);  // NEU
+    const bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0);  // NEU
 
     if (m.isEnPassant())
       capPt = core::PieceType::Pawn;
@@ -1032,10 +1079,16 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       if (h < -20'000) h = -20'000;
       s += h;
 
-      // Optional: a *tiny* hint for tactical pawn pushes (much smaller than before).
+      // Optional: a *tiny* hint for tactical quiets (much smaller than before).
       auto mover = pos.getBoard().getPiece(m.from());
-      if (mover && mover->type == core::PieceType::Pawn) {
-        const int sig = quiet_pawn_push_signal(pos.getBoard(), m, pos.getState().sideToMove);
+      if (mover) {
+        const int pawn_sig = (mover->type == core::PieceType::Pawn)
+                                 ? quiet_pawn_push_signal(pos.getBoard(), m,
+                                                          pos.getState().sideToMove)
+                                 : 0;
+        const int piece_sig = quiet_piece_threat_signal(pos.getBoard(), m,
+                                                        pos.getState().sideToMove);
+        const int sig = pawn_sig > piece_sig ? pawn_sig : piece_sig;
         if (sig == 2)
           s += 12'000;  // gives check
         else if (sig == 1)
