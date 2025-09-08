@@ -843,6 +843,16 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
 
+    // Prune very bad quiet heavy pieces early
+    if (allowFutility && isQuietHeavy && depth <= 3 && !excludedMove) {
+      int histScore = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
+      if (prevOk) histScore += contHist[pidx(prevPt)][prev.to()][m.from()][m.to()] >> 1;
+      if (staticEval + FUT_MARGIN[depth] <= alpha && histScore < -10000) {
+        ++moveCount;
+        continue;
+      }
+    }
+
     // SEE pruning (seltener): erst billige Material-Heuristik prüfen
     bool seeGood = true;
     if (m.isCapture()) {
