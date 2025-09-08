@@ -1425,9 +1425,20 @@ bool GameController::isPseudoLegalPremove(core::Square from, core::Square to) co
 }
 
 void GameController::showGameOver(core::GameResult res, core::Color sideToMove) {
-  // Reset any dragging state and cursor
+  // Reset any dragging state so no piece remains floating when the game ends.
   m_mouse_down = false;
-  m_dragging = false;
+  m_input_manager.cancelDrag();
+
+  if (m_dragging) {
+    if (m_drag_from != core::NO_SQUARE) {
+      // Stop the placeholder animation and snap the piece back to its origin square.
+      m_game_view.endAnimation(m_drag_from);
+      m_game_view.setPieceToSquareScreenPos(m_drag_from, m_drag_from);
+    }
+    m_game_view.clearDraggingPiece();
+    m_dragging = false;
+    m_drag_from = core::NO_SQUARE;
+  }
   m_game_view.setDefaultCursor();
 
   // Ensure no premove state or visuals linger after the game ends
