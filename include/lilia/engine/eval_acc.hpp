@@ -5,6 +5,8 @@
 #include "lilia/model/core/bitboard.hpp"
 #include "lilia/model/move.hpp"
 
+#include <array>
+
 namespace lilia::engine {
 
 struct EvalAcc {
@@ -12,10 +14,14 @@ struct EvalAcc {
   int mg = 0, eg = 0, phase = 0;
   int P[2]{}, N[2]{}, B[2]{}, R[2]{}, Q[2]{};
   int kingSq[2]{-1, -1};  // [0]=W, [1]=B
+  std::array<model::bb::Bitboard, 6> bbW{};
+  std::array<model::bb::Bitboard, 6> bbB{};
 
   void clear() {
     mg = eg = phase = 0;
     for (int i = 0; i < 2; ++i) P[i] = N[i] = B[i] = R[i] = Q[i] = 0, kingSq[i] = -1;
+    bbW.fill(0);
+    bbB.fill(0);
   }
 
   void build_from_board(const model::Board& b);
@@ -46,6 +52,7 @@ inline void EvalAcc::build_from_board(const model::Board& b) {
     auto PType = static_cast<PieceType>(pt);
     // White
     Bitboard w = b.getPieces(Color::White, PType);
+    bbW[pt] = w;
     while (w) {
       int s = ctz64(w);
       w &= (w - 1);
@@ -77,6 +84,7 @@ inline void EvalAcc::build_from_board(const model::Board& b) {
     }
     // Black
     Bitboard bl = b.getPieces(Color::Black, PType);
+    bbB[pt] = bl;
     while (bl) {
       int s = ctz64(bl);
       bl &= (bl - 1);
@@ -120,6 +128,11 @@ inline void EvalAcc::add_piece(lilia::core::Color c, lilia::core::PieceType pt, 
     eg -= VAL_EG[i] + pst_eg(pt, mirror_sq_black(sq));
   }
   phase += PHASE_W[i];
+  auto bbSq = model::bb::sq_bb(static_cast<lilia::core::Square>(sq));
+  if (s == 0)
+    bbW[i] |= bbSq;
+  else
+    bbB[i] |= bbSq;
   switch (pt) {
     case lilia::core::PieceType::Pawn:
       P[s]++;
@@ -154,6 +167,11 @@ inline void EvalAcc::remove_piece(lilia::core::Color c, lilia::core::PieceType p
     eg += VAL_EG[i] + pst_eg(pt, mirror_sq_black(sq));
   }
   phase -= PHASE_W[i];
+  auto bbSq = model::bb::sq_bb(static_cast<lilia::core::Square>(sq));
+  if (s == 0)
+    bbW[i] &= ~bbSq;
+  else
+    bbB[i] &= ~bbSq;
   switch (pt) {
     case lilia::core::PieceType::Pawn:
       P[s]--;
@@ -188,6 +206,16 @@ inline void EvalAcc::move_piece(lilia::core::Color c, lilia::core::PieceType pt,
     eg += pst_eg(pt, mirror_sq_black(from));
     mg -= pst_mg(pt, mirror_sq_black(to));
     eg -= pst_eg(pt, mirror_sq_black(to));
+  }
+  auto fromBB = model::bb::sq_bb(static_cast<lilia::core::Square>(from));
+  auto toBB = model::bb::sq_bb(static_cast<lilia::core::Square>(to));
+  int s = c == lilia::core::Color::White ? 0 : 1;
+  if (s == 0) {
+    bbW[(int)pt] &= ~fromBB;
+    bbW[(int)pt] |= toBB;
+  } else {
+    bbB[(int)pt] &= ~fromBB;
+    bbB[(int)pt] |= toBB;
   }
   if (pt == lilia::core::PieceType::King) kingSq[c == lilia::core::Color::White ? 0 : 1] = to;
 }
