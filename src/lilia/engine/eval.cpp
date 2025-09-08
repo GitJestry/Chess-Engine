@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 #include "lilia/engine/config.hpp"
 #include "lilia/engine/eval_acc.hpp"
@@ -235,23 +236,101 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp,
 
   Bitboard wPA = white_pawn_attacks(wp), bPA = black_pawn_attacks(bp);
 
-  auto support_w = [&](int sq) {
-    Bitboard atk = 0;
-    atk |= knight_attacks_from((Square)sq) & W[1];
-    atk |= bishop_attacks((Square)sq, occ) & W[2];
-    atk |= rook_attacks((Square)sq, occ) & W[3];
-    atk |= queen_attacks((Square)sq, occ) & W[4];
-    atk |= king_attacks_from((Square)sq) & W[5];
-    return popcnt(atk);
-  };
-  auto support_b = [&](int sq) {
-    Bitboard atk = 0;
-    atk |= knight_attacks_from((Square)sq) & B[1];
-    atk |= bishop_attacks((Square)sq, occ) & B[2];
-    atk |= rook_attacks((Square)sq, occ) & B[3];
-    atk |= queen_attacks((Square)sq, occ) & B[4];
-    atk |= king_attacks_from((Square)sq) & B[5];
-    return popcnt(atk);
+  // Cache attacks for all non-pawn pieces to avoid recomputing sliding
+  // attacks when evaluating piece support.
+  std::vector<Bitboard> wPieceAttacks;
+  std::vector<Bitboard> bPieceAttacks;
+  wPieceAttacks.reserve(16);
+  bPieceAttacks.reserve(16);
+
+  {
+    Bitboard bb = W[(int)PieceType::Knight];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      wPieceAttacks.push_back(knight_attacks_from((Square)s));
+    }
+  }
+  {
+    Bitboard bb = W[(int)PieceType::Bishop];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      wPieceAttacks.push_back(bishop_attacks((Square)s, occ));
+    }
+  }
+  {
+    Bitboard bb = W[(int)PieceType::Rook];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      wPieceAttacks.push_back(rook_attacks((Square)s, occ));
+    }
+  }
+  {
+    Bitboard bb = W[(int)PieceType::Queen];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      wPieceAttacks.push_back(queen_attacks((Square)s, occ));
+    }
+  }
+  {
+    Bitboard bb = W[(int)PieceType::King];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      wPieceAttacks.push_back(king_attacks_from((Square)s));
+    }
+  }
+
+  {
+    Bitboard bb = B[(int)PieceType::Knight];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      bPieceAttacks.push_back(knight_attacks_from((Square)s));
+    }
+  }
+  {
+    Bitboard bb = B[(int)PieceType::Bishop];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      bPieceAttacks.push_back(bishop_attacks((Square)s, occ));
+    }
+  }
+  {
+    Bitboard bb = B[(int)PieceType::Rook];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      bPieceAttacks.push_back(rook_attacks((Square)s, occ));
+    }
+  }
+  {
+    Bitboard bb = B[(int)PieceType::Queen];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      bPieceAttacks.push_back(queen_attacks((Square)s, occ));
+    }
+  }
+  {
+    Bitboard bb = B[(int)PieceType::King];
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      bPieceAttacks.push_back(king_attacks_from((Square)s));
+    }
+  }
+
+  auto support = [&](int sq, const std::vector<Bitboard> &atk) {
+    Bitboard b = sq_bb((Square)sq);
+    int cnt = 0;
+    for (Bitboard a : atk)
+      cnt += (a & b) != 0;
+    return cnt;
   };
 
   auto do_white = [&](int sq) {
@@ -296,7 +375,7 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp,
         mgB += PASS_FREE;
         egB += PASS_FREE;
       }
-      int ps = support_w(sq);
+      int ps = support(sq, wPieceAttacks);
       if (ps) {
         mgB += PASS_PIECE_SUPP * ps;
         egB += PASS_PIECE_SUPP * ps;
@@ -363,7 +442,7 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp,
         mgB += PASS_FREE;
         egB += PASS_FREE;
       }
-      int ps = support_b(sq);
+      int ps = support(sq, bPieceAttacks);
       if (ps) {
         mgB += PASS_PIECE_SUPP * ps;
         egB += PASS_PIECE_SUPP * ps;
