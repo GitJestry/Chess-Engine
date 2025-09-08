@@ -1610,7 +1610,6 @@ static inline size_t idx_pawn(uint64_t k) {
 // evaluate() – white POV
 // =============================================================================
 int Evaluator::evaluate(model::Position &pos) const {
-  const Board &b = pos.getBoard();
   uint64_t key = (uint64_t)pos.hash();
   uint64_t pKey = (uint64_t)pos.getState().pawnKey;
 
@@ -1626,21 +1625,19 @@ int Evaluator::evaluate(model::Position &pos) const {
       return e.score.load(std::memory_order_relaxed);
   }
 
+  const auto &ac = pos.getEvalAcc();
+
   // bitboards
-  std::array<Bitboard, 6> W{}, B{};
-  for (int pt = 0; pt < 6; ++pt) {
-    W[pt] = b.getPieces(Color::White, (PieceType)pt);
-    B[pt] = b.getPieces(Color::Black, (PieceType)pt);
-  }
-  Bitboard occ = b.getAllPieces();
-  Bitboard wocc = b.getPieces(Color::White);
-  Bitboard bocc = b.getPieces(Color::Black);
+  const auto &W = ac.bbW;
+  const auto &B = ac.bbB;
+  Bitboard wocc = W[0] | W[1] | W[2] | W[3] | W[4] | W[5];
+  Bitboard bocc = B[0] | B[1] | B[2] | B[3] | B[4] | B[5];
+  Bitboard occ = wocc | bocc;
 
   int wK = lsb_i(W[5]);
   int bK = lsb_i(B[5]);
 
   // material & pst & phase & counts — aus dem Acc
-  const auto &ac = pos.getEvalAcc();
   MaterialCounts mc{};
   mc.P[0] = ac.P[0];
   mc.P[1] = ac.P[1];
