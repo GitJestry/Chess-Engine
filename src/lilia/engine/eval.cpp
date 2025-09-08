@@ -1109,16 +1109,19 @@ static int passer_blocker_quality(const std::array<Bitboard, 6>& W,
       if (!passed) continue;
       int stop = white ? (s + 8) : (s - 8);
       if (stop < 0 || stop > 63) continue;
+      int advance =
+          white ? rank_of(static_cast<Square>(s)) : (7 - rank_of(static_cast<Square>(s)));
       Bitboard stopBB = sq_bb((Square)stop);
       if (occ & stopBB) {
+        int scale = advance;
         if (W[1] & stopBB)
-          sc += (white ? +BLOCK_PASSER_STOP_KNIGHT : -BLOCK_PASSER_STOP_KNIGHT);
+          sc += (white ? +BLOCK_PASSER_STOP_KNIGHT : -BLOCK_PASSER_STOP_KNIGHT) * scale;
         else if (W[2] & stopBB)
-          sc += (white ? -BLOCK_PASSER_STOP_BISHOP : +BLOCK_PASSER_STOP_BISHOP);
+          sc += (white ? -BLOCK_PASSER_STOP_BISHOP : +BLOCK_PASSER_STOP_BISHOP) * scale;
         if (B[1] & stopBB)
-          sc += (white ? -BLOCK_PASSER_STOP_KNIGHT : +BLOCK_PASSER_STOP_KNIGHT);
+          sc += (white ? -BLOCK_PASSER_STOP_KNIGHT : +BLOCK_PASSER_STOP_KNIGHT) * scale;
         else if (B[2] & stopBB)
-          sc += (white ? +BLOCK_PASSER_STOP_BISHOP : -BLOCK_PASSER_STOP_BISHOP);
+          sc += (white ? +BLOCK_PASSER_STOP_BISHOP : -BLOCK_PASSER_STOP_BISHOP) * scale;
       }
     }
   };

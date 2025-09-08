@@ -104,8 +104,8 @@ constexpr int ROOK_CUT_MIN_SEPARATION = 2;  // Mindestens 2 Linien Abstand = „
 constexpr int ROOK_CUT_BONUS = 14;
 
 // Stopper-Qualität (Wer blockiert Passer-Stopfeld?)
-constexpr int BLOCK_PASSER_STOP_KNIGHT = 6;  // gut
-constexpr int BLOCK_PASSER_STOP_BISHOP = 4;  // schlecht (als Malus gegenüber gut)
+constexpr int BLOCK_PASSER_STOP_KNIGHT = 8;  // gut
+constexpr int BLOCK_PASSER_STOP_BISHOP = 8;  // schlecht (als Malus gegenüber gut)
 
 // Threats (etwas härter auf Hänger / Bauern-Drohungen)
 constexpr int THR_PAWN_MINOR = 10, THR_PAWN_ROOK = 20, THR_PAWN_QUEEN = 24;
