@@ -264,7 +264,7 @@ void StartScreen::setupUI() {
   m_paletteOptions.clear();
   float itemH = 24.f;
   float width = 120.f;
-  float left = m_paletteButton.getPosition().x;
+  float left = m_paletteButton.getPosition().x - 1.f;
   float bottom = m_paletteButton.getPosition().y;
   const auto& names = ColorPaletteManager::get().paletteNames();
   for (std::size_t i = 0; i < names.size(); ++i) {
@@ -391,9 +391,9 @@ void StartScreen::setupUI() {
       out.push_back(opt);
     }
   };
-  buildList(m_whiteBotOptions, m_whiteBotBtn.getPosition().x,
+  buildList(m_whiteBotOptions, m_whiteBotBtn.getPosition().x - 1.f,
             m_whiteBotBtn.getPosition().y + BTN_H);
-  buildList(m_blackBotOptions, m_blackBotBtn.getPosition().x,
+  buildList(m_blackBotOptions, m_blackBotBtn.getPosition().x - 1.f,
             m_blackBotBtn.getPosition().y + BTN_H);
 
   // Time block
@@ -1037,7 +1037,7 @@ StartConfig StartScreen::run() {
               break;
             }
           }
-          if (!(overBtn || overList)) forceHide = false;
+          if (!overList) forceHide = false;
           show = !forceHide && (overBtn || overList);
         };
         updateHover(m_showPaletteList, m_paletteListForceHide, m_paletteButton.getGlobalBounds(),
