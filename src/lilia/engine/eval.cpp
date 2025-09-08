@@ -185,6 +185,17 @@ static int space_term(const std::array<Bitboard, 6> &W,
 // =============================================================================
 // Pawn structure (MG/EG SPLIT + PawnTT mg/eg)
 // =============================================================================
+struct AttackMap {
+  Bitboard wAll{0}, bAll{0};
+  Bitboard wPA{0}, bPA{0};
+  Bitboard wKAtt{0}, bKAtt{0};
+  Bitboard wPass{0}, bPass{0};
+  Bitboard wKn{0}, bKn{0};
+  Bitboard wBi{0}, bBi{0};
+  Bitboard wRo{0}, bRo{0};
+  Bitboard wQu{0}, bQu{0};
+};
+
 struct PawnInfo {
   int mg = 0, eg = 0;
 };
@@ -192,7 +203,7 @@ struct PawnInfo {
 static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp,
                                      const std::array<Bitboard, 6> &W,
                                      const std::array<Bitboard, 6> &B, int wK,
-                                     int bK, Bitboard occ) {
+                                     int bK, Bitboard occ, const AttackMap &A) {
   PawnInfo out{};
   int &mgSum = out.mg;
   int &egSum = out.eg;
@@ -224,25 +235,17 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp,
     }
   }
 
-  Bitboard wPA = white_pawn_attacks(wp), bPA = black_pawn_attacks(bp);
+  Bitboard wPA = A.wPA, bPA = A.bPA;
 
   auto support_w = [&](int sq) {
-    Bitboard atk = 0;
-    atk |= knight_attacks_from((Square)sq) & W[1];
-    atk |= bishop_attacks((Square)sq, occ) & W[2];
-    atk |= rook_attacks((Square)sq, occ) & W[3];
-    atk |= queen_attacks((Square)sq, occ) & W[4];
-    atk |= king_attacks_from((Square)sq) & W[5];
-    return popcnt(atk);
+    Bitboard bb = sq_bb((Square)sq);
+    return ((A.wKn & bb) != 0) + ((A.wBi & bb) != 0) + ((A.wRo & bb) != 0) +
+           ((A.wQu & bb) != 0) + ((A.wKAtt & bb) != 0);
   };
   auto support_b = [&](int sq) {
-    Bitboard atk = 0;
-    atk |= knight_attacks_from((Square)sq) & B[1];
-    atk |= bishop_attacks((Square)sq, occ) & B[2];
-    atk |= rook_attacks((Square)sq, occ) & B[3];
-    atk |= queen_attacks((Square)sq, occ) & B[4];
-    atk |= king_attacks_from((Square)sq) & B[5];
-    return popcnt(atk);
+    Bitboard bb = sq_bb((Square)sq);
+    return ((A.bKn & bb) != 0) + ((A.bBi & bb) != 0) + ((A.bRo & bb) != 0) +
+           ((A.bQu & bb) != 0) + ((A.bKAtt & bb) != 0);
   };
 
   auto do_white = [&](int sq) {
@@ -393,23 +396,7 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp,
   }
 
   // connected passers (moderat)
-  Bitboard wPass = 0, bPass = 0;
-  {
-    Bitboard t2 = wp;
-    while (t2) {
-      int s = lsb_i(t2);
-      t2 &= t2 - 1;
-      if ((M.wPassed[s] & bp) == 0)
-        wPass |= sq_bb((Square)s);
-    }
-    t2 = bp;
-    while (t2) {
-      int s = lsb_i(t2);
-      t2 &= t2 - 1;
-      if ((M.bPassed[s] & wp) == 0)
-        bPass |= sq_bb((Square)s);
-    }
-  }
+  Bitboard wPass = A.wPass, bPass = A.bPass;
   Bitboard wConn = ((wPass << 1) & wPass) | ((wPass >> 1) & wPass);
   Bitboard bConn = ((bPass << 1) & bPass) | ((bPass >> 1) & bPass);
   int wC = popcnt(wConn), bC = popcnt(bConn);
@@ -565,16 +552,6 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
 // =============================================================================
 // Threats & hanging
 // =============================================================================
-struct AttackMap {
-  Bitboard wAll{0}, bAll{0};
-  Bitboard wPA{0}, bPA{0};
-  Bitboard wKAtt{0}, bKAtt{0};
-  Bitboard wPass{0}, bPass{0};
-  Bitboard wKn{0}, bKn{0};
-  Bitboard wBi{0}, bBi{0};
-  Bitboard wRo{0}, bRo{0};
-  Bitboard wQu{0}, bQu{0};
-};
 static int threats(const std::array<Bitboard, 6> &W,
                    const std::array<Bitboard, 6> &B, const AttackMap &A,
                    Bitboard occ) {
@@ -1638,48 +1615,32 @@ int Evaluator::evaluate(model::Position &pos) const {
 
   PawnInfo pinfo{};
   Bitboard wPA = 0, bPA = 0, wPass = 0, bPass = 0;
-  {
-    auto &ps = m_impl->pawn[idx_pawn(pKey)];
-    uint64_t k = ps.key.load(std::memory_order_acquire);
-    if (k == pKey) {
-      pinfo.mg = ps.mg.load(std::memory_order_relaxed);
-      pinfo.eg = ps.eg.load(std::memory_order_relaxed);
-      wPA = (Bitboard)ps.wPA.load(std::memory_order_relaxed);
-      bPA = (Bitboard)ps.bPA.load(std::memory_order_relaxed);
-      wPass = (Bitboard)ps.wPass.load(std::memory_order_relaxed);
-      bPass = (Bitboard)ps.bPass.load(std::memory_order_relaxed);
-    } else {
-      int wKbb = lsb_i(W[5]), bKbb = lsb_i(B[5]);
-      pinfo = pawn_structure_split(W[0], B[0], W, B, wKbb, bKbb, occ);
-
-      wPA = white_pawn_attacks(W[0]);
-      bPA = black_pawn_attacks(B[0]);
-      // compute passers (once)
-      Bitboard t = W[0];
-      while (t) {
-        int s = lsb_i(t);
-        t &= t - 1;
-        if ((M.wPassed[s] & B[0]) == 0)
-          wPass |= sq_bb((Square)s);
-      }
-      t = B[0];
-      while (t) {
-        int s = lsb_i(t);
-        t &= t - 1;
-        if ((M.bPassed[s] & W[0]) == 0)
-          bPass |= sq_bb((Square)s);
-      }
-
-      // store
-      ps.mg.store(pinfo.mg, std::memory_order_relaxed);
-      ps.eg.store(pinfo.eg, std::memory_order_relaxed);
-      ps.wPA.store((uint64_t)wPA, std::memory_order_relaxed);
-      ps.bPA.store((uint64_t)bPA, std::memory_order_relaxed);
-      ps.wPass.store((uint64_t)wPass, std::memory_order_relaxed);
-      ps.bPass.store((uint64_t)bPass, std::memory_order_relaxed);
-      uint32_t age = m_impl->age.fetch_add(1, std::memory_order_relaxed) + 1;
-      ps.age.store(age, std::memory_order_relaxed);
-      ps.key.store(pKey, std::memory_order_release);
+  auto &ps = m_impl->pawn[idx_pawn(pKey)];
+  uint64_t k = ps.key.load(std::memory_order_acquire);
+  bool hit = (k == pKey);
+  if (hit) {
+    pinfo.mg = ps.mg.load(std::memory_order_relaxed);
+    pinfo.eg = ps.eg.load(std::memory_order_relaxed);
+    wPA = (Bitboard)ps.wPA.load(std::memory_order_relaxed);
+    bPA = (Bitboard)ps.bPA.load(std::memory_order_relaxed);
+    wPass = (Bitboard)ps.wPass.load(std::memory_order_relaxed);
+    bPass = (Bitboard)ps.bPass.load(std::memory_order_relaxed);
+  } else {
+    wPA = white_pawn_attacks(W[0]);
+    bPA = black_pawn_attacks(B[0]);
+    Bitboard t = W[0];
+    while (t) {
+      int s = lsb_i(t);
+      t &= t - 1;
+      if ((M.wPassed[s] & B[0]) == 0)
+        wPass |= sq_bb((Square)s);
+    }
+    t = B[0];
+    while (t) {
+      int s = lsb_i(t);
+      t &= t - 1;
+      if ((M.bPassed[s] & W[0]) == 0)
+        bPass |= sq_bb((Square)s);
     }
   }
 
@@ -1700,8 +1661,23 @@ int Evaluator::evaluate(model::Position &pos) const {
   A.bRo = att.bRo;
   A.wQu = att.wQu;
   A.bQu = att.bQu;
-  A.wKAtt = (lsb_i(W[5]) >= 0) ? king_attacks_from((Square)lsb_i(W[5])) : 0;
-  A.bKAtt = (lsb_i(B[5]) >= 0) ? king_attacks_from((Square)lsb_i(B[5])) : 0;
+  A.wKAtt = (wK >= 0) ? king_attacks_from((Square)wK) : 0;
+  A.bKAtt = (bK >= 0) ? king_attacks_from((Square)bK) : 0;
+
+  if (!hit) {
+    pinfo = pawn_structure_split(W[0], B[0], W, B, wK, bK, occ, A);
+
+    // store
+    ps.mg.store(pinfo.mg, std::memory_order_relaxed);
+    ps.eg.store(pinfo.eg, std::memory_order_relaxed);
+    ps.wPA.store((uint64_t)wPA, std::memory_order_relaxed);
+    ps.bPA.store((uint64_t)bPA, std::memory_order_relaxed);
+    ps.wPass.store((uint64_t)wPass, std::memory_order_relaxed);
+    ps.bPass.store((uint64_t)bPass, std::memory_order_relaxed);
+    uint32_t age = m_impl->age.fetch_add(1, std::memory_order_relaxed) + 1;
+    ps.age.store(age, std::memory_order_relaxed);
+    ps.key.store(pKey, std::memory_order_release);
+  }
 
   // threats
   int thr = threats(W, B, A, occ);
