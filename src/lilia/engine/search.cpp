@@ -252,6 +252,7 @@ Search::Search(model::TT5& tt_, std::shared_ptr<const Evaluator> eval_, const En
   for (auto& h : history) h.fill(0);
   std::fill(&quietHist[0][0], &quietHist[0][0] + PIECE_NB * SQ_NB, 0);
   std::fill(&captureHist[0][0][0], &captureHist[0][0][0] + PIECE_NB * SQ_NB * PIECE_NB, 0);
+  std::fill(&contHist[0][0][0][0], &contHist[0][0][0][0] + PIECE_NB * SQ_NB * SQ_NB * SQ_NB, 0);
   std::fill(&counterHist[0][0], &counterHist[0][0] + SQ_NB * SQ_NB, 0);
   for (auto& row : counterMove)
     for (auto& m : row) m = model::Move{};
@@ -337,6 +338,11 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     const model::Move prev = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
     const bool prevOk = (prev.from() >= 0 && prev.to() >= 0 && prev.from() < 64 && prev.to() < 64);
     const model::Move cm = prevOk ? counterMove[prev.from()][prev.to()] : model::Move{};
+    core::PieceType prevPt = core::PieceType::Pawn;
+    const auto& board = pos.getBoard();
+    if (prevOk) {
+      if (auto pp = board.getPiece(prev.to())) prevPt = pp->type;
+    }
 
     for (int i = 0; i < n; ++i) {
       const auto& m = genArr_[kply][i];
@@ -345,6 +351,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       if (m.isCapture()) s += 100'000 + mvv_lva_fast(pos, m);
       if (m.promotion() != core::PieceType::None) s += 60'000;
       s += history[m.from()][m.to()];
+      if (prevOk) s += contHist[pidx(prevPt)][prev.to()][m.from()][m.to()] >> 1;
       scores[i] = s;
       ordered[i] = m;
     }
@@ -408,6 +415,13 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     engine::MoveBuffer buf(capArr_[kply] + qn, engine::MAX_MOVES - qn);
     qn += mg.generateNonCapturePromotions(pos.getBoard(), pos.getState(), buf);
   }
+  const model::Move prev = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
+  const bool prevOk = (prev.from() >= 0 && prev.to() >= 0 && prev.from() < 64 && prev.to() < 64);
+  core::PieceType prevPt = core::PieceType::Pawn;
+  const auto& board2 = pos.getBoard();
+  if (prevOk) {
+    if (auto pp = board2.getPiece(prev.to())) prevPt = pp->type;
+  }
 
   // Captures sortieren via precomputed MVV-LVA Scores
   constexpr int MAXM = engine::MAX_MOVES;
@@ -415,7 +429,9 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   model::Move qord[MAXM];
   for (int i = 0; i < qn; ++i) {
     const auto& m = capArr_[kply][i];
-    qs[i] = mvv_lva_fast(pos, m);
+    int s = mvv_lva_fast(pos, m);
+    if (prevOk) s += contHist[pidx(prevPt)][prev.to()][m.from()][m.to()] >> 1;
+    qs[i] = s;
     qord[i] = m;
   }
   sort_by_score_desc(qs, qord, qn);
@@ -673,6 +689,11 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   // prev für CounterMove
   const model::Move prev = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
   const bool prevOk = (prev.from() >= 0 && prev.to() >= 0 && prev.from() < 64 && prev.to() < 64);
+  const auto& board = pos.getBoard();
+  core::PieceType prevPt = core::PieceType::Pawn;
+  if (prevOk) {
+    if (auto pp = board.getPiece(prev.to())) prevPt = pp->type;
+  }
   const model::Move cm = prevOk ? counterMove[prev.from()][prev.to()] : model::Move{};
 
   // Ordering
@@ -686,7 +707,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   constexpr int KILLER_BASE = 120'000;
   constexpr int CM_BASE = 140'000;
 
-  const auto& board = pos.getBoard();
+  // board already defined above
 
   for (int i = 0; i < n; ++i) {
     const auto& m = genArr_[kply][i];
@@ -713,6 +734,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       auto moverOpt = board.getPiece(m.from());
       const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
       s = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
+      if (prevOk) s += contHist[pidx(prevPt)][prev.to()][m.from()][m.to()] >> 1;
       if (m == killers[kply][0] || m == killers[kply][1]) s += KILLER_BASE;
       if (prevOk && m == cm) s += CM_BASE + (counterHist[prev.from()][prev.to()] >> 1);
 
@@ -770,12 +792,18 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
                                         : 0;
 
     // LMP (relaxed when improving)  (Step 2)
-    if (!inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet && !isQuietHeavy) {
-      int limit = depth * depth;  // 1,4,9
-      int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
+    if (!inCheck && !isPV && isQuiet && depth <= 4 && !tacticalQuiet &&
+        !isQuietHeavy) {
+      int limit = depth * depth;  // 1,4,9,16
+      int h = history[m.from()][m.to()] +
+              (quietHist[pidx(moverPt)][m.to()] >> 1);
+      if (prevOk)
+        h += contHist[pidx(prevPt)][prev.to()][m.from()][m.to()] >> 1;
       if (h < -8000) limit = std::max(1, limit - 1);
 
-      int futMarg = FUT_MARGIN[depth] + (improving ? 32 : 0);
+      int futMarg =
+          (depth <= 3 ? FUT_MARGIN[depth] : FUT_MARGIN[3] + 32) +
+          (improving ? 32 : 0);
       if (staticEval + futMarg <= alpha + 32 && moveCount >= limit) {
         ++moveCount;
         continue;
@@ -784,7 +812,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // Extended futility (depth<=3, quiets) — relax when improving (Step 2)
     if (allowFutility && isQuiet && depth <= 3 && !tacticalQuiet && !isQuietHeavy) {
-      int fut = FUT_MARGIN[depth] + (history[m.from()][m.to()] < -8000 ? 32 : 0);
+      int hVal = history[m.from()][m.to()];
+      if (prevOk) hVal += contHist[pidx(prevPt)][prev.to()][m.from()][m.to()] >> 1;
+      int fut = FUT_MARGIN[depth] + (hVal < -8000 ? 32 : 0);
       if (improving) fut += 48;  // keep more moves when improving
       if (staticEval + fut <= alpha) {
         ++moveCount;
@@ -796,6 +826,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (!inCheck && !isPV && isQuiet && depth <= 2 && !tacticalQuiet && !isQuietHeavy &&
         !improving) {
       int histScore = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
+      if (prevOk) histScore += contHist[pidx(prevPt)][prev.to()][m.from()][m.to()] >> 1;
       if (histScore < -11000 && m != killers[kply][0] && m != killers[kply][1] &&
           (!prevOk || m != cm)) {
         ++moveCount;
@@ -807,6 +838,16 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (!inCheck && !isPV && isQuiet && depth == 1 && !tacticalQuiet && !isQuietHeavy &&
         !improving) {
       if (staticEval + 110 <= alpha) {
+        ++moveCount;
+        continue;
+      }
+    }
+
+    // Prune very bad quiet heavy pieces early
+    if (allowFutility && isQuietHeavy && depth <= 3 && !excludedMove) {
+      int histScore = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
+      if (prevOk) histScore += contHist[pidx(prevPt)][prev.to()][m.from()][m.to()] >> 1;
+      if (staticEval + FUT_MARGIN[depth] <= alpha && histScore < -10000) {
         ++moveCount;
         continue;
       }
@@ -896,7 +937,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         int rBase = (ld * (lm + 1)) / 3;
         if (isQuietHeavy) rBase = std::max(0, rBase - 1);
 
-        const int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
+        int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
+        if (prevOk) h += contHist[pidx(prevPt)][prev.to()][m.from()][m.to()] >> 1;
         if (h > 8000) rBase -= 1;
         if (h < -8000) rBase += 1;
 
@@ -925,6 +967,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (isQuiet && value <= origAlpha) {
       hist_update(history[m.from()][m.to()], -hist_bonus(depth) / 2);
       hist_update(quietHist[pidx(moverPt)][m.to()], -hist_bonus(depth) / 2);
+      if (prevOk)
+        hist_update(contHist[pidx(prevPt)][prev.to()][m.from()][m.to()], -hist_bonus(depth) / 2);
     }
 
     if (value > best) {
@@ -942,6 +986,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         if (prevOk) {
           counterMove[prev.from()][prev.to()] = m;
           hist_update(counterHist[prev.from()][prev.to()], +hist_bonus(depth));
+          hist_update(contHist[pidx(prevPt)][prev.to()][m.from()][m.to()], +hist_bonus(depth));
         }
       } else {
         hist_update(captureHist[pidx(moverPt)][m.to()][pidx(capPt)], +hist_bonus(depth));
@@ -1085,12 +1130,12 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       // Optional: a *tiny* hint for tactical quiets (much smaller than before).
       auto mover = pos.getBoard().getPiece(m.from());
       if (mover) {
-        const int pawn_sig = (mover->type == core::PieceType::Pawn)
-                                 ? quiet_pawn_push_signal(pos.getBoard(), m,
-                                                          pos.getState().sideToMove)
-                                 : 0;
-        const int piece_sig = quiet_piece_threat_signal(pos.getBoard(), m,
-                                                        pos.getState().sideToMove);
+        const int pawn_sig =
+            (mover->type == core::PieceType::Pawn)
+                ? quiet_pawn_push_signal(pos.getBoard(), m, pos.getState().sideToMove)
+                : 0;
+        const int piece_sig =
+            quiet_piece_threat_signal(pos.getBoard(), m, pos.getState().sideToMove);
         const int sig = pawn_sig > piece_sig ? pawn_sig : piece_sig;
         if (sig == 2)
           s += 12'000;  // gives check
@@ -1431,6 +1476,7 @@ void Search::clearSearchState() {
   for (auto& h : history) h.fill(0);
   std::fill(&quietHist[0][0], &quietHist[0][0] + PIECE_NB * SQ_NB, 0);
   std::fill(&captureHist[0][0][0], &captureHist[0][0][0] + PIECE_NB * SQ_NB * PIECE_NB, 0);
+  std::fill(&contHist[0][0][0][0], &contHist[0][0][0][0] + PIECE_NB * SQ_NB * SQ_NB * SQ_NB, 0);
   std::fill(&counterHist[0][0], &counterHist[0][0] + SQ_NB * SQ_NB, 0);
   for (auto& row : counterMove)
     for (auto& m : row) m = model::Move{};
@@ -1444,6 +1490,7 @@ void Search::copy_heuristics_from(const Search& src) {
 
   std::memcpy(quietHist, src.quietHist, sizeof(quietHist));
   std::memcpy(captureHist, src.captureHist, sizeof(captureHist));
+  std::memcpy(contHist, src.contHist, sizeof(contHist));
   std::memcpy(counterHist, src.counterHist, sizeof(counterHist));
   std::memcpy(counterMove, src.counterMove, sizeof(counterMove));
 
@@ -1478,6 +1525,13 @@ static inline void decay_tables(Search& S, int shift /* e.g. 6 => ~1.6% */) {
         S.captureHist[mp][t][cp] =
             clamp16((int)S.captureHist[mp][t][cp] - ((int)S.captureHist[mp][t][cp] >> shift));
 
+  for (int pp = 0; pp < PIECE_NB; ++pp)
+    for (int pt = 0; pt < SQ_NB; ++pt)
+      for (int f = 0; f < SQ_NB; ++f)
+        for (int t = 0; t < SQ_NB; ++t)
+          S.contHist[pp][pt][f][t] =
+              clamp16((int)S.contHist[pp][pt][f][t] - ((int)S.contHist[pp][pt][f][t] >> shift));
+
   for (int f = 0; f < SQ_NB; ++f)
     for (int t = 0; t < SQ_NB; ++t)
       S.counterHist[f][t] = clamp16((int)S.counterHist[f][t] - ((int)S.counterHist[f][t] >> shift));
@@ -1501,6 +1555,13 @@ void Search::merge_from(const Search& o) {
     for (int t = 0; t < SQ_NB; ++t)
       for (int cp = 0; cp < PIECE_NB; ++cp)
         captureHist[mp][t][cp] = ema_merge(captureHist[mp][t][cp], o.captureHist[mp][t][cp], K);
+
+  // Continuation history
+  for (int pp = 0; pp < PIECE_NB; ++pp)
+    for (int pt = 0; pt < SQ_NB; ++pt)
+      for (int f = 0; f < SQ_NB; ++f)
+        for (int t = 0; t < SQ_NB; ++t)
+          contHist[pp][pt][f][t] = ema_merge(contHist[pp][pt][f][t], o.contHist[pp][pt][f][t], K);
 
   // Counter history + best countermove choice
   for (int f = 0; f < SQ_NB; ++f) {

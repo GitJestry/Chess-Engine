@@ -96,6 +96,9 @@ class Search {
   // Capture-History: nach (moverPiece, to, capturedPiece)
   alignas(64) int16_t captureHist[PIECE_NB][SQ_NB][PIECE_NB] = {};
 
+  // Continuation history: (prev mover piece, prev to) × (from,to)
+  alignas(64) int16_t contHist[PIECE_NB][SQ_NB][SQ_NB][SQ_NB] = {};
+
   // Counter-Move: nach vorigem Zug (from,to) → typischer Antwortzug,
   // plus Counter-History-Bonus für genau diesen Antwortzug
   alignas(64) model::Move counterMove[SQ_NB][SQ_NB] = {};
