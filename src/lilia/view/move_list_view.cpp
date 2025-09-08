@@ -242,11 +242,12 @@ void drawFenIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered,
 
   // modern two-square copy icon
   sf::Color col = hovered ? constant::COL_ACCENT_HOVER : constant::COL_TEXT;
+  sf::Color fill = hovered ? constant::COL_HOVER_BG : constant::COL_SLOT_BASE;
   const float w = slot.width * 0.55f;
   const float h = slot.height * 0.55f;
   const float off = w * 0.25f;
 
-  const float bx = snapf(slot.left + (slot.width - w) * 0.5f + off);
+  const float bx = snapf(slot.left + (slot.width - w) * 0.5f - off);
   const float by = snapf(slot.top + (slot.height - h) * 0.5f - off);
   sf::RectangleShape back({w, h});
   back.setPosition(bx, by);
@@ -255,11 +256,11 @@ void drawFenIcon(sf::RenderWindow& win, const sf::FloatRect& slot, bool hovered,
   back.setOutlineColor(col);
   win.draw(back);
 
-  const float fx = snapf(slot.left + (slot.width - w) * 0.5f - off);
+  const float fx = snapf(slot.left + (slot.width - w) * 0.5f + off);
   const float fy = snapf(slot.top + (slot.height - h) * 0.5f + off);
   sf::RectangleShape front({w, h});
   front.setPosition(fx, fy);
-  front.setFillColor(sf::Color::Transparent);
+  front.setFillColor(fill);
   front.setOutlineThickness(2.f);
   front.setOutlineColor(col);
   win.draw(front);
