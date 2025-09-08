@@ -1629,6 +1629,9 @@ int Evaluator::evaluate(model::Position &pos) const {
   Bitboard wocc = b.getPieces(Color::White);
   Bitboard bocc = b.getPieces(Color::Black);
 
+  int wK = lsb_i(W[5]);
+  int bK = lsb_i(B[5]);
+
   // material & pst & phase & counts — aus dem Acc
   const auto &ac = pos.getEvalAcc();
   MaterialCounts mc{};
@@ -1648,8 +1651,6 @@ int Evaluator::evaluate(model::Position &pos) const {
   int phase = ac.phase;
   int curPhase = clampi(phase, 0, MAX_PHASE);
 
-  int wK = ac.kingSq[0], bK = ac.kingSq[1];
-
   PawnInfo pinfo{};
   {
     auto &ps = m_impl->pawn[idx_pawn(pKey)];
@@ -1662,8 +1663,7 @@ int Evaluator::evaluate(model::Position &pos) const {
       pinfo.wPass = (Bitboard)ps.wPass.load(std::memory_order_relaxed);
       pinfo.bPass = (Bitboard)ps.bPass.load(std::memory_order_relaxed);
     } else {
-      int wKbb = lsb_i(W[5]), bKbb = lsb_i(B[5]);
-      pinfo = pawn_structure_split(W[0], B[0], W, B, wKbb, bKbb, occ);
+      pinfo = pawn_structure_split(W[0], B[0], W, B, wK, bK, occ);
 
       // store
       ps.mg.store(pinfo.mg, std::memory_order_relaxed);
@@ -1695,8 +1695,8 @@ int Evaluator::evaluate(model::Position &pos) const {
   A.bRo = att.bRo;
   A.wQu = att.wQu;
   A.bQu = att.bQu;
-  A.wKAtt = (lsb_i(W[5]) >= 0) ? king_attacks_from((Square)lsb_i(W[5])) : 0;
-  A.bKAtt = (lsb_i(B[5]) >= 0) ? king_attacks_from((Square)lsb_i(B[5])) : 0;
+  A.wKAtt = (wK >= 0) ? king_attacks_from((Square)wK) : 0;
+  A.bKAtt = (bK >= 0) ? king_attacks_from((Square)bK) : 0;
 
   // threats
   int thr = threats(W, B, A, occ);
