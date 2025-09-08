@@ -243,9 +243,6 @@ bool Position::see(const model::Move& m) const {
   using core::PieceType;
   using core::Square;
 
-  // Quiets are fine for SEE gates
-  if (!m.isCapture() && !m.isEnPassant()) return true;
-
   const auto fromP = m_board.getPiece(m.from());
   if (!fromP) return true;
 
@@ -337,16 +334,14 @@ bool Position::see(const model::Move& m) const {
     return false;
   };
 
-  // Identify captured piece and adjust occupancy
+  // Identify captured piece (if any) and adjust occupancy
   PieceType captured = PieceType::None;
-  Square capSq = to;
   if (m.isEnPassant()) {
     captured = PieceType::Pawn;
-    capSq = (us == Color::White) ? Square(int(to) - 8) : Square(int(to) + 8);
+    Square capSq =
+        (us == Color::White) ? Square(int(to) - 8) : Square(int(to) + 8);
     occ &= ~bb::sq_bb(capSq);
-  } else {
-    const auto cap = m_board.getPiece(to);
-    if (!cap) return true;  // robust
+  } else if (auto cap = m_board.getPiece(to)) {
     captured = cap->type;
     occ &= ~bb::sq_bb(to);
   }
