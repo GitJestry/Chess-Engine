@@ -29,5 +29,9 @@ class Evaluator final {
   mutable Impl* m_impl = nullptr;
 };
 
+#ifdef LILIA_TUNE
+void rebuild_tune_masks();
+#endif
+
 }  // namespace engine
 }  // namespace lilia

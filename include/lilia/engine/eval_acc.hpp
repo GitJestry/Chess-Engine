@@ -1,6 +1,10 @@
 #pragma once
 
+#ifdef LILIA_TUNE
+#include "lilia/engine/eval_tune_shared.hpp"
+#else
 #include "lilia/engine/eval_shared.hpp"
+#endif
 #include "lilia/model/board.hpp"
 #include "lilia/model/core/bitboard.hpp"
 #include "lilia/model/move.hpp"

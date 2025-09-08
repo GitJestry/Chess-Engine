@@ -11,7 +11,11 @@
 
 #include "lilia/engine/config.hpp"
 #include "lilia/engine/eval_acc.hpp"
+#ifdef LILIA_TUNE
+#include "lilia/engine/eval_tune_shared.hpp"
+#else
 #include "lilia/engine/eval_shared.hpp"
+#endif
 #include "lilia/model/core/bitboard.hpp"
 #include "lilia/model/core/magic.hpp"
 #include "lilia/model/position.hpp"
@@ -48,6 +52,19 @@ template <typename T> inline void prefetch_ro(const T *p) noexcept {
 // =============================================================================
 // Masks
 // =============================================================================
+#if defined(LILIA_TUNE)
+struct Masks {
+  std::array<Bitboard, 64> file{};
+  std::array<Bitboard, 64> adjFiles{};
+  std::array<Bitboard, 64> wPassed{}, bPassed{}, wFront{}, bFront{};
+  std::array<Bitboard, 64> kingRing{};
+  std::array<Bitboard, 64> wShield{}, bShield{};
+  std::array<Bitboard, 64> frontSpanW{}, frontSpanB{};
+};
+
+static Masks init_masks() {
+  Masks m{};
+#else
 struct Masks {
   std::array<Bitboard, 64> file{};
   std::array<Bitboard, 64> adjFiles{};
@@ -59,6 +76,7 @@ struct Masks {
 
 consteval Masks init_masks() {
   Masks m{};
+#endif
   for (int sq = 0; sq < 64; ++sq) {
     int f = file_of(static_cast<Square>(sq));
     int r = rank_of(static_cast<Square>(sq));
@@ -139,7 +157,12 @@ consteval Masks init_masks() {
   }
   return m;
 }
+#if defined(LILIA_TUNE)
+static Masks M = init_masks();
+void rebuild_tune_masks() { M = init_masks(); }
+#else
 static constexpr Masks M = init_masks();
+#endif
 
 // =============================================================================
 // Tunables – structure & style
