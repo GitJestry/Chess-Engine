@@ -745,72 +745,86 @@ static int king_safety_raw(const std::array<Bitboard, 6> &W,
   return sc;
 }
 
+struct ShelterStormMasks {
+  Bitboard wShelter, wStorm, bShelter, bStorm;
+};
+
+consteval auto init_shelter_storm_masks()
+    -> std::array<std::array<ShelterStormMasks, 3>, 64> {
+  std::array<std::array<ShelterStormMasks, 3>, 64> t{};
+  for (int sq = 0; sq < 64; ++sq) {
+    int kFile = file_of(sq);
+    int kRank = rank_of(sq);
+    for (int df = -1; df <= 1; ++df) {
+      int ff = kFile + df;
+      auto &e = t[sq][df + 1];
+      if (ff < 0 || ff > 7)
+        continue;
+
+      Bitboard maskW = 0, stormW = 0;
+      for (int r = kRank + 1; r < 8; ++r)
+        maskW |= sq_bb((Square)((r << 3) | ff));
+      for (int r = kRank - 1; r >= 0; --r)
+        stormW |= sq_bb((Square)((r << 3) | ff));
+      e.wShelter = maskW;
+      e.wStorm = stormW;
+
+      Bitboard maskB = 0, stormB = 0;
+      for (int r = kRank - 1; r >= 0; --r)
+        maskB |= sq_bb((Square)((r << 3) | ff));
+      for (int r = kRank + 1; r < 8; ++r)
+        stormB |= sq_bb((Square)((r << 3) | ff));
+      e.bShelter = maskB;
+      e.bStorm = stormB;
+    }
+  }
+  return t;
+}
+
+static constexpr auto SSM = init_shelter_storm_masks();
+
+static int shelter_storm_ksq(int ksq, Bitboard ownP, Bitboard oppP,
+                             bool white) {
+  const int kRank = rank_of(ksq);
+  const auto &m = SSM[ksq];
+
+  auto evalFile = [&](const ShelterStormMasks &e) {
+    if (white) {
+      int ownSq = lsb_i(e.wShelter & ownP);
+      int ownR = (ownSq >= 0 ? ownSq >> 3 : 8);
+      int dist = clampi(ownR - kRank, 0, 7);
+      int sc = SHELTER[dist];
+
+      int oppSq = msb_i(e.wStorm & oppP);
+      int oppR = (oppSq >= 0 ? oppSq >> 3 : -1);
+      int edist = clampi(kRank - oppR, 0, 7);
+      return sc - STORM[edist] / 2;
+    } else {
+      int ownSq = msb_i(e.bShelter & ownP);
+      int ownR = (ownSq >= 0 ? ownSq >> 3 : -1);
+      int dist = clampi(kRank - ownR, 0, 7);
+      int sc = SHELTER[dist];
+
+      int oppSq = lsb_i(e.bStorm & oppP);
+      int oppR = (oppSq >= 0 ? oppSq >> 3 : 8);
+      int edist = clampi(oppR - kRank, 0, 7);
+      return sc - STORM[edist] / 2;
+    }
+  };
+
+  return evalFile(m[0]) + evalFile(m[1]) + evalFile(m[2]);
+}
+
 static int king_shelter_storm(const std::array<Bitboard, 6> &W,
                               const std::array<Bitboard, 6> &B) {
   int wK = lsb_i(W[5]), bK = lsb_i(B[5]);
   if (wK < 0 || bK < 0)
     return 0;
+
   Bitboard wp = W[0], bp = B[0];
-
-  auto fileShelter = [&](int ksq, bool white) {
-    const int kFile = file_of(ksq);
-    const int kRank = rank_of(ksq);
-    int total = 0;
-
-    for (int df = -1; df <= 1; ++df) {
-      int ff = kFile + df;
-      if (ff < 0 || ff > 7)
-        continue;
-
-      if (white) {
-        // squares in front of white king (r+1..7)
-        Bitboard mask = 0;
-        for (int r = kRank + 1; r < 8; ++r)
-          mask |= sq_bb((Square)((r << 3) | ff));
-        // nearest own pawn ahead -> LSB
-        int nearOwnSq = lsb_i(mask & wp);
-        int nearOwnR = (nearOwnSq >= 0 ? (nearOwnSq >> 3) : 8);
-        int dist = clampi(nearOwnR - kRank, 0, 7);
-        total += SHELTER[dist];
-
-        // squares behind white king (r-1..0)
-        Bitboard em = 0;
-        for (int r = kRank - 1; r >= 0; --r)
-          em |= sq_bb((Square)((r << 3) | ff));
-        // nearest enemy pawn behind -> MSB
-        int nearEnemySq = msb_i(em & bp);
-        int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : -1);
-        int edist = clampi(kRank - nearEnemyR, 0, 7);
-        total -= STORM[edist] / 2;
-
-      } else {
-        // squares in front of black king (r-1..0)
-        Bitboard mask = 0;
-        for (int r = kRank - 1; r >= 0; --r)
-          mask |= sq_bb((Square)((r << 3) | ff));
-        // nearest own pawn ahead (toward rank decreasing) -> MSB
-        int nearOwnSq = msb_i(mask & bp);
-        int nearOwnR = (nearOwnSq >= 0 ? (nearOwnSq >> 3) : -1);
-        int dist = clampi(kRank - nearOwnR, 0, 7);
-        total += SHELTER[dist];
-
-        // squares ahead of black king (r+1..7) for enemy storm
-        Bitboard em = 0;
-        for (int r = kRank + 1; r < 8; ++r)
-          em |= sq_bb((Square)((r << 3) | ff));
-        // nearest enemy pawn ahead (toward rank increasing) -> LSB
-        int nearEnemySq = lsb_i(em & wp);
-        int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : 8);
-        int edist = clampi(nearEnemyR - kRank, 0, 7);
-        total -= STORM[edist] / 2;
-      }
-    }
-    return total;
-  };
-
   int sc = 0;
-  sc += fileShelter(bK, false);
-  sc -= fileShelter(wK, true);
+  sc += shelter_storm_ksq(bK, bp, wp, false);
+  sc -= shelter_storm_ksq(wK, wp, bp, true);
   return sc / 2;
 }
 
