@@ -185,7 +185,10 @@ struct PawnInfo {
   int mg = 0, eg = 0;
 };
 
-static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp, int wK, int bK, Bitboard occ) {
+static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp,
+                                     const std::array<Bitboard, 6>& W,
+                                     const std::array<Bitboard, 6>& B,
+                                     int wK, int bK, Bitboard occ) {
   PawnInfo out{};
   int& mgSum = out.mg;
   int& egSum = out.eg;
@@ -218,6 +221,25 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp, int wK, int bK, B
   }
 
   Bitboard wPA = white_pawn_attacks(wp), bPA = black_pawn_attacks(bp);
+
+  auto support_w = [&](int sq) {
+    Bitboard atk = 0;
+    atk |= knight_attacks_from((Square)sq) & W[1];
+    atk |= bishop_attacks((Square)sq, occ) & W[2];
+    atk |= rook_attacks((Square)sq, occ) & W[3];
+    atk |= queen_attacks((Square)sq, occ) & W[4];
+    atk |= king_attacks_from((Square)sq) & W[5];
+    return popcnt(atk);
+  };
+  auto support_b = [&](int sq) {
+    Bitboard atk = 0;
+    atk |= knight_attacks_from((Square)sq) & B[1];
+    atk |= bishop_attacks((Square)sq, occ) & B[2];
+    atk |= rook_attacks((Square)sq, occ) & B[3];
+    atk |= queen_attacks((Square)sq, occ) & B[4];
+    atk |= king_attacks_from((Square)sq) & B[5];
+    return popcnt(atk);
+  };
 
   auto do_white = [&](int sq) {
     int f = file_of(sq), r = rank_of(sq);
@@ -261,6 +283,11 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp, int wK, int bK, B
         mgB += PASS_FREE;
         egB += PASS_FREE;
       }
+      int ps = support_w(sq);
+      if (ps) {
+        mgB += PASS_PIECE_SUPP * ps;
+        egB += PASS_PIECE_SUPP * ps;
+      }
       if (king_manhattan(wK, sq) <= 3) {
         mgB += PASS_KBOOST;
         egB += PASS_KBOOST;
@@ -269,6 +296,12 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp, int wK, int bK, B
           (M.wFront[sq] | (stop <= 63 ? sq_bb((Square)stop) : 0ULL)) & sq_bb((Square)bK)) {
         mgB -= PASS_KBLOCK;
         egB -= PASS_KBLOCK;
+      }
+      if (bK >= 0) {
+        int dist = king_manhattan(bK, sq);
+        int prox = std::max(0, 4 - dist) * PASS_KPROX;
+        mgB -= prox;
+        egB -= prox;
       }
       mgSum += mgB;
       egSum += egB;
@@ -316,6 +349,11 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp, int wK, int bK, B
         mgB += PASS_FREE;
         egB += PASS_FREE;
       }
+      int ps = support_b(sq);
+      if (ps) {
+        mgB += PASS_PIECE_SUPP * ps;
+        egB += PASS_PIECE_SUPP * ps;
+      }
       if (king_manhattan(bK, sq) <= 3) {
         mgB += PASS_KBOOST;
         egB += PASS_KBOOST;
@@ -324,6 +362,12 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp, int wK, int bK, B
           (M.bFront[sq] | (stop >= 0 ? sq_bb((Square)stop) : 0ULL)) & sq_bb((Square)wK)) {
         mgB -= PASS_KBLOCK;
         egB -= PASS_KBLOCK;
+      }
+      if (wK >= 0) {
+        int dist = king_manhattan(wK, sq);
+        int prox = std::max(0, 4 - dist) * PASS_KPROX;
+        mgB -= prox;
+        egB -= prox;
       }
       mgSum -= mgB;
       egSum -= egB;
@@ -1507,7 +1551,7 @@ int Evaluator::evaluate(model::Position& pos) const {
       bPass = (Bitboard)ps.bPass.load(std::memory_order_relaxed);
     } else {
       int wKbb = lsb_i(W[5]), bKbb = lsb_i(B[5]);
-      pinfo = pawn_structure_split(W[0], B[0], wKbb, bKbb, occ);
+      pinfo = pawn_structure_split(W[0], B[0], W, B, wKbb, bKbb, occ);
 
       wPA = white_pawn_attacks(W[0]);
       bPA = black_pawn_attacks(B[0]);
