@@ -21,6 +21,7 @@ option(LILIA_FAST_MATH    "Enable fast-math in Release" ON)
 option(LILIA_LTO          "Enable Link-Time Optimization/IPO in Release" ON)
 option(LILIA_PGO_GENERATE "Build with PGO generate (instrumentation)" OFF)
 option(LILIA_PGO_USE      "Build with PGO use (optimized by profiles)" OFF)
+option(LILIA_BUILD_UI    "Build the graphical UI application" OFF)
 
 # -------------------------------------------------
 # Runtime assets path (shipped next to the exe)
@@ -58,50 +59,70 @@ target_include_directories(lilia_engine PRIVATE
   ${PROJECT_SOURCE_DIR}/include/lilia
 )
 
-add_executable(lilia_app
-  examples/main.cpp
-  ${CORE_FILES}
-  ${UI_FILES}
-  ${APP_FILES}
-  ${CONTROLLER_FILES}
-  ${BOT_FILES}
-)
-target_compile_definitions(lilia_app PRIVATE LILIA_UI NOMINMAX)
-target_include_directories(lilia_app PRIVATE
-  ${PROJECT_SOURCE_DIR}/include
-  ${PROJECT_SOURCE_DIR}/include/lilia
-)
+if(LILIA_BUILD_UI)
+  add_executable(lilia_app
+    examples/main.cpp
+    ${CORE_FILES}
+    ${UI_FILES}
+    ${APP_FILES}
+    ${CONTROLLER_FILES}
+    ${BOT_FILES}
+  )
+  target_compile_definitions(lilia_app PRIVATE LILIA_UI NOMINMAX)
+  target_include_directories(lilia_app PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/include/lilia
+  )
 
-# -------------------------------------------------
-# SFML for UI (shared, built from source)
-# -------------------------------------------------
-include(FetchContent)
-set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
-# Keep SFML minimal
-set(SFML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(SFML_BUILD_TESTING  OFF CACHE BOOL "" FORCE)
-set(SFML_USE_STATIC_STD_LIBS OFF CACHE BOOL "" FORCE)
+  # -------------------------------------------------
+  # SFML for UI (shared, built from source)
+  # -------------------------------------------------
+  include(FetchContent)
+  set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+  # Keep SFML minimal
+  set(SFML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(SFML_BUILD_TESTING  OFF CACHE BOOL "" FORCE)
+  set(SFML_USE_STATIC_STD_LIBS OFF CACHE BOOL "" FORCE)
 
-FetchContent_Declare(
-  SFML
-  GIT_REPOSITORY https://github.com/SFML/SFML.git
-  GIT_TAG 2.6.0
-)
-FetchContent_MakeAvailable(SFML)
+  FetchContent_Declare(
+    SFML
+    GIT_REPOSITORY https://github.com/SFML/SFML.git
+    GIT_TAG 2.6.0
+  )
+  FetchContent_MakeAvailable(SFML)
 
-target_link_libraries(lilia_app PRIVATE
-  sfml-graphics
-  sfml-window
-  sfml-system
-  sfml-audio
-)
+  target_link_libraries(lilia_app PRIVATE
+    sfml-graphics
+    sfml-window
+    sfml-system
+    sfml-audio
+  )
+endif()
 
 # -------------------------------------------------
 # Threads
 # -------------------------------------------------
 find_package(Threads REQUIRED)
 target_link_libraries(lilia_engine PRIVATE Threads::Threads)
-target_link_libraries(lilia_app    PRIVATE Threads::Threads)
+if(LILIA_BUILD_UI)
+  target_link_libraries(lilia_app PRIVATE Threads::Threads)
+endif()
+
+# -------------------------------------------------
+# Tests
+# -------------------------------------------------
+file(GLOB_RECURSE TEST_FILES ${PROJECT_SOURCE_DIR}/tests/*.cpp)
+if(TEST_FILES)
+  add_executable(engine_tests ${TEST_FILES} ${CORE_FILES})
+  target_compile_definitions(engine_tests PRIVATE LILIA_ENGINE NOMINMAX)
+  target_include_directories(engine_tests PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/include/lilia
+  )
+  target_link_libraries(engine_tests PRIVATE Threads::Threads)
+  enable_testing()
+  add_test(NAME engine_tests COMMAND engine_tests)
+endif()
 
 # -------------------------------------------------
 # Helper: performance flags per target
@@ -163,7 +184,9 @@ endfunction()
 
 # Apply flags
 lilia_set_perf_flags(lilia_engine)
-lilia_set_perf_flags(lilia_app)
+if(LILIA_BUILD_UI)
+  lilia_set_perf_flags(lilia_app)
+endif()
 
 # Global IPO fallback (non-MSVC)
 if (LILIA_LTO AND NOT MSVC)
@@ -179,7 +202,7 @@ endif()
 # -------------------------------------------------
 # Windows: copy runtime DLLs beside the GUI exe + copy assets
 # -------------------------------------------------
-if (WIN32)
+if (WIN32 AND LILIA_BUILD_UI)
   # SFML/runtime DLLs for the GUI app
   add_custom_command(TARGET lilia_app POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -212,12 +235,18 @@ function(lilia_copy_assets tgt)
     message(WARNING "LILIA_ASSETS_DIR not found: ${LILIA_ASSETS_DIR} — assets won't be copied.")
   endif()
 endfunction()
-lilia_copy_assets(lilia_app)
+if(LILIA_BUILD_UI)
+  lilia_copy_assets(lilia_app)
+endif()
 
 # -------------------------------------------------
 # Output dirs
 # -------------------------------------------------
-foreach(target lilia_engine lilia_app)
+set(_targets lilia_engine)
+if(LILIA_BUILD_UI)
+  list(APPEND _targets lilia_app)
+endif()
+foreach(target ${_targets})
   set_target_properties(${target} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
