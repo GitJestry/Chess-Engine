@@ -16,16 +16,10 @@ class UCI {
   void setOption(const std::string& line);
 
   struct Options {
-    int hashMb = 64;
-    int threads = 1;
+    engine::EngineConfig cfg{};
     bool ponder = false;
     int moveOverhead = 10;
-    engine::EngineConfig toEngineConfig() const {
-      engine::EngineConfig cfg;
-      cfg.ttSizeMb = hashMb;
-      cfg.threads = threads;
-      return cfg;
-    }
+    engine::EngineConfig toEngineConfig() const { return cfg; }
   } m_options;
 
   std::string m_name = "LiliaEngine";

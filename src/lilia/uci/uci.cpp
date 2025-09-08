@@ -37,10 +37,51 @@ static std::string extract_fen_after(const std::string& line) {
 }
 
 void UCI::showOptions() {
-  std::cout << "option name Hash type spin default " << m_options.hashMb << " min 1 max 131072\n";
-  std::cout << "option name Threads type spin default " << m_options.threads << " min 1 max 64\n";
-  std::cout << "option name Ponder type check default " << (m_options.ponder ? "true" : "false")
-            << "\n";
+  const auto& c = m_options.cfg;
+  std::cout << "option name Hash type spin default " << c.ttSizeMb << " min 1 max 131072\n";
+  std::cout << "option name Threads type spin default " << c.threads << " min 1 max 64\n";
+  std::cout << "option name Max Depth type spin default " << c.maxDepth << " min 1 max "
+            << engine::MAX_PLY << "\n";
+  std::cout << "option name Max Nodes type spin default " << c.maxNodes
+            << " min 0 max 1000000000\n";
+  std::cout << "option name Use Null Move type check default "
+            << (c.useNullMove ? "true" : "false") << "\n";
+  std::cout << "option name Use LMR type check default "
+            << (c.useLMR ? "true" : "false") << "\n";
+  std::cout << "option name Use Aspiration type check default "
+            << (c.useAspiration ? "true" : "false") << "\n";
+  std::cout << "option name Aspiration Window type spin default " << c.aspirationWindow
+            << " min 1 max 1000\n";
+  std::cout << "option name Use LMP type check default "
+            << (c.useLMP ? "true" : "false") << "\n";
+  std::cout << "option name Use IID type check default "
+            << (c.useIID ? "true" : "false") << "\n";
+  std::cout << "option name Use Singular Extension type check default "
+            << (c.useSingularExt ? "true" : "false") << "\n";
+  std::cout << "option name LMP Depth Max type spin default " << c.lmpDepthMax
+            << " min 0 max 10\n";
+  std::cout << "option name LMP Base type spin default " << c.lmpBase
+            << " min 0 max 10\n";
+  std::cout << "option name Use Futility type check default "
+            << (c.useFutility ? "true" : "false") << "\n";
+  std::cout << "option name Futility Margin type spin default " << c.futilityMargin
+            << " min 0 max 1000\n";
+  std::cout << "option name Use Reverse Futility type check default "
+            << (c.useReverseFutility ? "true" : "false") << "\n";
+  std::cout << "option name Use SEE Pruning type check default "
+            << (c.useSEEPruning ? "true" : "false") << "\n";
+  std::cout << "option name Use Prob Cut type check default "
+            << (c.useProbCut ? "true" : "false") << "\n";
+  std::cout << "option name Qsearch Quiet Checks type check default "
+            << (c.qsearchQuietChecks ? "true" : "false") << "\n";
+  std::cout << "option name LMR Base type spin default " << c.lmrBase
+            << " min 0 max 10\n";
+  std::cout << "option name LMR Max type spin default " << c.lmrMax
+            << " min 0 max 10\n";
+  std::cout << "option name LMR Use History type check default "
+            << (c.lmrUseHistory ? "true" : "false") << "\n";
+  std::cout << "option name Ponder type check default "
+            << (m_options.ponder ? "true" : "false") << "\n";
   std::cout << "option name Move Overhead type spin default " << m_options.moveOverhead
             << " min 0 max 5000\n";
 }
@@ -71,19 +112,84 @@ void UCI::setOption(const std::string& line) {
   }
   if (name.empty()) return;
 
+  auto to_bool = [](std::string v) {
+    std::transform(v.begin(), v.end(), v.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return (v == "true" || v == "1" || v == "on");
+  };
+
   if (name == "Hash") {
     int v = std::stoi(value);
     v = std::max(1, std::min(131072, v));
-    m_options.hashMb = v;
+    m_options.cfg.ttSizeMb = v;
   } else if (name == "Threads") {
     int v = std::stoi(value);
     v = std::max(1, std::min(64, v));
-    m_options.threads = v;
+    m_options.cfg.threads = v;
+  } else if (name == "Max Depth") {
+    int v = std::stoi(value);
+    v = std::max(1, std::min(engine::MAX_PLY, v));
+    m_options.cfg.maxDepth = v;
+  } else if (name == "Max Nodes") {
+    std::uint64_t v = std::stoull(value);
+    if (v > 1000000000ULL) v = 1000000000ULL;
+    m_options.cfg.maxNodes = v;
+  } else if (name == "Use Null Move") {
+    m_options.cfg.useNullMove = to_bool(value);
+  } else if (name == "Use LMR") {
+    m_options.cfg.useLMR = to_bool(value);
+  } else if (name == "Use Aspiration") {
+    m_options.cfg.useAspiration = to_bool(value);
+  } else if (name == "Aspiration Window") {
+    int v = std::stoi(value);
+    if (v < 1) v = 1;
+    if (v > 1000) v = 1000;
+    m_options.cfg.aspirationWindow = v;
+  } else if (name == "Use LMP") {
+    m_options.cfg.useLMP = to_bool(value);
+  } else if (name == "Use IID") {
+    m_options.cfg.useIID = to_bool(value);
+  } else if (name == "Use Singular Extension") {
+    m_options.cfg.useSingularExt = to_bool(value);
+  } else if (name == "LMP Depth Max") {
+    int v = std::stoi(value);
+    if (v < 0) v = 0;
+    if (v > 10) v = 10;
+    m_options.cfg.lmpDepthMax = v;
+  } else if (name == "LMP Base") {
+    int v = std::stoi(value);
+    if (v < 0) v = 0;
+    if (v > 10) v = 10;
+    m_options.cfg.lmpBase = v;
+  } else if (name == "Use Futility") {
+    m_options.cfg.useFutility = to_bool(value);
+  } else if (name == "Futility Margin") {
+    int v = std::stoi(value);
+    if (v < 0) v = 0;
+    if (v > 1000) v = 1000;
+    m_options.cfg.futilityMargin = v;
+  } else if (name == "Use Reverse Futility") {
+    m_options.cfg.useReverseFutility = to_bool(value);
+  } else if (name == "Use SEE Pruning") {
+    m_options.cfg.useSEEPruning = to_bool(value);
+  } else if (name == "Use Prob Cut") {
+    m_options.cfg.useProbCut = to_bool(value);
+  } else if (name == "Qsearch Quiet Checks") {
+    m_options.cfg.qsearchQuietChecks = to_bool(value);
+  } else if (name == "LMR Base") {
+    int v = std::stoi(value);
+    if (v < 0) v = 0;
+    if (v > 10) v = 10;
+    m_options.cfg.lmrBase = v;
+  } else if (name == "LMR Max") {
+    int v = std::stoi(value);
+    if (v < 0) v = 0;
+    if (v > 10) v = 10;
+    m_options.cfg.lmrMax = v;
+  } else if (name == "LMR Use History") {
+    m_options.cfg.lmrUseHistory = to_bool(value);
   } else if (name == "Ponder") {
-    std::string vl = value;
-    std::transform(vl.begin(), vl.end(), vl.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    m_options.ponder = (vl == "true" || vl == "1" || vl == "on");
+    m_options.ponder = to_bool(value);
   } else if (name == "Move Overhead") {
     int v = std::stoi(value);
     m_options.moveOverhead = std::max(0, v);
