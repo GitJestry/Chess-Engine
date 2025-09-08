@@ -252,8 +252,7 @@ Search::Search(model::TT5& tt_, std::shared_ptr<const Evaluator> eval_, const En
   for (auto& h : history) h.fill(0);
   std::fill(&quietHist[0][0], &quietHist[0][0] + PIECE_NB * SQ_NB, 0);
   std::fill(&captureHist[0][0][0], &captureHist[0][0][0] + PIECE_NB * SQ_NB * PIECE_NB, 0);
-  std::fill(&contHist[0][0][0][0],
-            &contHist[0][0][0][0] + PIECE_NB * SQ_NB * SQ_NB * SQ_NB, 0);
+  std::fill(&contHist[0][0][0][0], &contHist[0][0][0][0] + PIECE_NB * SQ_NB * SQ_NB * SQ_NB, 0);
   std::fill(&counterHist[0][0], &counterHist[0][0] + SQ_NB * SQ_NB, 0);
   for (auto& row : counterMove)
     for (auto& m : row) m = model::Move{};
@@ -735,8 +734,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       auto moverOpt = board.getPiece(m.from());
       const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
       s = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
-      if (prevOk)
-        s += contHist[pidx(prevPt)][prev.to()][m.from()][m.to()] >> 1;
+      if (prevOk) s += contHist[pidx(prevPt)][prev.to()][m.from()][m.to()] >> 1;
       if (m == killers[kply][0] || m == killers[kply][1]) s += KILLER_BASE;
       if (prevOk && m == cm) s += CM_BASE + (counterHist[prev.from()][prev.to()] >> 1);
 
@@ -973,8 +971,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         if (prevOk) {
           counterMove[prev.from()][prev.to()] = m;
           hist_update(counterHist[prev.from()][prev.to()], +hist_bonus(depth));
-          hist_update(contHist[pidx(prevPt)][prev.to()][m.from()][m.to()],
-                      +hist_bonus(depth));
+          hist_update(contHist[pidx(prevPt)][prev.to()][m.from()][m.to()], +hist_bonus(depth));
         }
       } else {
         hist_update(captureHist[pidx(moverPt)][m.to()][pidx(capPt)], +hist_bonus(depth));
@@ -1118,12 +1115,12 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       // Optional: a *tiny* hint for tactical quiets (much smaller than before).
       auto mover = pos.getBoard().getPiece(m.from());
       if (mover) {
-        const int pawn_sig = (mover->type == core::PieceType::Pawn)
-                                 ? quiet_pawn_push_signal(pos.getBoard(), m,
-                                                          pos.getState().sideToMove)
-                                 : 0;
-        const int piece_sig = quiet_piece_threat_signal(pos.getBoard(), m,
-                                                        pos.getState().sideToMove);
+        const int pawn_sig =
+            (mover->type == core::PieceType::Pawn)
+                ? quiet_pawn_push_signal(pos.getBoard(), m, pos.getState().sideToMove)
+                : 0;
+        const int piece_sig =
+            quiet_piece_threat_signal(pos.getBoard(), m, pos.getState().sideToMove);
         const int sig = pawn_sig > piece_sig ? pawn_sig : piece_sig;
         if (sig == 2)
           s += 12'000;  // gives check
@@ -1464,8 +1461,7 @@ void Search::clearSearchState() {
   for (auto& h : history) h.fill(0);
   std::fill(&quietHist[0][0], &quietHist[0][0] + PIECE_NB * SQ_NB, 0);
   std::fill(&captureHist[0][0][0], &captureHist[0][0][0] + PIECE_NB * SQ_NB * PIECE_NB, 0);
-  std::fill(&contHist[0][0][0][0],
-            &contHist[0][0][0][0] + PIECE_NB * SQ_NB * SQ_NB * SQ_NB, 0);
+  std::fill(&contHist[0][0][0][0], &contHist[0][0][0][0] + PIECE_NB * SQ_NB * SQ_NB * SQ_NB, 0);
   std::fill(&counterHist[0][0], &counterHist[0][0] + SQ_NB * SQ_NB, 0);
   for (auto& row : counterMove)
     for (auto& m : row) m = model::Move{};
@@ -1518,8 +1514,8 @@ static inline void decay_tables(Search& S, int shift /* e.g. 6 => ~1.6% */) {
     for (int pt = 0; pt < SQ_NB; ++pt)
       for (int f = 0; f < SQ_NB; ++f)
         for (int t = 0; t < SQ_NB; ++t)
-          S.contHist[pp][pt][f][t] = clamp16((int)S.contHist[pp][pt][f][t] -
-                                            ((int)S.contHist[pp][pt][f][t] >> shift));
+          S.contHist[pp][pt][f][t] =
+              clamp16((int)S.contHist[pp][pt][f][t] - ((int)S.contHist[pp][pt][f][t] >> shift));
 
   for (int f = 0; f < SQ_NB; ++f)
     for (int t = 0; t < SQ_NB; ++t)
@@ -1550,8 +1546,7 @@ void Search::merge_from(const Search& o) {
     for (int pt = 0; pt < SQ_NB; ++pt)
       for (int f = 0; f < SQ_NB; ++f)
         for (int t = 0; t < SQ_NB; ++t)
-          contHist[pp][pt][f][t] =
-              ema_merge(contHist[pp][pt][f][t], o.contHist[pp][pt][f][t], K);
+          contHist[pp][pt][f][t] = ema_merge(contHist[pp][pt][f][t], o.contHist[pp][pt][f][t], K);
 
   // Counter history + best countermove choice
   for (int f = 0; f < SQ_NB; ++f) {
