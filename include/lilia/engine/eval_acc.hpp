@@ -1,5 +1,4 @@
 #pragma once
-#include <vector>
 
 #include "lilia/engine/eval_shared.hpp"
 #include "lilia/model/board.hpp"
@@ -138,7 +137,7 @@ inline void EvalAcc::add_piece(lilia::core::Color c, lilia::core::PieceType pt, 
       Q[s]++;
       break;
     case lilia::core::PieceType::King:
-      kingSq[s] = sq;
+      kingSq[s] = -1;
       break;
     default:
       break;

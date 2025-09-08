@@ -10,6 +10,7 @@
 
 #include "lilia/engine/config.hpp"
 #include "lilia/engine/eval_acc.hpp"
+#include "lilia/engine/eval_shared.hpp"
 #include "lilia/model/core/bitboard.hpp"
 #include "lilia/model/core/magic.hpp"
 #include "lilia/model/position.hpp"
@@ -60,6 +61,7 @@ struct Masks {
   std::array<Bitboard, 64> wShield{}, bShield{};
   std::array<Bitboard, 64> frontSpanW{}, frontSpanB{};
 };
+
 consteval Masks init_masks() {
   Masks m{};
   for (int sq = 0; sq < 64; ++sq) {
@@ -72,11 +74,9 @@ consteval Masks init_masks() {
 
     Bitboard adj = 0;
     if (f > 0)
-      for (int rr = 0; rr < 8; ++rr)
-        adj |= sq_bb(static_cast<Square>((rr << 3) | (f - 1)));
+      for (int rr = 0; rr < 8; ++rr) adj |= sq_bb(static_cast<Square>((rr << 3) | (f - 1)));
     if (f < 7)
-      for (int rr = 0; rr < 8; ++rr)
-        adj |= sq_bb(static_cast<Square>((rr << 3) | (f + 1)));
+      for (int rr = 0; rr < 8; ++rr) adj |= sq_bb(static_cast<Square>((rr << 3) | (f + 1)));
     m.adjFiles[sq] = adj;
 
     Bitboard pw = 0;
@@ -91,46 +91,44 @@ consteval Masks init_masks() {
     m.bPassed[sq] = pb;
 
     Bitboard wf = 0;
-    for (int rr = r + 1; rr < 8; ++rr)
-      wf |= sq_bb(static_cast<Square>((rr << 3) | f));
+    for (int rr = r + 1; rr < 8; ++rr) wf |= sq_bb(static_cast<Square>((rr << 3) | f));
     m.wFront[sq] = wf;
     m.frontSpanW[sq] = wf;
 
     Bitboard bf = 0;
-    for (int rr = r - 1; rr >= 0; --rr)
-      bf |= sq_bb(static_cast<Square>((rr << 3) | f));
+    for (int rr = r - 1; rr >= 0; --rr) bf |= sq_bb(static_cast<Square>((rr << 3) | f));
     m.bFront[sq] = bf;
     m.frontSpanB[sq] = bf;
 
+    // King-Ring (Chebyshev-Radius parametrierbar)
     Bitboard ring = 0;
-    for (int dr = -2; dr <= 2; ++dr)
-      for (int df = -2; df <= 2; ++df) {
+    for (int dr = -KING_RING_RADIUS; dr <= KING_RING_RADIUS; ++dr)
+      for (int df = -KING_RING_RADIUS; df <= KING_RING_RADIUS; ++df) {
         int nr = r + dr, nf = f + df;
         if (0 <= nr && nr < 8 && 0 <= nf && nf < 8)
           ring |= sq_bb(static_cast<Square>((nr << 3) | nf));
       }
     m.kingRing[sq] = ring;
 
+    // Shields je Farbe (parametrierte Tiefe)
     Bitboard shW = 0;
-    for (int dr = 1; dr <= 2; ++dr) {
+    for (int dr = 1; dr <= KING_SHIELD_DEPTH; ++dr) {
       int nr = r + dr;
       if (nr >= 8) break;
       for (int df = -1; df <= 1; ++df) {
         int nf = f + df;
-        if (0 <= nf && nf < 8)
-          shW |= sq_bb(static_cast<Square>((nr << 3) | nf));
+        if (0 <= nf && nf < 8) shW |= sq_bb(static_cast<Square>((nr << 3) | nf));
       }
     }
     m.wShield[sq] = shW;
 
     Bitboard shB = 0;
-    for (int dr = 1; dr <= 2; ++dr) {
+    for (int dr = 1; dr <= KING_SHIELD_DEPTH; ++dr) {
       int nr = r - dr;
       if (nr < 0) break;
       for (int df = -1; df <= 1; ++df) {
         int nf = f + df;
-        if (0 <= nf && nf < 8)
-          shB |= sq_bb(static_cast<Square>((nr << 3) | nf));
+        if (0 <= nf && nf < 8) shB |= sq_bb(static_cast<Square>((nr << 3) | nf));
       }
     }
     m.bShield[sq] = shB;
@@ -175,7 +173,8 @@ static int space_term(const std::array<Bitboard, 6>& W, const std::array<Bitboar
   Bitboard bArea = (RANK_3 | RANK_4 | RANK_5) & empty & ~wPA;
   int wSafe = popcnt(wArea), bSafe = popcnt(bArea);
   int wMin = popcnt(W[1] | W[2]), bMin = popcnt(B[1] | B[2]);
-  int wScale = 2 + std::min(wMin, 4), bScale = 2 + std::min(bMin, 4);
+  int wScale = SPACE_SCALE_BASE + std::min(wMin, SPACE_MINOR_SATURATION);
+  int bScale = SPACE_SCALE_BASE + std::min(bMin, SPACE_MINOR_SATURATION);
   return SPACE_BASE * (wSafe * wScale - bSafe * bScale);
 }
 
@@ -367,7 +366,7 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp, int wK, int bK, B
 }
 
 // =============================================================================
-// Mobility & attacks (safe mobility) – unchanged
+// Mobility & attacks (safe mobility)
 // =============================================================================
 struct AttInfo {
   Bitboard wAll = 0, bAll = 0;
@@ -487,13 +486,13 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
     }
   }
 
-  ai.mg = clampi(ai.mg, -900, 900);
-  ai.eg = clampi(ai.eg, -900, 900);
+  ai.mg = clampi(ai.mg, -MOBILITY_CLAMP, MOBILITY_CLAMP);
+  ai.eg = clampi(ai.eg, -MOBILITY_CLAMP, MOBILITY_CLAMP);
   return ai;
 }
 
 // =============================================================================
-// Threats & hanging (gleich, aber EG-Leistung später milder gewichtet)
+// Threats & hanging
 // =============================================================================
 struct AttackMap {
   Bitboard wAll{0}, bAll{0};
@@ -536,7 +535,7 @@ static int threats(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 
   sc += hang_score(bHang, B);
   sc -= hang_score(wHang, W);
 
-  // Minor on Queen (nutzt A.wAll/A.bAll via Rays wie gehabt, unverändert)
+  // Minor on Queen
   Bitboard wMinorA = 0, bMinorA = 0;
   {
     Bitboard n = W[1];
@@ -573,7 +572,7 @@ static int threats(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 
 }
 
 // =============================================================================
-// King safety (ring-based; Feld-zählend) – Raw bleibt, Mischung später anders
+// King safety (ring-based; Feld-zählend) – Raw
 // =============================================================================
 static int king_safety_raw(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
                            Bitboard occ) {
@@ -654,7 +653,8 @@ static int king_safety_raw(const std::array<Bitboard, 6>& W, const std::array<Bi
       }
     }
 
-    int score = popcnt(cover) * KS_RING_BONUS + (power * std::min(cnt, 12)) / 12;
+    int score = popcnt(cover) * KS_RING_BONUS +
+                (power * std::min(cnt, KS_POWER_COUNT_CLAMP)) / KS_POWER_COUNT_CLAMP;
 
     // missing shield (eigene Bauern um den König)
     Bitboard shield = kingIsWhite ? M.wShield[ksq] : M.bShield[ksq];
@@ -676,12 +676,20 @@ static int king_safety_raw(const std::array<Bitboard, 6>& W, const std::array<Bi
     Bitboard ray = magic::sliding_attacks(magic::Slider::Rook, (Square)ksq, occ);
     if (ray & oppRQ) score += KS_RQ_LOS;
 
+    Bitboard kAtt = kingIsWhite ? king_attacks_from((Square)ksq) : king_attacks_from((Square)ksq);
+    Bitboard occFree = ~occ;
+    Bitboard oppAll = kingIsWhite ? (bPA | /* later */ 0 | 0) : (wPA | 0 | 0);  // extend if desired
+
+    int esc = popcnt(kAtt & occFree & ~oppAll);
+    score += (KS_ESCAPE_EMPTY - KS_ESCAPE_FACTOR * std::min(esc, 5));
+
     return std::min(score, KS_CLAMP);
   };
 
   int sc = 0;
   sc -= ring_attacks(wK, B, true);
   sc += ring_attacks(bK, W, false);
+
   return sc;
 }
 
@@ -689,38 +697,58 @@ static int king_shelter_storm(const std::array<Bitboard, 6>& W, const std::array
   int wK = lsb_i(W[5]), bK = lsb_i(B[5]);
   if (wK < 0 || bK < 0) return 0;
   Bitboard wp = W[0], bp = B[0];
+
   auto fileShelter = [&](int ksq, bool white) {
-    int f = file_of(ksq);
+    const int kFile = file_of(ksq);
+    const int kRank = rank_of(ksq);
     int total = 0;
+
     for (int df = -1; df <= 1; ++df) {
-      int ff = f + df;
+      int ff = kFile + df;
       if (ff < 0 || ff > 7) continue;
+
       if (white) {
+        // squares in front of white king (r+1..7)
         Bitboard mask = 0;
-        for (int r = rank_of(ksq) + 1; r < 8; ++r) mask |= sq_bb((Square)((r << 3) | ff));
-        int nearR = (msb_i(mask & wp) >= 0 ? (msb_i(mask & wp) >> 3) : 8);
-        int dist = clampi(nearR - rank_of(ksq), 0, 7);
+        for (int r = kRank + 1; r < 8; ++r) mask |= sq_bb((Square)((r << 3) | ff));
+        // nearest own pawn ahead -> LSB
+        int nearOwnSq = lsb_i(mask & wp);
+        int nearOwnR = (nearOwnSq >= 0 ? (nearOwnSq >> 3) : 8);
+        int dist = clampi(nearOwnR - kRank, 0, 7);
         total += SHELTER[dist];
+
+        // squares behind white king (r-1..0)
         Bitboard em = 0;
-        for (int r = rank_of(ksq) - 1; r >= 0; --r) em |= sq_bb((Square)((r << 3) | ff));
-        int nearER = (lsb_i(em & bp) >= 0 ? (lsb_i(em & bp) >> 3) : -1);
-        int edist = clampi(rank_of(ksq) - nearER, 0, 7);
+        for (int r = kRank - 1; r >= 0; --r) em |= sq_bb((Square)((r << 3) | ff));
+        // nearest enemy pawn behind -> MSB
+        int nearEnemySq = msb_i(em & bp);
+        int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : -1);
+        int edist = clampi(kRank - nearEnemyR, 0, 7);
         total -= STORM[edist] / 2;
+
       } else {
+        // squares in front of black king (r-1..0)
         Bitboard mask = 0;
-        for (int r = rank_of(ksq) - 1; r >= 0; --r) mask |= sq_bb((Square)((r << 3) | ff));
-        int nearR = (lsb_i(mask & bp) >= 0 ? (lsb_i(mask & bp) >> 3) : -1);
-        int dist = clampi(rank_of(ksq) - nearR, 0, 7);
+        for (int r = kRank - 1; r >= 0; --r) mask |= sq_bb((Square)((r << 3) | ff));
+        // nearest own pawn ahead (toward rank decreasing) -> MSB
+        int nearOwnSq = msb_i(mask & bp);
+        int nearOwnR = (nearOwnSq >= 0 ? (nearOwnSq >> 3) : -1);
+        int dist = clampi(kRank - nearOwnR, 0, 7);
         total += SHELTER[dist];
+
+        // squares ahead of black king (r+1..7) for enemy storm
         Bitboard em = 0;
-        for (int r = rank_of(ksq) + 1; r < 8; ++r) em |= sq_bb((Square)((r << 3) | ff));
-        int nearER = (msb_i(em & wp) >= 0 ? (msb_i(em & wp) >> 3) : 8);
-        int edist = clampi(nearER - rank_of(ksq), 0, 7);
+        for (int r = kRank + 1; r < 8; ++r) em |= sq_bb((Square)((r << 3) | ff));
+        // nearest enemy pawn ahead (toward rank increasing) -> LSB
+        int nearEnemySq = lsb_i(em & wp);
+        int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : 8);
+        int edist = clampi(nearEnemyR - kRank, 0, 7);
         total -= STORM[edist] / 2;
       }
     }
     return total;
   };
+
   int sc = 0;
   sc += fileShelter(bK, false);
   sc -= fileShelter(wK, true);
@@ -739,15 +767,8 @@ inline bool pawns_on_both_wings(Bitboard pawns) noexcept {
 
 static int bishop_pair_term(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
   int s = 0;
-  int bonusW = 0, bonusB = 0;
-  if (popcnt(W[2]) >= 2) {
-    bonusW = BISHOP_PAIR + (pawns_on_both_wings(W[0]) ? 6 : 0);
-    s += bonusW;
-  }
-  if (popcnt(B[2]) >= 2) {
-    bonusB = BISHOP_PAIR + (pawns_on_both_wings(B[0]) ? 6 : 0);
-    s -= bonusB;
-  }
+  if (popcnt(W[2]) >= 2) s += BISHOP_PAIR + (pawns_on_both_wings(W[0]) ? 6 : 0);
+  if (popcnt(B[2]) >= 2) s -= BISHOP_PAIR + (pawns_on_both_wings(B[0]) ? 6 : 0);
   return s;
 }
 
@@ -756,7 +777,6 @@ static int bad_bishop(const std::array<Bitboard, 6>& W, const std::array<Bitboar
   int sc = 0;
   auto apply = [&](const std::array<Bitboard, 6>& bb, int sign) {
     Bitboard paw = bb[0];
-    // leicht stärker, wenn Zentrum geschlossen (d/e Bauern blockiert)
     bool closedCenter = ((paw & M.file[3]) && (paw & M.file[4]));  // d & e File
 
     int light = 0, dark = 0;
@@ -771,8 +791,11 @@ static int bad_bishop(const std::array<Bitboard, 6>& W, const std::array<Bitboar
       int s = lsb_i(bishops);
       bishops &= bishops - 1;
       int same = is_light(s) ? light : dark;
-      int pen = (same > 4 ? (same - 4) * BAD_BISHOP_PER_PAWN : 0);
-      if (pen) sc += -(closedCenter ? pen : (pen / 2)) * sign;
+      int pen = (same > BAD_BISHOP_SAME_COLOR_THRESHOLD
+                     ? (same - BAD_BISHOP_SAME_COLOR_THRESHOLD) * BAD_BISHOP_PER_PAWN
+                     : 0);
+      if (pen)
+        sc += -(closedCenter ? pen : (pen * BAD_BISHOP_OPEN_NUM / BAD_BISHOP_OPEN_DEN)) * sign;
     }
   };
   apply(W, +1);
@@ -790,12 +813,13 @@ static int outposts_center(const std::array<Bitboard, 6>& W, const std::array<Bi
     bool notAttackedByEnemyPawn = white ? !(bPA & sq_bb((Square)sq)) : !(wPA & sq_bb((Square)sq));
     bool supportedByOwnPawn = white ? (wSup & sq_bb((Square)sq)) : (bSup & sq_bb((Square)sq));
     int r = rank_of(sq);
-    bool deepOutpost = white ? (r >= 4) : (r <= 3);
+    bool deepOutpost = white ? (r >= OUTPOST_DEEP_RANK_WHITE) : (r <= OUTPOST_DEEP_RANK_BLACK);
 
     int add = 0;
-    if (notAttackedByEnemyPawn && supportedByOwnPawn && deepOutpost) add += OUTPOST_KN + 6;
+    if (notAttackedByEnemyPawn && supportedByOwnPawn && deepOutpost)
+      add += OUTPOST_KN + OUTPOST_DEEP_EXTRA;
     if (knight_attacks_from((Square)sq) & CENTER4) add += CENTER_CTRL;
-    if (sq_bb((Square)sq) & CENTER4) add += 6;
+    if (sq_bb((Square)sq) & CENTER4) add += OUTPOST_CENTER_SQ_BONUS;
     return add;
   };
 
@@ -860,7 +884,7 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
     }
   }
 
-  // connected rooks (unchanged)
+  // connected rooks
   auto connected = [&](Bitboard rooks, Bitboard occAll) {
     if (popcnt(rooks) != 2) return false;
     int s1 = lsb_i(rooks);
@@ -874,7 +898,7 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
   if (connected(wr, occAll)) s += CONNECTED_ROOKS;
   if (connected(br, occAll)) s -= CONNECTED_ROOKS;
 
-  // rook behind passers (uses wPass/bPass from PawnTT)
+  // rook behind passers (uses wPass/bPass)
   auto behind = [&](int rSq, int pSq, bool pawnWhite, int full, int half) {
     if (file_of(rSq) != file_of(pSq)) return 0;
     Bitboard ray = magic::sliding_attacks(magic::Slider::Rook, (Square)rSq, occAll);
@@ -892,13 +916,13 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
     while (f) {
       int ps = lsb_i(f);
       f &= f - 1;
-      s += behind(rs, ps, true, ROOK_BEHIND_PASSER, ROOK_BEHIND_PASSER / 2);
+      s += behind(rs, ps, true, ROOK_BEHIND_PASSER, ROOK_BEHIND_PASSER_HALF);
     }
     f = M.file[rs] & bPass;
     while (f) {
       int ps = lsb_i(f);
       f &= f - 1;
-      s += behind(rs, ps, false, ROOK_BEHIND_PASSER / 2, ROOK_BEHIND_PASSER / 3);
+      s += behind(rs, ps, false, ROOK_BEHIND_PASSER_HALF, ROOK_BEHIND_PASSER_THIRD);
     }
   }
   t = br;
@@ -909,32 +933,90 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
     while (f) {
       int ps = lsb_i(f);
       f &= f - 1;
-      s -= behind(rs, ps, false, ROOK_BEHIND_PASSER, ROOK_BEHIND_PASSER / 2);
+      s -= behind(rs, ps, false, ROOK_BEHIND_PASSER, ROOK_BEHIND_PASSER_HALF);
     }
     f = M.file[rs] & wPass;
     while (f) {
       int ps = lsb_i(f);
       f &= f - 1;
-      s -= behind(rs, ps, true, ROOK_BEHIND_PASSER / 2, ROOK_BEHIND_PASSER / 3);
+      s -= behind(rs, ps, true, ROOK_BEHIND_PASSER_HALF, ROOK_BEHIND_PASSER_THIRD);
     }
   }
 
-  // NEW: semi-open *gegen* Königsdatei (MG-only Effekt später gewichtet)
+  // Semi-open/Offene Königsdatei (MG-only Effekt später gewichtet)
   int wK = lsb_i(W[5]), bK = lsb_i(B[5]);
   if (wK >= 0) {
     Bitboard f = M.file[wK];
     bool own = f & wp;
     bool opp = f & bp;
-    if (!own && opp) s += 6;  // white rooks targeting semi-open king file
-    if (!own && !opp) s += 10;
+    if (!own && opp) s += ROOK_SEMI_ON_KING_FILE;
+    if (!own && !opp) s += ROOK_OPEN_ON_KING_FILE;
   }
   if (bK >= 0) {
     Bitboard f = M.file[bK];
     bool own = f & bp;
     bool opp = f & wp;
-    if (!own && opp) s -= 6;
-    if (!own && !opp) s -= 10;
+    if (!own && opp) s -= ROOK_SEMI_ON_KING_FILE;
+    if (!own && !opp) s -= ROOK_OPEN_ON_KING_FILE;
   }
+
+  // Add near the bottom of rook_activity(), before the return:
+
+  auto king_file_pressure = [&](bool white) {
+    int ksq = white ? lsb_i(B[5]) : lsb_i(W[5]);
+    if (ksq < 0) return 0;
+    Bitboard rooks = white ? W[3] : B[3];
+    Bitboard oppPA = white ? bPA : wPA;
+
+    int total = 0;
+    Bitboard t = rooks;
+    while (t) {
+      int rsq = lsb_i(t);
+      t &= t - 1;
+
+      // rook ray and the king’s file
+      Bitboard ray = magic::sliding_attacks(magic::Slider::Rook, (Square)rsq, occ);
+      Bitboard fileToKing = ray & M.file[ksq];
+      if (!(fileToKing & sq_bb((Square)ksq))) continue;  // not pointing at king
+
+      // squares strictly between rook and king:
+      Bitboard between =
+          fileToKing &
+          magic::sliding_attacks(magic::Slider::Rook, (Square)ksq, occ | sq_bb((Square)rsq)) &
+          ~sq_bb((Square)rsq) & ~sq_bb((Square)ksq);
+
+      int len = popcnt(between);
+      int blockedByPawnAtt = popcnt(between & oppPA);
+      int free = len - blockedByPawnAtt;
+
+      // Tune these (small numbers):
+      total += ROOK_KFILE_PRESS_FREE * free;
+      total -= ROOK_KFILE_PRESS_PAWNATT * blockedByPawnAtt;
+    }
+    return white ? total : -total;
+  };
+
+  auto rook_lift_safety = [&](bool white) {
+    Bitboard rooks = white ? W[3] : B[3];
+    Bitboard oppPA = white ? bPA : wPA;
+    int targetRank = white ? 2 : 5;  // zero-based: rank 3 / rank 6
+    int sc = 0;
+    Bitboard t = rooks;
+    while (t) {
+      int rsq = lsb_i(t);
+      t &= t - 1;
+      if (rank_of(rsq) != targetRank) continue;
+      if ((sq_bb((Square)rsq) & oppPA) == 0) sc += ROOK_LIFT_SAFE;  // small bump
+    }
+    return white ? sc : -sc;
+  };
+
+  s += rook_lift_safety(true);
+  s += rook_lift_safety(false);
+
+  s += king_file_pressure(true);
+  s += king_file_pressure(false);
+
   return s;
 }
 
@@ -969,37 +1051,33 @@ static int rook_endgame_extras_eg(const std::array<Bitboard, 6>& W,
         bool beh =
             (magic::sliding_attacks(magic::Slider::Rook, (Square)rs, occ) & sq_bb((Square)ps)) != 0;
         if (!beh) continue;
-        auto progress_from_home = [&](int ps, bool white) {
-          return white ? rank_of(ps) : (7 - rank_of(ps));
+        auto progress_from_home = [&](int ps, bool w) {
+          return w ? rank_of(ps) : (7 - rank_of(ps));
         };
-        int advance = std::max(0, progress_from_home(ps, white) - 3);
-        eg += (white ? +1 : -1) * (advance * (ROOK_BEHIND_PASSER / 3));
+        int advance = std::max(0, progress_from_home(ps, white) - ROOK_PASSER_PROGRESS_START_RANK);
+        eg += (white ? +1 : -1) * (advance * ROOK_PASSER_PROGRESS_MULT);
       }
     }
   };
   add_progress(true);
   add_progress(false);
 
-  // Königsschnitt in Turmendspielen (je 2 Linien/File)
+  // Königsschnitt in Turmendspielen
   auto cut_score = [&](bool white) {
-    // nur Turmendspiel?
     bool rookEnd =
         (popcnt(W[3]) == 1 && popcnt(B[3]) == 1 && (W[1] | W[2] | W[4] | B[1] | B[2] | B[4]) == 0);
     if (!rookEnd) return 0;
     int wK = lsb_i(W[5]), bK = lsb_i(B[5]);
     if (wK < 0 || bK < 0) return 0;
     int sc = 0;
-    // Schneidet ein Turm den gegnerischen König ab?
     auto cut_by = [&](Bitboard r, int ksq, int sign) {
-      Bitboard rayR = magic::sliding_attacks(magic::Slider::Rook, (Square)lsb_i(r), occ);
-      // gleiche Reihe/Spalte und „cut“ über mindestens 2 Linien
       int rsq = lsb_i(r);
       if (file_of(rsq) == file_of(ksq)) {
         int diff = std::abs(rank_of(rsq) - rank_of(ksq));
-        if (diff >= 2) sc += sign * 14;
+        if (diff >= ROOK_CUT_MIN_SEPARATION) sc += sign * ROOK_CUT_BONUS;
       } else if (rank_of(rsq) == rank_of(ksq)) {
         int diff = std::abs(file_of(rsq) - file_of(ksq));
-        if (diff >= 2) sc += sign * 14;
+        if (diff >= ROOK_CUT_MIN_SEPARATION) sc += sign * ROOK_CUT_BONUS;
       }
     };
     if (white) {
@@ -1022,7 +1100,6 @@ static int passer_blocker_quality(const std::array<Bitboard, 6>& W,
   auto add_side = [&](bool white) {
     Bitboard paw = white ? wp : bp;
     Bitboard opp = white ? bp : wp;
-    Bitboard passMask = 0ULL;
     Bitboard t = paw;
     while (t) {
       int s = lsb_i(t);
@@ -1033,15 +1110,14 @@ static int passer_blocker_quality(const std::array<Bitboard, 6>& W,
       if (stop < 0 || stop > 63) continue;
       Bitboard stopBB = sq_bb((Square)stop);
       if (occ & stopBB) {
-        // Wer blockiert?
         if (W[1] & stopBB)
-          sc += (white ? +6 : -6);  // N gut
+          sc += (white ? +BLOCK_PASSER_STOP_KNIGHT : -BLOCK_PASSER_STOP_KNIGHT);
         else if (W[2] & stopBB)
-          sc += (white ? -4 : +4);  // B schlecht
+          sc += (white ? -BLOCK_PASSER_STOP_BISHOP : +BLOCK_PASSER_STOP_BISHOP);
         if (B[1] & stopBB)
-          sc += (white ? -6 : +6);
+          sc += (white ? -BLOCK_PASSER_STOP_KNIGHT : +BLOCK_PASSER_STOP_KNIGHT);
         else if (B[2] & stopBB)
-          sc += (white ? +4 : -4);
+          sc += (white ? +BLOCK_PASSER_STOP_BISHOP : -BLOCK_PASSER_STOP_BISHOP);
       }
     }
   };
@@ -1064,18 +1140,18 @@ static int king_tropism(const std::array<Bitboard, 6>& W, const std::array<Bitbo
       int s = lsb_i(t);
       t &= t - 1;
       int d = king_manhattan(s, target);
-      sc += sign * std::max(0, base - 2 * d);
+      sc += sign * std::max(0, base - TROPISM_DIST_FACTOR * d);
     }
   };
-  add(W[1], bK, +1, 12);
-  add(W[2], bK, +1, 10);
-  add(W[3], bK, +1, 8);
-  add(W[4], bK, +1, 6);
-  add(B[1], wK, -1, 12);
-  add(B[2], wK, -1, 10);
-  add(B[3], wK, -1, 8);
-  add(B[4], wK, -1, 6);
-  return sc / 2;
+  add(W[1], bK, +1, TROPISM_BASE_KN);
+  add(W[2], bK, +1, TROPISM_BASE_BI);
+  add(W[3], bK, +1, TROPISM_BASE_RO);
+  add(W[4], bK, +1, TROPISM_BASE_QU);
+  add(B[1], wK, -1, TROPISM_BASE_KN);
+  add(B[2], wK, -1, TROPISM_BASE_BI);
+  add(B[3], wK, -1, TROPISM_BASE_RO);
+  add(B[4], wK, -1, TROPISM_BASE_QU);
+  return sc / TROPISM_EG_DEN;
 }
 
 // King activity (EG): Nähe zu Zentrum e4/d4/e5/d5
@@ -1091,16 +1167,16 @@ static int king_activity_eg(const std::array<Bitboard, 6>& W, const std::array<B
   int wK = lsb_i(W[5]);
   int bK = lsb_i(B[5]);
   if (wK < 0 || bK < 0) return 0;
-  // dichter = besser (negatives Distanzmaß)
-  return (center_manhattan(bK) - center_manhattan(wK)) * 2;
+  return (center_manhattan(bK) - center_manhattan(wK)) * KING_ACTIVITY_EG_MULT;
 }
 
 // Passed-pawn-race (EG, figurenarm)
 static int passed_pawn_race_eg(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
                                const Position& pos) {
-  // Nur bei wenigen Figuren (ohne Damen & max 2 Leichtfiguren/Seite) – billig & sicher
   int minorMajor = popcnt(W[1] | W[2] | W[3] | B[1] | B[2] | B[3]);
-  if (popcnt(W[4] | B[4]) != 0 || minorMajor > 2) return 0;
+  if ((PASS_RACE_NEED_QUEENLESS && popcnt(W[4] | B[4]) != 0) ||
+      minorMajor > PASS_RACE_MAX_MINORMAJOR)
+    return 0;
 
   int wK = lsb_i(W[5]), bK = lsb_i(B[5]);
   Bitboard wp = W[0], bp = B[0];
@@ -1108,7 +1184,9 @@ static int passed_pawn_race_eg(const std::array<Bitboard, 6>& W, const std::arra
   auto prom_sq = [](int sq, bool w) { return w ? ((sq & 7) | (7 << 3)) : ((sq & 7) | (0 << 3)); };
   auto eta = [&](bool white, int sq) -> int {
     int steps = white ? (7 - rank_of(sq)) : (rank_of(sq));
-    int stmAdj = (pos.getState().sideToMove == (white ? Color::White : Color::Black)) ? 0 : 1;
+    int stmAdj = (pos.getState().sideToMove == (white ? Color::White : Color::Black))
+                     ? 0
+                     : PASS_RACE_STM_ADJ;
     return steps + stmAdj;
   };
 
@@ -1122,7 +1200,7 @@ static int passed_pawn_race_eg(const std::array<Bitboard, 6>& W, const std::arra
     int q = prom_sq(s, true);
     int wETA = eta(true, s);
     int bKETA = king_manhattan(bK, q);
-    sc += 4 * (bKETA - wETA);
+    sc += PASS_RACE_MULT * (bKETA - wETA);
   }
   // schwarze
   t = bp;
@@ -1134,7 +1212,7 @@ static int passed_pawn_race_eg(const std::array<Bitboard, 6>& W, const std::arra
     int q = prom_sq(s, false);
     int bETA = eta(false, s);
     int wKETA = king_manhattan(wK, q);
-    sc -= 4 * (wKETA - bETA);
+    sc -= PASS_RACE_MULT * (wKETA - bETA);
   }
   return sc;
 }
@@ -1149,15 +1227,15 @@ static int development(const std::array<Bitboard, 6>& W, const std::array<Bitboa
   Bitboard bInit = sq_bb(Square(57)) | sq_bb(Square(62)) | sq_bb(Square(58)) | sq_bb(Square(61));
   int dW = popcnt(wMin & wInit);
   int dB = popcnt(bMin & bInit);
-  return (dB - dW) * 16;
+  return (dB - dW) * DEVELOPMENT_PIECE_ON_HOME_PENALTY;
 }
 
 static int piece_blocking(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
   int s = 0;
   Bitboard wBlock = sq_bb(Square(1 * 8 + 2)) | sq_bb(Square(1 * 8 + 3));  // c2,d2
   Bitboard bBlock = sq_bb(Square(6 * 8 + 2)) | sq_bb(Square(6 * 8 + 3));  // c7,d7
-  if ((W[1] | W[2]) & wBlock) s -= 8;
-  if ((B[1] | B[2]) & bBlock) s += 8;
+  if ((W[1] | W[2]) & wBlock) s -= PIECE_BLOCKING_PENALTY;
+  if ((B[1] | B[2]) & bBlock) s += PIECE_BLOCKING_PENALTY;
   return s;
 }
 
@@ -1183,16 +1261,15 @@ static int endgame_scale(const std::array<Bitboard, 6>& W, const std::array<Bitb
   auto on_fileH = [&](Bitboard paw) { return (paw & M.file[7]) != 0; };
   auto is_corner_pawn = [&](Bitboard paw) { return on_fileA(paw) || on_fileH(paw); };
 
-  // ===== EXAKT: K + Randbauer vs K mit Verteidiger auf Umwandlungsfeld => Remis =====
+  // K + Randbauer vs K mit Verteidiger auf Umwandlungsfeld => Remis
   if (wP == 1 && bP == 0 && (wN | wB | wR | wQ | bN | bB | bR | bQ) == 0) {
-    if (on_fileA(W[0]) && bK == 56 /*a8*/) return 0;
-    if (on_fileH(W[0]) && bK == 63 /*h8*/) return 0;
+    if (on_fileA(W[0]) && bK == 56 /*a8*/) return SCALE_DRAW;
+    if (on_fileH(W[0]) && bK == 63 /*h8*/) return SCALE_DRAW;
   }
   if (bP == 1 && wP == 0 && (wN | wB | wR | wQ | bN | bB | bR | bQ) == 0) {
-    if (on_fileA(B[0]) && wK == 0 /*a1*/) return 0;
-    if (on_fileH(B[0]) && wK == 7 /*h1*/) return 0;
+    if (on_fileA(B[0]) && wK == 0 /*a1*/) return SCALE_DRAW;
+    if (on_fileH(B[0]) && wK == 7 /*h1*/) return SCALE_DRAW;
   }
-  // ================================================================================
 
   // Opposite-colored bishops only
   bool onlyBish = ((W[1] | W[3] | W[4] | B[1] | B[3] | B[4]) == 0) && wB == 1 && bB == 1;
@@ -1201,54 +1278,49 @@ static int endgame_scale(const std::array<Bitboard, 6>& W, const std::array<Bitb
     int bBsq = lsb_i(B[2]);
     bool wLight = ((file_of(wBsq) + rank_of(wBsq)) & 1) != 0;
     bool bLight = ((file_of(bBsq) + rank_of(bBsq)) & 1) != 0;
-    if (wLight != bLight) return 160;  // ≈0.625
+    if (wLight != bLight) return OPP_BISHOPS_SCALE;
   }
 
   // Falscher Läufer + Randbauer (K+B+P(a/h) vs K)
-  // -> Nur 0, wenn Verteidiger am Eck oder sehr nah; sonst hart runter skalieren.
   if (wB == 1 && wP == 1 && is_corner_pawn(W[0]) && (bP | bN | bB | bR | bQ) == 0) {
     int corner = on_fileA(W[0]) ? 56 /*a8*/ : 63 /*h8*/;
     int d = kdist_cheb(bK, corner);
-    if (d <= 1) return 0;   // König im Eck/nebendran -> Remis
-    if (d <= 2) return 96;  // sehr remisnah
-    return 160;             // deutlich reduziert, aber noch gewinnbar
+    if (d <= 1) return SCALE_DRAW;
+    if (d <= 2) return SCALE_VERY_DRAWISH;
+    return SCALE_MEDIUM;
   }
   if (bB == 1 && bP == 1 && is_corner_pawn(B[0]) && (wP | wN | wB | wR | wQ) == 0) {
     int corner = on_fileA(B[0]) ? 0 /*a1*/ : 7 /*h1*/;
     int d = kdist_cheb(wK, corner);
-    if (d <= 1) return 0;
-    if (d <= 2) return 96;
-    return 160;
+    if (d <= 1) return SCALE_DRAW;
+    if (d <= 2) return SCALE_VERY_DRAWISH;
+    return SCALE_MEDIUM;
   }
 
-  // R+Rand-/Doppelbauer vs R (reduziert; stärker, wenn Verteidiger „vorne“ oder in Ecknähe)
+  // R+Rand-/Doppelbauer vs R (reduziert)
   if (wR == 1 && bR == 1 && (wP <= 2) && is_corner_pawn(W[0]) && bP == 0) {
     int corner = on_fileA(W[0]) ? 56 : 63;
     int d = kdist_cheb(bK, corner);
-    return (d <= 2 ? 96 : 144);  // ~0.375 bzw. ~0.56
+    return (d <= 2 ? SCALE_VERY_DRAWISH : SCALE_REDUCED);
   }
   if (bR == 1 && wR == 1 && (bP <= 2) && is_corner_pawn(B[0]) && wP == 0) {
     int corner = on_fileA(B[0]) ? 0 : 7;
     int d = kdist_cheb(wK, corner);
-    return (d <= 2 ? 96 : 144);
+    return (d <= 2 ? SCALE_VERY_DRAWISH : SCALE_REDUCED);
   }
 
   // N+Randbauer vs K (nahezu remis)
-  if (wN == 1 && wP == 1 && is_corner_pawn(W[0]) && (bN | bB | bR | bQ | bP) == 0) return 32;
-  if (bN == 1 && bP == 1 && is_corner_pawn(B[0]) && (wN | wB | wR | wQ | wP) == 0) return 32;
+  if (wN == 1 && wP == 1 && is_corner_pawn(W[0]) && (bN | bB | bR | bQ | bP) == 0)
+    return KN_CORNER_PAWN_SCALE;
+  if (bN == 1 && bP == 1 && is_corner_pawn(B[0]) && (wN | wB | wR | wQ | wP) == 0)
+    return KN_CORNER_PAWN_SCALE;
 
-  return 256;
+  return FULL_SCALE;
 }
 
 // =============================================================================
-// Extra: castles & center (wie gehabt)
+// Extra: castles & center (wie gehabt; parametriert)
 // =============================================================================
-
-inline bool rook_on_start_square(Bitboard rooks, bool white) {
-  return white ? (rooks & (sq_bb(Square(0)) | sq_bb(Square(7))))     // a1,h1
-               : (rooks & (sq_bb(Square(56)) | sq_bb(Square(63))));  // a8,h8
-}
-
 static void castling_and_center(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
                                 int& mg_add, int& eg_add) {
   int wK = lsb_i(W[5]);
@@ -1256,23 +1328,33 @@ static void castling_and_center(const std::array<Bitboard, 6>& W, const std::arr
   bool queensOn = (W[4] | B[4]) != 0;
   auto center_penalty = [&](int ksq, bool white) {
     if (ksq < 0) return 0;
-    bool centerBack = (ksq == 4 || ksq == 3 || ksq == 5);
+
+    // Normalize to "white viewpoint" for the positional test
+    int ksq_w = white ? ksq : mirror_sq_black(ksq);
+    bool centerBack = (ksq_w == 4 || ksq_w == 3 || ksq_w == 5);  // e1/d1/f1 from white POV
     if (!centerBack) return 0;
-    Bitboard fileE = M.file[4], fileD = M.file[3];
+
+    Bitboard fileE = M.file[white ? 4 : mirror_sq_black(4)];
+    Bitboard fileD = M.file[white ? 3 : mirror_sq_black(3)];
+
     Bitboard ownP = white ? W[0] : B[0];
     Bitboard oppP = white ? B[0] : W[0];
+
     int amp = 0;
     auto openish = [&](Bitboard f) {
-      bool own = (f & ownP), opp = (f & oppP);
-      if (!own && !opp) return 2;
-      if (!own && opp) return 1;
+      bool own = (f & ownP) != 0;
+      bool opp = (f & oppP) != 0;
+      if (!own && !opp) return CENTER_BACK_OPEN_FILE_OPEN;
+      if (!own && opp) return CENTER_BACK_OPEN_FILE_SEMI;
       return 0;
     };
     amp += openish(fileD) + openish(fileE);
-    int base = queensOn ? 36 : 12;
-    return base + amp * 8;
+
+    int base = ((W[4] | B[4]) != 0) ? CENTER_BACK_PENALTY_Q_ON : CENTER_BACK_PENALTY_Q_OFF;
+    return base + amp * CENTER_BACK_OPEN_FILE_WEIGHT;
   };
-  auto castle_bonus = [&](int ksq) { return (ksq == 6 || ksq == 2) ? 28 : 0; };
+
+  auto castle_bonus = [&](int ksq) { return (ksq == 6 || ksq == 2) ? CASTLE_BONUS : 0; };
   mg_add += castle_bonus(wK);
   mg_add -= castle_bonus(mirror_sq_black(bK));
   mg_add += center_penalty(bK, false);
@@ -1282,7 +1364,7 @@ static void castling_and_center(const std::array<Bitboard, 6>& W, const std::arr
   auto early_queen_malus = [&](const std::array<Bitboard, 6>& S, bool white) {
     Bitboard Q = S[4], minorsHome = white ? (RANK_1 & (S[1] | S[2])) : (RANK_8 & (S[1] | S[2]));
     Bitboard qZone = white ? (RANK_2 | RANK_3) : (RANK_7 | RANK_6);
-    return (Q & qZone & minorsHome) ? 8 : 0;
+    return (Q & qZone & minorsHome) ? EARLY_QUEEN_MALUS : 0;
   };
   int eqmW = early_queen_malus(W, true);
   int eqmB = early_queen_malus(B, false);
@@ -1292,7 +1374,8 @@ static void castling_and_center(const std::array<Bitboard, 6>& W, const std::arr
   if (queensOn) {
     bool wUncastled = (wK == 4) && rook_on_start_square(W[3], true);
     bool bUncastled = (bK == 60) && rook_on_start_square(B[3], false);
-    mg_add += (bUncastled ? +10 : 0) - (wUncastled ? +10 : 0);
+    mg_add +=
+        (bUncastled ? +UNCASTLED_PENALTY_Q_ON : 0) - (wUncastled ? +UNCASTLED_PENALTY_Q_ON : 0);
   }
 }
 
@@ -1354,59 +1437,6 @@ static inline size_t idx_pawn(uint64_t k) {
 }
 
 // =============================================================================
-// Material/PST/Phase gather + material counts – via Acc
-// =============================================================================
-static void material_phase_counts(const std::array<Bitboard, 6>& W,
-                                  const std::array<Bitboard, 6>& B, int& mg, int& eg, int& phase,
-                                  MaterialCounts& mc) {
-  mg = eg = phase = 0;
-  mc = MaterialCounts{};
-  for (int pt = 0; pt < 6; ++pt) {
-    Bitboard bb = W[pt];
-    auto P = (PieceType)pt;
-    while (bb) {
-      int s = lsb_i(bb);
-      bb &= bb - 1;
-      mg += VAL_MG[pt] + pst_mg(P, s);
-      eg += VAL_EG[pt] + pst_eg(P, s);
-      phase += PHASE_W[pt];
-      if (pt == 0)
-        mc.P[0]++;
-      else if (pt == 1)
-        mc.N[0]++;
-      else if (pt == 2)
-        mc.B[0]++;
-      else if (pt == 3)
-        mc.R[0]++;
-      else if (pt == 4)
-        mc.Q[0]++;
-    }
-  }
-  for (int pt = 0; pt < 6; ++pt) {
-    Bitboard bb = B[pt];
-    auto P = (PieceType)pt;
-    while (bb) {
-      int s = lsb_i(bb);
-      bb &= bb - 1;
-      int ms = mirror_sq_black(s);
-      mg -= VAL_MG[pt] + pst_mg(P, ms);
-      eg -= VAL_EG[pt] + pst_eg(P, ms);
-      phase += PHASE_W[pt];
-      if (pt == 0)
-        mc.P[1]++;
-      else if (pt == 1)
-        mc.N[1]++;
-      else if (pt == 2)
-        mc.B[1]++;
-      else if (pt == 3)
-        mc.R[1]++;
-      else if (pt == 4)
-        mc.Q[1]++;
-    }
-  }
-}
-
-// =============================================================================
 // evaluate() – white POV
 // =============================================================================
 int Evaluator::evaluate(model::Position& pos) const {
@@ -1422,9 +1452,7 @@ int Evaluator::evaluate(model::Position& pos) const {
   {
     auto& e = m_impl->eval[idx_eval(key)];
     uint64_t k = e.key.load(std::memory_order_acquire);
-    if (k == key) {
-      return e.score.load(std::memory_order_relaxed);
-    }
+    if (k == key) return e.score.load(std::memory_order_relaxed);
   }
 
   // bitboards
@@ -1471,7 +1499,6 @@ int Evaluator::evaluate(model::Position& pos) const {
       wPass = (Bitboard)ps.wPass.load(std::memory_order_relaxed);
       bPass = (Bitboard)ps.bPass.load(std::memory_order_relaxed);
     } else {
-      // recompute
       int wKbb = lsb_i(W[5]), bKbb = lsb_i(B[5]);
       pinfo = pawn_structure_split(W[0], B[0], wKbb, bKbb, occ);
 
@@ -1540,21 +1567,21 @@ int Evaluator::evaluate(model::Position& pos) const {
   // Queens present?
   bool queensOn = (W[4] | B[4]) != 0;
 
-  // KS mixing: ohne Doublecount, EG stark reduziert außer bei viel Schwerfiguren
+  // KS mixing
   int heavyPieces = mc.Q[0] + mc.Q[1] + mc.R[0] + mc.R[1];
-  int ksMulMG = queensOn ? 100 : 55;
-  int ksMulEG = (heavyPieces >= 2) ? 40 : 10;
+  int ksMulMG = queensOn ? KS_MIX_MG_Q_ON : KS_MIX_MG_Q_OFF;
+  int ksMulEG =
+      (heavyPieces >= KS_MIX_EG_HEAVY_THRESHOLD) ? KS_MIX_EG_IF_HEAVY : KS_MIX_EG_IF_LIGHT;
   int ksMG = ksRaw * ksMulMG / 100;
   int ksEG = ksRaw * ksMulEG / 100;
 
   int shelterMG = shelter;
-  int shelterEG = shelter / 4;
+  int shelterEG = shelter / SHELTER_EG_DEN;
 
   // Mix into MG/EG buckets
   int mg_add = 0, eg_add = 0;
-  // passer blocker quality (MG kräftiger als EG)
+  // passer blocker quality
   int blkq = passer_blocker_quality(W, B, W[0], B[0], occ);
-
   mg_add += blkq;
   eg_add += blkq / 2;
 
@@ -1564,7 +1591,7 @@ int Evaluator::evaluate(model::Position& pos) const {
 
   // updated space
   mg_add += spc;
-  eg_add += spc / 4;
+  eg_add += spc / SPACE_EG_DEN;
 
   // updated outposts
   mg_add += outp;
@@ -1580,19 +1607,17 @@ int Evaluator::evaluate(model::Position& pos) const {
   eg_add += ksEG + shelterEG;
 
   // Threats/Tropism sanfter im EG
-  mg_add += (thr * 3) / 2;
-  eg_add += thr / 4;
+  mg_add += (thr * THREATS_MG_NUM) / THREATS_MG_DEN;
+  eg_add += thr / THREATS_EG_DEN;
 
   mg_add += bp + imb;
   eg_add += bp / 2 + imb / 2;
 
-  mg_add += dev * std::min(curPhase, 12) / 12;
-  eg_add += dev / 8;
+  mg_add += dev * std::min(curPhase, DEV_MG_PHASE_CUTOFF) / DEV_MG_PHASE_DEN;
+  eg_add += dev / DEV_EG_DEN;
 
-  // later line — drop `+ ract` from both MG/EG:
-  mg_add += rim + outp /* + ract */ + badB + spc + block + trop;
-  eg_add +=
-      (rim / 2) + (outp / 2) /* + (ract / 3) */ + (badB / 3) + (spc / 4) + (block / 2) + (trop / 6);
+  mg_add += rim + badB + block + trop;
+  eg_add += (rim / 2) + (badB / 3) + (block / 2) + (trop / 6);
 
   // Rook-EG-Extras & King-Activity & Passed-Pawn-Race
   eg_add += rook_endgame_extras_eg(W, B, W[0], B[0], occ);
@@ -1606,9 +1631,9 @@ int Evaluator::evaluate(model::Position& pos) const {
   eg += eg_add;
 
   // blend
-  int mg_w = (curPhase * 256) / MAX_PHASE;
-  int eg_w = 256 - mg_w;
-  int score = ((mg * mg_w) + (eg * eg_w)) >> 8;
+  int mg_w = (curPhase * BLEND_SCALE) / MAX_PHASE;
+  int eg_w = BLEND_SCALE - mg_w;
+  int score = int(((int64_t)mg * mg_w + (int64_t)eg * eg_w) >> 8);
 
   // tempo
   bool wtm = (pos.getState().sideToMove == Color::White);
@@ -1617,7 +1642,7 @@ int Evaluator::evaluate(model::Position& pos) const {
 
   // endgame scaling (erweitert)
   int scale = endgame_scale(W, B);
-  score = (score * scale) / 256;
+  score = (score * scale) / FULL_SCALE;
 
   score = clampi(score, -MATE + 1, MATE - 1);
 
