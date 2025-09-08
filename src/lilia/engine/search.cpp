@@ -792,13 +792,18 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
                                         : 0;
 
     // LMP (relaxed when improving)  (Step 2)
-    if (!inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet && !isQuietHeavy) {
-      int limit = depth * depth;  // 1,4,9
-      int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
-      if (prevOk) h += contHist[pidx(prevPt)][prev.to()][m.from()][m.to()] >> 1;
+    if (!inCheck && !isPV && isQuiet && depth <= 4 && !tacticalQuiet &&
+        !isQuietHeavy) {
+      int limit = depth * depth;  // 1,4,9,16
+      int h = history[m.from()][m.to()] +
+              (quietHist[pidx(moverPt)][m.to()] >> 1);
+      if (prevOk)
+        h += contHist[pidx(prevPt)][prev.to()][m.from()][m.to()] >> 1;
       if (h < -8000) limit = std::max(1, limit - 1);
 
-      int futMarg = FUT_MARGIN[depth] + (improving ? 32 : 0);
+      int futMarg =
+          (depth <= 3 ? FUT_MARGIN[depth] : FUT_MARGIN[3] + 32) +
+          (improving ? 32 : 0);
       if (staticEval + futMarg <= alpha + 32 && moveCount >= limit) {
         ++moveCount;
         continue;
