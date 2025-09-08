@@ -653,8 +653,9 @@ static int king_safety_raw(const std::array<Bitboard, 6>& W, const std::array<Bi
       }
     }
 
-    int score = popcnt(cover) * KS_RING_BONUS +
-                (power * std::min(cnt, KS_POWER_COUNT_CLAMP)) / KS_POWER_COUNT_CLAMP;
+    int unique = popcnt(cover);
+    int score = unique * KS_RING_BONUS +
+                (power * std::min(unique, KS_POWER_COUNT_CLAMP)) / KS_POWER_COUNT_CLAMP;
 
     // missing shield (eigene Bauern um den König)
     Bitboard shield = kingIsWhite ? M.wShield[ksq] : M.bShield[ksq];

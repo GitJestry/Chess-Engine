@@ -33,20 +33,20 @@ constexpr int BACKWARD_P = 10;
 constexpr int PHALANX = 8;
 constexpr int CANDIDATE_P = 10;
 constexpr int CONNECTED_PASSERS = 22;
-constexpr int PASSED_MG[8] = {0, 8, 16, 28, 48, 80, 130, 0};
-constexpr int PASSED_EG[8] = {0, 16, 28, 44, 72, 110, 170, 0};
+constexpr int PASSED_MG[8] = {0, 8, 16, 28, 48, 100, 130, 0};
+constexpr int PASSED_EG[8] = {0, 16, 28, 44, 72, 130, 170, 0};
 constexpr int PASS_BLOCK = 10;
 constexpr int PASS_SUPP = 8;
-constexpr int PASS_FREE = 10;
-constexpr int PASS_KBOOST = 10;
+constexpr int PASS_FREE = 14;
+constexpr int PASS_KBOOST = 14;
 constexpr int PASS_KBLOCK = 12;
 
 // =============================================================================
 /* King safety (SF-ähnliche Druckgewichtung & Clamp) */
 // =============================================================================
-constexpr int KS_W_N = 18, KS_W_B = 20, KS_W_R = 20, KS_W_Q = 32;
-constexpr int KS_RING_BONUS = 2, KS_MISS_SHIELD = 12, KS_OPEN_FILE = 16, KS_RQ_LOS = 10,
-              KS_CLAMP = 224;
+constexpr int KS_W_N = 18, KS_W_B = 20, KS_W_R = 16, KS_W_Q = 24;
+constexpr int KS_RING_BONUS = 1, KS_MISS_SHIELD = 8, KS_OPEN_FILE = 10, KS_RQ_LOS = 6,
+              KS_CLAMP = 160;
 
 // King-Ring/Shield-Geometrie
 constexpr int KING_RING_RADIUS = 2;       // Ring-Radius (Chebyshev)
@@ -55,7 +55,7 @@ constexpr int KS_POWER_COUNT_CLAMP = 12;  // max Angriffs-Feldanzahl für Power-
 
 // King-safety Mischung (MG/EG)
 constexpr int KS_MIX_MG_Q_ON = 100;
-constexpr int KS_MIX_MG_Q_OFF = 55;
+constexpr int KS_MIX_MG_Q_OFF = 45;
 constexpr int KS_MIX_EG_HEAVY_THRESHOLD = 2;  // # (Q+R) beider Seiten
 constexpr int KS_MIX_EG_IF_HEAVY = 40;
 constexpr int KS_MIX_EG_IF_LIGHT = 10;
@@ -70,7 +70,7 @@ constexpr int SHELTER_EG_DEN = 4;  // Shelter schwächer im EG
 // =============================================================================
 // Pieces/style (klassischer angehaucht)
 // =============================================================================
-constexpr int BISHOP_PAIR = 46;
+constexpr int BISHOP_PAIR = 36;
 constexpr int BAD_BISHOP_PER_PAWN = 2;
 constexpr int BAD_BISHOP_SAME_COLOR_THRESHOLD = 4;  // ab so vielen gleichfarbigen Bauern
 constexpr int BAD_BISHOP_OPEN_NUM = 1;              // Faktor „offenes Zentrum“
@@ -108,9 +108,9 @@ constexpr int BLOCK_PASSER_STOP_KNIGHT = 6;  // gut
 constexpr int BLOCK_PASSER_STOP_BISHOP = 4;  // schlecht (als Malus gegenüber gut)
 
 // Threats (etwas härter auf Hänger / Bauern-Drohungen)
-constexpr int THR_PAWN_MINOR = 14, THR_PAWN_ROOK = 20, THR_PAWN_QUEEN = 24;
-constexpr int HANG_MINOR = 14, HANG_ROOK = 22, HANG_QUEEN = 32;
-constexpr int MINOR_ON_QUEEN = 8;
+constexpr int THR_PAWN_MINOR = 10, THR_PAWN_ROOK = 20, THR_PAWN_QUEEN = 24;
+constexpr int HANG_MINOR = 10, HANG_ROOK = 16, HANG_QUEEN = 24;
+constexpr int MINOR_ON_QUEEN = 6;
 
 // Threats/Tropism Mischung
 constexpr int THREATS_MG_NUM = 3, THREATS_MG_DEN = 2;  // *3/2
