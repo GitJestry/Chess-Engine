@@ -33,13 +33,17 @@ constexpr int BACKWARD_P = 10;
 constexpr int PHALANX = 8;
 constexpr int CANDIDATE_P = 10;
 constexpr int CONNECTED_PASSERS = 22;
-constexpr int PASSED_MG[8] = {0, 8, 16, 28, 48, 100, 130, 0};
-constexpr int PASSED_EG[8] = {0, 16, 28, 44, 72, 130, 170, 0};
-constexpr int PASS_BLOCK = 10;
-constexpr int PASS_SUPP = 8;
-constexpr int PASS_FREE = 14;
-constexpr int PASS_KBOOST = 14;
-constexpr int PASS_KBLOCK = 12;
+// Passed pawn bonuses by rank. Heavily boosted for advanced passers
+// so that near-promotion threats can outweigh small material deficits.
+constexpr int PASSED_MG[8] = {0, 8, 16, 28, 60, 150, 220, 0};
+constexpr int PASSED_EG[8] = {0, 16, 28, 44, 90, 180, 260, 0};
+
+// Additional bonuses/penalties for passer conditions
+constexpr int PASS_BLOCK = 16;   // penalty if path is blocked
+constexpr int PASS_SUPP = 16;    // own pawn support
+constexpr int PASS_FREE = 24;    // no piece ahead
+constexpr int PASS_KBOOST = 20;  // friendly king nearby
+constexpr int PASS_KBLOCK = 18;  // enemy king in front
 
 // =============================================================================
 /* King safety (SF-ähnliche Druckgewichtung & Clamp) */

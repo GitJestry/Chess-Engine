@@ -245,6 +245,8 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp, int wK, int bK, B
     }
 
     if (passed) {
+      // Apply tuned passer bonuses directly; no clamping keeps the
+      // heightened constants from being suppressed.
       int mgB = PASSED_MG[r], egB = PASSED_EG[r];
       int stop = sq + 8;
       if (stop <= 63 && (occ & sq_bb((Square)stop))) {
@@ -299,6 +301,7 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp, int wK, int bK, B
     }
 
     if (passed) {
+      // Symmetric handling for black; values are unclamped as well.
       int mgB = PASSED_MG[7 - r], egB = PASSED_EG[7 - r];
       int stop = sq - 8;
       if (stop >= 0 && (occ & sq_bb((Square)stop))) {
