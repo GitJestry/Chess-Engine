@@ -436,8 +436,8 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
                         const std::array<Bitboard, 6> &B, Bitboard wPA,
                         Bitboard bPA) {
   AttInfo ai{};
-  auto safeW = [&](Bitboard a) { return a & ~wocc & ~bPA; };
-  auto safeB = [&](Bitboard a) { return a & ~bocc & ~wPA; };
+  Bitboard safeWMask = ~wocc & ~bPA;
+  Bitboard safeBMask = ~bocc & ~wPA;
 
   // Knights
   {
@@ -448,7 +448,8 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       Bitboard a = knight_attacks_from((Square)s);
       ai.wAll |= a;
       ai.wKn |= a;
-      int c = clampi(popcount(safeW(a)), 0, 8);
+      Bitboard safe = a & safeWMask;
+      int c = clampi(popcount(safe), 0, 8);
       ai.mg += KN_MOB_MG[c];
       ai.eg += KN_MOB_EG[c];
     }
@@ -461,7 +462,8 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       Bitboard a = knight_attacks_from((Square)s);
       ai.bAll |= a;
       ai.bKn |= a;
-      int c = clampi(popcount(safeB(a)), 0, 8);
+      Bitboard safe = a & safeBMask;
+      int c = clampi(popcount(safe), 0, 8);
       ai.mg -= KN_MOB_MG[c];
       ai.eg -= KN_MOB_EG[c];
     }
@@ -477,7 +479,8 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
           magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
       ai.wAll |= a;
       ai.wBi |= a;
-      int c = clampi(popcount(safeW(a)), 0, 13);
+      Bitboard safe = a & safeWMask;
+      int c = clampi(popcount(safe), 0, 13);
       ai.mg += BI_MOB_MG[c];
       ai.eg += BI_MOB_EG[c];
     }
@@ -491,7 +494,8 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
           magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
       ai.bAll |= a;
       ai.bBi |= a;
-      int c = clampi(popcount(safeB(a)), 0, 13);
+      Bitboard safe = a & safeBMask;
+      int c = clampi(popcount(safe), 0, 13);
       ai.mg -= BI_MOB_MG[c];
       ai.eg -= BI_MOB_EG[c];
     }
@@ -506,7 +510,8 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ);
       ai.wAll |= a;
       ai.wRo |= a;
-      int c = clampi(popcount(safeW(a)), 0, 14);
+      Bitboard safe = a & safeWMask;
+      int c = clampi(popcount(safe), 0, 14);
       ai.mg += RO_MOB_MG[c];
       ai.eg += RO_MOB_EG[c];
     }
@@ -519,7 +524,8 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ);
       ai.bAll |= a;
       ai.bRo |= a;
-      int c = clampi(popcount(safeB(a)), 0, 14);
+      Bitboard safe = a & safeBMask;
+      int c = clampi(popcount(safe), 0, 14);
       ai.mg -= RO_MOB_MG[c];
       ai.eg -= RO_MOB_EG[c];
     }
@@ -536,7 +542,8 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
           magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
       ai.wAll |= a;
       ai.wQu |= a;
-      int c = clampi(popcount(safeW(a)), 0, 27);
+      Bitboard safe = a & safeWMask;
+      int c = clampi(popcount(safe), 0, 27);
       ai.mg += QU_MOB_MG[c];
       ai.eg += QU_MOB_EG[c];
     }
@@ -551,7 +558,8 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
           magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
       ai.bAll |= a;
       ai.bQu |= a;
-      int c = clampi(popcount(safeB(a)), 0, 27);
+      Bitboard safe = a & safeBMask;
+      int c = clampi(popcount(safe), 0, 27);
       ai.mg -= QU_MOB_MG[c];
       ai.eg -= QU_MOB_EG[c];
     }
