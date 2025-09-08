@@ -199,32 +199,39 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp,
   int &mgSum = out.mg;
   int &egSum = out.eg;
 
-  // Isolani & doubled (file-wise)
-  for (int f = 0; f < 8; ++f) {
-    Bitboard F = M.file[f];
-    Bitboard ADJ = (f > 0 ? M.file[f - 1] : 0) | (f < 7 ? M.file[f + 1] : 0);
-    int wc = popcnt(wp & F), bc = popcnt(bp & F);
-    if (wc) {
-      if ((wp & ADJ) == 0) {
-        mgSum -= ISO_P * wc;
-        egSum -= ISO_P * wc / 2;
-      }
-      if (wc > 1) {
-        mgSum -= DOUBLED_P * (wc - 1);
-        egSum -= DOUBLED_P * (wc - 1) / 2;
-      }
-    }
-    if (bc) {
-      if ((bp & ADJ) == 0) {
-        mgSum += ISO_P * bc;
-        egSum += ISO_P * bc / 2;
-      }
-      if (bc > 1) {
-        mgSum += DOUBLED_P * (bc - 1);
-        egSum += DOUBLED_P * (bc - 1) / 2;
-      }
-    }
-  }
+  // Isolani & doubled (bitboards)
+  auto file_fill = [](Bitboard b) {
+    b |= b << 8;
+    b |= b << 16;
+    b |= b << 32;
+    b |= b >> 8;
+    b |= b >> 16;
+    b |= b >> 32;
+    return b;
+  };
+
+  Bitboard wFiles = file_fill(wp);
+  Bitboard bFiles = file_fill(bp);
+  Bitboard wAdj = east(wFiles) | west(wFiles);
+  Bitboard bAdj = east(bFiles) | west(bFiles);
+
+  Bitboard wIso = wp & ~wAdj;
+  Bitboard bIso = bp & ~bAdj;
+  int wIsoC = popcnt(wIso);
+  int bIsoC = popcnt(bIso);
+  mgSum -= ISO_P * wIsoC;
+  egSum -= ISO_P * wIsoC / 2;
+  mgSum += ISO_P * bIsoC;
+  egSum += ISO_P * bIsoC / 2;
+
+  Bitboard wDoubled = wp & north(wp);
+  Bitboard bDoubled = bp & south(bp);
+  int wDoubC = popcnt(wDoubled);
+  int bDoubC = popcnt(bDoubled);
+  mgSum -= DOUBLED_P * wDoubC;
+  egSum -= DOUBLED_P * wDoubC / 2;
+  mgSum += DOUBLED_P * bDoubC;
+  egSum += DOUBLED_P * bDoubC / 2;
 
   Bitboard wPA = white_pawn_attacks(wp), bPA = black_pawn_attacks(bp);
 
