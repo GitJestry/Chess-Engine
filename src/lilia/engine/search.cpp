@@ -773,10 +773,11 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (!inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet && !isQuietHeavy) {
       int limit = depth * depth;  // 1,4,9
       int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
+      if (h < 0) limit = std::max(1, limit - 1);
       if (h < -8000) limit = std::max(1, limit - 1);
 
-      int futMarg = FUT_MARGIN[depth] + (improving ? 32 : 0);
-      if (staticEval + futMarg <= alpha + 32 && moveCount >= limit) {
+      int futMarg = FUT_MARGIN[depth] + (improving ? 16 : 0);
+      if (staticEval + futMarg <= alpha + 16 && moveCount >= limit) {
         ++moveCount;
         continue;
       }
@@ -785,7 +786,10 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     // Extended futility (depth<=3, quiets) — relax when improving (Step 2)
     if (allowFutility && isQuiet && depth <= 3 && !tacticalQuiet && !isQuietHeavy) {
       int fut = FUT_MARGIN[depth] + (history[m.from()][m.to()] < -8000 ? 32 : 0);
-      if (improving) fut += 48;  // keep more moves when improving
+      if (improving)
+        fut += 32;  // keep more moves when improving, but a bit less
+      else
+        fut -= 16;  // prune more aggressively when not improving
       if (staticEval + fut <= alpha) {
         ++moveCount;
         continue;
