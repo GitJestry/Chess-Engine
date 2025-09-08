@@ -674,12 +674,19 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     const bool isQuiet = !m.isCapture() && (m.promotion() == core::PieceType::None);
     const auto us = pos.getState().sideToMove;
     const int qp_sig = isQuiet ? quiet_pawn_push_signal(board, m, us) : 0;
-    const bool tacticalQuiet = (qp_sig > 0);  // 2 = check, 1 = threat
 
     // pre info
     auto moverOpt = board.getPiece(m.from());
     const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
     core::PieceType capPt = core::PieceType::Pawn;
+
+    // Nach moverPt-Bestimmung:
+    const bool isQuietHeavy =
+        isQuiet && (moverPt == core::PieceType::Queen || moverPt == core::PieceType::Rook);
+
+    // Erweitere "tacticalQuiet":
+    const bool tacticalQuiet = (qp_sig > 0);  // NEU
+
     if (m.isEnPassant())
       capPt = core::PieceType::Pawn;
     else if (m.isCapture()) {
@@ -690,7 +697,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
                                         : 0;
 
     // LMP
-    if (!inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet) {
+    if (!inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet && !isQuietHeavy) {
       int limit = depth * depth;  // 1,4,9
       int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
       if (h < -8000) limit = std::max(1, limit - 1);
@@ -701,7 +708,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
 
     // Extended futility (depth<=3, quiets)
-    if (allowFutility && isQuiet && depth <= 3 && !tacticalQuiet) {
+    if (allowFutility && isQuiet && depth <= 3 && !tacticalQuiet && !isQuietHeavy) {
       int fut = FUT_MARGIN[depth] + (history[m.from()][m.to()] < -8000 ? 32 : 0);
       if (staticEval + fut <= alpha) {
         ++moveCount;
@@ -710,7 +717,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
 
     // History pruning
-    if (!inCheck && !isPV && isQuiet && depth <= 2 && !tacticalQuiet) {
+    if (!inCheck && !isPV && isQuiet && depth <= 2 && !tacticalQuiet && !isQuietHeavy) {
       int histScore = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
       if (histScore < -11000 && m != killers[kply][0] && m != killers[kply][1] &&
           (!prevOk || m != cm)) {
@@ -720,7 +727,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
 
     // Futility (D1)
-    if (!inCheck && !isPV && isQuiet && depth == 1 && !tacticalQuiet) {
+    if (!inCheck && !isPV && isQuiet && depth == 1 && !tacticalQuiet && !isQuietHeavy) {
       if (staticEval + 110 <= alpha) {
         ++moveCount;
         continue;
@@ -791,7 +798,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // ProbCut (light) — use pre-move captured value
     if (!isPV && !inCheck && newDepth >= 5 && m.isCapture() && seeGood && mvvBefore >= 700) {
-      constexpr int PROBCUT_MARGIN = 180;
+      constexpr int PROBCUT_MARGIN = 200;
       if (staticEval + capValPre + PROBCUT_MARGIN >= beta) {
         const int red = 3;
         const int probe = -negamax(pos, newDepth - red, -beta, -(beta - 1), ply + 1, childBest);
@@ -816,6 +823,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         const int ld = ilog2_u32((unsigned)depth);
         const int lm = ilog2_u32((unsigned)(moveCount + 1));
         int rBase = (ld * (lm + 1)) / 3;
+        if (isQuietHeavy) rBase = std::max(0, rBase - 1);  // etwas sanfter
 
         const int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
         if (h > 8000) rBase -= 1;
@@ -985,9 +993,9 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     if (!m.isCapture() && m.promotion() == core::PieceType::None) {
       const int sig = quiet_pawn_push_signal(pos.getBoard(), m, pos.getState().sideToMove);
       if (sig == 2)
-        s += 220'000;
+        s += 120'000;
       else if (sig == 1)
-        s += 180'000;
+        s += 80'000;
     }
     s += history[m.from()][m.to()];
     return s;
