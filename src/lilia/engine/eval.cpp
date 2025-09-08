@@ -187,6 +187,8 @@ static int space_term(const std::array<Bitboard, 6> &W,
 // =============================================================================
 struct PawnInfo {
   int mg = 0, eg = 0;
+  Bitboard wPA = 0, bPA = 0;
+  Bitboard wPass = 0, bPass = 0;
 };
 
 static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp,
@@ -416,6 +418,10 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp,
   mgSum += (CONNECTED_PASSERS / 2) * (wC - bC);
   egSum += CONNECTED_PASSERS * (wC - bC);
 
+  out.wPA = wPA;
+  out.bPA = bPA;
+  out.wPass = wPass;
+  out.bPass = bPass;
   return out;
 }
 
@@ -1637,46 +1643,27 @@ int Evaluator::evaluate(model::Position &pos) const {
   int wK = ac.kingSq[0], bK = ac.kingSq[1];
 
   PawnInfo pinfo{};
-  Bitboard wPA = 0, bPA = 0, wPass = 0, bPass = 0;
   {
     auto &ps = m_impl->pawn[idx_pawn(pKey)];
     uint64_t k = ps.key.load(std::memory_order_acquire);
     if (k == pKey) {
       pinfo.mg = ps.mg.load(std::memory_order_relaxed);
       pinfo.eg = ps.eg.load(std::memory_order_relaxed);
-      wPA = (Bitboard)ps.wPA.load(std::memory_order_relaxed);
-      bPA = (Bitboard)ps.bPA.load(std::memory_order_relaxed);
-      wPass = (Bitboard)ps.wPass.load(std::memory_order_relaxed);
-      bPass = (Bitboard)ps.bPass.load(std::memory_order_relaxed);
+      pinfo.wPA = (Bitboard)ps.wPA.load(std::memory_order_relaxed);
+      pinfo.bPA = (Bitboard)ps.bPA.load(std::memory_order_relaxed);
+      pinfo.wPass = (Bitboard)ps.wPass.load(std::memory_order_relaxed);
+      pinfo.bPass = (Bitboard)ps.bPass.load(std::memory_order_relaxed);
     } else {
       int wKbb = lsb_i(W[5]), bKbb = lsb_i(B[5]);
       pinfo = pawn_structure_split(W[0], B[0], W, B, wKbb, bKbb, occ);
 
-      wPA = white_pawn_attacks(W[0]);
-      bPA = black_pawn_attacks(B[0]);
-      // compute passers (once)
-      Bitboard t = W[0];
-      while (t) {
-        int s = lsb_i(t);
-        t &= t - 1;
-        if ((M.wPassed[s] & B[0]) == 0)
-          wPass |= sq_bb((Square)s);
-      }
-      t = B[0];
-      while (t) {
-        int s = lsb_i(t);
-        t &= t - 1;
-        if ((M.bPassed[s] & W[0]) == 0)
-          bPass |= sq_bb((Square)s);
-      }
-
       // store
       ps.mg.store(pinfo.mg, std::memory_order_relaxed);
       ps.eg.store(pinfo.eg, std::memory_order_relaxed);
-      ps.wPA.store((uint64_t)wPA, std::memory_order_relaxed);
-      ps.bPA.store((uint64_t)bPA, std::memory_order_relaxed);
-      ps.wPass.store((uint64_t)wPass, std::memory_order_relaxed);
-      ps.bPass.store((uint64_t)bPass, std::memory_order_relaxed);
+      ps.wPA.store((uint64_t)pinfo.wPA, std::memory_order_relaxed);
+      ps.bPA.store((uint64_t)pinfo.bPA, std::memory_order_relaxed);
+      ps.wPass.store((uint64_t)pinfo.wPass, std::memory_order_relaxed);
+      ps.bPass.store((uint64_t)pinfo.bPass, std::memory_order_relaxed);
       uint32_t age = m_impl->age.fetch_add(1, std::memory_order_relaxed) + 1;
       ps.age.store(age, std::memory_order_relaxed);
       ps.key.store(pKey, std::memory_order_release);
@@ -1684,12 +1671,12 @@ int Evaluator::evaluate(model::Position &pos) const {
   }
 
   AttackMap A;
-  A.wPA = wPA;
-  A.bPA = bPA;
-  A.wPass = wPass;
-  A.bPass = bPass;
+  A.wPA = pinfo.wPA;
+  A.bPA = pinfo.bPA;
+  A.wPass = pinfo.wPass;
+  A.bPass = pinfo.bPass;
   // mobility liefert wAll/bAll
-  AttInfo att = mobility(occ, wocc, bocc, W, B, wPA, bPA);
+  AttInfo att = mobility(occ, wocc, bocc, W, B, pinfo.wPA, pinfo.bPA);
   A.wAll = att.wAll;
   A.bAll = att.bAll;
   A.wKn = att.wKn;
@@ -1715,8 +1702,9 @@ int Evaluator::evaluate(model::Position &pos) const {
   int badB = bad_bishop(W, B);
   int outp = outposts_center(W, B, A.wPA, A.bPA);
   int rim = rim_knights(W, B);
-  int ract = rook_activity(W, B, W[0], B[0], wPass, bPass, wPA, bPA, occ);
-  int spc = space_term(W, B, wPA, bPA);
+  int ract = rook_activity(W, B, W[0], B[0], pinfo.wPass, pinfo.bPass,
+                           pinfo.wPA, pinfo.bPA, occ);
+  int spc = space_term(W, B, pinfo.wPA, pinfo.bPA);
   int trop = king_tropism(W, B);
   int dev = development(W, B);
   int block = piece_blocking(W, B);
