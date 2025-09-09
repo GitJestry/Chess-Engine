@@ -40,11 +40,11 @@ constexpr int PASSED_MG[8] = {0, 8, 16, 30, 70, 190, 300, 0};
 constexpr int PASSED_EG[8] = {0, 16, 28, 50, 110, 220, 340, 0};
 
 // Additional bonuses/penalties for passer conditions
-constexpr int PASS_BLOCK = 16;   // penalty if path is blocked
-constexpr int PASS_SUPP = 16;    // own pawn support
-constexpr int PASS_FREE = 24;    // no piece ahead
-constexpr int PASS_KBOOST = 20;  // friendly king nearby
-constexpr int PASS_KBLOCK = 18;  // enemy king in front
+constexpr int PASS_BLOCK = 16;       // penalty if path is blocked
+constexpr int PASS_SUPP = 16;        // own pawn support
+constexpr int PASS_FREE = 24;        // no piece ahead
+constexpr int PASS_KBOOST = 20;      // friendly king nearby
+constexpr int PASS_KBLOCK = 18;      // enemy king in front
 constexpr int PASS_PIECE_SUPP = 12;  // defended by own piece
 constexpr int PASS_KPROX = 6;        // enemy king proximity penalty per step
 

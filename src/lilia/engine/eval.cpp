@@ -185,10 +185,9 @@ struct PawnInfo {
   int mg = 0, eg = 0;
 };
 
-static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp,
-                                     const std::array<Bitboard, 6>& W,
-                                     const std::array<Bitboard, 6>& B,
-                                     int wK, int bK, Bitboard occ) {
+static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp, const std::array<Bitboard, 6>& W,
+                                     const std::array<Bitboard, 6>& B, int wK, int bK,
+                                     Bitboard occ) {
   PawnInfo out{};
   int& mgSum = out.mg;
   int& egSum = out.eg;
@@ -223,14 +222,35 @@ static PawnInfo pawn_structure_split(Bitboard wp, Bitboard bp,
   Bitboard wPA = white_pawn_attacks(wp), bPA = black_pawn_attacks(bp);
 
   auto support_w = [&](int sq) {
-    Bitboard atk = 0;
-    atk |= knight_attacks_from((Square)sq) & W[1];
-    atk |= bishop_attacks((Square)sq, occ) & W[2];
-    atk |= rook_attacks((Square)sq, occ) & W[3];
-    atk |= queen_attacks((Square)sq, occ) & W[4];
-    atk |= king_attacks_from((Square)sq) & W[5];
-    return popcnt(atk);
+    Bitboard SQ = sq_bb((Square)sq);
+    int c = 0;
+    // Springer & König: symmetrisch → von sq aus
+    c += popcnt(knight_attacks_from((Square)sq) & W[1]);
+    c += popcnt(king_attacks_from((Square)sq) & W[5]);
+    // Slider: von jedem eigenen Slider aus prüfen, ob er sq trifft
+    Bitboard bb = W[2];  // bishops
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      if (magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ) & SQ) ++c;
+    }
+    bb = W[3];  // rooks
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      if (magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ) & SQ) ++c;
+    }
+    bb = W[4];  // queens (beide Richtungen)
+    while (bb) {
+      int s = lsb_i(bb);
+      bb &= bb - 1;
+      Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ) |
+                   magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ);
+      if (a & SQ) ++c;
+    }
+    return c;
   };
+
   auto support_b = [&](int sq) {
     Bitboard atk = 0;
     atk |= knight_attacks_from((Square)sq) & B[1];
@@ -420,10 +440,25 @@ struct AttInfo {
   int mg = 0, eg = 0;
 };
 
+// =============================================================================
+// Threats & hanging
+// =============================================================================
+struct AttackMap {
+  Bitboard wAll{0}, bAll{0};
+  Bitboard wPA{0}, bPA{0};
+  Bitboard wKAtt{0}, bKAtt{0};
+  Bitboard wPass{0}, bPass{0};
+
+  // NEU: per-Typ Angriffe (occ-abhängig)
+  Bitboard wN{0}, wB{0}, wR{0}, wQ{0};
+  Bitboard bN{0}, bB{0}, bR{0}, bQ{0};
+};
+
 static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
                         const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
-                        Bitboard wPA, Bitboard bPA) {
+                        Bitboard wPA, Bitboard bPA, AttackMap* A /* neu, optional */) {
   AttInfo ai{};
+
   auto safeW = [&](Bitboard a) { return a & ~wocc & ~bPA; };
   auto safeB = [&](Bitboard a) { return a & ~bocc & ~wPA; };
 
@@ -435,6 +470,7 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       bb &= bb - 1;
       Bitboard a = knight_attacks_from((Square)s);
       ai.wAll |= a;
+      if (A) A->wN |= a;
       int c = clampi(popcount(safeW(a)), 0, 8);
       ai.mg += KN_MOB_MG[c];
       ai.eg += KN_MOB_EG[c];
@@ -447,6 +483,7 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       bb &= bb - 1;
       Bitboard a = knight_attacks_from((Square)s);
       ai.bAll |= a;
+      if (A) A->bN |= a;
       int c = clampi(popcount(safeB(a)), 0, 8);
       ai.mg -= KN_MOB_MG[c];
       ai.eg -= KN_MOB_EG[c];
@@ -461,6 +498,7 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       bb &= bb - 1;
       Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
       ai.wAll |= a;
+      if (A) A->wB |= a;
       int c = clampi(popcount(safeW(a)), 0, 13);
       ai.mg += BI_MOB_MG[c];
       ai.eg += BI_MOB_EG[c];
@@ -473,6 +511,7 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       bb &= bb - 1;
       Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
       ai.bAll |= a;
+      if (A) A->bB |= a;
       int c = clampi(popcount(safeB(a)), 0, 13);
       ai.mg -= BI_MOB_MG[c];
       ai.eg -= BI_MOB_EG[c];
@@ -487,6 +526,7 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       bb &= bb - 1;
       Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ);
       ai.wAll |= a;
+      if (A) A->wR |= a;
       int c = clampi(popcount(safeW(a)), 0, 14);
       ai.mg += RO_MOB_MG[c];
       ai.eg += RO_MOB_EG[c];
@@ -499,6 +539,7 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       bb &= bb - 1;
       Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ);
       ai.bAll |= a;
+      if (A) A->bR |= a;
       int c = clampi(popcount(safeB(a)), 0, 14);
       ai.mg -= RO_MOB_MG[c];
       ai.eg -= RO_MOB_EG[c];
@@ -514,6 +555,7 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ) |
                    magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
       ai.wAll |= a;
+      if (A) A->wQ |= a;
       int c = clampi(popcount(safeW(a)), 0, 27);
       ai.mg += QU_MOB_MG[c];
       ai.eg += QU_MOB_EG[c];
@@ -527,6 +569,7 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ) |
                    magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
       ai.bAll |= a;
+      if (A) A->bQ |= a;
       int c = clampi(popcount(safeB(a)), 0, 27);
       ai.mg -= QU_MOB_MG[c];
       ai.eg -= QU_MOB_EG[c];
@@ -538,19 +581,11 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
   return ai;
 }
 
-// =============================================================================
-// Threats & hanging
-// =============================================================================
-struct AttackMap {
-  Bitboard wAll{0}, bAll{0};
-  Bitboard wPA{0}, bPA{0};
-  Bitboard wKAtt{0}, bKAtt{0};
-  Bitboard wPass{0}, bPass{0};
-};
 static int threats(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
-                   const AttackMap& A, Bitboard occ) {
+                   const AttackMap& A, Bitboard /*occ*/) {
   int sc = 0;
-  // Pawn threats
+
+  // Pawn threats (wie gehabt)
   auto pawn_threat_score = [&](Bitboard pa, const std::array<Bitboard, 6>& side) {
     int s = 0;
     if (pa & side[1]) s += THR_PAWN_MINOR;
@@ -562,14 +597,16 @@ static int threats(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 
   sc += pawn_threat_score(A.wPA, B);
   sc -= pawn_threat_score(A.bPA, W);
 
-  // Hanging
+  // Hänger: Angreifer = (All + PawnAttacks), Verteidiger = (All + PawnAttacks + King)
   int wKsq = lsb_i(W[5]), bKsq = lsb_i(B[5]);
-  Bitboard defW = A.wAll | A.wPA | (wKsq >= 0 ? king_attacks_from((Square)wKsq) : 0);
-  Bitboard defB = A.bAll | A.bPA | (bKsq >= 0 ? king_attacks_from((Square)bKsq) : 0);
   Bitboard wocc = W[0] | W[1] | W[2] | W[3] | W[4] | W[5];
   Bitboard bocc = B[0] | B[1] | B[2] | B[3] | B[4] | B[5];
-  Bitboard wHang = (A.bAll & wocc) & ~defW;
-  Bitboard bHang = (A.wAll & bocc) & ~defB;
+
+  Bitboard wDef = A.wAll | A.wPA | (wKsq >= 0 ? king_attacks_from((Square)wKsq) : 0);
+  Bitboard bDef = A.bAll | A.bPA | (bKsq >= 0 ? king_attacks_from((Square)bKsq) : 0);
+
+  Bitboard wHang = ((A.bAll | A.bPA) & wocc) & ~wDef;
+  Bitboard bHang = ((A.wAll | A.wPA) & bocc) & ~bDef;
 
   auto hang_score = [&](Bitboard h, const std::array<Bitboard, 6>& side) {
     int s = 0;
@@ -582,167 +619,67 @@ static int threats(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 
   sc += hang_score(bHang, B);
   sc -= hang_score(wHang, W);
 
-  // Minor on Queen
-  Bitboard wMinorA = 0, bMinorA = 0;
-  {
-    Bitboard n = W[1];
-    while (n) {
-      int s = lsb_i(n);
-      n &= n - 1;
-      wMinorA |= knight_attacks_from((Square)s);
-    }
-    Bitboard bb = W[2];
-    while (bb) {
-      int s = lsb_i(bb);
-      bb &= bb - 1;
-      wMinorA |= magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
-    }
-  }
-  {
-    Bitboard n = B[1];
-    while (n) {
-      int s = lsb_i(n);
-      n &= n - 1;
-      bMinorA |= knight_attacks_from((Square)s);
-    }
-    Bitboard bb = B[2];
-    while (bb) {
-      int s = lsb_i(bb);
-      bb &= bb - 1;
-      bMinorA |= magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
-    }
-  }
-  if (wMinorA & B[4]) sc += MINOR_ON_QUEEN;
-  if (bMinorA & W[4]) sc -= MINOR_ON_QUEEN;
+  // Minor on Queen: keine Magics nötig
+  if ((A.wN | A.wB) & B[4]) sc += MINOR_ON_QUEEN;
+  if ((A.bN | A.bB) & W[4]) sc -= MINOR_ON_QUEEN;
 
   return sc;
 }
 
-// =============================================================================
-// King safety (ring-based; Feld-zählend) – Raw
-// =============================================================================
 static int king_safety_raw(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
-                           Bitboard occ) {
-  int wK = lsb_i(W[5]);
-  int bK = lsb_i(B[5]);
-  Bitboard wp = W[0], bp = B[0];
-  Bitboard wPA = white_pawn_attacks(wp), bPA = black_pawn_attacks(bp);
-
-  auto ring_attacks = [&](int ksq, const std::array<Bitboard, 6>& opp, bool kingIsWhite) {
+                           Bitboard /*occ*/, const AttackMap& A, int wK, int bK) {
+  auto ring_attacks_fast = [&](int ksq, bool kingIsWhite) -> int {
     if (ksq < 0) return 0;
     Bitboard ring = M.kingRing[ksq];
-    Bitboard ringSafe = ring;
 
-    int power = 0;
-    int cnt = 0;
-    Bitboard cover = 0;
+    // wie vorher: Zählung je Typ
+    int cN = popcount((kingIsWhite ? A.bN : A.wN) & ring);
+    int cB = popcount((kingIsWhite ? A.bB : A.wB) & ring);
+    int cR = popcount((kingIsWhite ? A.bR : A.wR) & ring);
+    int cQ = popcount((kingIsWhite ? A.bQ : A.wQ) & ring);
 
-    // Knights
-    {
-      Bitboard bb = opp[1];
-      while (bb) {
-        int s = lsb_i(bb);
-        bb &= bb - 1;
-        Bitboard a = knight_attacks_from((Square)s) & ringSafe;
-        int c = popcnt(a);
-        if (c) {
-          cnt += c;
-          power += c * (KS_W_N - 2);
-          cover |= a;
-        }
-      }
-    }
-    // Bishops
-    {
-      Bitboard bb = opp[2];
-      while (bb) {
-        int s = lsb_i(bb);
-        bb &= bb - 1;
-        Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ) & ringSafe;
-        int c = popcnt(a);
-        if (c) {
-          cnt += c;
-          power += c * (KS_W_B - 2);
-          cover |= a;
-        }
-      }
-    }
-    // Rooks
-    {
-      Bitboard bb = opp[3];
-      while (bb) {
-        int s = lsb_i(bb);
-        bb &= bb - 1;
-        Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ) & ringSafe;
-        int c = popcnt(a);
-        if (c) {
-          cnt += c;
-          power += c * KS_W_R;
-          cover |= a;
-        }
-      }
-    }
-    // Queens
-    {
-      Bitboard bb = opp[4];
-      while (bb) {
-        int s = lsb_i(bb);
-        bb &= bb - 1;
-        Bitboard a = (magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ) |
-                      magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ)) &
-                     ringSafe;
-        int c = popcnt(a);
-        if (c) {
-          cnt += c;
-          power += c * (KS_W_Q - 4);
-          cover |= a;
-        }
-      }
-    }
+    int unique =
+        popcount((kingIsWhite ? A.bN | A.bB | A.bR | A.bQ : A.wN | A.wB | A.wR | A.wQ) & ring);
 
-    int unique = popcnt(cover);
+    int power = cN * (KS_W_N - 2) + cB * (KS_W_B - 2) + cR * KS_W_R + cQ * (KS_W_Q - 4);
     int score = unique * KS_RING_BONUS +
                 (power * std::min(unique, KS_POWER_COUNT_CLAMP)) / KS_POWER_COUNT_CLAMP;
 
-    // missing shield (eigene Bauern um den König)
+    // Shield / offene Datei / Escape wie gehabt (ohne weitere Magics)
+    Bitboard wp = W[0], bp = B[0];
     Bitboard shield = kingIsWhite ? M.wShield[ksq] : M.bShield[ksq];
     Bitboard ownP = kingIsWhite ? wp : bp;
-    int missing = 6 - std::min(6, popcnt(ownP & shield));
+    int missing = 6 - std::min(6, popcount(ownP & shield));
     score += missing * KS_MISS_SHIELD;
 
-    // (Half-)open file unter dem König
     Bitboard file = M.file[ksq];
     Bitboard oppP = kingIsWhite ? bp : wp;
-    bool ownOn = (file & ownP), oppOn = (file & oppP);
+    bool ownOn = file & ownP, oppOn = file & oppP;
     if (!ownOn && !oppOn)
       score += KS_OPEN_FILE;
     else if (!ownOn && oppOn)
       score += KS_OPEN_FILE / 2;
 
-    // direkte R/Q Linie auf König
-    Bitboard oppRQ = opp[3] | opp[4];
-    Bitboard ray = magic::sliding_attacks(magic::Slider::Rook, (Square)ksq, occ);
-    if (ray & oppRQ) score += KS_RQ_LOS;
+    Bitboard kAtt = king_attacks_from((Square)ksq);
+    Bitboard oppAll = kingIsWhite ? (A.bAll | A.bPA | A.bKAtt) : (A.wAll | A.wPA | A.wKAtt);
 
-    Bitboard kAtt = kingIsWhite ? king_attacks_from((Square)ksq) : king_attacks_from((Square)ksq);
-    Bitboard occFree = ~occ;
-    Bitboard oppAll = kingIsWhite ? (bPA | /* later */ 0 | 0) : (wPA | 0 | 0);  // extend if desired
-
-    int esc = popcnt(kAtt & occFree & ~oppAll);
+    int esc = popcount(
+        kAtt &
+        ~(W[0] | W[1] | W[2] | W[3] | W[4] | W[5] | B[0] | B[1] | B[2] | B[3] | B[4] | B[5]) &
+        ~oppAll);
     score += (KS_ESCAPE_EMPTY - KS_ESCAPE_FACTOR * std::min(esc, 5));
 
     return std::min(score, KS_CLAMP);
   };
 
   int sc = 0;
-  sc -= ring_attacks(wK, B, true);
-  sc += ring_attacks(bK, W, false);
-
+  sc -= ring_attacks_fast(wK, true);
+  sc += ring_attacks_fast(bK, false);
   return sc;
 }
 
-static int king_shelter_storm(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
-  int wK = lsb_i(W[5]), bK = lsb_i(B[5]);
+static int king_shelter_storm(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
+                              int wK, int bK) {
   if (wK < 0 || bK < 0) return 0;
   Bitboard wp = W[0], bp = B[0];
 
@@ -898,7 +835,7 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
                          Bitboard wp, Bitboard bp, Bitboard wPass,
                          Bitboard bPass,              // NEW use passers from PawnTT
                          Bitboard wPA, Bitboard bPA,  // for semi-open vs King feature
-                         Bitboard occ) {
+                         Bitboard occ, int wK, int bK) {
   int s = 0;
   Bitboard wr = W[3], br = B[3];
   auto rank = [&](int sq) { return rank_of(sq); };
@@ -991,8 +928,6 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
     }
   }
 
-  // Semi-open/Offene Königsdatei (MG-only Effekt später gewichtet)
-  int wK = lsb_i(W[5]), bK = lsb_i(B[5]);
   if (wK >= 0) {
     Bitboard f = M.file[wK];
     bool own = f & wp;
@@ -1145,6 +1080,7 @@ static int passer_blocker_quality(const std::array<Bitboard, 6>& W,
                                   const std::array<Bitboard, 6>& B, Bitboard wp, Bitboard bp,
                                   Bitboard occ) {
   int sc = 0;
+
   auto add_side = [&](bool white) {
     Bitboard paw = white ? wp : bp;
     Bitboard opp = white ? bp : wp;
@@ -1156,22 +1092,36 @@ static int passer_blocker_quality(const std::array<Bitboard, 6>& W,
       if (!passed) continue;
       int stop = white ? (s + 8) : (s - 8);
       if (stop < 0 || stop > 63) continue;
-      int advance =
-          white ? rank_of(static_cast<Square>(s)) : (7 - rank_of(static_cast<Square>(s)));
+
       Bitboard stopBB = sq_bb((Square)stop);
-      if (occ & stopBB) {
-        int scale = advance;
+      if (!(occ & stopBB)) continue;
+
+      int advance = white ? rank_of((Square)s) : (7 - rank_of((Square)s));
+      int scale = advance;
+
+      // Eigenes Stück blockiert EIGENEN Passer -> schlecht
+      if (white) {
         if (W[1] & stopBB)
-          sc += (white ? +BLOCK_PASSER_STOP_KNIGHT : -BLOCK_PASSER_STOP_KNIGHT) * scale;
+          sc -= BLOCK_PASSER_STOP_KNIGHT * scale;
         else if (W[2] & stopBB)
-          sc += (white ? -BLOCK_PASSER_STOP_BISHOP : +BLOCK_PASSER_STOP_BISHOP) * scale;
+          sc += BLOCK_PASSER_STOP_BISHOP * scale;
         if (B[1] & stopBB)
-          sc += (white ? -BLOCK_PASSER_STOP_KNIGHT : +BLOCK_PASSER_STOP_KNIGHT) * scale;
+          sc += BLOCK_PASSER_STOP_KNIGHT * scale;
         else if (B[2] & stopBB)
-          sc += (white ? +BLOCK_PASSER_STOP_BISHOP : -BLOCK_PASSER_STOP_BISHOP) * scale;
+          sc -= BLOCK_PASSER_STOP_BISHOP * scale;
+      } else {
+        if (B[1] & stopBB)
+          sc -= BLOCK_PASSER_STOP_KNIGHT * scale;
+        else if (B[2] & stopBB)
+          sc += BLOCK_PASSER_STOP_BISHOP * scale;
+        if (W[1] & stopBB)
+          sc += BLOCK_PASSER_STOP_KNIGHT * scale;
+        else if (W[2] & stopBB)
+          sc -= BLOCK_PASSER_STOP_BISHOP * scale;
       }
     }
   };
+
   add_side(true);
   add_side(false);
   return sc;
@@ -1413,10 +1363,12 @@ static void castling_and_center(const std::array<Bitboard, 6>& W, const std::arr
   eg_add += (castle_bonus(wK) / 2) - (castle_bonus(mirror_sq_black(bK)) / 2);
 
   auto early_queen_malus = [&](const std::array<Bitboard, 6>& S, bool white) {
-    Bitboard Q = S[4], minorsHome = white ? (RANK_1 & (S[1] | S[2])) : (RANK_8 & (S[1] | S[2]));
+    Bitboard Q = S[4];
+    Bitboard minorsHome = white ? (RANK_1 & (S[1] | S[2])) : (RANK_8 & (S[1] | S[2]));
     Bitboard qZone = white ? (RANK_2 | RANK_3) : (RANK_7 | RANK_6);
-    return (Q & qZone & minorsHome) ? EARLY_QUEEN_MALUS : 0;
+    return (((Q & qZone) != 0ULL) && (minorsHome != 0ULL)) ? EARLY_QUEEN_MALUS : 0;
   };
+
   int eqmW = early_queen_malus(W, true);
   int eqmB = early_queen_malus(B, false);
   mg_add += -eqmW + eqmB;
@@ -1438,7 +1390,6 @@ constexpr size_t PAWN_BITS = 12, PAWN_SIZE = 1ULL << PAWN_BITS;
 struct alignas(64) EvalEntry {
   std::atomic<uint64_t> key{0};
   std::atomic<int32_t> score{0};
-  std::atomic<uint32_t> age{0};
 };
 struct alignas(64) PawnEntry {
   std::atomic<uint64_t> key{0};
@@ -1448,12 +1399,10 @@ struct alignas(64) PawnEntry {
   std::atomic<uint64_t> bPA{0};    // NEW
   std::atomic<uint64_t> wPass{0};  // NEW
   std::atomic<uint64_t> bPass{0};  // NEW
-  std::atomic<uint32_t> age{0};
 };
 struct Evaluator::Impl {
   std::array<EvalEntry, EVAL_SIZE> eval;
   std::array<PawnEntry, PAWN_SIZE> pawn;
-  std::atomic<uint32_t> age{1};
 };
 Evaluator::Evaluator() noexcept {
   m_impl = new Impl();
@@ -1466,19 +1415,16 @@ void Evaluator::clearCaches() const noexcept {
   for (auto& e : m_impl->eval) {
     e.key.store(0);
     e.score.store(0);
-    e.age.store(0);
   }
   for (auto& p : m_impl->pawn) {
     p.key.store(0);
     p.mg.store(0);
     p.eg.store(0);
-    p.age.store(0);
     p.wPA.store(0);
     p.bPA.store(0);
     p.wPass.store(0);
     p.bPass.store(0);
   }
-  m_impl->age.store(1);
 }
 static inline size_t idx_eval(uint64_t k) {
   return (size_t)k & (EVAL_SIZE - 1);
@@ -1576,37 +1522,33 @@ int Evaluator::evaluate(model::Position& pos) const {
       ps.bPA.store((uint64_t)bPA, std::memory_order_relaxed);
       ps.wPass.store((uint64_t)wPass, std::memory_order_relaxed);
       ps.bPass.store((uint64_t)bPass, std::memory_order_relaxed);
-      uint32_t age = m_impl->age.fetch_add(1, std::memory_order_relaxed) + 1;
-      ps.age.store(age, std::memory_order_relaxed);
       ps.key.store(pKey, std::memory_order_release);
     }
   }
-
   AttackMap A;
   A.wPA = wPA;
   A.bPA = bPA;
   A.wPass = wPass;
   A.bPass = bPass;
-  // mobility liefert wAll/bAll
-  AttInfo att = mobility(occ, wocc, bocc, W, B, wPA, bPA);
+  AttInfo att = mobility(occ, wocc, bocc, W, B, wPA, bPA, &A);
   A.wAll = att.wAll;
   A.bAll = att.bAll;
-  A.wKAtt = (lsb_i(W[5]) >= 0) ? king_attacks_from((Square)lsb_i(W[5])) : 0;
-  A.bKAtt = (lsb_i(B[5]) >= 0) ? king_attacks_from((Square)lsb_i(B[5])) : 0;
+  A.wKAtt = (wK >= 0) ? king_attacks_from((Square)wK) : 0;
+  A.bKAtt = (bK >= 0) ? king_attacks_from((Square)bK) : 0;
 
   // threats
   int thr = threats(W, B, A, occ);
 
   // king safety raw + shelter
-  int ksRaw = king_safety_raw(W, B, occ);
-  int shelter = king_shelter_storm(W, B);
+  int ksRaw = king_safety_raw(W, B, occ, A, wK, bK);
+  int shelter = king_shelter_storm(W, B, wK, bK);
 
   // style & structure
   int bp = bishop_pair_term(W, B);
   int badB = bad_bishop(W, B);
   int outp = outposts_center(W, B);
   int rim = rim_knights(W, B);
-  int ract = rook_activity(W, B, W[0], B[0], wPass, bPass, wPA, bPA, occ);
+  int ract = rook_activity(W, B, W[0], B[0], wPass, bPass, wPA, bPA, occ, wK, bK);
   int spc = space_term(W, B, wPA, bPA);
   int trop = king_tropism(W, B);
   int dev = development(W, B);
@@ -1698,10 +1640,8 @@ int Evaluator::evaluate(model::Position& pos) const {
   score = clampi(score, -MATE + 1, MATE - 1);
 
   // store eval
-  uint32_t age = m_impl->age.fetch_add(1, std::memory_order_relaxed) + 1;
   auto& e = m_impl->eval[idx_eval(key)];
   e.score.store(score, std::memory_order_relaxed);
-  e.age.store(age, std::memory_order_relaxed);
   e.key.store(key, std::memory_order_release);
   return score;
 }
