@@ -57,10 +57,13 @@ inline int decode_tt_score(int s, int ply) {
   if (s <= -MATE_THR) return s + ply;
   return s;
 }
-static constexpr int FUT_MARGIN[4] = {0, 110, 200, 280};
-
-// Root near-alpha verification margin (Step 1/5)
 static constexpr int ROOT_VERIFY_MARGIN_BASE = 60;
+static constexpr int FUT_MARGIN[4] = {0, 110, 210, 300};  // leicht angehoben
+static constexpr int SNMP_MARGINS[4] = {0, 140, 200, 260};
+static constexpr int RAZOR_MARGIN_BASE = 240;  // vorher 220
+static constexpr int RFP_MARGIN_BASE = 190;    // vorher 180
+// LMP-Limits pro Tiefe (nur Quiet-Züge)
+static constexpr int LMP_LIMIT[4] = {0, 5, 9, 14};  // D=1..3
 
 namespace {
 
@@ -197,6 +200,35 @@ static inline int quiet_pawn_push_signal(const model::Board& b, const model::Mov
   return (atk & targets) ? 1 : 0;
 }
 
+static inline void decay_tables(Search& S, int shift /* e.g. 6 => ~1.6% */) {
+  for (int f = 0; f < SQ_NB; ++f)
+    for (int t = 0; t < SQ_NB; ++t)
+      S.history[f][t] = clamp16((int)S.history[f][t] - ((int)S.history[f][t] >> shift));
+
+  for (int p = 0; p < PIECE_NB; ++p)
+    for (int t = 0; t < SQ_NB; ++t)
+      S.quietHist[p][t] = clamp16((int)S.quietHist[p][t] - ((int)S.quietHist[p][t] >> shift));
+
+  for (int mp = 0; mp < PIECE_NB; ++mp)
+    for (int t = 0; t < SQ_NB; ++t)
+      for (int cp = 0; cp < PIECE_NB; ++cp)
+        S.captureHist[mp][t][cp] =
+            clamp16((int)S.captureHist[mp][t][cp] - ((int)S.captureHist[mp][t][cp] >> shift));
+
+  for (int f = 0; f < SQ_NB; ++f)
+    for (int t = 0; t < SQ_NB; ++t)
+      S.counterHist[f][t] = clamp16((int)S.counterHist[f][t] - ((int)S.counterHist[f][t] >> shift));
+
+  for (int L = 0; L < CH_LAYERS; ++L)
+    for (int pp = 0; pp < PIECE_NB; ++pp)
+      for (int pt = 0; pt < SQ_NB; ++pt)
+        for (int mp = 0; mp < PIECE_NB; ++mp)
+          for (int to = 0; to < SQ_NB; ++to) {
+            int16_t& h = S.contHist[L][pp][pt][mp][to];
+            h = clamp16((int)h - ((int)h >> shift));
+          }
+}
+
 // 0 = no signal; 1 = attacks high-value piece; 2 = gives check
 static inline int quiet_piece_threat_signal(const model::Board& b, const model::Move& m,
                                             core::Color us) {
@@ -235,7 +267,8 @@ static inline int quiet_piece_threat_signal(const model::Board& b, const model::
 
   if (atk & b.getPieces(~us, PT::King)) return 2;
 
-  const auto targets = b.getPieces(~us, PT::Queen) | b.getPieces(~us, PT::Rook);
+  const auto targets = b.getPieces(~us, PT::Queen) | b.getPieces(~us, PT::Rook) |
+                       b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Knight);
   return (atk & targets) ? 1 : 0;
 }
 
@@ -253,6 +286,7 @@ Search::Search(model::TT5& tt_, std::shared_ptr<const Evaluator> eval_, const En
   std::fill(&quietHist[0][0], &quietHist[0][0] + PIECE_NB * SQ_NB, 0);
   std::fill(&captureHist[0][0][0], &captureHist[0][0][0] + PIECE_NB * SQ_NB * PIECE_NB, 0);
   std::fill(&counterHist[0][0], &counterHist[0][0] + SQ_NB * SQ_NB, 0);
+  std::memset(contHist, 0, sizeof(contHist));
   for (auto& row : counterMove)
     for (auto& m : row) m = model::Move{};
   for (auto& pm : prevMove) pm = model::Move{};
@@ -420,57 +454,22 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   }
   sort_by_score_desc(qs, qord, qn);
 
-  constexpr int DELTA_MARGIN = 96;
+  // etwas schärfer
+  constexpr int DELTA_MARGIN = 112;
   int best = stand;
 
   for (int i = 0; i < qn; ++i) {
     const model::Move m = qord[i];
     if ((i & 63) == 0) check_stop(stopFlag);
 
-    // ---- Safer delta pruning (Step 3) ----
-    // Don't prune likely checking captures/promos
-    bool maybeCheck = false;
-    if (m.promotion() != core::PieceType::None) {
-      maybeCheck = true;
-    } else {
-      // cheap pawn-diagonal check test
-      auto us = pos.getState().sideToMove;
-      const auto toBB = model::bb::sq_bb(m.to());
-      const auto kBB = pos.getBoard().getPieces(~us, core::PieceType::King);
-      if (m.isCapture()) {
-        if (us == core::Color::White) {
-          if ((model::bb::ne(toBB) | model::bb::nw(toBB)) & kBB) maybeCheck = true;
-        } else {
-          if ((model::bb::se(toBB) | model::bb::sw(toBB)) & kBB) maybeCheck = true;
-        }
-      }
-    }
+    const bool isCap = m.isCapture();
+    const bool isPromo = (m.promotion() != core::PieceType::None);
+    const int mvv = (isCap || isPromo) ? mvv_lva_fast(pos, m) : 0;
 
-    if (!maybeCheck) {
-      if (m.isCapture() || m.promotion() != core::PieceType::None) {
-        int capVal = 0;
-        if (m.isEnPassant())
-          capVal = base_value[(int)core::PieceType::Pawn];
-        else if (m.isCapture()) {
-          if (auto cap = pos.getBoard().getPiece(m.to())) capVal = base_value[(int)cap->type];
-        }
-        int promoGain = 0;
-        if (m.promotion() != core::PieceType::None)
-          promoGain =
-              std::max(0, base_value[(int)m.promotion()] - base_value[(int)core::PieceType::Pawn]);
-
-        const bool isQuietPromo = (m.promotion() != core::PieceType::None) && !m.isCapture();
-        if (isQuietPromo) {
-          if (stand + promoGain + DELTA_MARGIN <= alpha) continue;
-        } else {
-          if (stand + capVal + promoGain + DELTA_MARGIN <= alpha) continue;
-        }
-      }
-    }
-    // --------------------------------------
-
-    // Billige Heuristik: SEE nur wenn Capture materiell verdächtig ist
-    if (m.isCapture() && m.promotion() == core::PieceType::None) {
+    // ---- SEE nur EINMAL bestimmen (falls nötig) ----
+    bool seeOk = true;
+    if (isCap && !isPromo) {
+      // Nur wenn materiell "verdächtig": Opfer < Angreifer
       const auto moverOptQ = pos.getBoard().getPiece(m.from());
       const core::PieceType attackerPtQ = moverOptQ ? moverOptQ->type : core::PieceType::Pawn;
       const int attackerValQ = base_value[(int)attackerPtQ];
@@ -482,8 +481,55 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
         victimValQ = base_value[(int)capQ->type];
       }
 
-      if (victimValQ < attackerValQ && !pos.see(m)) continue;
+      if (victimValQ < attackerValQ) {
+        seeOk = pos.see(m);  // genau EIN Aufruf
+        // sehr schlechte, SEE-negative Klein-Captures sofort verwerfen
+        if (!seeOk && mvv < 400) continue;
+      }
     }
+    // -----------------------------------------------
+
+    // ---- Safer delta pruning ----
+    bool maybeCheck = false;
+    if (isPromo) {
+      maybeCheck = true;
+    } else {
+      auto us = pos.getState().sideToMove;
+      const auto toBB = model::bb::sq_bb(m.to());
+      const auto kBB = pos.getBoard().getPieces(~us, core::PieceType::King);
+      if (isCap) {
+        if (us == core::Color::White) {
+          if ((model::bb::ne(toBB) | model::bb::nw(toBB)) & kBB) maybeCheck = true;
+        } else {
+          if ((model::bb::se(toBB) | model::bb::sw(toBB)) & kBB) maybeCheck = true;
+        }
+      }
+    }
+
+    if (!maybeCheck) {
+      if (isCap || isPromo) {
+        int capVal = 0;
+        if (m.isEnPassant())
+          capVal = base_value[(int)core::PieceType::Pawn];
+        else if (isCap) {
+          if (auto cap = pos.getBoard().getPiece(m.to())) capVal = base_value[(int)cap->type];
+        }
+        int promoGain = 0;
+        if (isPromo)
+          promoGain =
+              std::max(0, base_value[(int)m.promotion()] - base_value[(int)core::PieceType::Pawn]);
+
+        const bool quietPromo = isPromo && !isCap;
+        if (quietPromo) {
+          if (stand + promoGain + DELTA_MARGIN <= alpha) continue;
+        } else {
+          if (stand + capVal + promoGain + DELTA_MARGIN <= alpha) continue;
+        }
+      }
+    }
+    // --------------------------------------
+
+    // (Kein zweites SEE mehr nötig – 'seeOk' ist gesetzt)
 
     MoveUndoGuard g(pos);
     if (!g.doMove(m)) continue;
@@ -535,7 +581,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   const bool inCheck = pos.inCheck();
   const int staticEval = inCheck ? 0 : signed_eval(pos);
 
-  // ---- "improving" (Step 2) ----
+  // ---- "improving" ----
   const bool improving =
       !inCheck && (parentStaticEval == INF || staticEval >= parentStaticEval - 16);
 
@@ -548,18 +594,17 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   };
   const int nonP = countSide(core::Color::White) + countSide(core::Color::Black);
 
-  // SNMP (nutzt nonP)
+  // SNMP
   if (!inCheck && !isPV && depth <= 3) {
     if (nonP >= 6) {
-      static constexpr int margins[4] = {0, 140, 200, 260};
-      int mar = margins[depth] + (improving ? 32 : 0);  // relax cut when improving
+      int mar = SNMP_MARGINS[depth] + (improving ? 32 : 0);
       if (staticEval - mar >= beta) return staticEval;
     }
   }
 
   // Razoring D1
   if (!inCheck && !isPV && depth == 1) {
-    int razorMargin = 220 + (improving ? 40 : 0);  // make harder to razor when improving
+    int razorMargin = RAZOR_MARGIN_BASE + (improving ? 40 : 0);
     if (staticEval + razorMargin <= alpha) {
       int q = quiescence(pos, alpha - 1, alpha, ply);
       if (q <= alpha) return q;
@@ -568,7 +613,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   // Reverse futility D1
   if (!inCheck && !isPV && depth == 1) {
-    int margin = 180 + (improving ? 40 : 0);  // require more for cutoff if improving
+    int margin = RFP_MARGIN_BASE + (improving ? 40 : 0);
     if (staticEval - margin >= beta) return staticEval;
   }
 
@@ -604,13 +649,11 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       int iidDepth = isPV ? depth - 2 : depth - 3;
       if (iidDepth < 1) iidDepth = 1;
 
-      int a = alpha, b = isPV ? beta : (alpha + 1);
+      int a = alpha, bnd = isPV ? beta : (alpha + 1);
 
       model::Move tmp{};
-      // Gleiche Node, kein Fensterflip, keine Negation
-      (void)negamax(pos, iidDepth, a, b, ply, tmp, staticEval);
+      (void)negamax(pos, iidDepth, a, bnd, ply, tmp, staticEval);
 
-      // Re-proben und *Fenster nachziehen / evtl. cutoff*
       if (model::TTEntry5 t2{}; tt.probe_into(pos.hash(), t2)) {
         haveTT = true;
         ttMove = t2.best;
@@ -618,7 +661,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         ttBound = t2.bound;
         ttStoredDepth = (int)t2.depth;
 
-        // Nur wenn der neue Eintrag "stark genug" ist (>= aktuelle Tiefe)
         if (t2.depth >= depth - 1) {
           if (t2.bound == model::Bound::Exact) return std::clamp(ttVal, -MATE + 1, MATE - 1);
 
@@ -633,27 +675,36 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
   }
 
-  // Null move pruning (nutzt nonP)
+  // Null move pruning (adaptive)
   const bool sparse = (nonP <= 3);
-
   const bool prevWasCapture = (ply > 0 && prevMove[cap_ply(ply - 1)].isCapture());
 
   if (cfg.useNullMove && depth >= 3 && !inCheck && !isPV && !sparse && !prevWasCapture) {
-    int margin = 50 + 20 * depth + (improving ? 40 : 0);  // harder to drop by null if improving
+    const int evalGap = staticEval - beta;
+    int rBase = 2 + (depth >= 8 ? 1 : 0);  // 2..3
+    if (evalGap > 200) rBase++;
+    if (evalGap > 500) rBase++;
+    if (!improving) rBase++;
+    if (nonP >= 8) rBase++;
+
+    int R = std::min(rBase, depth - 2);
+
+    int margin = 50 + 20 * depth + (improving ? 40 : 0);
     if (staticEval >= beta + margin) {
       NullUndoGuard ng(pos);
       if (ng.doNull()) {
-        int R = (depth >= 7 ? 3 : 2);
         model::Move tmpNM{};
         int nullScore = -negamax(pos, depth - 1 - R, -beta, -beta + 1, ply + 1, tmpNM, staticEval);
         ng.rollback();
         if (nullScore >= beta) {
-          if (depth >= 6) {
+          const bool needVerify = (depth >= 8 && R >= 3 && evalGap < 800);
+          if (needVerify) {
             model::Move tmpVerify{};
             int verify = -negamax(pos, depth - 1, -beta, -beta + 1, ply + 1, tmpVerify, staticEval);
             if (verify >= beta) return beta;
-          } else
+          } else {
             return beta;
+          }
         }
       }
     }
@@ -725,6 +776,40 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         s += 220'000;  // gives check
       else if (sig == 1)
         s += 180'000;  // immediate threat
+
+      // ---- Continuation History Contribution (layered) ----
+      int chSum = 0;
+
+      if (ply >= 1) {
+        const model::Move pm1 = prevMove[cap_ply(ply - 1)];
+        if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.to() < 64) {
+          if (auto po1 = board.getPiece(pm1.to())) {
+            chSum += contHist[0][pidx(po1->type)][pm1.to()][pidx(moverPt)][m.to()];
+          }
+        }
+      }
+
+      if (ply >= 2) {
+        const model::Move pm2 = prevMove[cap_ply(ply - 2)];
+        if (pm2.from() >= 0 && pm2.to() >= 0 && pm2.to() < 64) {
+          if (auto po2 = board.getPiece(pm2.to())) {
+            chSum += contHist[1][pidx(po2->type)][pm2.to()][pidx(moverPt)][m.to()] >> 1;
+          }
+        }
+      }
+
+      if (ply >= 3) {
+        const model::Move pm3 = prevMove[cap_ply(ply - 3)];
+        if (pm3.from() >= 0 && pm3.to() >= 0 && pm3.to() < 64) {
+          if (auto po3 = board.getPiece(pm3.to())) {
+            chSum += contHist[2][pidx(po3->type)][pm3.to()][pidx(moverPt)][m.to()] >> 2;
+          }
+        }
+      }
+
+      // leichte Dämpfung, damit contHist nicht alles dominiert
+      s += (chSum >> 1);
+      // -----------------------------------------------------
     }
 
     scores[i] = s;
@@ -758,7 +843,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         isQuiet && (moverPt == core::PieceType::Queen || moverPt == core::PieceType::Rook);
 
     // Erweitere "tacticalQuiet":
-    const bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0);  // NEU
+    const bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0);
 
     if (m.isEnPassant())
       capPt = core::PieceType::Pawn;
@@ -769,11 +854,23 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
                                                            : base_value[(int)capPt])
                                         : 0;
 
-    // LMP (relaxed when improving)  (Step 2)
+    // LMP (contHist-aware)
     if (!inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet && !isQuietHeavy) {
-      int limit = depth * depth;  // 1,4,9
-      int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
-      if (h < -8000) limit = std::max(1, limit - 1);
+      int hist = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
+
+      int ch = 0;
+      if (ply >= 1) {
+        const auto pm1 = prevMove[cap_ply(ply - 1)];
+        if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.to() < 64) {
+          if (auto po1 = board.getPiece(pm1.to()))
+            ch = contHist[0][pidx(po1->type)][pm1.to()][pidx(moverPt)][m.to()];
+        }
+      }
+
+      int limit = LMP_LIMIT[depth];
+      if (hist < -8000) limit -= 1;
+      if (ch < -8000) limit -= 1;
+      if (limit < 1) limit = 1;
 
       int futMarg = FUT_MARGIN[depth] + (improving ? 32 : 0);
       if (staticEval + futMarg <= alpha + 32 && moveCount >= limit) {
@@ -782,17 +879,17 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
 
-    // Extended futility (depth<=3, quiets) — relax when improving (Step 2)
+    // Extended futility (depth<=3, quiets) — relax when improving
     if (allowFutility && isQuiet && depth <= 3 && !tacticalQuiet && !isQuietHeavy) {
       int fut = FUT_MARGIN[depth] + (history[m.from()][m.to()] < -8000 ? 32 : 0);
-      if (improving) fut += 48;  // keep more moves when improving
+      if (improving) fut += 48;
       if (staticEval + fut <= alpha) {
         ++moveCount;
         continue;
       }
     }
 
-    // History pruning — gate on improving (Step 2)
+    // History pruning — gate auf improving
     if (!inCheck && !isPV && isQuiet && depth <= 2 && !tacticalQuiet && !isQuietHeavy &&
         !improving) {
       int histScore = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
@@ -803,7 +900,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
 
-    // Futility (D1) — gate on improving (Step 2)
+    // Futility (D1) — gate auf improving
     if (!inCheck && !isPV && isQuiet && depth == 1 && !tacticalQuiet && !isQuietHeavy &&
         !improving) {
       if (staticEval + 110 <= alpha) {
@@ -812,29 +909,31 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
 
-    // SEE pruning (seltener): erst billige Material-Heuristik prüfen
+    // ---- SEE nur EINMAL bestimmen (falls nötig) ----
     bool seeGood = true;
-    if (m.isCapture()) {
+    if (m.isCapture() && m.promotion() == core::PieceType::None) {
       const int attackerVal = base_value[(int)moverPt];
-      const bool trivialGood = (capValPre >= attackerVal);
+      const int victimVal = capValPre;  // bereits oben berechnet
 
-      if (!inCheck && ply > 0 && depth <= 5) {
-        if (!trivialGood && !pos.see(m)) {
-          ++moveCount;
-          continue;  // prune fragwürdige, SEE-lose Captures flach
+      if (victimVal < attackerVal) {
+        if (!inCheck && ply > 0 && depth <= 5) {
+          // flach und nicht im Schach: fragwürdige Captures direkt kappen
+          if (!pos.see(m)) {
+            ++moveCount;
+            continue;
+          }
+          seeGood = true;
+        } else {
+          // tiefer / kritischer: Ergebnis merken und später nutzen
+          seeGood = pos.see(m);
         }
-        seeGood = true;
-      } else {
-        seeGood = trivialGood ? true : pos.see(m);
       }
-    } else if (!inCheck && ply > 0 && !pos.see(m)) {
-      ++moveCount;
-      continue;  // prune quiets dropping material
     }
 
     const int mvvBefore =
         (m.isCapture() || m.promotion() != core::PieceType::None) ? mvv_lva_fast(pos, m) : 0;
     int newDepth = depth - 1;
+
     // ----- Singular Extension -----
     int seExt = 0;
     if (cfg.useSingularExt && haveTT && m == ttMove && !inCheck && depth >= 6) {
@@ -854,6 +953,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
     newDepth += seExt;
+
     MoveUndoGuard g(pos);
     if (!g.doMove(m)) {
       ++moveCount;
@@ -866,9 +966,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     int value;
     model::Move childBest{};
 
-    // ProbCut (light) — use pre-move captured value
-    if (!isPV && !inCheck && newDepth >= 5 && m.isCapture() && seeGood && mvvBefore >= 700) {
-      constexpr int PROBCUT_MARGIN = 200;
+    // ProbCut (leicht erweitert)
+    if (!isPV && !inCheck && newDepth >= 4 && m.isCapture() && seeGood && mvvBefore >= 500) {
+      constexpr int PROBCUT_MARGIN = 224;
       if (staticEval + capValPre + PROBCUT_MARGIN >= beta) {
         const int red = 3;
         const int probe =
@@ -893,23 +993,34 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
           moveCount >= 3) {
         const int ld = ilog2_u32((unsigned)depth);
         const int lm = ilog2_u32((unsigned)(moveCount + 1));
-        int rBase = (ld * (lm + 1)) / 3;
-        if (isQuietHeavy) rBase = std::max(0, rBase - 1);
+        int r = (ld * (lm + 1)) / 2;  // kräftiger als /3
+        if (isQuietHeavy) r = std::max(0, r - 1);
 
         const int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
-        if (h > 8000) rBase -= 1;
-        if (h < -8000) rBase += 1;
+        int ch = 0;
+        if (ply >= 1) {
+          const auto pm1 = prevMove[cap_ply(ply - 1)];
+          if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.to() < 64) {
+            if (auto po1 = board.getPiece(pm1.to()))
+              ch = contHist[0][pidx(po1->type)][pm1.to()][pidx(moverPt)][m.to()];
+          }
+        }
 
-        if (m == killers[kply][0] || m == killers[kply][1]) rBase -= 1;
-        if (haveTT && m == ttMove) rBase -= 1;
+        if (h > 8000) r -= 1;
+        if (ch > 8000) r -= 1;
 
-        if (ply <= 2) rBase -= 1;
-        if (beta - alpha <= 8) rBase -= 1;
+        if (m == killers[kply][0] || m == killers[kply][1]) r -= 1;
+        if (haveTT && m == ttMove) r -= 1;
 
-        if (rBase < 0) rBase = 0;
+        if (ply <= 2) r -= 1;
+        if (beta - alpha <= 8) r -= 1;
+
+        if (!improving) r += 1;
+
+        if (r < 0) r = 0;
         int rCap = (newDepth >= 5 ? 3 : 2);
-        if (rBase > rCap) rBase = rCap;
-        reduction = std::min(rBase, newDepth - 1);
+        if (r > rCap) r = rCap;
+        reduction = std::min(r, newDepth - 1);
       }
 
       value =
@@ -923,8 +1034,36 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // History updates
     if (isQuiet && value <= origAlpha) {
-      hist_update(history[m.from()][m.to()], -hist_bonus(depth) / 2);
-      hist_update(quietHist[pidx(moverPt)][m.to()], -hist_bonus(depth) / 2);
+      const int M = hist_bonus(depth) / 2;
+
+      hist_update(history[m.from()][m.to()], -M);
+      hist_update(quietHist[pidx(moverPt)][m.to()], -M);
+
+      // --- Continuation History: Malus ---
+      if (ply >= 1) {
+        const model::Move pm1 = prevMove[cap_ply(ply - 1)];
+        if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.to() < 64) {
+          if (auto po1 = board.getPiece(pm1.to())) {
+            hist_update(contHist[0][pidx(po1->type)][pm1.to()][pidx(moverPt)][m.to()], -M);
+          }
+        }
+      }
+      if (ply >= 2) {
+        const model::Move pm2 = prevMove[cap_ply(ply - 2)];
+        if (pm2.from() >= 0 && pm2.to() >= 0 && pm2.to() < 64) {
+          if (auto po2 = board.getPiece(pm2.to())) {
+            hist_update(contHist[1][pidx(po2->type)][pm2.to()][pidx(moverPt)][m.to()], -(M >> 1));
+          }
+        }
+      }
+      if (ply >= 3) {
+        const model::Move pm3 = prevMove[cap_ply(ply - 3)];
+        if (pm3.from() >= 0 && pm3.to() >= 0 && pm3.to() < 64) {
+          if (auto po3 = board.getPiece(pm3.to())) {
+            hist_update(contHist[2][pidx(po3->type)][pm3.to()][pidx(moverPt)][m.to()], -(M >> 2));
+          }
+        }
+      }
     }
 
     if (value > best) {
@@ -937,15 +1076,46 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       if (isQuiet) {
         killers[kply][1] = killers[kply][0];
         killers[kply][0] = m;
-        hist_update(history[m.from()][m.to()], +hist_bonus(depth));
-        hist_update(quietHist[pidx(moverPt)][m.to()], +hist_bonus(depth));
+
+        const int B = hist_bonus(depth);
+
+        hist_update(history[m.from()][m.to()], +B);
+        hist_update(quietHist[pidx(moverPt)][m.to()], +B);
+
+        // --- Continuation History: Bonus ---
+        if (ply >= 1) {
+          const model::Move pm1 = prevMove[cap_ply(ply - 1)];
+          if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.to() < 64) {
+            if (auto po1 = board.getPiece(pm1.to())) {
+              hist_update(contHist[0][pidx(po1->type)][pm1.to()][pidx(moverPt)][m.to()], +B);
+            }
+          }
+        }
+        if (ply >= 2) {
+          const model::Move pm2 = prevMove[cap_ply(ply - 2)];
+          if (pm2.from() >= 0 && pm2.to() >= 0 && pm2.to() < 64) {
+            if (auto po2 = board.getPiece(pm2.to())) {
+              hist_update(contHist[1][pidx(po2->type)][pm2.to()][pidx(moverPt)][m.to()], +(B >> 1));
+            }
+          }
+        }
+        if (ply >= 3) {
+          const model::Move pm3 = prevMove[cap_ply(ply - 3)];
+          if (pm3.from() >= 0 && pm3.to() >= 0 && pm3.to() < 64) {
+            if (auto po3 = board.getPiece(pm3.to())) {
+              hist_update(contHist[2][pidx(po3->type)][pm3.to()][pidx(moverPt)][m.to()], +(B >> 2));
+            }
+          }
+        }
+
         if (prevOk) {
           counterMove[prev.from()][prev.to()] = m;
-          hist_update(counterHist[prev.from()][prev.to()], +hist_bonus(depth));
+          hist_update(counterHist[prev.from()][prev.to()], +B);
         }
       } else {
         hist_update(captureHist[pidx(moverPt)][m.to()][pidx(capPt)], +hist_bonus(depth));
       }
+
       break;
     }
     ++moveCount;
@@ -1061,41 +1231,35 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
 
     const bool isPromo = (m.promotion() != core::PieceType::None);
     const bool isCap = m.isCapture();
-    const bool isQuiet = !isCap && !isPromo;
 
-    // Strong TT bias, as before.
+    // Strong TT bias
     if (haveTT && m == ttMove) s += 2'500'000;
 
     if (isPromo) {
-      // Put promotions ahead of captures.
       s += 1'200'000;
     } else if (isCap) {
-      // Good captures first; gently penalize SEE-losing ones at root.
       int mvvlva = mvv_lva_fast(pos, m);
-      if (!pos.see(m)) mvvlva -= 350;  // small nudge, not a prune
+      if (!pos.see(m)) mvvlva -= 350;
       s += 1'050'000 + mvvlva;
     } else {
-      // Root quiets: keep ordering modest and stable.
-      // Use history only as a light tie-breaker.
       int h = history[m.from()][m.to()];
       if (h > 20'000) h = 20'000;
       if (h < -20'000) h = -20'000;
       s += h;
 
-      // Optional: a *tiny* hint for tactical quiets (much smaller than before).
       auto mover = pos.getBoard().getPiece(m.from());
       if (mover) {
-        const int pawn_sig = (mover->type == core::PieceType::Pawn)
-                                 ? quiet_pawn_push_signal(pos.getBoard(), m,
-                                                          pos.getState().sideToMove)
-                                 : 0;
-        const int piece_sig = quiet_piece_threat_signal(pos.getBoard(), m,
-                                                        pos.getState().sideToMove);
+        const int pawn_sig =
+            (mover->type == core::PieceType::Pawn)
+                ? quiet_pawn_push_signal(pos.getBoard(), m, pos.getState().sideToMove)
+                : 0;
+        const int piece_sig =
+            quiet_piece_threat_signal(pos.getBoard(), m, pos.getState().sideToMove);
         const int sig = pawn_sig > piece_sig ? pawn_sig : piece_sig;
         if (sig == 2)
-          s += 12'000;  // gives check
+          s += 12'000;
         else if (sig == 1)
-          s += 8'000;  // immediate threat
+          s += 8'000;
       }
     }
 
@@ -1113,6 +1277,10 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
   for (int depth = 1; depth <= std::max(1, maxDepth); ++depth) {
     if (stop && stop->load()) break;
 
+    // Mild decay
+    if (depth > 1) {
+      decay_tables(*this, /*shift=*/6);
+    }
     // Re-Order Root-Moves
     model::Move rootTT{};
     bool haveRootTT = false;
@@ -1200,7 +1368,6 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
     const int total = (int)rootMoves.size();
     std::atomic<int> idx{1};
 
-    // WICHTIG: benannter Parameter 'tid' verwenden
     auto workerFn = [&](int tid) {
       // tid ist der Index im Submit-Loop; nutze workers[tid + 1]
       Search& worker = *workers[tid + 1];
@@ -1227,9 +1394,10 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
 
           results[i].nullScore.store(sN, std::memory_order_relaxed);
 
-          // ---- Step 1/5: re-read α and near-alpha verify ----
+          // re-read α und nur "near-α" verifizieren
           int alphaNow = sharedAlpha.load(std::memory_order_relaxed);
           int verifyMargin = ROOT_VERIFY_MARGIN_BASE + (depth >= 10 ? 8 : 0);
+          int dropMargin = 96 + (depth >= 10 ? 8 : 0);
 
           if (sN >= alphaNow - verifyMargin && !(stop && stop->load())) {
             int sF = -worker.negamax(child, depth - 1, -INF, INF, 1, ref, INF);
@@ -1241,6 +1409,9 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
             while (sF > cur &&
                    !sharedAlpha.compare_exchange_weak(cur, sF, std::memory_order_relaxed)) {
             }
+          } else if (sN < alphaNow - dropMargin) {
+            // klar unter α -> kein Full-Window nötig
+            continue;
           }
         }
       } catch (const SearchStoppedException&) {
@@ -1254,7 +1425,6 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
       }
     };
 
-    // KEINE Namens-Kollision mit dem Vector 'workers'
     const int numWorkers = std::min(total - 1, threads - 1);
     std::vector<std::future<void>> futs;
     futs.reserve(numWorkers);
@@ -1270,7 +1440,6 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
 
     // --- Reuse persistent worker[0] als Fallback (sequenziell) ---
     Search& fbWorker = *workers[0];
-    // optional: einmal je Tiefe reseeden
     fbWorker.copy_heuristics_from(*this);
 
     for (int i = 1; i < total; ++i) {
@@ -1292,9 +1461,9 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
         sN = std::clamp(sN, -MATE + 1, MATE - 1);
         results[i].nullScore.store(sN, std::memory_order_relaxed);
 
-        // re-read α and near-alpha verify (Step 1/5)
         int alphaNow = sharedAlpha.load(std::memory_order_relaxed);
         int verifyMargin = ROOT_VERIFY_MARGIN_BASE + (depth >= 10 ? 8 : 0);
+        int dropMargin = 96 + (depth >= 10 ? 8 : 0);
 
         if (sN >= alphaNow - verifyMargin && !(stop && stop->load())) {
           int sF = -fbWorker.negamax(child, depth - 1, -INF, INF, 1, ref, INF);
@@ -1305,6 +1474,8 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
           while (sF > cur &&
                  !sharedAlpha.compare_exchange_weak(cur, sF, std::memory_order_relaxed)) {
           }
+        } else if (sN < alphaNow - dropMargin) {
+          continue;
         }
       } catch (const SearchStoppedException&) {
         if (stop) stop->store(true, std::memory_order_relaxed);
@@ -1331,7 +1502,6 @@ int Search::search_root_parallel(model::Position& pos, int maxDepth,
         const int sF = results[i].fullScore.load(std::memory_order_relaxed);
         if (sF != std::numeric_limits<int>::min()) continue;
 
-        // confirm only near-α candidates (Step 1/5)
         int verifyMargin = ROOT_VERIFY_MARGIN_BASE + (depth >= 10 ? 8 : 0);
         if (sN < bestAlphaNow - verifyMargin) continue;
 
@@ -1432,6 +1602,7 @@ void Search::clearSearchState() {
   std::fill(&quietHist[0][0], &quietHist[0][0] + PIECE_NB * SQ_NB, 0);
   std::fill(&captureHist[0][0][0], &captureHist[0][0][0] + PIECE_NB * SQ_NB * PIECE_NB, 0);
   std::fill(&counterHist[0][0], &counterHist[0][0] + SQ_NB * SQ_NB, 0);
+  std::memset(contHist, 0, sizeof(contHist));
   for (auto& row : counterMove)
     for (auto& m : row) m = model::Move{};
   for (auto& pm : prevMove) pm = model::Move{};
@@ -1447,13 +1618,13 @@ void Search::copy_heuristics_from(const Search& src) {
   std::memcpy(counterHist, src.counterHist, sizeof(counterHist));
   std::memcpy(counterMove, src.counterMove, sizeof(counterMove));
 
-  // Killers are intentionally *not* copied (keep them local & fresh)
+  // Killers nicht kopieren
   for (auto& kk : killers) {
     kk[0] = model::Move{};
     kk[1] = model::Move{};
   }
 
-  // prevMove buffers are local path state; clear
+  // prevMove buffers sind lokaler Pfad-State
   for (auto& pm : prevMove) pm = model::Move{};
 }
 
@@ -1463,28 +1634,8 @@ static inline int16_t ema_merge(int16_t G, int16_t L, int K) {
   return clamp16((int)G + d / K);
 }
 
-static inline void decay_tables(Search& S, int shift /* e.g. 6 => ~1.6% */) {
-  for (int f = 0; f < SQ_NB; ++f)
-    for (int t = 0; t < SQ_NB; ++t)
-      S.history[f][t] = clamp16((int)S.history[f][t] - ((int)S.history[f][t] >> shift));
-
-  for (int p = 0; p < PIECE_NB; ++p)
-    for (int t = 0; t < SQ_NB; ++t)
-      S.quietHist[p][t] = clamp16((int)S.quietHist[p][t] - ((int)S.quietHist[p][t] >> shift));
-
-  for (int mp = 0; mp < PIECE_NB; ++mp)
-    for (int t = 0; t < SQ_NB; ++t)
-      for (int cp = 0; cp < PIECE_NB; ++cp)
-        S.captureHist[mp][t][cp] =
-            clamp16((int)S.captureHist[mp][t][cp] - ((int)S.captureHist[mp][t][cp] >> shift));
-
-  for (int f = 0; f < SQ_NB; ++f)
-    for (int t = 0; t < SQ_NB; ++t)
-      S.counterHist[f][t] = clamp16((int)S.counterHist[f][t] - ((int)S.counterHist[f][t] >> shift));
-}
-
 void Search::merge_from(const Search& o) {
-  // Tuneable smoothing: smaller K = faster learning, noisier; try 4–8.
+  // kleiner K -> schnelleres Lernen
   constexpr int K = 4;
 
   // Base history
@@ -1505,14 +1656,21 @@ void Search::merge_from(const Search& o) {
   // Counter history + best countermove choice
   for (int f = 0; f < SQ_NB; ++f) {
     for (int t = 0; t < SQ_NB; ++t) {
-      // merge scores
       counterHist[f][t] = ema_merge(counterHist[f][t], o.counterHist[f][t], K);
-      // adopt the worker's countermove if its (merged) score is higher
       if (o.counterHist[f][t] > counterHist[f][t]) {
         counterMove[f][t] = o.counterMove[f][t];
       }
     }
   }
+
+  // Continuation History (EMA)
+  for (int L = 0; L < CH_LAYERS; ++L)
+    for (int pp = 0; pp < PIECE_NB; ++pp)
+      for (int pt = 0; pt < SQ_NB; ++pt)
+        for (int mp = 0; mp < PIECE_NB; ++mp)
+          for (int to = 0; to < SQ_NB; ++to)
+            contHist[L][pp][pt][mp][to] =
+                ema_merge(contHist[L][pp][pt][mp][to], o.contHist[L][pp][pt][mp][to], K);
 }
 
 }  // namespace lilia::engine

@@ -34,6 +34,7 @@ namespace lilia::engine {
 // Für History-Tabellen: Anzahl nicht-leerer Figurtypen (Pawn..King)
 static constexpr int PIECE_NB = 6;
 static constexpr int SQ_NB = 64;
+static constexpr int CH_LAYERS = 6;  // 1..6 ply wie bei SF
 
 struct SearchStoppedException : public std::exception {
   const char* what() const noexcept override { return "Search stopped"; }
@@ -100,6 +101,7 @@ class Search {
   // plus Counter-History-Bonus für genau diesen Antwortzug
   alignas(64) model::Move counterMove[SQ_NB][SQ_NB] = {};
   alignas(64) int16_t counterHist[SQ_NB][SQ_NB] = {};
+  int16_t contHist[CH_LAYERS][PIECE_NB][SQ_NB][PIECE_NB][SQ_NB];
 
  private:
   // Kernfunktionen

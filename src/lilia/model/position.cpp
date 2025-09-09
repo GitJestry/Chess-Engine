@@ -286,17 +286,31 @@ bool Position::see(const model::Move& m) const {
     return (bish_rays(occNow) | rook_rays(occNow)) & alive(c, PieceType::Queen);
   };
 
-  // Pin check: if removing 'fromSq' leaves own king in check, that attacker is illegal.
+  // Pin check: piece may move to 'to' along the pin line.
+  // Simulate "fromSq -> to" when testing king safety.
   auto pinned_blocked = [&](Color c, Square fromSq, bb::Bitboard occNow) -> bool {
-    bb::Bitboard kbb = pcs[(int)c][(int)PieceType::King];
+    bb::Bitboard kbb = pcs[(int)c][(int)PieceType::King] & occNow;
     if (!kbb) return false;
     Square ksq = (Square)bb::ctz64(kbb);
-    bb::Bitboard occTest = occNow & ~bb::sq_bb(fromSq);
+
+    // Simuliere: entferne die Figur von 'fromSq' und setze sie auf 'to'
+    bb::Bitboard occTest = (occNow & ~bb::sq_bb(fromSq)) | bb::sq_bb(to);
+
+    // Wenn der König dann angegriffen ist, ist der Capture illegal.
     return attackedBy(m_board, ksq, Color(~c), occTest);
   };
 
-  // Pick least valuable legal attacker (kings handled separately at the end)
   auto pick_lva = [&](Color c, Square& fromSq, PieceType& pt, bb::Bitboard occNow) -> bool {
+    // Rays nur EINMAL pro occNow
+    const bb::Bitboard diag = magic::sliding_attacks(magic::Slider::Bishop, to, occNow);
+    const bb::Bitboard ortho = magic::sliding_attacks(magic::Slider::Rook, to, occNow);
+
+    auto pawns = pawn_atk(c) & alive(c, PieceType::Pawn);
+    auto knights = (bb::knight_attacks_from(to) & alive(c, PieceType::Knight));
+    auto bishops = (diag & alive(c, PieceType::Bishop));
+    auto rooks = (ortho & alive(c, PieceType::Rook));
+    auto queens = ((diag | ortho) & alive(c, PieceType::Queen));
+
     auto pick_from = [&](bb::Bitboard bbx, PieceType cand) -> bool {
       while (bbx) {
         Square f = bb::pop_lsb(bbx);
@@ -309,21 +323,18 @@ bool Position::see(const model::Move& m) const {
       return false;
     };
 
-    if (pick_from(pawn_atk(c), PieceType::Pawn)) return true;
-    if (pick_from(knight_atk(c), PieceType::Knight)) return true;
-    if (pick_from(bishop_att(c, occNow), PieceType::Bishop)) return true;
-    if (pick_from(rook_att(c, occNow), PieceType::Rook)) return true;
-    if (pick_from(queen_att(c, occNow), PieceType::Queen)) return true;
+    if (pick_from(pawns, PieceType::Pawn)) return true;
+    if (pick_from(knights, PieceType::Knight)) return true;
+    if (pick_from(bishops, PieceType::Bishop)) return true;
+    if (pick_from(rooks, PieceType::Rook)) return true;
+    if (pick_from(queens, PieceType::Queen)) return true;
 
-    // Try king as last attacker, only if the king can safely capture onto 'to'
-    bb::Bitboard kbb = pcs[(int)c][(int)PieceType::King] & occNow;
+    // König zuletzt – Sicherheit REAL simulieren (mit König auf 'to')
+    bb::Bitboard kbb = alive(c, PieceType::King);
     if (kbb) {
       Square kf = (Square)bb::ctz64(kbb);
       if (bb::king_attacks_from(kf) & bb::sq_bb(to)) {
-        // Move king onto 'to' and see if it would be in check
-        bb::Bitboard occK =
-            (occNow &
-             ~bb::sq_bb(kf));  // king moves off kf, 'to' stays occupied by victim for legality test
+        bb::Bitboard occK = (occNow & ~bb::sq_bb(kf)) | bb::sq_bb(to);
         if (!attackedBy(m_board, to, Color(~c), occK)) {
           fromSq = kf;
           pt = PieceType::King;
@@ -338,8 +349,7 @@ bool Position::see(const model::Move& m) const {
   PieceType captured = PieceType::None;
   if (m.isEnPassant()) {
     captured = PieceType::Pawn;
-    Square capSq =
-        (us == Color::White) ? Square(int(to) - 8) : Square(int(to) + 8);
+    Square capSq = (us == Color::White) ? Square(int(to) - 8) : Square(int(to) + 8);
     occ &= ~bb::sq_bb(capSq);
   } else if (auto cap = m_board.getPiece(to)) {
     captured = cap->type;
