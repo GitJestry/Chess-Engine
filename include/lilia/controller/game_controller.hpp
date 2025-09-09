@@ -32,7 +32,7 @@ class MoveGenerator;
 namespace bb {
 struct Piece;
 }
-}  // namespace lilia::model
+} // namespace lilia::model
 
 namespace lilia::controller {
 class GameManager;
@@ -61,7 +61,7 @@ struct TimeView {
 };
 
 class GameController {
- public:
+public:
   explicit GameController(view::GameView &gView, model::ChessGame &game);
   ~GameController();
 
@@ -85,15 +85,17 @@ class GameController {
    * @param blackDepth Suchtiefe für den schwarzen Bot.
    */
 
-  void startGame(const std::string &fen = core::START_FEN, bool whiteIsBot = false,
-                 bool blackIsBot = true, int whiteThinkTimeMs = 1000, int whiteDepth = 5,
-                 int blackThinkTimeMs = 1000, int blackDepth = 5, bool useTimer = true,
-                 int baseSeconds = 0, int incrementSeconds = 0);
+  void startGame(const std::string &fen = core::START_FEN,
+                 bool whiteIsBot = false, bool blackIsBot = true,
+                 int whiteThinkTimeMs = 1000, int whiteDepth = 5,
+                 int blackThinkTimeMs = 1000, int blackDepth = 5,
+                 bool useTimer = true, int baseSeconds = 0,
+                 int incrementSeconds = 0);
 
   enum class NextAction { None, NewBot, Rematch };
   [[nodiscard]] NextAction getNextAction() const;
 
- private:
+private:
   bool isHumanPiece(core::Square sq) const;
   bool hasCurrentLegalMove(core::Square from, core::Square to) const;
 
@@ -111,16 +113,20 @@ class GameController {
   void clearPremove();
   bool enqueuePremove(core::Square from, core::Square to);
   void updatePremovePreviews();
-  [[nodiscard]] bool isPseudoLegalPremove(core::Square from, core::Square to) const;
+  [[nodiscard]] bool isPseudoLegalPremove(core::Square from,
+                                          core::Square to) const;
   [[nodiscard]] model::Position getPositionAfterPremoves() const;
-  [[nodiscard]] model::bb::Piece getPieceConsideringPremoves(core::Square sq) const;
+  [[nodiscard]] model::bb::Piece
+  getPieceConsideringPremoves(core::Square sq) const;
   [[nodiscard]] bool hasVirtualPiece(core::Square sq) const;
 
-  void movePieceAndClear(const model::Move &move, bool isPlayerMove, bool onClick);
+  void movePieceAndClear(const model::Move &move, bool isPlayerMove,
+                         bool onClick);
 
   void snapAndReturn(core::Square sq, core::MousePos cur);
 
-  [[nodiscard]] const std::vector<core::Square> &getAttackSquares(core::Square pieceSQ) const;
+  [[nodiscard]] const std::vector<core::Square> &
+  getAttackSquares(core::Square pieceSQ) const;
   void showAttacks(const std::vector<core::Square> &att);
   [[nodiscard]] bool tryMove(core::Square a, core::Square b);
   [[nodiscard]] bool isPromotion(core::Square a, core::Square b);
@@ -132,12 +138,14 @@ class GameController {
   void resign();
 
   void syncCapturedPieces();
+  void stashSelectedPiece();
+  void restoreSelectedPiece();
 
   // ---------------- Members ----------------
-  view::GameView &m_game_view;                ///< Responsible for rendering.
-  model::ChessGame &m_chess_game;             ///< Game model containing rules and state.
-  InputManager m_input_manager;               ///< Handles raw input processing.
-  view::sound::SoundManager m_sound_manager;  ///< Handles sfx and music
+  view::GameView &m_game_view;    ///< Responsible for rendering.
+  model::ChessGame &m_chess_game; ///< Game model containing rules and state.
+  InputManager m_input_manager;   ///< Handles raw input processing.
+  view::sound::SoundManager m_sound_manager; ///< Handles sfx and music
 
   bool m_white_is_bot{false};
   bool m_black_is_bot{false};
@@ -155,9 +163,11 @@ class GameController {
   bool m_preview_active = false;
   core::Square m_prev_selected_before_preview = core::NO_SQUARE;
   bool m_selection_changed_on_press = false;
+  core::Square m_stashed_selected_square = core::NO_SQUARE;
 
   std::deque<Premove> m_premove_queue;
-  bool m_premove_suspended = false;  ///< Premove visuals hidden while browsing history
+  bool m_premove_suspended =
+      false; ///< Premove visuals hidden while browsing history
   // Temporary info while waiting for a premove promotion selection
   bool m_pending_premove_promotion = false;
   core::Square m_ppromo_from = core::NO_SQUARE;
@@ -194,4 +204,4 @@ class GameController {
   void ensureLegalCache() const;
 };
 
-}  // namespace lilia::controller
+} // namespace lilia::controller
