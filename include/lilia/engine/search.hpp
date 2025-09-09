@@ -72,8 +72,12 @@ class Search {
 
   // Root (iterative deepening, parallel auf Root-Children)
   // maxThreads <= 0 -> use cfg.threads for deterministic thread count
-  int search_root_parallel(model::Position& pos, int depth, std::shared_ptr<std::atomic<bool>> stop,
-                           int maxThreads = 0, std::uint64_t maxNodes = 0);
+  int search_root_single(model::Position& pos, int maxDepth,
+                         std::shared_ptr<std::atomic<bool>> stop, std::uint64_t maxNodes = 0);
+
+  int search_root_lazy_smp(model::Position& pos, int maxDepth,
+                           std::shared_ptr<std::atomic<bool>> stop, int maxThreads,
+                           std::uint64_t maxNodes = 0);
   void set_node_limit(std::shared_ptr<std::atomic<std::uint64_t>> shared, std::uint64_t limit) {
     sharedNodes = std::move(shared);
     nodeLimit = limit;
@@ -103,7 +107,11 @@ class Search {
   alignas(64) int16_t counterHist[SQ_NB][SQ_NB] = {};
   int16_t contHist[CH_LAYERS][PIECE_NB][SQ_NB][PIECE_NB][SQ_NB];
 
+  void set_thread_id(int id) { thread_id_ = id; }
+  int thread_id() const { return thread_id_; }
+
  private:
+  int thread_id_ = 0;  // 0 = main, >0 helpers
   // Kernfunktionen
   int negamax(model::Position& pos, int depth, int alpha, int beta, int ply, model::Move& refBest,
               int parentStaticEval = 0, const model::Move* excludedMove = nullptr);

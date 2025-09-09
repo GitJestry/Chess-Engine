@@ -44,9 +44,8 @@ struct TTEntry5 {
 
 #ifndef TT5_INDEX_MIX
 // 0: use low bits of Zobrist (klassisch), 1: simple mixer (xor-shift)
-#define TT5_INDEX_MIX 0
+#define TT5_INDEX_MIX 1
 #endif
-#define TT_DETERMINISTIC 1
 
 // -----------------------------------------------------------------------------
 // Internal packed entry & cluster
@@ -59,7 +58,7 @@ struct TTEntry5 {
 //  [50..62] reserved
 //  [63   ] VALID bit (1 = occupied)
 // data layout:
-//  [ 0..15] move16 (from6|to6|promo4)
+//  [0..15] move16 (from6|to6|promo3|cap1)
 //  [16..31] value16 (signed)
 //  [32..47] staticEval16 (signed)
 //  [48..63] keyHigh16 (redundant; left for compat/diagnostics)
@@ -87,15 +86,13 @@ class TT5 {
   explicit TT5(std::size_t mb = 16) { resize(mb); }
 
   void resize(std::size_t mb) {
-    std::size_t bytes = mb * 1024ULL * 1024ULL;
-    if (bytes < sizeof(Cluster)) bytes = sizeof(Cluster);
-    std::size_t req = bytes / sizeof(Cluster);
-    slots_ = highest_pow2(req);
-    if (slots_ == 0) slots_ = 1;
-
-    table_.reset();
-    table_ = std::unique_ptr<Cluster[]>(new Cluster[slots_]);
+    const auto bytes = std::max<std::size_t>(mb, 1) * 1024ull * 1024ull;
+    const auto want = bytes / sizeof(Cluster);
+    // round down to power of two to keep mask indexing
+    slots_ = highest_pow2(want ? want : 1);
+    table_.reset(new Cluster[slots_]);
     generation_.store(1u, std::memory_order_relaxed);
+    // (optional) std::fprintf(stderr,"TT: %.1f MB real\n", slots_*sizeof(Cluster)/1048576.0);
   }
 
   void clear() {
@@ -116,6 +113,10 @@ class TT5 {
   bool probe_into(std::uint64_t key, TTEntry5& out) const noexcept {
     const Cluster& c = table_[index(key)];
     LILIA_PREFETCH_L1(&c);
+    for (int i = 0; i < 4; i++) {
+      LILIA_PREFETCH_L1(&c.e[i].info);
+      LILIA_PREFETCH_L1(&c.e[i].data);
+    }
 
     const std::uint16_t keyLo = static_cast<std::uint16_t>(key);
     const std::uint16_t keyHi = static_cast<std::uint16_t>(key >> 48);
@@ -152,8 +153,19 @@ class TT5 {
       tmp.staticEval = static_cast<int16_t>((d >> 32) & 0xFFFFu);
 
       out = tmp;
+
+      // refresh age if stale (best-effort)
+      uint8_t cur = (uint8_t)generation_.load(std::memory_order_relaxed);
+      uint8_t entAge = (uint8_t)((info1 >> INFO_AGE_SHIFT) & 0xFFu);
+      if ((uint8_t)(cur - entAge) > 8) {
+        uint64_t newInfo =
+            (info1 & ~(0xFFull << INFO_AGE_SHIFT)) | ((uint64_t)cur << INFO_AGE_SHIFT);
+        (void)const_cast<std::atomic<uint64_t>&>(ent.info).compare_exchange_strong(
+            const_cast<uint64_t&>(info1), newInfo, std::memory_order_relaxed);
+      }
       return true;
     }
+
     return false;
   }
 
@@ -231,11 +243,25 @@ class TT5 {
       if ((oldInfo & INFO_KEYLO_MASK) != keyLo) continue;
       if (info_keyhi(oldInfo) != keyHi) continue;
 
-      if (!strictly_better(oldInfo)) return;  // keep the better/equal one
+      if (!strictly_better(oldInfo)) {
+        // try to inject a missing move to aid ordering (non-blocking)
+        std::uint64_t oldData = ent.data.load(std::memory_order_relaxed);
+        uint16_t oldMv = (uint16_t)(oldData & 0xFFFFu);
+        uint16_t newMv = mv16;
+        if (oldMv == 0 && newMv != 0) {
+          std::uint64_t patched = (oldData & ~0xFFFFull) | newMv;
+          (void)ent.data.compare_exchange_strong(oldData, patched, std::memory_order_relaxed,
+                                                 std::memory_order_relaxed);
+        }
+        return;
+      }
 
       ent.data.store(newData, std::memory_order_relaxed);
-      (void)ent.info.compare_exchange_strong(oldInfo, newInfo, std::memory_order_release,
-                                             std::memory_order_acquire);
+      for (int tries = 0; tries < 2; ++tries) {
+        if (ent.info.compare_exchange_strong(oldInfo, newInfo, std::memory_order_release,
+                                             std::memory_order_acquire))
+          break;
+      }
       return;  // regardless of CAS success, don’t loop — avoid stalls
     }
 
@@ -401,19 +427,47 @@ class TT5 {
   static constexpr std::uint64_t INFO_VALID_MASK = (1ull << 63);
 
   // --- move packing (16 bit) ---
+  static inline std::uint16_t promo_to3(core::PieceType p) noexcept {
+    switch (p) {
+      case core::PieceType::Knight:
+        return 1;
+      case core::PieceType::Bishop:
+        return 2;
+      case core::PieceType::Rook:
+        return 3;
+      case core::PieceType::Queen:
+        return 4;
+      default:
+        return 0;
+    }
+  }
+  static inline core::PieceType promo_from3(uint16_t v) noexcept {
+    switch (v & 0x7) {
+      case 1:
+        return core::PieceType::Knight;
+      case 2:
+        return core::PieceType::Bishop;
+      case 3:
+        return core::PieceType::Rook;
+      case 4:
+        return core::PieceType::Queen;
+      default:
+        return core::PieceType::None;
+    }
+  }
   static inline std::uint16_t pack_move16(const Move& m) noexcept {
-    const std::uint16_t from = static_cast<std::uint16_t>(static_cast<unsigned>(m.from()) & 0x3F);
-    const std::uint16_t to = static_cast<std::uint16_t>(static_cast<unsigned>(m.to()) & 0x3F);
-    const std::uint16_t promo =
-        static_cast<std::uint16_t>(static_cast<unsigned>(m.promotion()) & 0x0F);
-    return static_cast<std::uint16_t>(from | (to << 6) | (promo << 12));
+    const uint16_t from = (unsigned)m.from() & 0x3F;
+    const uint16_t to = (unsigned)m.to() & 0x3F;
+    const uint16_t pr3 = promo_to3(m.promotion()) & 0x7;
+    const uint16_t cap = m.isCapture() ? 1u : 0u;
+    return (uint16_t)(from | (to << 6) | (pr3 << 12) | (cap << 15));
   }
   static inline Move unpack_move16(std::uint16_t v) noexcept {
     Move m{};
     m.set_from(static_cast<core::Square>(v & 0x3F));
     m.set_to(static_cast<core::Square>((v >> 6) & 0x3F));
-    m.set_promotion(static_cast<core::PieceType>((v >> 12) & 0x0F));
-    m.set_capture(false);
+    m.set_promotion(promo_from3((v >> 12) & 0x7));
+    m.set_capture(((v >> 15) & 1u) != 0);
     m.set_enpassant(false);
     m.set_castle(CastleSide::None);
     return m;
@@ -429,11 +483,17 @@ class TT5 {
     const std::uint8_t dep = static_cast<std::uint8_t>((info >> INFO_DEPTH_SHIFT) & 0xFFu);
     const Bound bnd = static_cast<Bound>((info >> INFO_BOUND_SHIFT) & 0x3u);
 
-    const int boundBias = (bnd == Bound::Exact ? 6 : (bnd == Bound::Lower ? 3 : 0));
-    const int ageDelta = static_cast<std::uint8_t>(curAge - age);  // modulo 256
-
-    // Depth dominates, then bound quality, then freshness
-    return static_cast<int>(dep) * 256 + boundBias - ageDelta;
+    const int boundBias = (bnd == Bound::Exact ? 12 : (bnd == Bound::Lower ? 4 : 0));
+    const int ageDelta = (uint8_t)(curAge - age);
+    // heavier depth weight + bound bias; penalize staleness stronger
+    // bonus: if data has a mate score, bump strongly
+    const int mateBias = 0;  // default 0, see below for optional decode
+    // (Optional) peek at data value16 and favor mates:
+    // const uint64_t d = ent.data.load(std::memory_order_relaxed);
+    // const int16_t v16 = (int16_t)((d >> 16) & 0xFFFFu);
+    // const int isMate = (std::abs((int)v16) >= MATE_THR) ? 64 : 0;
+    // mateBias = isMate;
+    return (int)dep * 512 + boundBias + mateBias - (ageDelta * 2);
   }
 
   static inline void write_entry(TTEntryPacked& ent, std::uint16_t keyLo, std::uint16_t keyHi,
@@ -459,8 +519,13 @@ class TT5 {
   inline std::size_t index(std::uint64_t key) const noexcept {
     // slots_ is power-of-two
 #if TT5_INDEX_MIX
-    // simple mixer using both halves + shift (helps if low bits are biased)
-    std::uint64_t h = key ^ (key >> 32) ^ (key << 13);
+    uint64_t x = key + 0x9E3779B97F4A7C15ull;
+    x ^= x >> 30;
+    x *= 0xBF58476D1CE4E5B9ull;
+    x ^= x >> 27;
+    x *= 0x94D049BB133111EBull;
+    x ^= x >> 31;
+    uint64_t h = x;
     return static_cast<std::size_t>(h) & (slots_ - 1);
 #else
     return static_cast<std::size_t>(key) & (slots_ - 1);
