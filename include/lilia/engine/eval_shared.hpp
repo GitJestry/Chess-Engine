@@ -16,122 +16,138 @@ inline constexpr int mirror_sq_black(int sq) noexcept {
 // =============================================================================
 // Globale Skalen & Mischer
 // =============================================================================
-constexpr int MAX_PHASE = 24;     // sum both sides
+constexpr int MAX_PHASE = 24;     // Summe beider Seiten (0..24)
 constexpr int BLEND_SCALE = 256;  // MG/EG-Blendskala
 
-// Tempo
-constexpr int TEMPO_MG = 20;
-constexpr int TEMPO_EG = 8;
+// Tempo (etwas moderater im EG)
+constexpr int TEMPO_MG = 16;
+constexpr int TEMPO_EG = 6;
+
+// Space-Term im EG abgeschwächt
 constexpr int SPACE_EG_DEN = 4;
 
 // =============================================================================
-// Pawns (leicht strenger auf Schwächen; stärkere Passer-Skalierung)
+// Pawns
 // =============================================================================
 constexpr int ISO_P = 12;
-constexpr int DOUBLED_P = 18;
+constexpr int DOUBLED_P = 16;
 constexpr int BACKWARD_P = 10;
 constexpr int PHALANX = 8;
 constexpr int CANDIDATE_P = 10;
-constexpr int CONNECTED_PASSERS = 22;
-// Passed pawn bonuses by rank. Heavily boosted for advanced passers
-// so that near-promotion threats can outweigh small material deficits.
-// Ranks 5-7 receive extra emphasis compared to the previous tuning.
-constexpr int PASSED_MG[8] = {0, 8, 16, 30, 70, 190, 300, 0};
-constexpr int PASSED_EG[8] = {0, 16, 28, 50, 110, 220, 340, 0};
+constexpr int CONNECTED_PASSERS = 20;
 
-// Additional bonuses/penalties for passer conditions
-constexpr int PASS_BLOCK = 16;       // penalty if path is blocked
-constexpr int PASS_SUPP = 16;        // own pawn support
-constexpr int PASS_FREE = 24;        // no piece ahead
-constexpr int PASS_KBOOST = 20;      // friendly king nearby
-constexpr int PASS_KBLOCK = 18;      // enemy king in front
-constexpr int PASS_PIECE_SUPP = 12;  // defended by own piece
-constexpr int PASS_KPROX = 6;        // enemy king proximity penalty per step
+// Passed pawns (SF-inspiriert: deutlicher Anstieg ab r5/r6, aber nicht explodierend)
+constexpr int PASSED_MG[8] = {0, 6, 12, 24, 56, 120, 220, 0};
+constexpr int PASSED_EG[8] = {0, 10, 18, 36, 80, 160, 260, 0};
+
+// Zusatzbedingungen
+constexpr int PASS_BLOCK = 12;      // Blockade vor dem Passer
+constexpr int PASS_SUPP = 12;       // eigener Bauernschutz
+constexpr int PASS_FREE = 16;       // freie Vorzugsbahn
+constexpr int PASS_KBOOST = 16;     // eigener König nahe
+constexpr int PASS_KBLOCK = 16;     // gegnerischer König blockt
+constexpr int PASS_PIECE_SUPP = 8;  // gedeckt durch Figur
+constexpr int PASS_KPROX = 4;       // gegnerischer König in Nähe (Abzug)
 
 // =============================================================================
-/* King safety (SF-ähnliche Druckgewichtung & Clamp) */
+// King safety (Druckgewichtung & Clamp)
 // =============================================================================
-constexpr int KS_W_N = 18, KS_W_B = 20, KS_W_R = 16, KS_W_Q = 24;
-constexpr int KS_RING_BONUS = 1, KS_MISS_SHIELD = 8, KS_OPEN_FILE = 10, KS_RQ_LOS = 6,
-              KS_CLAMP = 160;
+constexpr int KS_W_N = 18, KS_W_B = 20, KS_W_R = 14, KS_W_Q = 26;
+constexpr int KS_RING_BONUS = 1;
+constexpr int KS_MISS_SHIELD = 8;
+constexpr int KS_OPEN_FILE = 10;
+constexpr int KS_RQ_LOS = 6;  // R/Q Sichtlinie
+constexpr int KS_CLAMP = 176;
 
-// King-Ring/Shield-Geometrie
-constexpr int KING_RING_RADIUS = 2;       // Ring-Radius (Chebyshev)
-constexpr int KING_SHIELD_DEPTH = 2;      // Bauernreihen vor dem König, die als „Shield“ zählen
-constexpr int KS_POWER_COUNT_CLAMP = 12;  // max Angriffs-Feldanzahl für Power-Akkumulation
+// Geometrie / Power-Counting
+constexpr int KING_RING_RADIUS = 2;
+constexpr int KING_SHIELD_DEPTH = 2;
+constexpr int KS_POWER_COUNT_CLAMP = 12;
 
-// King-safety Mischung (MG/EG)
+// Mischung MG/EG (mit/ohne Damen; HeavyPieces = R+Q beider Seiten)
 constexpr int KS_MIX_MG_Q_ON = 100;
-constexpr int KS_MIX_MG_Q_OFF = 45;
-constexpr int KS_MIX_EG_HEAVY_THRESHOLD = 2;  // # (Q+R) beider Seiten
-constexpr int KS_MIX_EG_IF_HEAVY = 40;
-constexpr int KS_MIX_EG_IF_LIGHT = 10;
+constexpr int KS_MIX_MG_Q_OFF = 40;
+constexpr int KS_MIX_EG_HEAVY_THRESHOLD = 2;
+constexpr int KS_MIX_EG_IF_HEAVY = 36;
+constexpr int KS_MIX_EG_IF_LIGHT = 12;
 
 // =============================================================================
-// King pawn shelter / storm (leicht steiler)
+// King pawn shelter / storm
 // =============================================================================
 static constexpr int SHELTER[8] = {0, 0, 2, 6, 12, 20, 28, 34};
-static constexpr int STORM[8] = {0, 6, 10, 14, 18, 22, 26, 30};
-constexpr int SHELTER_EG_DEN = 4;  // Shelter schwächer im EG
+static constexpr int STORM[8] = {0, 6, 9, 12, 16, 20, 24, 28};
+constexpr int SHELTER_EG_DEN = 4;
 
 // =============================================================================
-// Pieces/style (klassischer angehaucht)
+// Pieces/style
 // =============================================================================
-constexpr int BISHOP_PAIR = 36;
+constexpr int BISHOP_PAIR = 32;
+
 constexpr int BAD_BISHOP_PER_PAWN = 2;
-constexpr int BAD_BISHOP_SAME_COLOR_THRESHOLD = 4;  // ab so vielen gleichfarbigen Bauern
-constexpr int BAD_BISHOP_OPEN_NUM = 1;              // Faktor „offenes Zentrum“
+constexpr int BAD_BISHOP_SAME_COLOR_THRESHOLD = 4;
+constexpr int BAD_BISHOP_OPEN_NUM = 1;
 constexpr int BAD_BISHOP_OPEN_DEN = 2;
 
-constexpr int OUTPOST_KN = 28;
+constexpr int OUTPOST_KN = 24;
 constexpr int OUTPOST_DEEP_RANK_WHITE = 4;  // r >= 4
 constexpr int OUTPOST_DEEP_RANK_BLACK = 3;  // r <= 3
-constexpr int OUTPOST_DEEP_EXTRA = 6;       // Zusatz zu OUTPOST_KN bei „deep“
-constexpr int CENTER_CTRL = 6;              // Angriffssteuerung auf Zentrum
-constexpr int OUTPOST_CENTER_SQ_BONUS = 6;  // Outpost steht direkt auf d4/e4/d5/e5
+constexpr int OUTPOST_DEEP_EXTRA = 6;
+constexpr int CENTER_CTRL = 6;
+constexpr int OUTPOST_CENTER_SQ_BONUS = 6;
 
-constexpr int KNIGHT_RIM = 14;
+constexpr int KNIGHT_RIM = 12;
 
-constexpr int ROOK_OPEN = 20;
-constexpr int ROOK_SEMI = 12;
-constexpr int ROOK_ON_7TH = 26;
-constexpr int CONNECTED_ROOKS = 18;
-constexpr int ROOK_BEHIND_PASSER = 26;
+constexpr int ROOK_OPEN = 18;
+constexpr int ROOK_SEMI = 10;
+constexpr int ROOK_ON_7TH = 24;
+constexpr int CONNECTED_ROOKS = 14;
+
+constexpr int ROOK_BEHIND_PASSER = 24;
 constexpr int ROOK_BEHIND_PASSER_HALF = ROOK_BEHIND_PASSER / 2;
 constexpr int ROOK_BEHIND_PASSER_THIRD = ROOK_BEHIND_PASSER / 3;
 
-// Zusatzeffekte Rook vs Königsdatei (MG-Effekt)
+// Rook vs Königsdatei (MG-Effekt)
 constexpr int ROOK_SEMI_ON_KING_FILE = 6;
 constexpr int ROOK_OPEN_ON_KING_FILE = 10;
 
 // EG-only Rook-Extras
-constexpr int ROOK_PASSER_PROGRESS_START_RANK = 3;  // ab dieser „Fortschritt“-Schwelle
+constexpr int ROOK_PASSER_PROGRESS_START_RANK = 3;
 constexpr int ROOK_PASSER_PROGRESS_MULT = ROOK_BEHIND_PASSER_THIRD;
-constexpr int ROOK_CUT_MIN_SEPARATION = 2;  // Mindestens 2 Linien Abstand = „cut“
-constexpr int ROOK_CUT_BONUS = 14;
+constexpr int ROOK_CUT_MIN_SEPARATION = 2;
+constexpr int ROOK_CUT_BONUS = 12;
 
-// Stopper-Qualität (Wer blockiert Passer-Stopfeld?)
+// Stopper-Qualität (wer blockiert das Stoppfeld?)
 constexpr int BLOCK_PASSER_STOP_KNIGHT = 8;  // gut
-constexpr int BLOCK_PASSER_STOP_BISHOP = 8;  // schlecht (als Malus gegenüber gut)
+constexpr int BLOCK_PASSER_STOP_BISHOP = 8;  // schlecht (als Malus ggü. gut)
 
-// Threats (etwas härter auf Hänger / Bauern-Drohungen)
-constexpr int THR_PAWN_MINOR = 10, THR_PAWN_ROOK = 20, THR_PAWN_QUEEN = 24;
-constexpr int HANG_MINOR = 10, HANG_ROOK = 16, HANG_QUEEN = 24;
+// =============================================================================
+// Threats & Hänger
+// =============================================================================
+constexpr int THR_PAWN_MINOR = 8;
+constexpr int THR_PAWN_ROOK = 16;
+constexpr int THR_PAWN_QUEEN = 20;
+
+constexpr int HANG_MINOR = 10;
+constexpr int HANG_ROOK = 14;
+constexpr int HANG_QUEEN = 22;
+
 constexpr int MINOR_ON_QUEEN = 6;
 
-// Threats/Tropism Mischung
-constexpr int THREATS_MG_NUM = 3, THREATS_MG_DEN = 2;  // *3/2
+// Mischung: Threats stark im MG, deutlich geringer im EG
+constexpr int THREATS_MG_NUM = 3, THREATS_MG_DEN = 2;  // *1.5
 constexpr int THREATS_EG_DEN = 4;
 
-// Space (kleiner Stupser)
-constexpr int SPACE_BASE = 5;
-constexpr int SPACE_SCALE_BASE = 2;        // 2 + min(#Minors, Sättigung)
-constexpr int SPACE_MINOR_SATURATION = 4;  // Sättigungsgrenze
+// =============================================================================
+// Space
+// =============================================================================
+constexpr int SPACE_BASE = 4;
+constexpr int SPACE_SCALE_BASE = 2;  // 2 + min(#Minors, Sättigung)
+constexpr int SPACE_MINOR_SATURATION = 4;
 
 // =============================================================================
 // Entwicklung & Blockaden
 // =============================================================================
-constexpr int DEVELOPMENT_PIECE_ON_HOME_PENALTY = 16;
+constexpr int DEVELOPMENT_PIECE_ON_HOME_PENALTY = 14;
 constexpr int DEV_MG_PHASE_CUTOFF = 12;
 constexpr int DEV_MG_PHASE_DEN = 12;
 constexpr int DEV_EG_DEN = 8;
@@ -154,13 +170,13 @@ constexpr int KING_ACTIVITY_EG_MULT = 2;
 // =============================================================================
 // Passed-pawn-race (EG, figurenarm)
 // =============================================================================
-constexpr int PASS_RACE_MAX_MINORMAJOR = 2;      // max. Leicht-/Schwerfiguren total (ohne Damen)
-constexpr bool PASS_RACE_NEED_QUEENLESS = true;  // nur ohne Damen werten
-constexpr int PASS_RACE_STM_ADJ = 1;             // Zugrecht-Offset (0 oder 1)
+constexpr int PASS_RACE_MAX_MINORMAJOR = 2;      // max. N/B/R total (ohne Damen)
+constexpr bool PASS_RACE_NEED_QUEENLESS = true;  // nur ohne Damen
+constexpr int PASS_RACE_STM_ADJ = 1;             // side-to-move Vorteil
 constexpr int PASS_RACE_MULT = 4;
 
 // =============================================================================
-// Endgame scaling (inkl. klassischer Sonderfälle)
+// Endgame scaling
 // =============================================================================
 constexpr int FULL_SCALE = 256;
 constexpr int SCALE_DRAW = 0;
@@ -168,8 +184,6 @@ constexpr int SCALE_VERY_DRAWISH = 96;  // ~0.375
 constexpr int SCALE_REDUCED = 144;      // ~0.56
 constexpr int SCALE_MEDIUM = 160;       // ~0.625
 constexpr int KN_CORNER_PAWN_SCALE = 32;
-
-// Opposites (bisschen remislastiger) – wird explizit genutzt
 constexpr int OPP_BISHOPS_SCALE = 190;  // /256
 
 // =============================================================================
@@ -180,45 +194,53 @@ inline bool rook_on_start_square(bb::Bitboard rooks, bool white) {
                : (rooks & (bb::sq_bb(Square(56)) | bb::sq_bb(Square(63))));  // a8,h8
 }
 
-constexpr int CASTLE_BONUS = 28;
+constexpr int CASTLE_BONUS = 24;
 
-constexpr int CENTER_BACK_PENALTY_Q_ON = 36;   // König im Zentrum (e/d) bei Damen auf Brett
-constexpr int CENTER_BACK_PENALTY_Q_OFF = 12;  // dito ohne Damen
-constexpr int CENTER_BACK_OPEN_FILE_OPEN = 2;  // Bewertung offener/halb-offener d/e-File...
-constexpr int CENTER_BACK_OPEN_FILE_SEMI = 1;  // ...als Verstärker
+constexpr int CENTER_BACK_PENALTY_Q_ON = 32;   // König im Zentrum (e/d) mit Damen
+constexpr int CENTER_BACK_PENALTY_Q_OFF = 12;  // ohne Damen schwächer
+constexpr int CENTER_BACK_OPEN_FILE_OPEN = 2;  // offene/halb-offene d/e-Dateien verstärken
+constexpr int CENTER_BACK_OPEN_FILE_SEMI = 1;
 constexpr int CENTER_BACK_OPEN_FILE_WEIGHT = 8;
-constexpr int ROOK_KFILE_PRESS_FREE = 2;     // bonus per un-attacked lane square
-constexpr int ROOK_KFILE_PRESS_PAWNATT = 3;  // penalty per lane square attacked by enemy pawn
-constexpr int ROOK_LIFT_SAFE = 6;
-constexpr int KS_ESCAPE_EMPTY = 6, KS_ESCAPE_FACTOR = 2;
-constexpr int EARLY_QUEEN_MALUS = 8;  // Frühe Dame vor unentwickelten Minors
 
-constexpr int UNCASTLED_PENALTY_Q_ON = 10;  // „nicht rochiert“ Heuristik bei Q on
+constexpr int ROOK_KFILE_PRESS_FREE = 2;     // pro freiem Feld in der Linie zum K
+constexpr int ROOK_KFILE_PRESS_PAWNATT = 3;  // Abzug wenn Feld von Bauern gedeckt
+constexpr int ROOK_LIFT_SAFE = 6;
+
+constexpr int KS_ESCAPE_EMPTY = 6;  // Basis für Fluchtfelder
+constexpr int KS_ESCAPE_FACTOR = 2;
+
+constexpr int EARLY_QUEEN_MALUS = 8;  // Frühe Dame bei Minors auf Grundreihe
+constexpr int UNCASTLED_PENALTY_Q_ON = 10;
 
 // =============================================================================
 // Mobility Profile & Clamp
 // =============================================================================
-static constexpr int KN_MOB_MG[9] = {-16, -8, -4, 0, 4, 8, 12, 16, 18};
-static constexpr int KN_MOB_EG[9] = {-12, -6, -2, 2, 6, 10, 12, 14, 16};
-static constexpr int BI_MOB_MG[14] = {-22, -12, -6, -2, 2, 6, 10, 14, 18, 22, 24, 26, 28, 30};
-static constexpr int BI_MOB_EG[14] = {-18, -10, -4, 0, 4, 8, 12, 16, 20, 24, 26, 28, 30, 32};
-static constexpr int RO_MOB_MG[15] = {-20, -12, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 32, 34, 36};
+static constexpr int KN_MOB_MG[9] = {-14, -8, -4, 0, 4, 8, 12, 16, 18};
+static constexpr int KN_MOB_EG[9] = {-10, -6, -2, 2, 6, 10, 12, 14, 16};
+
+static constexpr int BI_MOB_MG[14] = {-18, -12, -6, -2, 2, 6, 10, 14, 18, 22, 24, 26, 28, 30};
+static constexpr int BI_MOB_EG[14] = {-14, -10, -4, 0, 4, 8, 12, 16, 20, 24, 26, 28, 30, 32};
+
+static constexpr int RO_MOB_MG[15] = {-18, -12, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 32, 34, 36};
 static constexpr int RO_MOB_EG[15] = {-10, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 34, 36, 38, 40};
-static constexpr int QU_MOB_MG[28] = {-10, -8, -6, -4, -2, 0,  2,  4,  6,  8,  10, 12, 14, 16,
-                                      18,  20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44};
+
+static constexpr int QU_MOB_MG[28] = {-8, -6, -4, -2, 0,  2,  4,  6,  8,  10, 12, 14, 16, 18,
+                                      20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46};
 static constexpr int QU_MOB_EG[28] = {-6, -4, -2, 0,  2,  4,  6,  8,  10, 12, 14, 16, 18, 20,
                                       22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48};
-constexpr int MOBILITY_CLAMP = 900;
+
+// Mobility-Output clamped (etwas enger als zuvor)
+constexpr int MOBILITY_CLAMP = 640;
 
 // =============================================================================
-// Werte & Phase (white POV)
+// Werte & Phase (white POV) — leicht SF-angelehnt
 // =============================================================================
 inline constexpr std::array<int, 6> VAL_MG = {82, 337, 365, 477, 1025, 0};
 inline constexpr std::array<int, 6> VAL_EG = {94, 300, 320, 500, 940, 0};
 inline constexpr std::array<int, 6> PHASE_W = {0, 1, 1, 2, 4, 0};
 
 // =============================================================================
-// PSTs (mg/eg) – unverändert
+// PSTs (mg/eg) — belassen (engine-spezifisch)
 // =============================================================================
 inline constexpr std::array<int, 64> PST_P_MG = {
     0,  0,  0,  0,  0,  0,  0,  0,  6,  6,  2,  -6, -6, 2,  6,  6,  4,  -2, -3, 2,  2,  -3,
