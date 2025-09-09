@@ -346,6 +346,8 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   const uint64_t parentKey = pos.hash();
   const int alphaOrig = alpha, betaOrig = beta;
 
+  model::Move bestMoveQ{};  // <- track best move we actually play in qsearch
+
   // QTT probe (depth == 0)
   {
     model::TTEntry5 tte{};
@@ -402,10 +404,14 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 
       if (score >= beta) {
         if (!(stopFlag && stopFlag->load()))
-          tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower, model::Move{});
+          tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower,
+                   m);  // store cutoff move
         return beta;
       }
-      if (score > best) best = score;
+      if (score > best) {
+        best = score;
+        bestMoveQ = m;
+      }
       if (score > alpha) alpha = score;
     }
 
@@ -422,7 +428,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
         b = model::Bound::Upper;
       else if (best >= betaOrig)
         b = model::Bound::Lower;
-      tt.store(parentKey, encode_tt_score(best, kply), 0, b, model::Move{});
+      tt.store(parentKey, encode_tt_score(best, kply), 0, b, bestMoveQ);
     }
     return best;
   }
@@ -541,11 +547,15 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 
     if (score >= beta) {
       if (!(stopFlag && stopFlag->load()))
-        tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower, model::Move{});
+        tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower,
+                 m);  // store cutoff move
       return beta;
     }
     if (score > alpha) alpha = score;
-    if (score > best) best = score;
+    if (score > best) {
+      best = score;
+      bestMoveQ = m;
+    }
   }
 
   if (!(stopFlag && stopFlag->load())) {
@@ -554,7 +564,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       b = model::Bound::Upper;
     else if (best >= betaOrig)
       b = model::Bound::Lower;
-    tt.store(parentKey, encode_tt_score(best, kply), 0, b, model::Move{});
+    tt.store(parentKey, encode_tt_score(best, kply), 0, b, bestMoveQ);
   }
   return best;
 }
