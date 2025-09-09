@@ -271,9 +271,11 @@ static PawnOnly pawn_structure_pawnhash_only(Bitboard wp, Bitboard bp) {
     }
   }
 
-  // connected passers (pawn-only)
-  Bitboard wConn = ((out.wPass << 1) & out.wPass) | ((out.wPass >> 1) & out.wPass);
-  Bitboard bConn = ((out.bPass << 1) & out.bPass) | ((out.bPass >> 1) & out.bPass);
+  // connected passers (pawn-only) – prevent a/h wrap
+  Bitboard wConn =
+      (((out.wPass & ~FILE_H) << 1) & out.wPass) | (((out.wPass & ~FILE_A) >> 1) & out.wPass);
+  Bitboard bConn =
+      (((out.bPass & ~FILE_H) << 1) & out.bPass) | (((out.bPass & ~FILE_A) >> 1) & out.bPass);
   int wC = popcount(wConn), bC = popcount(bConn);
   mg += (CONNECTED_PASSERS / 2) * (wC - bC);
   eg += CONNECTED_PASSERS * (wC - bC);
@@ -625,13 +627,13 @@ static int king_shelter_storm(const std::array<Bitboard, 6>& W, const std::array
         int dist = clampi(nearOwnR - kRank, 0, 7);
         total += SHELTER[dist];
 
-        // squares behind white king (r-1..0)
+        // enemy pawn storm should be AHEAD of the white king (r+1..7), not behind
         Bitboard em = 0;
-        for (int r = kRank - 1; r >= 0; --r) em |= sq_bb((Square)((r << 3) | ff));
-        // nearest enemy pawn behind -> MSB
-        int nearEnemySq = msb_i(em & bp);
-        int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : -1);
-        int edist = clampi(kRank - nearEnemyR, 0, 7);
+        for (int r = kRank + 1; r < 8; ++r) em |= sq_bb((Square)((r << 3) | ff));
+        // nearest enemy pawn ahead -> LSB
+        int nearEnemySq = lsb_i(em & bp);
+        int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : 8);
+        int edist = clampi(nearEnemyR - kRank, 0, 7);
         total -= STORM[edist] / 2;
 
       } else {
@@ -1359,6 +1361,274 @@ static inline size_t idx_pawn(uint64_t k) {
   return (size_t)k & (PAWN_SIZE - 1);
 }
 
+inline int sgn(int x) {
+  return (x > 0) - (x < 0);
+}
+
+inline Bitboard rook_pins(Bitboard occ, Bitboard own, Bitboard oppRQ, int ksq) {
+  if (ksq < 0) return 0ULL;
+  Bitboard pins = 0ULL;
+
+  // candidate blockers are own pieces on rook rays from the king
+  Bitboard blockers = magic::sliding_attacks(magic::Slider::Rook, (Square)ksq, occ) & own;
+
+  while (blockers) {
+    int b = lsb_i(blockers);
+    blockers &= blockers - 1;
+    int df = sgn(file_of(b) - file_of(ksq));
+    int dr = sgn(rank_of(b) - rank_of(ksq));
+
+    // step from blocker away from king
+    int s = b;
+    while (true) {
+      s += df + 8 * dr;
+      if (s < 0 || s >= 64) break;
+      Bitboard bb = sq_bb((Square)s);
+      if (bb & occ) {  // first piece behind the blocker
+        if (bb & oppRQ) pins |= sq_bb((Square)b);
+        break;
+      }
+    }
+  }
+  return pins;
+}
+
+inline Bitboard bishop_pins(Bitboard occ, Bitboard own, Bitboard oppBQ, int ksq) {
+  if (ksq < 0) return 0ULL;
+  Bitboard pins = 0ULL;
+
+  Bitboard blockers = magic::sliding_attacks(magic::Slider::Bishop, (Square)ksq, occ) & own;
+
+  while (blockers) {
+    int b = lsb_i(blockers);
+    blockers &= blockers - 1;
+    int df = sgn(file_of(b) - file_of(ksq));
+    int dr = sgn(rank_of(b) - rank_of(ksq));
+
+    int s = b;
+    while (true) {
+      s += df + 8 * dr;
+      if (s < 0 || s >= 64) break;
+      Bitboard bb = sq_bb((Square)s);
+      if (bb & occ) {
+        if (bb & oppBQ) pins |= sq_bb((Square)b);
+        break;
+      }
+    }
+  }
+  return pins;
+}
+
+inline Bitboard no_king_attacks(bool white, const AttackMap& A) {
+  // squares attacked by the *defending* side excluding its king
+  return white ? (A.bAll | A.bPA) : (A.wAll | A.wPA);
+}
+
+inline int safe_checks(bool white, const std::array<Bitboard, 6>& W,
+                       const std::array<Bitboard, 6>& B, Bitboard occ, const AttackMap& A,
+                       int oppK) {
+  if (oppK < 0) return 0;
+  const Bitboard occAll = occ;
+  const Bitboard unsafe = no_king_attacks(white, A);
+  int sc = 0;
+
+  // knights: checking squares = knight_attacks_from(oppK)
+  Bitboard kn = white ? W[1] : B[1];
+  // knights: safe checking moves to squares that would check the king
+  Bitboard knChk = knight_attacks_from((Square)oppK);  // checking landing squares
+  Bitboard ownOcc =
+      white ? (W[0] | W[1] | W[2] | W[3] | W[4] | W[5]) : (B[0] | B[1] | B[2] | B[3] | B[4] | B[5]);
+  Bitboard canMove = (white ? A.wN : A.bN) & ~ownOcc;  // knight move targets (no self-block)
+  sc += popcnt(knChk & canMove & ~unsafe) * KS_SAFE_CHECK_N;
+
+  // replace the whole slider chunk in safe_checks() with this:
+  auto add_slider_moves = [&](Bitboard attackedByUs, magic::Slider sl, int w) {
+    Bitboard rayFromK = magic::sliding_attacks(sl, (Square)oppK, occAll);
+    Bitboard origins = rayFromK & ~occAll;               // empty squares that would give check
+    sc += popcnt(origins & attackedByUs & ~unsafe) * w;  // we can move there safely
+  };
+
+  add_slider_moves(white ? A.wB : A.bB, magic::Slider::Bishop, KS_SAFE_CHECK_B);
+  add_slider_moves(white ? A.wR : A.bR, magic::Slider::Rook, KS_SAFE_CHECK_R);
+  // queen contributes along both geometries
+  add_slider_moves(white ? A.wQ : A.bQ, magic::Slider::Bishop, KS_SAFE_CHECK_QB);
+  add_slider_moves(white ? A.wQ : A.bQ, magic::Slider::Rook, KS_SAFE_CHECK_QR);
+
+  // bonus only if those origins are not on ‘unsafe’ squares
+  // (Fast approximation: multiply result by a small factor if opp pawns cover ring)
+  return sc;
+}
+
+inline Bitboard holes_for_white(Bitboard bp) {
+  // current attacks
+  Bitboard cur = black_pawn_attacks(bp);
+  // future attacks: any black pawn that could advance to attack a square
+  // If a square lies behind all black pawns on adjacent files, it’s “safe forever”.
+  Bitboard future = 0;
+  Bitboard t = bp;
+  while (t) {
+    int s = lsb_i(t);
+    t &= t - 1;
+    int f = file_of((Square)s);
+    Bitboard adj = (f > 0 ? M.file[f - 1] : 0) | (f < 7 ? M.file[f + 1] : 0);
+    // squares *ahead* of this pawn on adj files
+    future |= (M.bFront[s] & adj);
+  }
+  return ~(cur | future);
+}
+inline Bitboard holes_for_black(Bitboard wp) {
+  Bitboard cur = white_pawn_attacks(wp);
+  Bitboard future = 0;
+  Bitboard t = wp;
+  while (t) {
+    int s = lsb_i(t);
+    t &= t - 1;
+    int f = file_of((Square)s);
+    Bitboard adj = (f > 0 ? M.file[f - 1] : 0) | (f < 7 ? M.file[f + 1] : 0);
+    future |= (M.wFront[s] & adj);
+  }
+  return ~(cur | future);
+}
+
+inline int pawn_levers(Bitboard wp, Bitboard bp) {
+  Bitboard wLever = white_pawn_attacks(wp) & bp;
+  Bitboard bLever = black_pawn_attacks(bp) & wp;
+  int centerW = popcnt(wLever & (FILE_C | FILE_D | FILE_E | FILE_F));
+  int centerB = popcnt(bLever & (FILE_C | FILE_D | FILE_E | FILE_F));
+  int wingW = popcnt(wLever) - centerW;
+  int wingB = popcnt(bLever) - centerB;  // <-- was subtracting wingW (bug)
+  return (centerW - centerB) * PAWN_LEVER_CENTER + (wingW - wingB) * PAWN_LEVER_WING;
+}
+
+inline int xray_king_file_pressure(bool white, const std::array<Bitboard, 6>& W,
+                                   const std::array<Bitboard, 6>& B, Bitboard occ, int ksq) {
+  if (ksq < 0) return 0;
+  Bitboard rooks = white ? W[3] : B[3];
+  int sc = 0;
+  Bitboard t = rooks;
+  while (t) {
+    int r = lsb_i(t);
+    t &= t - 1;
+    // remove one friendly blocker and see if rook would see the king
+    Bitboard ray = magic::sliding_attacks(magic::Slider::Rook, (Square)r, occ);
+    if (!(ray & sq_bb((Square)ksq))) continue;
+    Bitboard bbR = sq_bb((Square)r), bbK = sq_bb((Square)ksq);
+    Bitboard between = ray & magic::sliding_attacks(magic::Slider::Rook, (Square)ksq, occ | bbR) &
+                       ~bbR & ~bbK;  // exclude endpoints
+    int blockers = popcnt(between & occ);
+    if (blockers == 1) sc += XRAY_KFILE;
+  }
+  return white ? sc : -sc;
+}
+
+inline int queen_bishop_battery(bool white, const std::array<Bitboard, 6>& W,
+                                const std::array<Bitboard, 6>& B, Bitboard occ, int oppK) {
+  if (oppK < 0) return 0;
+  Bitboard Q = white ? W[4] : B[4];
+  Bitboard Bp = white ? W[2] : B[2];
+  int sc = 0;
+  Bitboard t = Bp;
+  while (t) {
+    int s = lsb_i(t);
+    t &= t - 1;
+    Bitboard diag = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
+    if ((diag & sq_bb((Square)oppK)) && (diag & Q)) sc += QB_BATTERY;
+  }
+  return white ? sc : -sc;
+}
+
+static int central_blockers(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
+                            int phase) {
+  int pen = 0;
+  auto block = [&](bool white) {
+    Bitboard occ = white ? (W[1] | W[2] | W[3] | W[4]) : (B[1] | B[2] | B[3] | B[4]);
+    int e = white ? 12 /*e2*/ : 52 /*e7*/;
+    int d = white ? 11 /*d2*/ : 51 /*d7*/;
+    if (occ & sq_bb((Square)e)) pen += CENTER_BLOCK_PEN;
+    if (occ & sq_bb((Square)d)) pen += CENTER_BLOCK_PEN;
+  };
+  block(true);
+  block(false);
+  // scale by opening weight:
+  return pen * std::min(phase, CENTER_BLOCK_PHASE_MAX) / CENTER_BLOCK_PHASE_DEN;
+}
+
+inline int weakly_defended(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
+                           const AttackMap& A) {
+  auto score_set = [&](Bitboard pieces, Bitboard atk, Bitboard def, int val, int sign) {
+    int sc = 0;
+    Bitboard p = pieces;
+    while (p) {
+      int s = lsb_i(p);
+      p &= p - 1;
+      Bitboard bb = sq_bb((Square)s);
+      int d = ((def & bb) != 0) - ((atk & bb) != 0);  // +1 defended only, -1 attacked only
+      if (d < 0) sc += sign * val;
+    }
+    return sc;
+  };
+
+  Bitboard wDef = A.wAll | A.wPA | A.wKAtt;
+  Bitboard bDef = A.bAll | A.bPA | A.bKAtt;
+  Bitboard wAtk = A.bAll | A.bPA;
+  Bitboard bAtk = A.wAll | A.wPA;
+
+  int sc = 0;
+  sc += score_set(W[1] | W[2], wAtk, wDef, WEAK_MINOR, -1);
+  sc += score_set(W[3], wAtk, wDef, WEAK_ROOK, -1);
+  sc += score_set(W[4], wAtk, wDef, WEAK_QUEEN, -1);
+
+  sc += score_set(B[1] | B[2], bAtk, bDef, WEAK_MINOR, +1);
+  sc += score_set(B[3], bAtk, bDef, WEAK_ROOK, +1);
+  sc += score_set(B[4], bAtk, bDef, WEAK_QUEEN, +1);
+  return sc;
+}
+
+// Fianchetto structure (MG only):
+// - If king sits on g-file (short castle) or b-file (long) near home ranks,
+//   give +FIANCHETTO_OK when the "fianchetto pawn" is on rank 2/3 (white) or 7/6 (black).
+// - If that pawn is missing OR on the same file but elsewhere (advanced/abandoned), give
+// -FIANCHETTO_HOLE. Call: mg_add += fianchetto_structure_ksmg(W, B, wK, bK);
+static int fianchetto_structure_ksmg(const std::array<Bitboard, 6>& W,
+                                     const std::array<Bitboard, 6>& B, int wK, int bK) {
+  auto sqbb = [](int f, int r) -> Bitboard { return sq_bb((Square)((r << 3) | f)); };
+
+  auto score_side = [&](bool white) -> int {
+    int k = white ? wK : bK;
+    if (k < 0) return 0;
+
+    const int kFile = file_of(k);
+    const int kRank = rank_of(k);
+    const Bitboard paw = white ? W[0] : B[0];
+
+    // consider king "behind" a fianchetto if it's on g-file (6) or b-file (1) near home ranks
+    const bool nearHome = white ? (kRank <= 2) : (kRank >= 5);
+    if (!nearHome || (kFile != 6 && kFile != 1)) return 0;
+
+    const int f = kFile;  // 6 (g-file) or 1 (b-file)
+    // acceptable fianchetto pawn squares (OK):
+    const int okR1 = white ? 1 : 6;  // g2/b2 or g7/b7
+    const int okR2 = white ? 2 : 5;  // g3/b3 or g6/b6
+    const Bitboard okMask = sqbb(f, okR1) | sqbb(f, okR2);
+
+    // any pawn on that file at all?
+    const Bitboard anyOnFile = paw & M.file[f];
+
+    if (paw & okMask) {
+      return FIANCHETTO_OK;
+    } else if (anyOnFile) {
+      // pawn exists on that file but not on OK squares (advanced/abandoned shape)
+      return -FIANCHETTO_HOLE;
+    } else {
+      // missing g/b pawn entirely
+      return -FIANCHETTO_HOLE;
+    }
+  };
+
+  // White POV: white’s good shape is +, black’s weakness is +
+  return score_side(true) - score_side(false);
+}
+
 // =============================================================================
 // evaluate() – white POV
 // =============================================================================
@@ -1430,7 +1700,6 @@ int Evaluator::evaluate(model::Position& pos) const {
       bPA = black_pawn_attacks(B[0]);
       wPass = po.wPass;
       bPass = po.bPass;
-
       ps.mg.store(pMG, std::memory_order_relaxed);
       ps.eg.store(pEG, std::memory_order_relaxed);
       ps.wPA.store((uint64_t)wPA, std::memory_order_relaxed);
@@ -1461,7 +1730,7 @@ int Evaluator::evaluate(model::Position& pos) const {
   int ksRaw = king_safety_raw(W, B, occ, A, wK, bK);
   int shelter = king_shelter_storm(W, B, wK, bK);
 
-  // style & structure
+  // style & structure (existing)
   int bp = bishop_pair_term(W, B);
   int badB = bad_bishop(W, B);
   int outp = outposts_center(W, B, bPA, wPA);
@@ -1486,6 +1755,64 @@ int Evaluator::evaluate(model::Position& pos) const {
 
   int shelterMG = shelter;
   int shelterEG = shelter / SHELTER_EG_DEN;
+
+  // ---------------------------------------------------------------------------
+  // NEW: Pins
+  Bitboard wPins =
+      rook_pins(occ, wocc, (B[3] | B[4]), wK) | bishop_pins(occ, wocc, (B[2] | B[4]), wK);
+  Bitboard bPins =
+      rook_pins(occ, bocc, (W[3] | W[4]), bK) | bishop_pins(occ, bocc, (W[2] | W[4]), bK);
+
+  int pinScore = 0;
+  pinScore += popcnt(wPins & (W[1] | W[2])) * PIN_MINOR + popcnt(wPins & W[3]) * PIN_ROOK +
+              popcnt(wPins & W[4]) * PIN_QUEEN;
+  pinScore -= popcnt(bPins & (B[1] | B[2])) * PIN_MINOR + popcnt(bPins & B[3]) * PIN_ROOK +
+              popcnt(bPins & B[4]) * PIN_QUEEN;
+
+  // NEW: Safe checks
+  int scW = safe_checks(true, W, B, occ, A, bK);
+  int scB = safe_checks(false, W, B, occ, A, wK);
+  int sc = scW - scB;
+
+  // NEW: Holes (knight occupation + bishop attack near enemy king ring)
+  Bitboard wHoles = holes_for_white(B[0]);  // usable by white
+  Bitboard bHoles = holes_for_black(W[0]);  // usable by black
+  const Bitboard W_ENEMY_HALF = RANK_4 | RANK_5 | RANK_6 | RANK_7;
+  const Bitboard B_ENEMY_HALF = RANK_1 | RANK_2 | RANK_3 | RANK_4;
+
+  int holeScore = 0;
+  holeScore += popcnt((W[1] & wHoles) & W_ENEMY_HALF) * HOLE_OCC_KN;
+  holeScore -= popcnt((B[1] & bHoles) & B_ENEMY_HALF) * HOLE_OCC_KN;
+
+  if (bK >= 0) {
+    int c = popcnt((A.wB & wHoles) & M.kingRing[bK]);
+    holeScore += c * HOLE_ATT_BI;
+  }
+  if (wK >= 0) {
+    int c = popcnt((A.bB & bHoles) & M.kingRing[wK]);
+    holeScore -= c * HOLE_ATT_BI;
+  }
+
+  // NEW: Pawn levers (center/wing)
+  int lever = pawn_levers(W[0], B[0]);
+
+  // NEW: X-ray pressure along king file
+  int xray =
+      xray_king_file_pressure(true, W, B, occ, bK) + xray_king_file_pressure(false, W, B, occ, wK);
+
+  // NEW: Queen + bishop battery toward king
+  int qbatt =
+      queen_bishop_battery(true, W, B, occ, bK) + queen_bishop_battery(false, W, B, occ, wK);
+
+  // NEW: Central blockers (opening-weighted)
+  int cblock = central_blockers(W, B, curPhase);
+
+  // NEW: Weakly defended pieces (soft pressure)
+  int weak = weakly_defended(W, B, A);
+
+  // NEW: Fianchetto structure (MG king-safety oriented)
+  int fian = fianchetto_structure_ksmg(W, B, wK, bK);
+  // ---------------------------------------------------------------------------
 
   // Accumulate MG/EG
   int mg_add = 0, eg_add = 0;
@@ -1542,12 +1869,39 @@ int Evaluator::evaluate(model::Position& pos) const {
   mg_add += rim + badB + block + trop;
   eg_add += (rim / 2) + (badB / 3) + (block / 2) + (trop / 6);
 
+  // ------------------ inject NEW feature scores ------------------
+  // Pins: strong in MG, still relevant in EG (reduced)
+  mg_add += pinScore;
+  eg_add += pinScore / 2;
+
+  // Safe-checks & x-ray & batteries are king-danger MG terms; tiny EG bleed
+  mg_add += sc + xray + qbatt;
+  eg_add += (sc + xray + qbatt) / 4;
+
+  // Holes (mostly positional MG; tiny EG)
+  mg_add += holeScore;
+  eg_add += holeScore / 4;
+
+  // Pawn levers: mostly MG; a touch in EG (less)
+  mg_add += lever;
+  eg_add += lever / 3;
+
+  // Central blockers: opening-weighted (already scaled), MG only
+  mg_add += cblock;
+
+  // Weakly-defended: MG only (soft)
+  mg_add += weak;
+
+  // Fianchetto structure bonus/malus: MG only
+  mg_add += fian;
+  // ---------------------------------------------------------------
+
   // EG extras
   eg_add += rook_endgame_extras_eg(W, B, W[0], B[0], occ);
   eg_add += king_activity_eg(W, B);
   eg_add += passed_pawn_race_eg(W, B, pos);
 
-  // castles & center
+  // castles & center (existing)
   castling_and_center(W, B, mg_add, eg_add);
 
   mg += mg_add;

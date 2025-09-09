@@ -26,6 +26,46 @@ constexpr int TEMPO_EG = 6;
 // Space-Term im EG abgeschwächt
 constexpr int SPACE_EG_DEN = 4;
 
+// --- Pins
+inline constexpr int PIN_MINOR = 14;
+inline constexpr int PIN_ROOK = 10;
+inline constexpr int PIN_QUEEN = 6;
+
+// --- Safe checks (MG-heavy)
+inline constexpr int KS_SAFE_CHECK_N = 12;
+inline constexpr int KS_SAFE_CHECK_B = 10;
+inline constexpr int KS_SAFE_CHECK_R = 14;
+inline constexpr int KS_SAFE_CHECK_QB = 8;   // queen on bishop line
+inline constexpr int KS_SAFE_CHECK_QR = 10;  // queen on rook line
+
+// --- Holes
+inline constexpr int HOLE_OCC_KN = 8;  // knight sitting on enemy-half hole
+inline constexpr int HOLE_ATT_BI = 3;  // bishop attacks hole in king ring (per square)
+
+// --- Pawn levers
+inline constexpr int PAWN_LEVER_CENTER = 6;
+inline constexpr int PAWN_LEVER_WING = 3;
+
+// --- X-ray king-file pressure
+inline constexpr int XRAY_KFILE = 6;
+
+// --- Q+B battery toward king
+inline constexpr int QB_BATTERY = 6;
+
+// --- Central blockers (opening-weighted)
+inline constexpr int CENTER_BLOCK_PEN = 6;
+inline constexpr int CENTER_BLOCK_PHASE_MAX = 64;  // cap phase (same scale as MAX_PHASE if 64)
+inline constexpr int CENTER_BLOCK_PHASE_DEN = 64;  // normalize
+
+// --- Weakly-defended (soft pressure)
+inline constexpr int WEAK_MINOR = 6;
+inline constexpr int WEAK_ROOK = 8;
+inline constexpr int WEAK_QUEEN = 12;
+
+// --- Fianchetto structure near king (MG)
+inline constexpr int FIANCHETTO_OK = 6;
+inline constexpr int FIANCHETTO_HOLE = 10;
+
 // =============================================================================
 // Pawns
 // =============================================================================
