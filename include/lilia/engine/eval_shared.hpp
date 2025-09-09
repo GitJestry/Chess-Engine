@@ -16,15 +16,15 @@ inline constexpr int mirror_sq_black(int sq) noexcept {
 // =============================================================================
 // Globale Skalen & Mischer
 // =============================================================================
-constexpr int MAX_PHASE = 24;     // Summe beider Seiten (0..24)
+constexpr int MAX_PHASE = 16;     // Summe beider Seiten (0..24)
 constexpr int BLEND_SCALE = 256;  // MG/EG-Blendskala
 
 // Tempo (etwas moderater im EG)
-constexpr int TEMPO_MG = 16;
+constexpr int TEMPO_MG = 12;
 constexpr int TEMPO_EG = 6;
 
 // Space-Term im EG abgeschwächt
-constexpr int SPACE_EG_DEN = 4;
+constexpr int SPACE_EG_DEN = 3;
 
 // --- Pins
 inline constexpr int PIN_MINOR = 14;
@@ -47,15 +47,16 @@ inline constexpr int PAWN_LEVER_CENTER = 6;
 inline constexpr int PAWN_LEVER_WING = 3;
 
 // --- X-ray king-file pressure
-inline constexpr int XRAY_KFILE = 6;
+inline constexpr int XRAY_KFILE = 4;
 
 // --- Q+B battery toward king
 inline constexpr int QB_BATTERY = 6;
 
 // --- Central blockers (opening-weighted)
 inline constexpr int CENTER_BLOCK_PEN = 6;
-inline constexpr int CENTER_BLOCK_PHASE_MAX = 64;  // cap phase (same scale as MAX_PHASE if 64)
-inline constexpr int CENTER_BLOCK_PHASE_DEN = 64;  // normalize
+// after: tie them to MAX_PHASE so “opening” really means early-phase
+constexpr int CENTER_BLOCK_PHASE_MAX = MAX_PHASE;
+constexpr int CENTER_BLOCK_PHASE_DEN = MAX_PHASE;
 
 // --- Weakly-defended (soft pressure)
 inline constexpr int WEAK_MINOR = 6;
@@ -64,25 +65,23 @@ inline constexpr int WEAK_QUEEN = 12;
 
 // --- Fianchetto structure near king (MG)
 inline constexpr int FIANCHETTO_OK = 6;
-inline constexpr int FIANCHETTO_HOLE = 10;
+inline constexpr int FIANCHETTO_HOLE = 8;
 
 // =============================================================================
 // Pawns
 // =============================================================================
 constexpr int ISO_P = 12;
 constexpr int DOUBLED_P = 16;
-constexpr int BACKWARD_P = 10;
+constexpr int BACKWARD_P = 8;
 constexpr int PHALANX = 8;
 constexpr int CANDIDATE_P = 10;
 constexpr int CONNECTED_PASSERS = 20;
 
-// Passed pawns (SF-inspiriert: deutlicher Anstieg ab r5/r6, aber nicht explodierend)
-constexpr int PASSED_MG[8] = {0, 6, 12, 24, 56, 120, 220, 0};
-constexpr int PASSED_EG[8] = {0, 10, 18, 36, 80, 160, 260, 0};
+constexpr int PASSED_MG[8] = {0, 4, 8, 16, 36, 78, 150, 0};
+constexpr int PASSED_EG[8] = {0, 8, 14, 28, 64, 132, 230, 0};
 
 // Zusatzbedingungen
 constexpr int PASS_BLOCK = 12;      // Blockade vor dem Passer
-constexpr int PASS_SUPP = 12;       // eigener Bauernschutz
 constexpr int PASS_FREE = 16;       // freie Vorzugsbahn
 constexpr int PASS_KBOOST = 16;     // eigener König nahe
 constexpr int PASS_KBLOCK = 16;     // gegnerischer König blockt
@@ -92,12 +91,11 @@ constexpr int PASS_KPROX = 4;       // gegnerischer König in Nähe (Abzug)
 // =============================================================================
 // King safety (Druckgewichtung & Clamp)
 // =============================================================================
-constexpr int KS_W_N = 18, KS_W_B = 20, KS_W_R = 14, KS_W_Q = 26;
+constexpr int KS_W_N = 16, KS_W_B = 18, KS_W_R = 12, KS_W_Q = 24;
 constexpr int KS_RING_BONUS = 1;
 constexpr int KS_MISS_SHIELD = 8;
 constexpr int KS_OPEN_FILE = 10;
-constexpr int KS_RQ_LOS = 6;  // R/Q Sichtlinie
-constexpr int KS_CLAMP = 176;
+constexpr int KS_CLAMP = 224;
 
 // Geometrie / Power-Counting
 constexpr int KING_RING_RADIUS = 2;
@@ -106,10 +104,10 @@ constexpr int KS_POWER_COUNT_CLAMP = 12;
 
 // Mischung MG/EG (mit/ohne Damen; HeavyPieces = R+Q beider Seiten)
 constexpr int KS_MIX_MG_Q_ON = 100;
-constexpr int KS_MIX_MG_Q_OFF = 40;
+constexpr int KS_MIX_MG_Q_OFF = 55;
 constexpr int KS_MIX_EG_HEAVY_THRESHOLD = 2;
-constexpr int KS_MIX_EG_IF_HEAVY = 36;
-constexpr int KS_MIX_EG_IF_LIGHT = 12;
+constexpr int KS_MIX_EG_IF_HEAVY = 40;
+constexpr int KS_MIX_EG_IF_LIGHT = 18;
 
 // =============================================================================
 // King pawn shelter / storm
@@ -139,7 +137,7 @@ constexpr int KNIGHT_RIM = 12;
 
 constexpr int ROOK_OPEN = 18;
 constexpr int ROOK_SEMI = 10;
-constexpr int ROOK_ON_7TH = 24;
+constexpr int ROOK_ON_7TH = 20;
 constexpr int CONNECTED_ROOKS = 14;
 
 constexpr int ROOK_BEHIND_PASSER = 24;
@@ -240,7 +238,7 @@ constexpr int CENTER_BACK_PENALTY_Q_ON = 32;   // König im Zentrum (e/d) mit Da
 constexpr int CENTER_BACK_PENALTY_Q_OFF = 12;  // ohne Damen schwächer
 constexpr int CENTER_BACK_OPEN_FILE_OPEN = 2;  // offene/halb-offene d/e-Dateien verstärken
 constexpr int CENTER_BACK_OPEN_FILE_SEMI = 1;
-constexpr int CENTER_BACK_OPEN_FILE_WEIGHT = 8;
+constexpr int CENTER_BACK_OPEN_FILE_WEIGHT = 6;
 
 constexpr int ROOK_KFILE_PRESS_FREE = 2;     // pro freiem Feld in der Linie zum K
 constexpr int ROOK_KFILE_PRESS_PAWNATT = 3;  // Abzug wenn Feld von Bauern gedeckt
@@ -270,7 +268,7 @@ static constexpr int QU_MOB_EG[28] = {-6, -4, -2, 0,  2,  4,  6,  8,  10, 12, 14
                                       22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48};
 
 // Mobility-Output clamped (etwas enger als zuvor)
-constexpr int MOBILITY_CLAMP = 640;
+constexpr int MOBILITY_CLAMP = 512;
 
 // =============================================================================
 // Werte & Phase (white POV) — leicht SF-angelehnt

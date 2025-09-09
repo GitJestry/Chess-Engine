@@ -187,7 +187,7 @@ struct PawnOnly {
   Bitboard wPass = 0, bPass = 0;  // nur Marker, keine dyn. Adds
 };
 
-static PawnOnly pawn_structure_pawnhash_only(Bitboard wp, Bitboard bp) {
+static PawnOnly pawn_structure_pawnhash_only(Bitboard wp, Bitboard bp, Bitboard wPA, Bitboard bPA) {
   PawnOnly out{};
   int& mg = out.mg;
   int& eg = out.eg;
@@ -268,6 +268,89 @@ static PawnOnly pawn_structure_pawnhash_only(Bitboard wp, Bitboard bp) {
       mg -= PASSED_MG[7 - rank_of(s)];
       eg -= PASSED_EG[7 - rank_of(s)];
       out.bPass |= sq_bb(Square(s));
+    }
+  }
+
+  // ------------------------------
+  // Backward pawns (both colors)
+  // ------------------------------
+  auto rank_eq_mask = [](int r) {
+    switch (r) {
+      case 0:
+        return RANK_1;
+      case 1:
+        return RANK_2;
+      case 2:
+        return RANK_3;
+      case 3:
+        return RANK_4;
+      case 4:
+        return RANK_5;
+      case 5:
+        return RANK_6;
+      case 6:
+        return RANK_7;
+      default:
+        return RANK_8;
+    }
+  };
+
+  // --- White backward pawns ---
+  {
+    Bitboard t = wp;
+    while (t) {
+      int s = lsb_i(t);
+      t &= t - 1;
+
+      // promotion rank has no forward square
+      if (rank_of(s) == 7) continue;
+
+      // not passed (exclude genuine passers)
+      if ((M.wPassed[s] & bp) == 0) continue;
+
+      const int r = rank_of(s);
+      const int front = s + 8;
+      Bitboard frontBB = sq_bb((Square)front);
+
+      // enemy controls the front square, own pawns do not
+      bool enemyControls = (bPA & frontBB) != 0;
+      bool ownControls = (wPA & frontBB) != 0;
+      if (!enemyControls || ownControls) continue;
+
+      // any friendly pawn on adjacent files at or ahead of this rank?
+      Bitboard supportersSame = (M.adjFiles[s] & wp & rank_eq_mask(r));
+      if (supportersSame) continue;
+
+      // it's backward: penalize white
+      mg -= BACKWARD_P;
+      eg -= BACKWARD_P / 2;
+    }
+  }
+
+  // --- Black backward pawns ---
+  {
+    Bitboard t = bp;
+    while (t) {
+      int s = lsb_i(t);
+      t &= t - 1;
+
+      if (rank_of(s) == 0) continue;
+      if ((M.bPassed[s] & wp) == 0) continue;
+
+      const int r = rank_of(s);
+      const int front = s - 8;
+      Bitboard frontBB = sq_bb((Square)front);
+
+      bool enemyControls = (wPA & frontBB) != 0;
+      bool ownControls = (bPA & frontBB) != 0;
+      if (!enemyControls || ownControls) continue;
+
+      Bitboard supportersSame = (M.adjFiles[s] & bp & rank_eq_mask(r));
+      if (supportersSame) continue;
+
+      // it's backward: penalize black (i.e., bonus for white)
+      mg += BACKWARD_P;
+      eg += BACKWARD_P / 2;
     }
   }
 
@@ -1010,41 +1093,28 @@ static int passer_blocker_quality(const std::array<Bitboard, 6>& W,
   auto add_side = [&](bool white) {
     Bitboard paw = white ? wp : bp;
     Bitboard opp = white ? bp : wp;
+    int sgn = white ? +1 : -1;  // white POV: white passer help = +, hindrance = -
+
     Bitboard t = paw;
     while (t) {
       int s = lsb_i(t);
       t &= t - 1;
       bool passed = white ? ((M.wPassed[s] & opp) == 0) : ((M.bPassed[s] & opp) == 0);
       if (!passed) continue;
+
       int stop = white ? (s + 8) : (s - 8);
       if (stop < 0 || stop > 63) continue;
-
       Bitboard stopBB = sq_bb((Square)stop);
       if (!(occ & stopBB)) continue;
 
       int advance = white ? rank_of((Square)s) : (7 - rank_of((Square)s));
-      int scale = advance;
+      int pen = 0;
+      if (stopBB & (W[1] | B[1]))
+        pen = BLOCK_PASSER_STOP_KNIGHT;  // best stopper
+      else if (stopBB & (W[2] | B[2]))
+        pen = BLOCK_PASSER_STOP_BISHOP;
 
-      // Eigenes Stück blockiert EIGENEN Passer -> schlecht
-      if (white) {
-        if (W[1] & stopBB)
-          sc -= BLOCK_PASSER_STOP_KNIGHT * scale;
-        else if (W[2] & stopBB)
-          sc += BLOCK_PASSER_STOP_BISHOP * scale;
-        if (B[1] & stopBB)
-          sc += BLOCK_PASSER_STOP_KNIGHT * scale;
-        else if (B[2] & stopBB)
-          sc -= BLOCK_PASSER_STOP_BISHOP * scale;
-      } else {
-        if (B[1] & stopBB)
-          sc -= BLOCK_PASSER_STOP_KNIGHT * scale;
-        else if (B[2] & stopBB)
-          sc += BLOCK_PASSER_STOP_BISHOP * scale;
-        if (W[1] & stopBB)
-          sc += BLOCK_PASSER_STOP_KNIGHT * scale;
-        else if (W[2] & stopBB)
-          sc -= BLOCK_PASSER_STOP_BISHOP * scale;
-      }
+      sc += sgn * (-pen * advance);  // penalty for the passer’s side
     }
   };
 
@@ -1693,11 +1763,11 @@ int Evaluator::evaluate(model::Position& pos) const {
       wPass = (Bitboard)ps.wPass.load(std::memory_order_relaxed);
       bPass = (Bitboard)ps.bPass.load(std::memory_order_relaxed);
     } else {
-      PawnOnly po = pawn_structure_pawnhash_only(W[0], B[0]);
-      pMG = po.mg;
-      pEG = po.eg;
       wPA = white_pawn_attacks(W[0]);
       bPA = black_pawn_attacks(B[0]);
+      PawnOnly po = pawn_structure_pawnhash_only(W[0], B[0], wPA, bPA);
+      pMG = po.mg;
+      pEG = po.eg;
       wPass = po.wPass;
       bPass = po.bPass;
       ps.mg.store(pMG, std::memory_order_relaxed);
