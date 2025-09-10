@@ -168,13 +168,19 @@ static int space_term(const std::array<Bitboard, 6>& W, const std::array<Bitboar
                       Bitboard wPA, Bitboard bPA) {
   Bitboard wocc = W[0] | W[1] | W[2] | W[3] | W[4] | W[5];
   Bitboard bocc = B[0] | B[1] | B[2] | B[3] | B[4] | B[5];
-  Bitboard empty = ~(wocc | bocc);
-  Bitboard wArea = (RANK_4 | RANK_5 | RANK_6) & empty & ~bPA;
-  Bitboard bArea = (RANK_1 | RANK_2 | RANK_3) & empty & ~wPA;
-  int wSafe = popcnt(wArea), bSafe = popcnt(bArea);
-  int wMin = popcnt(W[1] | W[2]), bMin = popcnt(B[1] | B[2]);
+
+  // Own-half masks (relative)
+  Bitboard wMask = RANK_2 | RANK_3 | RANK_4;
+  Bitboard bMask = RANK_7 | RANK_6 | RANK_5;
+
+  // Safe, *empty* squares not attacked by enemy pawns, excluding own pieces
+  int wSafe = popcount((wMask & ~wocc) & ~bPA);
+  int bSafe = popcount((bMask & ~bocc) & ~wPA);
+
+  int wMin = popcount(W[1] | W[2]), bMin = popcount(B[1] | B[2]);
   int wScale = SPACE_SCALE_BASE + std::min(wMin, SPACE_MINOR_SATURATION);
   int bScale = SPACE_SCALE_BASE + std::min(bMin, SPACE_MINOR_SATURATION);
+
   return SPACE_BASE * (wSafe * wScale - bSafe * bScale);
 }
 
@@ -696,16 +702,17 @@ static int king_shelter_storm(const std::array<Bitboard, 6>& W, const std::array
         int nearOwnSq = lsb_i(mask & wp);
         int nearOwnR = (nearOwnSq >= 0 ? (nearOwnSq >> 3) : 8);
         int dist = clampi(nearOwnR - kRank, 0, 7);
-        total += SHELTER[dist];
+        int shelterIdx = 7 - dist;  // closer own pawn => bigger shelter
+        total += SHELTER[shelterIdx];
 
-        // enemy pawn storm should be AHEAD of the white king (r+1..7), not behind
+        // enemy pawn storm ahead of the white king (r+1..7)
         Bitboard em = 0;
         for (int r = kRank + 1; r < 8; ++r) em |= sq_bb((Square)((r << 3) | ff));
-        // nearest enemy pawn ahead -> LSB
         int nearEnemySq = lsb_i(em & bp);
         int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : 8);
         int edist = clampi(nearEnemyR - kRank, 0, 7);
-        total -= STORM[edist] / 2;
+        int stormIdx = 7 - edist;  // closer enemy pawn => bigger storm
+        total -= STORM[stormIdx] / 2;
 
       } else {
         // squares in front of black king (r-1..0)
@@ -715,16 +722,17 @@ static int king_shelter_storm(const std::array<Bitboard, 6>& W, const std::array
         int nearOwnSq = msb_i(mask & bp);
         int nearOwnR = (nearOwnSq >= 0 ? (nearOwnSq >> 3) : -1);
         int dist = clampi(kRank - nearOwnR, 0, 7);
-        total += SHELTER[dist];
+        int shelterIdx = 7 - dist;  // closer own pawn => bigger shelter
+        total += SHELTER[shelterIdx];
 
         // enemy pawn storm in front of black king (r-1..0)
         Bitboard em = 0;
         for (int r = kRank - 1; r >= 0; --r) em |= sq_bb((Square)((r << 3) | ff));
-        // nearest enemy pawn ahead (toward rank decreasing) -> MSB
         int nearEnemySq = msb_i(em & wp);
         int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : -1);
         int edist = clampi(kRank - nearEnemyR, 0, 7);
-        total -= STORM[edist] / 2;
+        int stormIdx = 7 - edist;  // closer enemy pawn => bigger storm
+        total -= STORM[stormIdx] / 2;
       }
     }
     return total;
@@ -1569,7 +1577,7 @@ inline int xray_king_file_pressure(bool white, const std::array<Bitboard, 6>& W,
     t &= t - 1;
 
     // Require same rank or file to avoid cross-corner intersections
-    if (file_of(r) != file_of(ksq) && rank_of(r) != rank_of(ksq)) continue;
+    if (file_of(r) != file_of(ksq)) continue;
 
     Bitboard rookRay = magic::sliding_attacks(magic::Slider::Rook, (Square)r, occ);
     Bitboard kingRay = magic::sliding_attacks(magic::Slider::Rook, (Square)ksq, occ);

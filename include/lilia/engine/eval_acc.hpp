@@ -120,6 +120,7 @@ inline void EvalAcc::add_piece(lilia::core::Color c, lilia::core::PieceType pt, 
     eg -= VAL_EG[i] + pst_eg(pt, mirror_sq_black(sq));
   }
   phase += PHASE_W[i];
+
   switch (pt) {
     case lilia::core::PieceType::Pawn:
       P[s]++;
@@ -137,12 +138,13 @@ inline void EvalAcc::add_piece(lilia::core::Color c, lilia::core::PieceType pt, 
       Q[s]++;
       break;
     case lilia::core::PieceType::King:
-      kingSq[s] = -1;
-      break;
+      kingSq[s] = sq;
+      break;  // <-- fixed
     default:
       break;
   }
 }
+
 inline void EvalAcc::remove_piece(lilia::core::Color c, lilia::core::PieceType pt, int sq) {
   const int s = (c == lilia::core::Color::White ? 0 : 1);
   const int i = (int)pt;
@@ -154,6 +156,7 @@ inline void EvalAcc::remove_piece(lilia::core::Color c, lilia::core::PieceType p
     eg += VAL_EG[i] + pst_eg(pt, mirror_sq_black(sq));
   }
   phase -= PHASE_W[i];
+
   switch (pt) {
     case lilia::core::PieceType::Pawn:
       P[s]--;
@@ -170,12 +173,14 @@ inline void EvalAcc::remove_piece(lilia::core::Color c, lilia::core::PieceType p
     case lilia::core::PieceType::Queen:
       Q[s]--;
       break;
-    case lilia::core::PieceType::King: /* kingSq bleibt; wird beim Add gesetzt */
-      break;
+    case lilia::core::PieceType::King:
+      kingSq[s] = -1;
+      break;  // optional, for safety
     default:
       break;
   }
 }
+
 inline void EvalAcc::move_piece(lilia::core::Color c, lilia::core::PieceType pt, int from, int to) {
   // gleiches Piece -> Phase unverändert
   if (c == lilia::core::Color::White) {
