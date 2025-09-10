@@ -135,6 +135,8 @@ constexpr int OUTPOST_DEEP_RANK_BLACK = 3;  // r <= 3
 constexpr int OUTPOST_DEEP_EXTRA = 6;
 constexpr int CENTER_CTRL = 6;
 constexpr int OUTPOST_CENTER_SQ_BONUS = 6;
+constexpr int SLIDER_CENTER_ATTACK = 4;
+constexpr int SLIDER_CENTER_SQ_BONUS = 4;
 
 constexpr int KNIGHT_RIM = 12;
 
