@@ -1406,18 +1406,21 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     // then by stable heuristic order. Display the clamped true score.
     {
       const int k = std::min<int>(5, (int)rootScores.size());
-      std::partial_sort(rootScores.begin(), rootScores.begin() + k, rootScores.end(),
-                        [&](const RootLine& a, const RootLine& b) {
-                          const int ra = bound_rank(a.bound), rb = bound_rank(b.bound);
-                          if (ra != rb) return ra > rb;
-                          if (a.searchScore != b.searchScore) return a.searchScore > b.searchScore;
-                          return a.ordIdx < b.ordIdx;
-                        });
+
+      // Perform a deterministic full sort on only the first k entries by
+      // copying them to a temporary buffer and stable-sorting there.
+      std::vector<RootLine> top(rootScores.begin(), rootScores.begin() + k);
+      std::stable_sort(top.begin(), top.end(), [&](const RootLine& a, const RootLine& b) {
+        const int ra = bound_rank(a.bound), rb = bound_rank(b.bound);
+        if (ra != rb) return ra > rb;
+        if (a.searchScore != b.searchScore) return a.searchScore > b.searchScore;
+        return a.ordIdx < b.ordIdx;
+      });
 
       stats.topMoves.clear();
-      for (int i = 0; i < k; ++i) {
+      for (const auto& rl : top) {
         stats.topMoves.push_back(
-            {rootScores[i].m, std::clamp(rootScores[i].searchScore, -MATE + 1, MATE - 1)});
+            {rl.m, std::clamp(rl.searchScore, -MATE + 1, MATE - 1)});
       }
     }
 
