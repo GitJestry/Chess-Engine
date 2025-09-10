@@ -143,6 +143,8 @@ constexpr int ROOK_SEMI = 10;
 constexpr int ROOK_ON_7TH = 20;
 constexpr int CONNECTED_ROOKS = 14;
 
+constexpr int ROOK_CENTRAL_FILE = 6;  // rooks on or controlling c–f files
+
 constexpr int ROOK_BEHIND_PASSER = 24;
 constexpr int ROOK_BEHIND_PASSER_HALF = ROOK_BEHIND_PASSER / 2;
 constexpr int ROOK_BEHIND_PASSER_THIRD = ROOK_BEHIND_PASSER / 3;
