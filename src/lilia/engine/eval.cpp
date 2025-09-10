@@ -271,28 +271,16 @@ static PawnOnly pawn_structure_pawnhash_only(Bitboard wp, Bitboard bp, Bitboard 
     }
   }
 
-  // ------------------------------
-  // Backward pawns (both colors)
-  // ------------------------------
-  auto rank_eq_mask = [](int r) {
-    switch (r) {
-      case 0:
-        return RANK_1;
-      case 1:
-        return RANK_2;
-      case 2:
-        return RANK_3;
-      case 3:
-        return RANK_4;
-      case 4:
-        return RANK_5;
-      case 5:
-        return RANK_6;
-      case 6:
-        return RANK_7;
-      default:
-        return RANK_8;
-    }
+  // helpers stay as you wrote them
+  auto rank_ge_mask = [](int r) {
+    Bitboard m = 0;
+    for (int rr = r; rr < 8; ++rr) m |= (RANK_1 << (8 * rr));
+    return m;
+  };
+  auto rank_le_mask = [](int r) {
+    Bitboard m = 0;
+    for (int rr = 0; rr <= r; ++rr) m |= (RANK_1 << (8 * rr));
+    return m;
   };
 
   // --- White backward pawns ---
@@ -318,7 +306,7 @@ static PawnOnly pawn_structure_pawnhash_only(Bitboard wp, Bitboard bp, Bitboard 
       if (!enemyControls || ownControls) continue;
 
       // any friendly pawn on adjacent files at or ahead of this rank?
-      Bitboard supportersSame = (M.adjFiles[s] & wp & rank_eq_mask(r));
+      Bitboard supportersSame = (M.adjFiles[s] & wp & rank_le_mask(r));
       if (supportersSame) continue;
 
       // it's backward: penalize white
@@ -345,7 +333,7 @@ static PawnOnly pawn_structure_pawnhash_only(Bitboard wp, Bitboard bp, Bitboard 
       bool ownControls = (bPA & frontBB) != 0;
       if (!enemyControls || ownControls) continue;
 
-      Bitboard supportersSame = (M.adjFiles[s] & bp & rank_eq_mask(r));
+      Bitboard supportersSame = (M.adjFiles[s] & bp & rank_ge_mask(r));
       if (supportersSame) continue;
 
       // it's backward: penalize black (i.e., bonus for white)
@@ -1574,17 +1562,20 @@ inline int xray_king_file_pressure(bool white, const std::array<Bitboard, 6>& W,
   Bitboard rooks = white ? W[3] : B[3];
   int sc = 0;
   Bitboard t = rooks;
+  Bitboard bbK = sq_bb((Square)ksq);
+
   while (t) {
     int r = lsb_i(t);
     t &= t - 1;
-    // remove one friendly blocker and see if rook would see the king
-    Bitboard ray = magic::sliding_attacks(magic::Slider::Rook, (Square)r, occ);
-    if (!(ray & sq_bb((Square)ksq))) continue;
-    Bitboard bbR = sq_bb((Square)r), bbK = sq_bb((Square)ksq);
-    Bitboard between = ray & magic::sliding_attacks(magic::Slider::Rook, (Square)ksq, occ | bbR) &
-                       ~bbR & ~bbK;  // exclude endpoints
-    int blockers = popcnt(between & occ);
-    if (blockers == 1) sc += XRAY_KFILE;
+
+    // Require same rank or file to avoid cross-corner intersections
+    if (file_of(r) != file_of(ksq) && rank_of(r) != rank_of(ksq)) continue;
+
+    Bitboard rookRay = magic::sliding_attacks(magic::Slider::Rook, (Square)r, occ);
+    Bitboard kingRay = magic::sliding_attacks(magic::Slider::Rook, (Square)ksq, occ);
+    Bitboard between = rookRay & kingRay & ~sq_bb((Square)r) & ~bbK;
+
+    if (popcnt(between & occ) == 1) sc += XRAY_KFILE;
   }
   return white ? sc : -sc;
 }
