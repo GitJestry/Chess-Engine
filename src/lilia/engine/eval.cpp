@@ -170,7 +170,7 @@ static int space_term(const std::array<Bitboard, 6>& W, const std::array<Bitboar
   Bitboard bocc = B[0] | B[1] | B[2] | B[3] | B[4] | B[5];
   Bitboard empty = ~(wocc | bocc);
   Bitboard wArea = (RANK_4 | RANK_5 | RANK_6) & empty & ~bPA;
-  Bitboard bArea = (RANK_3 | RANK_4 | RANK_5) & empty & ~wPA;
+  Bitboard bArea = (RANK_1 | RANK_2 | RANK_3) & empty & ~wPA;
   int wSafe = popcnt(wArea), bSafe = popcnt(bArea);
   int wMin = popcnt(W[1] | W[2]), bMin = popcnt(B[1] | B[2]);
   int wScale = SPACE_SCALE_BASE + std::min(wMin, SPACE_MINOR_SATURATION);
