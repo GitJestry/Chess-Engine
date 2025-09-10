@@ -31,7 +31,7 @@ struct EngineConfig {
   int lmrMax = 3;             // Deckel
   bool lmrUseHistory = true;  // gute History => weniger Reduktion
 };
-static const int base_value[6] = {100, 320, 330, 500, 900, 20000};
+static const int base_value[6] = {100, 320, 330, 500, 950, 20000};
 constexpr int INF = 32000;
 constexpr int MATE = 30000;
 constexpr int MAX_PLY = 128;

@@ -337,8 +337,6 @@ inline void bump_node_or_stop(const std::shared_ptr<std::atomic<std::uint64_t>>&
 
 // ---------- Quiescence + QTT ----------
 
-// ---------- Quiescence + QTT ----------
-
 int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   bump_node_or_stop(sharedNodes, nodeLimit, stopFlag);
 

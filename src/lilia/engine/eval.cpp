@@ -1969,13 +1969,11 @@ int Evaluator::evaluate(model::Position& pos) const {
   eg += eg_add;
 
   // blend
-  int mg_w = (curPhase * BLEND_SCALE) / MAX_PHASE;
-  int eg_w = BLEND_SCALE - mg_w;
-  int score = int(((int64_t)mg * mg_w + (int64_t)eg * eg_w) >> 8);
+  int score = taper(mg, eg, curPhase);
 
-  // tempo
-  bool wtm = (pos.getState().sideToMove == Color::White);
-  int tempo = ((TEMPO_MG * mg_w) + (TEMPO_EG * eg_w)) >> 8;
+  // tempo (phase-aware)
+  const bool wtm = (pos.getState().sideToMove == Color::White);
+  const int tempo = taper(TEMPO_MG, TEMPO_EG, curPhase);
   score += (wtm ? +tempo : -tempo);
 
   // endgame scaling

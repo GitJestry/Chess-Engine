@@ -17,7 +17,10 @@ inline constexpr int mirror_sq_black(int sq) noexcept {
 // Globale Skalen & Mischer
 // =============================================================================
 constexpr int MAX_PHASE = 16;
-constexpr int BLEND_SCALE = 256;  // MG/EG-Blendskala
+inline int taper(int mg, int eg, int phase) {
+  // mg when phase=MAX_PHASE, eg when phase=0
+  return ((mg * phase) + (eg * (MAX_PHASE - phase))) / MAX_PHASE;
+}
 
 // Tempo (etwas moderater im EG)
 constexpr int TEMPO_MG = 12;
