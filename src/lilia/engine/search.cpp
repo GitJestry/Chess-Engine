@@ -1402,8 +1402,10 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     }
 
     // Build TopMoves:
-    // ORDERING FIX: rank by bound (Exact > Lower > Upper), then by TRUE searched score,
-    // then by stable heuristic order. Display the clamped true score.
+    // ORDERING FIX: rank by bound (Exact > Lower > Upper), then by searched score,
+    // then by stable heuristic order. Afterwards, ensure we have true scores for
+    // the displayed moves by re-searching them with a full window so their
+    // scores are not all clamped to the best move's alpha value.
     {
       const int k = std::min<int>(5, (int)rootScores.size());
       std::partial_sort(rootScores.begin(), rootScores.begin() + k, rootScores.end(),
@@ -1414,11 +1416,44 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
                           return a.ordIdx < b.ordIdx;
                         });
 
-      stats.topMoves.clear();
+      // Re-search top candidates (except bestMove which already used a full window)
       for (int i = 0; i < k; ++i) {
-        stats.topMoves.push_back(
-            {rootScores[i].m, std::clamp(rootScores[i].searchScore, -MATE + 1, MATE - 1)});
+        auto& rl = rootScores[i];
+        if (rl.m == bestMove) {
+          rl.searchScore = rl.displayScore = bestScore;
+          rl.bound = model::Bound::Exact;
+          continue;
+        }
+        if (stop && stop->load()) break;
+        model::Position tmp = pos;
+        if (!tmp.doMove(rl.m)) continue;
+        model::Move dummy{};
+        int exact = -negamax(tmp, depth - 1, -INF, INF, 1, dummy, INF);
+        exact = std::clamp(exact, -MATE + 1, MATE - 1);
+        rl.searchScore = rl.displayScore = exact;
+        rl.bound = model::Bound::Exact;
       }
+
+      // Sort again by the now accurate scores
+      std::sort(rootScores.begin(), rootScores.begin() + k, [&](const RootLine& a, const RootLine& b) {
+        if (a.searchScore != b.searchScore) return a.searchScore > b.searchScore;
+        return a.ordIdx < b.ordIdx;
+      });
+
+      stats.topMoves.clear();
+      // Always put the best move first so stats.topMoves[0] matches stats.bestMove
+      stats.topMoves.push_back({bestMove, std::clamp(bestScore, -MATE + 1, MATE - 1)});
+      int added = 1;
+      for (int i = 0; i < k && added < k; ++i) {
+        const auto& rl = rootScores[i];
+        if (rl.m == bestMove) continue;
+        stats.topMoves.push_back({rl.m, std::clamp(rl.searchScore, -MATE + 1, MATE - 1)});
+        ++added;
+      }
+
+      // Update nodes/time to include re-search work
+      stats.nodes = sharedNodes->load(std::memory_order_relaxed);
+      update_time_stats();
     }
 
     if (is_mate_score(stats.bestScore)) break;
