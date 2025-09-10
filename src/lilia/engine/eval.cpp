@@ -1609,16 +1609,18 @@ inline int queen_bishop_battery(bool white, const std::array<Bitboard, 6>& W,
 
 static int central_blockers(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
                             int phase) {
-  int pen = 0;
   auto block = [&](bool white) {
     Bitboard occ = white ? (W[1] | W[2] | W[3] | W[4]) : (B[1] | B[2] | B[3] | B[4]);
     int e = white ? 12 /*e2*/ : 52 /*e7*/;
     int d = white ? 11 /*d2*/ : 51 /*d7*/;
+    int pen = 0;
     if (occ & sq_bb((Square)e)) pen += CENTER_BLOCK_PEN;
     if (occ & sq_bb((Square)d)) pen += CENTER_BLOCK_PEN;
+    return pen;
   };
-  block(true);
-  block(false);
+  int pen = 0;
+  pen -= block(true);
+  pen += block(false);
   // scale by opening weight:
   return pen * std::min(phase, CENTER_BLOCK_PHASE_MAX) / CENTER_BLOCK_PHASE_DEN;
 }
