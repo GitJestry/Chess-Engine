@@ -1144,6 +1144,7 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
 }
 int Search::search_root_single(model::Position& pos, int maxDepth,
                                std::shared_ptr<std::atomic<bool>> stop, std::uint64_t maxNodes) {
+  // --- init shared stop/nodes ---
   this->stopFlag = stop;
   if (!this->sharedNodes) {
     this->sharedNodes = std::make_shared<std::atomic<std::uint64_t>>(0);
@@ -1151,6 +1152,7 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
   if (maxNodes) this->nodeLimit = maxNodes;
   if (this->sharedNodes && this->thread_id_ == 0)
     this->sharedNodes->store(0, std::memory_order_relaxed);
+
   stats = SearchStats{};
 
   auto t0 = steady_clock::now();
@@ -1162,7 +1164,7 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     stats.nps = (ms ? (double)stats.nodes / (ms / 1000.0) : (double)stats.nodes);
   };
 
-  // Generate and legalize root moves once.
+  // --- legalize root moves once ---
   std::vector<model::Move> rootMoves;
   mg.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), rootMoves);
   if (!rootMoves.empty()) {
@@ -1186,48 +1188,7 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     return score;
   }
 
-  // Aspiration seed
-  int lastScoreGuess = 0;
-  if (cfg.useAspiration) {
-    model::TTEntry5 tte{};
-    if (tt.probe_into(pos.hash(), tte)) lastScoreGuess = decode_tt_score(tte.value, 0);
-    if (thread_id_ != 0) lastScoreGuess += (thread_id_ * 3) % 11 - 5;
-  }
-
-  auto score_root_move = [&](const model::Move& m, const model::Move& ttMove, bool haveTT) {
-    int s = 0;
-    if (haveTT && m == ttMove) s += 2'500'000;
-    if (m.promotion() != core::PieceType::None) {
-      s += 1'200'000;
-    } else if (m.isCapture()) {
-      int mvvlva = mvv_lva_fast(pos, m);
-      if (!pos.see(m)) mvvlva -= 350;
-      s += 1'050'000 + mvvlva;
-    } else {
-      int h = history[m.from()][m.to()];
-      h = std::clamp(h, -20'000, 20'000);
-      s += h;
-
-      auto mover = pos.getBoard().getPiece(m.from());
-      if (mover) {
-        const int pawn_sig =
-            (mover->type == core::PieceType::Pawn)
-                ? quiet_pawn_push_signal(pos.getBoard(), m, pos.getState().sideToMove)
-                : 0;
-        const int piece_sig =
-            quiet_piece_threat_signal(pos.getBoard(), m, pos.getState().sideToMove);
-        const int sig = std::max(pawn_sig, piece_sig);
-        if (sig == 2)
-          s += 12'000;
-        else if (sig == 1)
-          s += 8'000;
-      }
-    }
-    s += (thread_id_ * 7) % 17;
-    return s;
-  };
-
-  // Prefer: Exact > Lower (fail-high) > Upper (fail-low)
+  // --- helpers ---
   auto bound_rank = [](model::Bound b) {
     switch (b) {
       case model::Bound::Exact:
@@ -1241,224 +1202,249 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     }
   };
 
+  auto score_root_move = [&](const model::Move& m, const model::Move& ttMove, bool haveTT) {
+    // Lightweight, monotonic ordering signal (no expensive SEE here).
+    int s = 0;
+    if (haveTT && m == ttMove) s += 2'500'000;
+    if (m.promotion() != core::PieceType::None)
+      s += 1'200'000;
+    else if (m.isCapture())
+      s += 1'050'000 + mvv_lva_fast(pos, m);
+    else {
+      // Quiet: history + simple quiet threat signals
+      const auto board = pos.getBoard();
+      auto mover = board.getPiece(m.from());
+      int h = history[m.from()][m.to()];
+      h = std::clamp(h, -20'000, 20'000);
+      s += h;
+      if (mover) {
+        const int pawn_sig = (mover->type == core::PieceType::Pawn)
+                                 ? quiet_pawn_push_signal(board, m, pos.getState().sideToMove)
+                                 : 0;
+        const int piece_sig = quiet_piece_threat_signal(board, m, pos.getState().sideToMove);
+        const int sig = std::max(pawn_sig, piece_sig);
+        if (sig == 2)
+          s += 12'000;
+        else if (sig == 1)
+          s += 8'000;
+      }
+    }
+    // tiny thread jitter (keeps helpers diverse)
+    s += (thread_id_ * 7) % 17;
+    return s;
+  };
+
   struct RootLine {
-    model::Move m;
-    int searchScore;     // true score returned by search (root POV, clamped)
-    int displayScore;    // what we show; currently equals searchScore to avoid reordering bugs
-    model::Bound bound;  // Exact / Upper / Lower
-    int ordIdx;          // stable tiebreak: index in heuristic root ordering
+    model::Move m{};
+    int score = -INF;  // exact score if searched full window, otherwise current bound
+    model::Bound bound = model::Bound::Upper;
+    int ordIdx = 0;  // tiebreak stability
   };
 
-  auto to_root_pov = [&](int childVal /* from child POV */) {
-    int v = -childVal;
-    if (is_mate_score(v)) v += (v > 0 ? -1 : +1);
-    return v;
-  };
+  // --- aspiration seed ---
+  int lastScore = 0;
+  if (cfg.useAspiration) {
+    model::TTEntry5 tte{};
+    if (tt.probe_into(pos.hash(), tte)) lastScore = decode_tt_score(tte.value, /*ply=*/0);
+    if (thread_id_ != 0) lastScore += (thread_id_ * 3) % 11 - 5;
+  }
 
-  // --- Iterative deepening ---
   model::Move prevBest{};
-  for (int depth = 1; depth <= std::max(1, maxDepth); ++depth) {
+  const int maxD = std::max(1, maxDepth);
+
+  for (int depth = 1; depth <= maxD; ++depth) {
     if (stop && stop->load()) break;
 
     if (depth > 1) decay_tables(*this, /*shift=*/6);
 
-    // TT move for ordering
-    model::Move rootTT{};
-    bool haveRootTT = false;
+    // get TT move for ordering
+    model::Move ttMove{};
+    bool haveTT = false;
     if (model::TTEntry5 tte{}; tt.probe_into(pos.hash(), tte)) {
-      haveRootTT = true;
-      rootTT = tte.best;
+      haveTT = true;
+      ttMove = tte.best;
     }
 
-    // Reorder root moves each depth; keep previous best in front for stability.
-    std::sort(rootMoves.begin(), rootMoves.end(), [&](const model::Move& a, const model::Move& b) {
-      const int sa = score_root_move(a, rootTT, haveRootTT);
-      const int sb = score_root_move(b, rootTT, haveRootTT);
-      if (sa != sb) return sa > sb;
-      if (a.from() != b.from()) return a.from() < b.from();
-      return a.to() < b.to();
-    });
+    // order root moves (stable)
+    std::stable_sort(rootMoves.begin(), rootMoves.end(),
+                     [&](const model::Move& a, const model::Move& b) {
+                       const int sa = score_root_move(a, ttMove, haveTT);
+                       const int sb = score_root_move(b, ttMove, haveTT);
+                       if (sa != sb) return sa > sb;
+                       if (a.from() != b.from()) return a.from() < b.from();
+                       return a.to() < b.to();
+                     });
+
+    // push previous best to front for stability
     if (prevBest.from() != prevBest.to()) {
       auto it = std::find(rootMoves.begin(), rootMoves.end(), prevBest);
       if (it != rootMoves.end()) std::rotate(rootMoves.begin(), it, it + 1);
     }
 
+    // aspiration window around lastScore
+    int alphaTarget = -INF + 1;
+    int betaTarget = INF - 1;
+    int window = 24;
+
+    if (cfg.useAspiration && depth >= 3 && !is_mate_score(lastScore)) {
+      window = std::max(12, cfg.aspirationWindow);
+      alphaTarget = lastScore - window;
+      betaTarget = lastScore + window;
+    }
+
+    // keep widening until the true score fits the window
     int bestScore = -INF;
     model::Move bestMove{};
-    int alpha = -INF;
-    int beta = INF;
 
-    std::vector<RootLine> rootScores;
-    rootScores.reserve(rootMoves.size());
-
-    for (int i = 0; i < (int)rootMoves.size(); ++i) {
+    while (true) {
       if (stop && stop->load()) break;
-      const model::Move m = rootMoves[i];
 
-      model::Position child = pos;
-      if (!child.doMove(m)) continue;
-      tt.prefetch(child.hash());
+      int alpha = alphaTarget;
+      int beta = betaTarget;
 
-      model::Move ref{};
-      const int alpha_before = alpha;
-      // Track last window used (parent POV)
-      int lastLo = -INF, lastHi = INF;
-      bool usedFullWindow = false;
-      int s = 0;
+      // Root lines w/ bound info for later display
+      std::vector<RootLine> lines;
+      lines.reserve(rootMoves.size());
 
-      if (i == 0) {
-        if (!cfg.useAspiration || depth < 3 || is_mate_score(lastScoreGuess)) {
-          s = -negamax(child, depth - 1, -beta, -alpha, 1, ref, INF);
-          usedFullWindow = true;
-        } else {
-          int w = std::max(12, cfg.aspirationWindow);
-          int low = lastScoreGuess - w, high = lastScoreGuess + w;
-          lastLo = low;
-          lastHi = high;
-          for (int tries = 0; tries < 3; ++tries) {
-            s = -negamax(child, depth - 1, -high, -low, 1, ref, INF);
-            s = std::clamp(s, -MATE + 1, MATE - 1);
-            if (!is_mate_score(s) && s > low && s < high) break;
-            const int step = 64 + 16 * tries;
-            if (s <= low)
-              low -= step;
-            else if (s >= high)
-              high += step;
-            else
-              break;
-            if (is_mate_score(s)) break;
-            lastLo = low;
-            lastHi = high;
-          }
-          if (!(s > lastScoreGuess - std::max(12, cfg.aspirationWindow) &&
-                s < lastScoreGuess + std::max(12, cfg.aspirationWindow))) {
-            s = -negamax(child, depth - 1, -beta, -alpha, 1, ref, INF);
-            usedFullWindow = true;
-          }
-        }
-      } else {
-        // PVS zero-window
-        lastLo = alpha_before;
-        lastHi = alpha_before + 1;
-        s = -negamax(child, depth - 1, -(alpha + 1), -alpha, 1, ref, INF);
-        if (s > alpha && s < beta) {
-          s = -negamax(child, depth - 1, -beta, -alpha, 1, ref, INF);
-          usedFullWindow = true;
-        }
-      }
+      int moveIdx = 0;
+      for (const auto& m : rootMoves) {
+        if (stop && stop->load()) break;
 
-      s = std::clamp(s, -MATE + 1, MATE - 1);
-
-      model::Bound bRep;
-      if (usedFullWindow) {
-        bRep = model::Bound::Exact;
-      } else {
-        // classify vs last window we actually used (parent POV)
-        if (s <= lastLo)
-          bRep = model::Bound::Upper;
-        else if (s >= lastHi)
-          bRep = model::Bound::Lower;
-        else
-          bRep = model::Bound::Exact;
-      }
-
-      const int searchScore = s;  // Root POV; already clamped above.
-
-      rootScores.push_back(
-          RootLine{m, searchScore, /*displayScore*/ searchScore, bRep, /*ordIdx=*/i});
-
-      if (s > bestScore) {
-        bestScore = s;
-        bestMove = m;
-        if (s > alpha) alpha = s;
-      }
-    }
-
-    // Guard (shouldn't trigger after legal filtering)
-    if (bestMove.from() == bestMove.to()) {
-      const int fallback = pos.inCheck() ? mated_in(0) : 0;
-      stats.nodes = sharedNodes ? sharedNodes->load(std::memory_order_relaxed) : 0;
-      update_time_stats();
-      stats.bestScore = fallback;
-      break;
-    }
-
-    // Update stats for this depth
-    stats.nodes = sharedNodes->load(std::memory_order_relaxed);
-    update_time_stats();
-    stats.bestScore = std::clamp(bestScore, -MATE + 1, MATE - 1);
-    stats.bestMove = bestMove;
-    prevBest = bestMove;
-
-    // Build PV from TT
-    stats.bestPV.clear();
-    if (bestMove.from() != bestMove.to()) {
-      model::Position tmp = pos;
-      if (tmp.doMove(bestMove)) {
-        stats.bestPV.push_back(bestMove);
-        auto rest = build_pv_from_tt(tmp, 32);
-        for (auto& mv : rest) stats.bestPV.push_back(mv);
-      }
-    }
-
-    // Build TopMoves:
-    // ORDERING FIX: rank by bound (Exact > Lower > Upper), then by searched score,
-    // then by stable heuristic order. Afterwards, ensure we have true scores for
-    // the displayed moves by re-searching them with a full window so their
-    // scores are not all clamped to the best move's alpha value.
-    {
-      const int k = std::min<int>(5, (int)rootScores.size());
-      std::partial_sort(rootScores.begin(), rootScores.begin() + k, rootScores.end(),
-                        [&](const RootLine& a, const RootLine& b) {
-                          const int ra = bound_rank(a.bound), rb = bound_rank(b.bound);
-                          if (ra != rb) return ra > rb;
-                          if (a.searchScore != b.searchScore) return a.searchScore > b.searchScore;
-                          return a.ordIdx < b.ordIdx;
-                        });
-
-      // Re-search top candidates (except bestMove which already used a full window)
-      for (int i = 0; i < k; ++i) {
-        auto& rl = rootScores[i];
-        if (rl.m == bestMove) {
-          rl.searchScore = rl.displayScore = bestScore;
-          rl.bound = model::Bound::Exact;
+        model::Position child = pos;
+        if (!child.doMove(m)) {
+          ++moveIdx;
           continue;
         }
-        if (stop && stop->load()) break;
-        model::Position tmp = pos;
-        if (!tmp.doMove(rl.m)) continue;
-        model::Move dummy{};
-        int exact = -negamax(tmp, depth - 1, -INF, INF, 1, dummy, INF);
-        exact = std::clamp(exact, -MATE + 1, MATE - 1);
-        rl.searchScore = rl.displayScore = exact;
-        rl.bound = model::Bound::Exact;
+        tt.prefetch(child.hash());
+
+        model::Move childBest{};
+        int s;
+
+        if (moveIdx == 0) {
+          // First move: full window (PVS)
+          s = -negamax(child, depth - 1, -beta, -alpha, 1, childBest, INF);
+        } else {
+          // PVS zero-window; re-search on fail-high
+          s = -negamax(child, depth - 1, -(alpha + 1), -alpha, 1, childBest, INF);
+          if (s > alpha && s < beta) {
+            s = -negamax(child, depth - 1, -beta, -alpha, 1, childBest, INF);
+          }
+        }
+
+        s = std::clamp(s, -MATE + 1, MATE - 1);
+
+        model::Bound b;
+        if (s <= alpha)
+          b = model::Bound::Upper;  // fail-low wrt current alpha
+        else if (s >= beta)
+          b = model::Bound::Lower;  // fail-high wrt current beta
+        else
+          b = model::Bound::Exact;
+
+        // record
+        lines.push_back(RootLine{m, s, b, moveIdx});
+
+        if (s > bestScore) {
+          bestScore = s;
+          bestMove = m;
+        }
+        if (s > alpha) alpha = s;  // raise alpha
+
+        ++moveIdx;
+        if (alpha >= beta) break;  // cutoff at root is rare but possible
       }
 
-      // Sort again by the now accurate scores
-      std::sort(rootScores.begin(), rootScores.begin() + k, [&](const RootLine& a, const RootLine& b) {
-        if (a.searchScore != b.searchScore) return a.searchScore > b.searchScore;
-        return a.ordIdx < b.ordIdx;
-      });
+      // Success if bestScore is inside [alphaTarget, betaTarget)
+      if (bestScore > alphaTarget && bestScore < betaTarget) {
+        // --- finalize stats for this depth ---
+        stats.nodes = sharedNodes->load(std::memory_order_relaxed);
+        update_time_stats();
 
-      stats.topMoves.clear();
-      // Always put the best move first so stats.topMoves[0] matches stats.bestMove
-      stats.topMoves.push_back({bestMove, std::clamp(bestScore, -MATE + 1, MATE - 1)});
-      int added = 1;
-      for (int i = 0; i < k && added < k; ++i) {
-        const auto& rl = rootScores[i];
-        if (rl.m == bestMove) continue;
-        stats.topMoves.push_back({rl.m, std::clamp(rl.searchScore, -MATE + 1, MATE - 1)});
-        ++added;
+        stats.bestScore = bestScore;
+        stats.bestMove = bestMove;
+        prevBest = bestMove;
+
+        // Build PV: bestMove + follow TT
+        stats.bestPV.clear();
+        {
+          model::Position tmp = pos;
+          if (tmp.doMove(bestMove)) {
+            stats.bestPV.push_back(bestMove);
+            auto rest = build_pv_from_tt(tmp, 32);
+            for (auto& mv : rest) stats.bestPV.push_back(mv);
+          }
+        }
+
+        // Prepare display of top moves:
+        // 1) rank by bound (Exact > Lower > Upper), then by score, then by order
+        std::sort(lines.begin(), lines.end(), [&](const RootLine& a, const RootLine& b) {
+          const int ra = bound_rank(a.bound), rb = bound_rank(b.bound);
+          if (ra != rb) return ra > rb;
+          if (a.score != b.score) return a.score > b.score;
+          return a.ordIdx < b.ordIdx;
+        });
+
+        // 2) Re-score the top few with a full window to give real centipawn values for UI
+        const int RESCORE_TOP = std::min<int>(5, (int)lines.size());
+        for (int i = 0; i < RESCORE_TOP; ++i) {
+          if (lines[i].m == bestMove) {
+            lines[i].score = bestScore;
+            lines[i].bound = model::Bound::Exact;
+            continue;
+          }
+          if (stop && stop->load()) break;
+          model::Position tmp = pos;
+          if (!tmp.doMove(lines[i].m)) continue;
+          model::Move dummy{};
+          int exact = -negamax(tmp, depth - 1, -INF + 1, INF - 1, 1, dummy, INF);
+          exact = std::clamp(exact, -MATE + 1, MATE - 1);
+          lines[i].score = exact;
+          lines[i].bound = model::Bound::Exact;
+        }
+
+        // 3) Final sort by exact scores for display
+        std::sort(lines.begin(), lines.begin() + std::min<int>(RESCORE_TOP, lines.size()),
+                  [&](const RootLine& a, const RootLine& b) {
+                    if (a.score != b.score) return a.score > b.score;
+                    return a.ordIdx < b.ordIdx;
+                  });
+
+        // Pack stats.topMoves (best first)
+        stats.topMoves.clear();
+        stats.topMoves.push_back({bestMove, bestScore});
+        for (const auto& rl : lines) {
+          if ((int)stats.topMoves.size() >= RESCORE_TOP) break;
+          if (rl.m == bestMove) continue;
+          stats.topMoves.push_back({rl.m, rl.score});
+        }
+
+        // refresh time/nodes (re-score work included)
+        stats.nodes = sharedNodes->load(std::memory_order_relaxed);
+        update_time_stats();
+
+        break;  // depth finished
       }
 
-      // Update nodes/time to include re-search work
-      stats.nodes = sharedNodes->load(std::memory_order_relaxed);
-      update_time_stats();
-    }
+      // Otherwise widen the window and try again
+      if (bestScore <= alphaTarget) {
+        // fail-low: shift window down
+        int step = std::max(32, window);
+        alphaTarget = std::max(-INF + 1, alphaTarget - step);
+        window += step / 2;
+      } else if (bestScore >= betaTarget) {
+        // fail-high: shift window up
+        int step = std::max(32, window);
+        betaTarget = std::min(INF - 1, betaTarget + step);
+        window += step / 2;
+      } else {
+        // Shouldn't happen, but break to avoid looping
+        break;
+      }
+    }  // aspiration loop
 
-    if (is_mate_score(stats.bestScore)) break;
-    lastScoreGuess = stats.bestScore;
-  }
+    if (is_mate_score(bestScore)) break;
+    lastScore = bestScore;
+  }  // depth loop
 
   stats.nodes = sharedNodes->load(std::memory_order_relaxed);
   update_time_stats();

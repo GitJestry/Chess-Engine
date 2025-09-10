@@ -16,7 +16,7 @@ inline constexpr int mirror_sq_black(int sq) noexcept {
 // =============================================================================
 // Globale Skalen & Mischer
 // =============================================================================
-constexpr int MAX_PHASE = 16;     // Summe beider Seiten (0..24)
+constexpr int MAX_PHASE = 16;
 constexpr int BLEND_SCALE = 256;  // MG/EG-Blendskala
 
 // Tempo (etwas moderater im EG)
