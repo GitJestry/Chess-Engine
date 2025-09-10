@@ -929,6 +929,37 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
     newDepth += seExt;
 
+    // --- Snapshot parent CH anchors BEFORE making the move ---
+    int pm1_to = -1, pm2_to = -1, pm3_to = -1;
+    int pm1_pt = -1, pm2_pt = -1, pm3_pt = -1;  // piece indices via pidx()
+    if (ply >= 1) {
+      const model::Move pm1 = prevMove[cap_ply(ply - 1)];
+      if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.from() < 64 && pm1.to() < 64) {
+        if (auto p = board.getPiece(pm1.to())) {
+          pm1_to = pm1.to();
+          pm1_pt = pidx(p->type);
+        }
+      }
+    }
+    if (ply >= 2) {
+      const model::Move pm2 = prevMove[cap_ply(ply - 2)];
+      if (pm2.from() >= 0 && pm2.to() >= 0 && pm2.from() < 64 && pm2.to() < 64) {
+        if (auto p = board.getPiece(pm2.to())) {
+          pm2_to = pm2.to();
+          pm2_pt = pidx(p->type);
+        }
+      }
+    }
+    if (ply >= 3) {
+      const model::Move pm3 = prevMove[cap_ply(ply - 3)];
+      if (pm3.from() >= 0 && pm3.to() >= 0 && pm3.from() < 64 && pm3.to() < 64) {
+        if (auto p = board.getPiece(pm3.to())) {
+          pm3_to = pm3.to();
+          pm3_pt = pidx(p->type);
+        }
+      }
+    }
+
     MoveUndoGuard g(pos);
     if (!g.doMove(m)) {
       ++moveCount;
@@ -1015,29 +1046,14 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       hist_update(quietHist[pidx(moverPt)][m.to()], -M);
 
       // Continuation History: Malus
-      if (ply >= 1) {
-        const model::Move pm1 = prevMove[cap_ply(ply - 1)];
-        if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.to() < 64) {
-          if (auto po1 = board.getPiece(pm1.to())) {
-            hist_update(contHist[0][pidx(po1->type)][pm1.to()][pidx(moverPt)][m.to()], -M);
-          }
-        }
+      if (pm1_to >= 0 && pm1_pt >= 0) {
+        hist_update(contHist[0][pm1_pt][pm1_to][pidx(moverPt)][m.to()], -M);
       }
-      if (ply >= 2) {
-        const model::Move pm2 = prevMove[cap_ply(ply - 2)];
-        if (pm2.from() >= 0 && pm2.to() >= 0 && pm2.to() < 64) {
-          if (auto po2 = board.getPiece(pm2.to())) {
-            hist_update(contHist[1][pidx(po2->type)][pm2.to()][pidx(moverPt)][m.to()], -(M >> 1));
-          }
-        }
+      if (pm2_to >= 0 && pm2_pt >= 0) {
+        hist_update(contHist[1][pm2_pt][pm2_to][pidx(moverPt)][m.to()], -(M >> 1));
       }
-      if (ply >= 3) {
-        const model::Move pm3 = prevMove[cap_ply(ply - 3)];
-        if (pm3.from() >= 0 && pm3.to() >= 0 && pm3.to() < 64) {
-          if (auto po3 = board.getPiece(pm3.to())) {
-            hist_update(contHist[2][pidx(po3->type)][pm3.to()][pidx(moverPt)][m.to()], -(M >> 2));
-          }
-        }
+      if (pm3_to >= 0 && pm3_pt >= 0) {
+        hist_update(contHist[2][pm3_pt][pm3_to][pidx(moverPt)][m.to()], -(M >> 2));
       }
     }
 
@@ -1058,29 +1074,14 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         hist_update(quietHist[pidx(moverPt)][m.to()], +B);
 
         // Continuation History: Bonus
-        if (ply >= 1) {
-          const model::Move pm1 = prevMove[cap_ply(ply - 1)];
-          if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.to() < 64) {
-            if (auto po1 = board.getPiece(pm1.to())) {
-              hist_update(contHist[0][pidx(po1->type)][pm1.to()][pidx(moverPt)][m.to()], +B);
-            }
-          }
+        if (pm1_to >= 0 && pm1_pt >= 0) {
+          hist_update(contHist[0][pm1_pt][pm1_to][pidx(moverPt)][m.to()], +B);
         }
-        if (ply >= 2) {
-          const model::Move pm2 = prevMove[cap_ply(ply - 2)];
-          if (pm2.from() >= 0 && pm2.to() >= 0 && pm2.to() < 64) {
-            if (auto po2 = board.getPiece(pm2.to())) {
-              hist_update(contHist[1][pidx(po2->type)][pm2.to()][pidx(moverPt)][m.to()], +(B >> 1));
-            }
-          }
+        if (pm2_to >= 0 && pm2_pt >= 0) {
+          hist_update(contHist[1][pm2_pt][pm2_to][pidx(moverPt)][m.to()], +(B >> 1));
         }
-        if (ply >= 3) {
-          const model::Move pm3 = prevMove[cap_ply(ply - 3)];
-          if (pm3.from() >= 0 && pm3.to() >= 0 && pm3.to() < 64) {
-            if (auto po3 = board.getPiece(pm3.to())) {
-              hist_update(contHist[2][pidx(po3->type)][pm3.to()][pidx(moverPt)][m.to()], +(B >> 2));
-            }
-          }
+        if (pm3_to >= 0 && pm3_pt >= 0) {
+          hist_update(contHist[2][pm3_pt][pm3_to][pidx(moverPt)][m.to()], +(B >> 2));
         }
 
         if (prevOk) {
@@ -1300,15 +1301,20 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
 
       model::Move ref{};
       const int alpha_before = alpha;
-      bool did_full = (i == 0);
+      // Track last window used (parent POV)
+      int lastLo = -INF, lastHi = INF;
+      bool usedFullWindow = false;
       int s = 0;
 
       if (i == 0) {
         if (!cfg.useAspiration || depth < 3 || is_mate_score(lastScoreGuess)) {
           s = -negamax(child, depth - 1, -beta, -alpha, 1, ref, INF);
+          usedFullWindow = true;
         } else {
           int w = std::max(12, cfg.aspirationWindow);
           int low = lastScoreGuess - w, high = lastScoreGuess + w;
+          lastLo = low;
+          lastHi = high;
           for (int tries = 0; tries < 3; ++tries) {
             s = -negamax(child, depth - 1, -high, -low, 1, ref, INF);
             s = std::clamp(s, -MATE + 1, MATE - 1);
@@ -1321,35 +1327,45 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
             else
               break;
             if (is_mate_score(s)) break;
+            lastLo = low;
+            lastHi = high;
           }
           if (!(s > lastScoreGuess - std::max(12, cfg.aspirationWindow) &&
                 s < lastScoreGuess + std::max(12, cfg.aspirationWindow))) {
             s = -negamax(child, depth - 1, -beta, -alpha, 1, ref, INF);
+            usedFullWindow = true;
           }
         }
       } else {
         // PVS zero-window
+        lastLo = alpha_before;
+        lastHi = alpha_before + 1;
         s = -negamax(child, depth - 1, -(alpha + 1), -alpha, 1, ref, INF);
         if (s > alpha && s < beta) {
           s = -negamax(child, depth - 1, -beta, -alpha, 1, ref, INF);
-          did_full = true;
+          usedFullWindow = true;
         }
       }
 
       s = std::clamp(s, -MATE + 1, MATE - 1);
 
-      // Classify bound relative to *the window we used*.
-      model::Bound bRep = did_full
-                              ? model::Bound::Exact
-                              : (s <= alpha_before ? model::Bound::Upper : model::Bound::Lower);
+      model::Bound bRep;
+      if (usedFullWindow) {
+        bRep = model::Bound::Exact;
+      } else {
+        // classify vs last window we actually used (parent POV)
+        if (s <= lastLo)
+          bRep = model::Bound::Upper;
+        else if (s >= lastHi)
+          bRep = model::Bound::Lower;
+        else
+          bRep = model::Bound::Exact;
+      }
 
-      // NOTE: The previous version mixed in TT/staticEval to derive a "shown" score and then used
-      // it for ordering, which could scramble bestmove ordering. We keep ordering by the true
-      // searched score. displayScore stays equal to searchScore for clarity.
-      const int searchScore = s;
-      const int displayScore = s;
+      const int searchScore = s;  // Root POV; already clamped above.
 
-      rootScores.push_back(RootLine{m, searchScore, displayScore, bRep, /*ordIdx=*/i});
+      rootScores.push_back(
+          RootLine{m, searchScore, /*displayScore*/ searchScore, bRep, /*ordIdx=*/i});
 
       if (s > bestScore) {
         bestScore = s;
@@ -1401,8 +1417,7 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
       stats.topMoves.clear();
       for (int i = 0; i < k; ++i) {
         stats.topMoves.push_back(
-            {rootScores[i].m, std::clamp(rootScores[i].displayScore, -MATE + 1, MATE - 1)});
-        // If your UI shows bounds, you could attach rootScores[i].bound alongside.
+            {rootScores[i].m, std::clamp(rootScores[i].searchScore, -MATE + 1, MATE - 1)});
       }
     }
 
