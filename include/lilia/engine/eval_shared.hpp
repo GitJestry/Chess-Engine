@@ -188,7 +188,9 @@ constexpr int SPACE_MINOR_SATURATION = 4;
 // =============================================================================
 // Entwicklung & Blockaden
 // =============================================================================
-constexpr int DEVELOPMENT_PIECE_ON_HOME_PENALTY = 14;
+constexpr int DEVELOPMENT_PIECE_ON_HOME_PENALTY = 12;
+constexpr int DEVELOPMENT_ROOK_ON_HOME_PENALTY = 8;
+constexpr int DEVELOPMENT_QUEEN_ON_HOME_PENALTY = 10;
 constexpr int DEV_MG_PHASE_CUTOFF = 12;
 constexpr int DEV_MG_PHASE_DEN = 12;
 constexpr int DEV_EG_DEN = 8;
