@@ -729,22 +729,20 @@ static int king_shelter_storm(const std::array<Bitboard, 6>& W, const std::array
         int dist = clampi(kRank - nearOwnR, 0, 7);
         total += SHELTER[dist];
 
-        // squares ahead of black king (r+1..7) for enemy storm
+        // enemy pawn storm in front of black king (r-1..0)
         Bitboard em = 0;
-        for (int r = kRank + 1; r < 8; ++r) em |= sq_bb((Square)((r << 3) | ff));
-        // nearest enemy pawn ahead (toward rank increasing) -> LSB
-        int nearEnemySq = lsb_i(em & wp);
-        int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : 8);
-        int edist = clampi(nearEnemyR - kRank, 0, 7);
+        for (int r = kRank - 1; r >= 0; --r) em |= sq_bb((Square)((r << 3) | ff));
+        // nearest enemy pawn ahead (toward rank decreasing) -> MSB
+        int nearEnemySq = msb_i(em & wp);
+        int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : -1);
+        int edist = clampi(kRank - nearEnemyR, 0, 7);
         total -= STORM[edist] / 2;
       }
     }
     return total;
   };
 
-  int sc = 0;
-  sc += fileShelter(bK, false);
-  sc -= fileShelter(wK, true);
+  int sc = fileShelter(wK, true) - fileShelter(bK, false);
   return sc / 2;
 }
 
