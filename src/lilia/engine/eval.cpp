@@ -1220,7 +1220,27 @@ static int development(const std::array<Bitboard, 6>& W, const std::array<Bitboa
       sq_bb(Square(57)) | sq_bb(Square(62)) | sq_bb(Square(58)) | sq_bb(Square(61));
   int dW = popcnt(wMin & wInit);
   int dB = popcnt(bMin & bInit);
-  return (dB - dW) * DEVELOPMENT_PIECE_ON_HOME_PENALTY;
+  int score = (dB - dW) * DEVELOPMENT_PIECE_ON_HOME_PENALTY;
+
+  Bitboard wRook = W[3];
+  Bitboard bRook = B[3];
+  static constexpr Bitboard wRInit =
+      sq_bb(Square(0)) | sq_bb(Square(7));
+  static constexpr Bitboard bRInit =
+      sq_bb(Square(56)) | sq_bb(Square(63));
+  int rW = popcnt(wRook & wRInit);
+  int rB = popcnt(bRook & bRInit);
+  score += (rB - rW) * DEVELOPMENT_ROOK_ON_HOME_PENALTY;
+
+  Bitboard wQueen = W[4];
+  Bitboard bQueen = B[4];
+  static constexpr Bitboard wQInit = sq_bb(Square(3));
+  static constexpr Bitboard bQInit = sq_bb(Square(59));
+  int qW = popcnt(wQueen & wQInit);
+  int qB = popcnt(bQueen & bQInit);
+  score += (qB - qW) * DEVELOPMENT_QUEEN_ON_HOME_PENALTY;
+
+  return score;
 }
 
 static int piece_blocking(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
