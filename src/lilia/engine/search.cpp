@@ -19,6 +19,7 @@
 #include "lilia/engine/move_buffer.hpp"
 #include "lilia/engine/move_list.hpp"
 #include "lilia/engine/move_order.hpp"
+#include "lilia/engine/lmr_red.hpp"
 #include "lilia/engine/thread_pool.hpp"
 #include "lilia/model/core/bitboard.hpp"
 #include "lilia/model/core/magic.hpp"
@@ -995,10 +996,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     } else {
       if (cfg.useLMR && isQuiet && !tacticalQuiet && !inCheck && !givesCheck && newDepth >= 2 &&
           moveCount >= 3) {
-        const int ld = ilog2_u32((unsigned)depth);
-        const int lm = ilog2_u32((unsigned)(moveCount + 1));
-        int r = (ld * (lm + 1)) / 2;  // stronger than /3
-        if (isQuietHeavy) r = std::max(0, r - 1);
+        int r = lmr_red(std::min(depth, LMR_MAX_D), std::min(moveCount, LMR_MAX_M));
+        if (isQuietHeavy) --r;
 
         const int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
         int ch = 0;
@@ -1010,16 +1009,16 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
           }
         }
 
-        if (h > 8000) r -= 1;
-        if (ch > 8000) r -= 1;
+        if (h > 8000) --r;
+        if (ch > 8000) --r;
 
-        if (m == killers[kply][0] || m == killers[kply][1]) r -= 1;
-        if (haveTT && m == ttMove) r -= 1;
+        if (m == killers[kply][0] || m == killers[kply][1]) --r;
+        if (haveTT && m == ttMove) --r;
 
-        if (ply <= 2) r -= 1;
-        if (beta - alpha <= 8) r -= 1;
+        if (ply <= 2) --r;
+        if (beta - alpha <= 8) --r;
 
-        if (!improving) r += 1;
+        if (!improving) ++r;
 
         if (r < 0) r = 0;
         int rCap = (newDepth >= 5 ? 3 : 2);
