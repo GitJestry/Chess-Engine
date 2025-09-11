@@ -128,7 +128,8 @@ inline int pidx(core::PieceType pt) {
     case PT::King:
       return 5;
     default:
-      return 6;
+      assert(false && "pidx: unexpected PieceType");
+      return 0;  // safe fallback
   }
 }
 
@@ -346,7 +347,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   const uint64_t parentKey = pos.hash();
   const int alphaOrig = alpha, betaOrig = beta;
 
-  model::Move bestMoveQ{};  // track best move we actually play in qsearch
+  model::Move bestMoveQ{};
 
   // QTT probe (depth == 0)
   {
@@ -365,7 +366,13 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   if (inCheck) {
     // only evasions
     int n = gen_evasions(mg, pos, genArr_[kply], engine::MAX_MOVES);
-    if (n <= 0) return mated_in(ply);
+    if (n <= 0) {
+      const int ms = mated_in(ply);
+      if (!(stopFlag && stopFlag->load()))
+        tt.store(parentKey, encode_tt_score(ms, kply), 0, model::Bound::Exact, model::Move{},
+                 std::numeric_limits<int16_t>::min());
+      return ms;
+    }
 
     constexpr int MAXM = engine::MAX_MOVES;
     int scores[MAXM];
@@ -406,7 +413,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       if (score >= beta) {
         if (!(stopFlag && stopFlag->load()))
           tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower, m,
-                   std::numeric_limits<int16_t>::min());  // in-check: SE unset
+                   std::numeric_limits<int16_t>::min());
         return beta;
       }
       if (score > best) {
@@ -420,7 +427,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       const int ms = mated_in(ply);
       if (!(stopFlag && stopFlag->load()))
         tt.store(parentKey, encode_tt_score(ms, kply), 0, model::Bound::Exact, model::Move{},
-                 std::numeric_limits<int16_t>::min());  // in-check: SE unset
+                 std::numeric_limits<int16_t>::min());
       return ms;
     }
 
@@ -431,12 +438,12 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       else if (best >= betaOrig)
         b = model::Bound::Lower;
       tt.store(parentKey, encode_tt_score(best, kply), 0, b, bestMoveQ,
-               std::numeric_limits<int16_t>::min());  // in-check: SE unset
+               std::numeric_limits<int16_t>::min());
     }
     return best;
   }
 
-  // not in check: compute stand-pat
+  // not in check: stand pat
   const int stand = signed_eval(pos);
   if (stand >= beta) {
     if (!(stopFlag && stopFlag->load()))
@@ -453,7 +460,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     qn += mg.generateNonCapturePromotions(pos.getBoard(), pos.getState(), buf);
   }
 
-  // order captures
+  // order
   constexpr int MAXM = engine::MAX_MOVES;
   int qs[MAXM];
   model::Move qord[MAXM];
@@ -494,24 +501,23 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       }
     }
 
-    // --- safer delta pruning with correct check detection ---
+    // would-give-check test (precise, incl. EP occupancy)
     bool wouldGiveCheck = false;
-
     {
       const auto& board = pos.getBoard();
       const auto us = pos.getState().sideToMove;
       const auto kBB = board.getPieces(~us, core::PieceType::King);
       auto mover = board.getPiece(m.from());
 
-      // Be conservative on promotions and en passant: don't delta-prune
-      if (isPromo || m.isEnPassant()) {
-        wouldGiveCheck = true;
-      } else if (mover) {
-        // Reconstruct occupancy after the move: remove from, add to
+      if (mover) {
         const auto occ0 = board.getAllPieces();
         const auto fromBB = model::bb::sq_bb(m.from());
         const auto toBB = model::bb::sq_bb(m.to());
-        const auto occ1 = (occ0 & ~fromBB) | toBB;
+        auto occ1 = (occ0 & ~fromBB) | toBB;
+        if (m.isEnPassant()) {
+          int epCapSq = (us == core::Color::White) ? m.to() - 8 : m.to() + 8;
+          occ1 &= ~model::bb::sq_bb(epCapSq);
+        }
 
         using PT = core::PieceType;
         switch (mover->type) {
@@ -551,6 +557,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       }
     }
 
+    // delta pruning (skip if giving check)
     if (!wouldGiveCheck) {
       if (isCap || isPromo) {
         int capVal = 0;
@@ -564,7 +571,6 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
           promoGain =
               std::max(0, base_value[(int)m.promotion()] - base_value[(int)core::PieceType::Pawn]);
         }
-
         const bool quietPromo = isPromo && !isCap;
         if (quietPromo) {
           if (stand + promoGain + DELTA_MARGIN <= alpha) continue;
@@ -604,6 +610,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   }
   return best;
 }
+
 // ---------- Negamax ----------
 
 int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int ply,
@@ -632,7 +639,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   model::Move ttMove{};
   bool haveTT = false;
   int ttVal = 0;
-  model::Bound ttBound = model::Bound::Upper;  // track for SE
+  model::Bound ttBound = model::Bound::Upper;  // for SE trust
   int ttStoredDepth = -1;
   int16_t ttSE = std::numeric_limits<int16_t>::min();
 
@@ -653,8 +660,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   }
 
   // Compute staticEval (prefer TT's cached one when not in check)
-  const int staticEval =
-      inCheck ? 0 : (ttSE != std::numeric_limits<int16_t>::min() ? (int)ttSE : signed_eval(pos));
+  constexpr int16_t SE_UNSET = std::numeric_limits<int16_t>::min();
+  const int staticEval = inCheck ? 0 : (ttSE != SE_UNSET ? (int)ttSE : signed_eval(pos));
 
   // ---- "improving" ----
   const bool improving =
@@ -669,27 +676,52 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   };
   const int nonP = countSide(core::Color::White) + countSide(core::Color::Black);
 
-  // SNMP
-  if (!inCheck && !isPV && depth <= 3) {
-    if (nonP >= 6) {
-      int mar = SNMP_MARGINS[depth] + (improving ? 32 : 0);
-      if (staticEval - mar >= beta) return staticEval;
+  // --- Stronger Razoring (D1 + D2), non-PV, not in check ---
+  if (!inCheck && !isPV && depth <= 2) {
+    // tuned-safe margins (stronger than previous)
+    const int RAZOR_D1 = 256 + (improving ? 64 : 0);
+    const int RAZOR_D2 = 480 + (improving ? 64 : 0);
+
+    if (depth == 1) {
+      if (staticEval + RAZOR_D1 <= alpha) {
+        int q = quiescence(pos, alpha - 1, alpha, ply);
+        if (q <= alpha) return q;
+      }
+    } else {  // depth == 2
+      if (staticEval + RAZOR_D2 <= alpha) {
+        int q = quiescence(pos, alpha - 1, alpha, ply);
+        if (q <= alpha) return q;
+      }
     }
   }
 
-  // Razoring D1
-  if (!inCheck && !isPV && depth == 1) {
-    int razorMargin = RAZOR_MARGIN_BASE + (improving ? 40 : 0);
-    if (staticEval + razorMargin <= alpha) {
-      int q = quiescence(pos, alpha - 1, alpha, ply);
-      if (q <= alpha) return q;
-    }
-  }
-
-  // Reverse futility D1
+  // Reverse futility D1 (keep)
   if (!inCheck && !isPV && depth == 1) {
     int margin = RFP_MARGIN_BASE + (improving ? 40 : 0);
     if (staticEval - margin >= beta) return staticEval;
+  }
+
+  // Internal Iterative Deepening (IID) for better ordering
+  // Trigger when no good TT move at this depth, not in check, depth is big enough.
+  if (!inCheck && depth >= 5 && (!haveTT || ttStoredDepth < depth - 2)) {
+    // shallower probe; a touch deeper in PV
+    int iidDepth = depth - 2 - (isPV ? 0 : 1);
+    if (iidDepth < 1) iidDepth = 1;
+
+    model::Move iidBest{};
+    // narrow-ish window in non-PV to cut; full in PV
+    int iidAlpha = isPV ? alpha : std::max(alpha, staticEval - 32);
+    int iidBeta = isPV ? beta : (iidAlpha + 1);
+
+    (void)negamax(pos, iidDepth, iidAlpha, iidBeta, ply, iidBest, staticEval);
+    // re-probe TT to harvest best for ordering
+    if (model::TTEntry5 tte2{}; tt.probe_into(pos.hash(), tte2)) {
+      ttMove = tte2.best;
+      haveTT = true;
+      ttVal = decode_tt_score(tte2.value, cap_ply(ply));
+      ttBound = tte2.bound;
+      ttStoredDepth = (int)tte2.depth;
+    }
   }
 
   // Null move pruning (adaptive)
@@ -698,7 +730,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   if (cfg.useNullMove && depth >= 3 && !inCheck && !isPV && !sparse && !prevWasCapture) {
     const int evalGap = staticEval - beta;
-    int rBase = 2 + (depth >= 8 ? 1 : 0);  // 2..3
+    int rBase = 2 + (depth >= 8 ? 1 : 0);
     if (evalGap > 200) rBase++;
     if (evalGap > 500) rBase++;
     if (!improving) rBase++;
@@ -790,9 +822,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       const int piece_sig = quiet_piece_threat_signal(board, m, us);
       const int sig = pawn_sig > piece_sig ? pawn_sig : piece_sig;
       if (sig == 2)
-        s += 220'000;  // gives check
+        s += 220'000;
       else if (sig == 1)
-        s += 180'000;  // immediate threat
+        s += 180'000;
 
       // Continuation History Contribution (layered)
       int chSum = 0;
@@ -800,31 +832,25 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       if (ply >= 1) {
         const model::Move pm1 = prevMove[cap_ply(ply - 1)];
         if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.to() < 64) {
-          if (auto po1 = board.getPiece(pm1.to())) {
+          if (auto po1 = board.getPiece(pm1.to()))
             chSum += contHist[0][pidx(po1->type)][pm1.to()][pidx(moverPt)][m.to()];
-          }
         }
       }
-
       if (ply >= 2) {
         const model::Move pm2 = prevMove[cap_ply(ply - 2)];
         if (pm2.from() >= 0 && pm2.to() >= 0 && pm2.to() < 64) {
-          if (auto po2 = board.getPiece(pm2.to())) {
+          if (auto po2 = board.getPiece(pm2.to()))
             chSum += contHist[1][pidx(po2->type)][pm2.to()][pidx(moverPt)][m.to()] >> 1;
-          }
         }
       }
-
       if (ply >= 3) {
         const model::Move pm3 = prevMove[cap_ply(ply - 3)];
         if (pm3.from() >= 0 && pm3.to() >= 0 && pm3.to() < 64) {
-          if (auto po3 = board.getPiece(pm3.to())) {
+          if (auto po3 = board.getPiece(pm3.to()))
             chSum += contHist[2][pidx(po3->type)][pm3.to()][pidx(moverPt)][m.to()] >> 2;
-          }
         }
       }
-
-      s += (chSum >> 1);  // dampen so contHist doesn't dominate
+      s += (chSum >> 1);
     }
 
     scores[i] = s;
@@ -834,6 +860,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   const bool allowFutility = !inCheck && !isPV;
   int moveCount = 0;
+  bool searchedAny = false;
 
   for (int idx = 0; idx < n; ++idx) {
     if ((idx & 63) == 0) check_stop(stopFlag);
@@ -843,6 +870,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       ++moveCount;
       continue;
     }
+
     const bool isQuiet = !m.isCapture() && (m.promotion() == core::PieceType::None);
     const auto us = pos.getState().sideToMove;
     const int qp_sig = isQuiet ? quiet_pawn_push_signal(board, m, us) : 0;
@@ -853,11 +881,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
     core::PieceType capPt = core::PieceType::Pawn;
 
-    // quiet "heavy"?
     const bool isQuietHeavy =
         isQuiet && (moverPt == core::PieceType::Queen || moverPt == core::PieceType::Rook);
 
-    // tactical quiet?
     const bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0);
 
     if (m.isEnPassant())
@@ -932,7 +958,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
       if (victimVal < attackerVal) {
         if (!inCheck && ply > 0 && depth <= 5) {
-          // shallow & not in check: prune dodgy captures
           if (!pos.see(m)) {
             ++moveCount;
             continue;
@@ -970,7 +995,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // --- Snapshot parent CH anchors BEFORE making the move ---
     int pm1_to = -1, pm2_to = -1, pm3_to = -1;
-    int pm1_pt = -1, pm2_pt = -1, pm3_pt = -1;  // piece indices via pidx()
+    int pm1_pt = -1, pm2_pt = -1, pm3_pt = -1;
     if (ply >= 1) {
       const model::Move pm1 = prevMove[cap_ply(ply - 1)];
       if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.from() < 64 && pm1.to() < 64) {
@@ -1011,13 +1036,14 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     int value;
     model::Move childBest{};
 
-    // ProbCut (lightly extended)
+    // ProbCut (capture-only)
     if (!isPV && !inCheck && newDepth >= 4 && m.isCapture() && seeGood && mvvBefore >= 500) {
       constexpr int PROBCUT_MARGIN = 224;
       if (staticEval + capValPre + PROBCUT_MARGIN >= beta) {
         const int red = 3;
+        const int pcDepth = std::max(1, newDepth - red);
         const int probe =
-            -negamax(pos, newDepth - red, -beta, -(beta - 1), ply + 1, childBest, staticEval);
+            -negamax(pos, pcDepth, -beta, -(beta - 1), ply + 1, childBest, staticEval);
         if (probe >= beta) return beta;
       }
     }
@@ -1038,7 +1064,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
           moveCount >= 3) {
         const int ld = ilog2_u32((unsigned)depth);
         const int lm = ilog2_u32((unsigned)(moveCount + 1));
-        int r = (ld * (lm + 1)) / 2;  // stronger than /3
+        int r = (ld * (lm + 1)) / 2;
         if (isQuietHeavy) r = std::max(0, r - 1);
 
         const int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
@@ -1053,14 +1079,14 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
         if (h > 8000) r -= 1;
         if (ch > 8000) r -= 1;
-
         if (m == killers[kply][0] || m == killers[kply][1]) r -= 1;
         if (haveTT && m == ttMove) r -= 1;
-
         if (ply <= 2) r -= 1;
         if (beta - alpha <= 8) r -= 1;
-
         if (!improving) r += 1;
+
+        // extra safety: avoid reducing the first 2 quiets at shallow depth
+        if (newDepth <= 2 && moveCount < 2) r = 0;
 
         if (r < 0) r = 0;
         int rCap = (newDepth >= 5 ? 3 : 2);
@@ -1076,6 +1102,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
 
     value = std::clamp(value, -MATE + 1, MATE - 1);
+    searchedAny = true;
 
     // History updates
     if (isQuiet && value <= origAlpha) {
@@ -1084,16 +1111,12 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       hist_update(history[m.from()][m.to()], -M);
       hist_update(quietHist[pidx(moverPt)][m.to()], -M);
 
-      // Continuation History: Malus
-      if (pm1_to >= 0 && pm1_pt >= 0) {
+      if (pm1_to >= 0 && pm1_pt >= 0)
         hist_update(contHist[0][pm1_pt][pm1_to][pidx(moverPt)][m.to()], -M);
-      }
-      if (pm2_to >= 0 && pm2_pt >= 0) {
+      if (pm2_to >= 0 && pm2_pt >= 0)
         hist_update(contHist[1][pm2_pt][pm2_to][pidx(moverPt)][m.to()], -(M >> 1));
-      }
-      if (pm3_to >= 0 && pm3_pt >= 0) {
+      if (pm3_to >= 0 && pm3_pt >= 0)
         hist_update(contHist[2][pm3_pt][pm3_to][pidx(moverPt)][m.to()], -(M >> 2));
-      }
     }
 
     if (value > best) {
@@ -1112,16 +1135,12 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         hist_update(history[m.from()][m.to()], +B);
         hist_update(quietHist[pidx(moverPt)][m.to()], +B);
 
-        // Continuation History: Bonus
-        if (pm1_to >= 0 && pm1_pt >= 0) {
+        if (pm1_to >= 0 && pm1_pt >= 0)
           hist_update(contHist[0][pm1_pt][pm1_to][pidx(moverPt)][m.to()], +B);
-        }
-        if (pm2_to >= 0 && pm2_pt >= 0) {
+        if (pm2_to >= 0 && pm2_pt >= 0)
           hist_update(contHist[1][pm2_pt][pm2_to][pidx(moverPt)][m.to()], +(B >> 1));
-        }
-        if (pm3_to >= 0 && pm3_pt >= 0) {
+        if (pm3_to >= 0 && pm3_pt >= 0)
           hist_update(contHist[2][pm3_pt][pm3_to][pidx(moverPt)][m.to()], +(B >> 2));
-        }
 
         if (prevOk) {
           counterMove[prev.from()][prev.to()] = m;
@@ -1130,10 +1149,28 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       } else {
         hist_update(captureHist[pidx(moverPt)][m.to()][pidx(capPt)], +hist_bonus(depth));
       }
-
       break;
     }
     ++moveCount;
+  }
+
+  // safety: never leave node without searching at least one move (non-check)
+  if (!searchedAny) {
+    for (int idx = 0; idx < n; ++idx) {
+      const model::Move m = ordered[idx];
+      if (excludedMove && m == *excludedMove) continue;
+      MoveUndoGuard g(pos);
+      if (!g.doMove(m)) continue;
+
+      model::Move childBest{};
+      int value = -negamax(pos, depth - 1, -beta, -alpha, ply + 1, childBest, staticEval);
+      value = std::clamp(value, -MATE + 1, MATE - 1);
+
+      best = value;
+      bestLocal = m;
+      if (value > alpha) alpha = value;
+      break;
+    }
   }
 
   if (best == -INF) {
@@ -1142,15 +1179,18 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   }
 
   if (!(stopFlag && stopFlag->load())) {
-    model::Bound b;
+    model::Bound bnd;
     if (best <= origAlpha)
-      b = model::Bound::Upper;
+      bnd = model::Bound::Upper;
     else if (best >= origBeta)
-      b = model::Bound::Lower;
+      bnd = model::Bound::Lower;
     else
-      b = model::Bound::Exact;
-    tt.store(pos.hash(), encode_tt_score(best, cap_ply(ply)), static_cast<int16_t>(depth), b,
-             bestLocal, (int16_t)staticEval);
+      bnd = model::Bound::Exact;
+
+    int16_t storeSE = inCheck ? SE_UNSET : (int16_t)staticEval;
+
+    tt.store(pos.hash(), encode_tt_score(best, cap_ply(ply)), static_cast<int16_t>(depth), bnd,
+             bestLocal, storeSE);
   }
 
   refBest = bestLocal;
@@ -1315,12 +1355,12 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     for (const auto& m : rootMoves) {
       scoredMoves.push_back({m, score_root_move(m, ttMove, haveTT)});
     }
-    std::stable_sort(scoredMoves.begin(), scoredMoves.end(), [](const ScoredRootMove& a,
-                                                                const ScoredRootMove& b) {
-      if (a.score != b.score) return a.score > b.score;
-      if (a.m.from() != b.m.from()) return a.m.from() < b.m.from();
-      return a.m.to() < b.m.to();
-    });
+    std::stable_sort(scoredMoves.begin(), scoredMoves.end(),
+                     [](const ScoredRootMove& a, const ScoredRootMove& b) {
+                       if (a.score != b.score) return a.score > b.score;
+                       if (a.m.from() != b.m.from()) return a.m.from() < b.m.from();
+                       return a.m.to() < b.m.to();
+                     });
     for (std::size_t i = 0; i < scoredMoves.size(); ++i) {
       rootMoves[i] = scoredMoves[i].m;
     }
