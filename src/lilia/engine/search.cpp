@@ -128,7 +128,7 @@ inline int pidx(core::PieceType pt) {
     case PT::King:
       return 5;
     default:
-      return 0;
+      return 6;
   }
 }
 
@@ -494,24 +494,64 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       }
     }
 
-    // safer delta pruning
-    bool maybeCheck = false;
-    if (isPromo) {
-      maybeCheck = true;
-    } else {
-      auto us = pos.getState().sideToMove;
-      const auto toBB = model::bb::sq_bb(m.to());
-      const auto kBB = pos.getBoard().getPieces(~us, core::PieceType::King);
-      if (isCap) {
-        if (us == core::Color::White) {
-          if ((model::bb::ne(toBB) | model::bb::nw(toBB)) & kBB) maybeCheck = true;
-        } else {
-          if ((model::bb::se(toBB) | model::bb::sw(toBB)) & kBB) maybeCheck = true;
+    // --- safer delta pruning with correct check detection ---
+    bool wouldGiveCheck = false;
+
+    {
+      const auto& board = pos.getBoard();
+      const auto us = pos.getState().sideToMove;
+      const auto kBB = board.getPieces(~us, core::PieceType::King);
+      auto mover = board.getPiece(m.from());
+
+      // Be conservative on promotions and en passant: don't delta-prune
+      if (isPromo || m.isEnPassant()) {
+        wouldGiveCheck = true;
+      } else if (mover) {
+        // Reconstruct occupancy after the move: remove from, add to
+        const auto occ0 = board.getAllPieces();
+        const auto fromBB = model::bb::sq_bb(m.from());
+        const auto toBB = model::bb::sq_bb(m.to());
+        const auto occ1 = (occ0 & ~fromBB) | toBB;
+
+        using PT = core::PieceType;
+        switch (mover->type) {
+          case PT::Knight:
+            wouldGiveCheck = (model::bb::knight_attacks_from(m.to()) & kBB) != 0;
+            break;
+          case PT::Bishop:
+            wouldGiveCheck =
+                (model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ1) & kBB) !=
+                0;
+            break;
+          case PT::Rook:
+            wouldGiveCheck =
+                (model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ1) & kBB) !=
+                0;
+            break;
+          case PT::Queen: {
+            auto bAtk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ1);
+            auto rAtk = model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ1);
+            wouldGiveCheck = ((bAtk | rAtk) & kBB) != 0;
+            break;
+          }
+          case PT::King:
+            wouldGiveCheck = (model::bb::king_attacks_from(m.to()) & kBB) != 0;
+            break;
+          case PT::Pawn: {
+            const auto to = model::bb::sq_bb(m.to());
+            if (us == core::Color::White)
+              wouldGiveCheck = ((model::bb::ne(to) | model::bb::nw(to)) & kBB) != 0;
+            else
+              wouldGiveCheck = ((model::bb::se(to) | model::bb::sw(to)) & kBB) != 0;
+            break;
+          }
+          default:
+            break;
         }
       }
     }
 
-    if (!maybeCheck) {
+    if (!wouldGiveCheck) {
       if (isCap || isPromo) {
         int capVal = 0;
         if (m.isEnPassant())
@@ -520,9 +560,10 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
           if (auto cap = pos.getBoard().getPiece(m.to())) capVal = base_value[(int)cap->type];
         }
         int promoGain = 0;
-        if (isPromo)
+        if (isPromo) {
           promoGain =
               std::max(0, base_value[(int)m.promotion()] - base_value[(int)core::PieceType::Pawn]);
+        }
 
         const bool quietPromo = isPromo && !isCap;
         if (quietPromo) {
