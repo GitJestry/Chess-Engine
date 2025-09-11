@@ -1273,6 +1273,11 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     return s;
   };
 
+  struct ScoredRootMove {
+    model::Move m{};
+    int score = 0;
+  };
+
   struct RootLine {
     model::Move m{};
     int score = -INF;  // exact score if searched full window, otherwise current bound
@@ -1305,14 +1310,20 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     }
 
     // order root moves (stable)
-    std::stable_sort(rootMoves.begin(), rootMoves.end(),
-                     [&](const model::Move& a, const model::Move& b) {
-                       const int sa = score_root_move(a, ttMove, haveTT);
-                       const int sb = score_root_move(b, ttMove, haveTT);
-                       if (sa != sb) return sa > sb;
-                       if (a.from() != b.from()) return a.from() < b.from();
-                       return a.to() < b.to();
-                     });
+    std::vector<ScoredRootMove> scoredMoves;
+    scoredMoves.reserve(rootMoves.size());
+    for (const auto& m : rootMoves) {
+      scoredMoves.push_back({m, score_root_move(m, ttMove, haveTT)});
+    }
+    std::stable_sort(scoredMoves.begin(), scoredMoves.end(), [](const ScoredRootMove& a,
+                                                                const ScoredRootMove& b) {
+      if (a.score != b.score) return a.score > b.score;
+      if (a.m.from() != b.m.from()) return a.m.from() < b.m.from();
+      return a.m.to() < b.m.to();
+    });
+    for (std::size_t i = 0; i < scoredMoves.size(); ++i) {
+      rootMoves[i] = scoredMoves[i].m;
+    }
 
     // push previous best to front for stability
     if (prevBest.from() != prevBest.to()) {
