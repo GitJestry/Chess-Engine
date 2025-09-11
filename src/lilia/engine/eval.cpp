@@ -912,11 +912,11 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
       f &= f - 1;
       s += behind(rs, ps, false, ROOK_BEHIND_PASSER_HALF, ROOK_BEHIND_PASSER_THIRD);
     }
-    }
-    t = br;
-    while (t) {
-      int rs = lsb_i(t);
-      t &= t - 1;
+  }
+  t = br;
+  while (t) {
+    int rs = lsb_i(t);
+    t &= t - 1;
     Bitboard f = M.file[rs] & bPass;
     while (f) {
       int ps = lsb_i(f);
@@ -928,30 +928,29 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
       int ps = lsb_i(f);
       f &= f - 1;
       s -= behind(rs, ps, true, ROOK_BEHIND_PASSER_HALF, ROOK_BEHIND_PASSER_THIRD);
-      }
     }
+  }
 
-    Bitboard centralFiles = M.file[2] | M.file[3] | M.file[4] | M.file[5];
-    auto central_file_bonus = [&](Bitboard rooks, bool white) {
-      int sc = 0;
-      Bitboard tt = rooks;
-      while (tt) {
-        int sq = lsb_i(tt);
-        tt &= tt - 1;
-        Bitboard attacks =
-            magic::sliding_attacks(magic::Slider::Rook, (Square)sq, occ);
-        if (centralFiles & (sq_bb((Square)sq) | attacks)) sc += ROOK_CENTRAL_FILE;
-      }
-      return white ? sc : -sc;
-    };
-    s += central_file_bonus(wr, true);
-    s += central_file_bonus(br, false);
+  Bitboard centralFiles = M.file[2] | M.file[3] | M.file[4] | M.file[5];
+  auto central_file_bonus = [&](Bitboard rooks, bool white) {
+    int sc = 0;
+    Bitboard tt = rooks;
+    while (tt) {
+      int sq = lsb_i(tt);
+      tt &= tt - 1;
+      Bitboard attacks = magic::sliding_attacks(magic::Slider::Rook, (Square)sq, occ);
+      if (centralFiles & (sq_bb((Square)sq) | attacks)) sc += ROOK_CENTRAL_FILE;
+    }
+    return white ? sc : -sc;
+  };
+  s += central_file_bonus(wr, true);
+  s += central_file_bonus(br, false);
 
-    if (wK >= 0) {
-      Bitboard f = M.file[wK];
-      bool own = f & wp;
-      bool opp = f & bp;
-      if (!own && opp) s += ROOK_SEMI_ON_KING_FILE;
+  if (wK >= 0) {
+    Bitboard f = M.file[wK];
+    bool own = f & wp;
+    bool opp = f & bp;
+    if (!own && opp) s += ROOK_SEMI_ON_KING_FILE;
     if (!own && !opp) s += ROOK_OPEN_ON_KING_FILE;
   }
   if (bK >= 0) {
@@ -1238,10 +1237,8 @@ static int development(const std::array<Bitboard, 6>& W, const std::array<Bitboa
 
   Bitboard wRook = W[3];
   Bitboard bRook = B[3];
-  static constexpr Bitboard wRInit =
-      sq_bb(Square(0)) | sq_bb(Square(7));
-  static constexpr Bitboard bRInit =
-      sq_bb(Square(56)) | sq_bb(Square(63));
+  static constexpr Bitboard wRInit = sq_bb(Square(0)) | sq_bb(Square(7));
+  static constexpr Bitboard bRInit = sq_bb(Square(56)) | sq_bb(Square(63));
   int rW = popcnt(wRook & wRInit);
   int rB = popcnt(bRook & bRInit);
   score += (rB - rW) * DEVELOPMENT_ROOK_ON_HOME_PENALTY;

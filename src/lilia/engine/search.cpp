@@ -484,6 +484,12 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     const bool isPromo = (m.promotion() != core::PieceType::None);
     const int mvv = (isCap || isPromo) ? mvv_lva_fast(pos, m) : 0;
 
+    // --- 3) stricter low-MVV negative-SEE prune ---
+    if (isCap && !isPromo && mvv < 400) {
+      // If SEE says it's bad, don't even consider it (unless it's a check later).
+      if (!pos.see(m)) continue;
+    }
+
     // SEE once if needed
     bool seeOk = true;
     if (isCap && !isPromo) {
@@ -713,6 +719,21 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (staticEval - margin >= beta) return staticEval;
   }
 
+  // --- Static Null-Move Pruning (non-PV, not in check, shallow) ---
+  if (!inCheck && !isPV && depth <= 3) {
+    const int d = std::max(1, std::min(3, depth));
+    const int margin = SNMP_MARGINS[d];  // e.g. {0,140,200,260}
+    if (staticEval - margin >= beta) {
+      // Cheap cutoff – this saves a lot of leaf work with basically no tactical risk.
+      if (!(stopFlag && stopFlag->load())) {
+        tt.store(pos.hash(), encode_tt_score(staticEval, cap_ply(ply)), static_cast<int16_t>(depth),
+                 model::Bound::Lower, /*best*/ model::Move{},
+                 inCheck ? std::numeric_limits<int16_t>::min() : (int16_t)staticEval);
+      }
+      return staticEval;
+    }
+  }
+
   // Internal Iterative Deepening (IID) for better ordering
   // Trigger when no good TT move at this depth, not in check, depth is big enough.
   if (!inCheck && depth >= 5 && (!haveTT || ttStoredDepth < depth - 2)) {
@@ -838,6 +859,11 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       else if (sig == 1)
         s += 180'000;
 
+      // tiny malus for non-tactical heavy piece shuffles
+      if ((moverPt == core::PieceType::Queen || moverPt == core::PieceType::Rook) && (sig == 0)) {
+        s -= 6000;
+      }
+
       // Continuation History Contribution (layered)
       int chSum = 0;
 
@@ -932,6 +958,14 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
 
+    // Extra move-count-based pruning for very late quiets
+    if (!inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet) {
+      if (moveCount >= 16 + 4 * depth) {  // after many tries, bail
+        ++moveCount;
+        continue;
+      }
+    }
+
     // Extended futility (depth<=3, quiets)
     if (allowFutility && isQuiet && depth <= 3 && !tacticalQuiet && !isQuietHeavy) {
       int fut = FUT_MARGIN[depth] + (history[m.from()][m.to()] < -8000 ? 32 : 0);
@@ -992,7 +1026,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
           (ttBound != model::Bound::Upper) && (ttStoredDepth >= depth - 2) && (ttVal > alpha + 8);
       if (ttGood && !is_mate_score(ttVal)) {
         const int R = (depth >= 8 ? 3 : 2);
-        const int margin = 50 + 2 * depth;
+        const int margin = 64 + 2 * depth;  // was 50 + 2*depth; bump a bit
         const int singBeta = ttVal - margin;
 
         if (singBeta > -MATE + 64) {
@@ -1166,6 +1200,30 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     ++moveCount;
   }
 
+  // --- 5) Early ProbCut pass (cheap capture-only skim) ---
+  if (!isPV && !inCheck && depth >= 6) {
+    constexpr int PC_MARGIN = 192;         // a bit lighter than in-node 224
+    const int MAX_SCAN = std::min(n, 12);  // don't scan too many
+
+    for (int idx = 0; idx < MAX_SCAN; ++idx) {
+      const model::Move m = ordered[idx];
+      if (!m.isCapture()) continue;
+      if (mvv_lva_fast(pos, m) < 500) continue;  // need a meaningful tactical swing
+
+      MoveUndoGuard pcg(pos);
+      if (!pcg.doMove(m)) continue;
+
+      if (signed_eval(pos) + PC_MARGIN >= beta) {
+        model::Move tmp{};
+        const int probe = -negamax(pos, depth - 3, -beta, -(beta - 1), ply + 1, tmp, INF);
+        pcg.rollback();
+        if (probe >= beta) return beta;
+      } else {
+        pcg.rollback();
+      }
+    }
+  }
+
   // safety: never leave node without searching at least one move (non-check)
   if (!searchedAny) {
     for (int idx = 0; idx < n; ++idx) {
@@ -1277,6 +1335,18 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     return score;
   }
 
+  auto bound_rank = [](model::Bound b) {
+    switch (b) {
+      case model::Bound::Exact:
+        return 2;
+      case model::Bound::Lower:
+        return 1;
+      case model::Bound::Upper:
+        return 0;
+    }
+    return 0;
+  };
+
   auto score_root_move = [&](const model::Move& m, const model::Move& ttMove, bool haveTT) {
     int s = 0;
     if (haveTT && m == ttMove) s += 2'500'000;
@@ -1307,13 +1377,13 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
 
   struct RootLine {
     model::Move m{};
-    int score = -INF;  // score in current window
+    int score = -INF;  // exact if full-rescored, else bound
     model::Bound bound = model::Bound::Upper;
-    int ordIdx = 0;          // stable index
-    bool exactFull = false;  // did we compute an exact full-window score later?
+    int ordIdx = 0;  // stable order index
+    bool exactFull = false;
   };
 
-  // --- aspiration seed ---
+  // aspiration seed
   int lastScore = 0;
   if (cfg.useAspiration) {
     model::TTEntry5 tte{};
@@ -1324,11 +1394,11 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
   const int maxD = std::max(1, maxDepth);
 
   for (int depth = 1; depth <= maxD; ++depth) {
-    if (stop && stop->load()) break;
+    if (stop && stop->load(std::memory_order_relaxed)) break;
 
     if (depth > 1) decay_tables(*this, /*shift=*/6);
 
-    // TT move for soft ordering (helpers may touch TT, so never trust blindly)
+    // TT move only as soft hint
     model::Move ttMove{};
     bool haveTT = false;
     if (model::TTEntry5 tte{}; tt.probe_into(pos.hash(), tte)) {
@@ -1369,9 +1439,8 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     int bestScore = -INF;
     model::Move bestMove{};
 
-    // widen until we succeed
     while (true) {
-      if (stop && stop->load()) break;
+      if (stop && stop->load(std::memory_order_relaxed)) break;
 
       int alpha = alphaTarget, beta = betaTarget;
       std::vector<RootLine> lines;
@@ -1379,26 +1448,25 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
 
       int moveIdx = 0;
       for (const auto& m : rootMoves) {
-        if (stop && stop->load()) break;
+        if (stop && stop->load(std::memory_order_relaxed)) break;
 
-        model::Position child = pos;
-        if (!child.doMove(m)) {
+        MoveUndoGuard rg(pos);
+        if (!rg.doMove(m)) {
           ++moveIdx;
           continue;
         }
-        tt.prefetch(child.hash());
+        tt.prefetch(pos.hash());
 
         model::Move childBest{};
         int s;
 
         if (moveIdx == 0) {
-          // First move: full window (PVS root)
-          s = -negamax(child, depth - 1, -beta, -alpha, 1, childBest, INF);
+          // full window for first (PVS root)
+          s = -negamax(pos, depth - 1, -beta, -alpha, 1, childBest, INF);
         } else {
-          // ---- Root Move Reductions (RMR) + PVS ----
+          // Root Move Reductions (light) + PVS
           int r = 0;
           if (depth >= 6) {
-            // light, SF-like heuristic: reduce deeper and later moves a bit
             int hist = history[m.from()][m.to()];
             r = 1;
             if (depth >= 10) r++;
@@ -1409,19 +1477,16 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           }
 
           if (r > 0) {
-            // reduced zero-window try
-            s = -negamax(child, (depth - 1) - r, -(alpha + 1), -alpha, 1, childBest, INF);
-            // if it looks promising, re-search at full depth/window
+            s = -negamax(pos, (depth - 1) - r, -(alpha + 1), -alpha, 1, childBest, INF);
             if (s > alpha) {
-              s = -negamax(child, depth - 1, -(alpha + 1), -alpha, 1, childBest, INF);
+              s = -negamax(pos, depth - 1, -(alpha + 1), -alpha, 1, childBest, INF);
               if (s > alpha && s < beta)
-                s = -negamax(child, depth - 1, -beta, -alpha, 1, childBest, INF);
+                s = -negamax(pos, depth - 1, -beta, -alpha, 1, childBest, INF);
             }
           } else {
-            // standard PVS zero-window; re-search on fail-high
-            s = -negamax(child, depth - 1, -(alpha + 1), -alpha, 1, childBest, INF);
+            s = -negamax(pos, depth - 1, -(alpha + 1), -alpha, 1, childBest, INF);
             if (s > alpha && s < beta)
-              s = -negamax(child, depth - 1, -beta, -alpha, 1, childBest, INF);
+              s = -negamax(pos, depth - 1, -beta, -alpha, 1, childBest, INF);
           }
         }
 
@@ -1433,48 +1498,46 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           b = model::Bound::Lower;
 
         lines.push_back(RootLine{m, s, b, moveIdx, /*exactFull*/ false});
+
         if (s > bestScore) {
           bestScore = s;
           bestMove = m;
         }
         if (s > alpha) alpha = s;
 
+        rg.rollback();
         ++moveIdx;
         if (alpha >= beta) break;
       }
 
-      // success if bestScore is strictly inside current window
+      // success if inside window
       if (bestScore > alphaTarget && bestScore < betaTarget) {
-        // --- Finalization for this depth ---
-
-        // Re-score the top few candidates with a full window to display exact numbers.
-        // Always include the current winner first.
-        const int RESCORE_TOP = std::min<int>(5, (int)lines.size());
-
+        // --- full-window rescore for display & robustness ---
         auto full_rescore = [&](RootLine& rl) {
-          model::Position tmp = pos;
-          if (!tmp.doMove(rl.m)) return;
+          MoveUndoGuard rg(pos);
+          if (!rg.doMove(rl.m)) return;
           model::Move dummy{};
-          int exact = -negamax(tmp, depth - 1, -INF + 1, INF - 1, 1, dummy, INF);
+          int exact = -negamax(pos, depth - 1, -INF + 1, INF - 1, 1, dummy, INF);
           rl.score = std::clamp(exact, -MATE + 1, MATE - 1);
           rl.bound = model::Bound::Exact;
           rl.exactFull = true;
+          rg.rollback();
         };
 
-        // rescore the winner first
+        // rescore the winner
         for (auto& rl : lines)
           if (rl.m == bestMove) {
             full_rescore(rl);
             break;
           }
 
-        // rescore the rest of top N (skip the already rescored winner)
-        // sort by current (bound) score desc, then ordIdx
+        // rescore top few others by current bound score
         std::stable_sort(lines.begin(), lines.end(), [](const RootLine& a, const RootLine& b) {
           if (a.score != b.score) return a.score > b.score;
           return a.ordIdx < b.ordIdx;
         });
         int rescored = 0;
+        const int RESCORE_TOP = std::min<int>(5, (int)lines.size());
         for (auto& rl : lines) {
           if (rescored >= RESCORE_TOP) break;
           if (rl.m == bestMove) continue;
@@ -1482,10 +1545,10 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           ++rescored;
         }
 
-        // pick the true best among rescored (winner stays best if tie)
+        // pick final best (exact first, then score, then ordIdx)
         std::stable_sort(lines.begin(), lines.end(), [](const RootLine& a, const RootLine& b) {
           const bool ax = a.bound == model::Bound::Exact, bx = b.bound == model::Bound::Exact;
-          if (ax != bx) return ax;  // exact first
+          if (ax != bx) return ax;
           if (a.score != b.score) return a.score > b.score;
           return a.ordIdx < b.ordIdx;
         });
@@ -1511,31 +1574,23 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           }
         }
 
-        // Build exact-only topMoves, best first
+        // build exact-only topMoves (best first)
         stats.topMoves.clear();
         stats.topMoves.push_back({finalBest, finalScore});
         for (const auto& rl : lines) {
           if ((int)stats.topMoves.size() >= 5) break;
           if (rl.m == finalBest) continue;
-          // Ensure exact score
-          if (rl.bound != model::Bound::Exact) {
-            RootLine copy = rl;
-            full_rescore(copy);
-            if (copy.bound != model::Bound::Exact) continue;
-            stats.topMoves.push_back({copy.m, copy.score});
-          } else {
-            stats.topMoves.push_back({rl.m, rl.score});
-          }
+          if (rl.bound == model::Bound::Exact) stats.topMoves.push_back({rl.m, rl.score});
         }
         if (stats.topMoves.size() > 1) {
           std::stable_sort(stats.topMoves.begin() + 1, stats.topMoves.end(),
                            [](const auto& a, const auto& b) { return a.second > b.second; });
         }
 
-        break;  // depth finished
+        break;  // depth done
       }
 
-      // widen the window
+      // widen window
       if (bestScore <= alphaTarget) {
         int step = std::max(32, window);
         alphaTarget = std::max(-INF + 1, alphaTarget - step);
@@ -1545,8 +1600,7 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
         betaTarget = std::min(INF - 1, betaTarget + step);
         window += step / 2;
       } else {
-        // shouldn't happen
-        break;
+        break;  // shouldn't happen
       }
     }  // aspiration loop
 
