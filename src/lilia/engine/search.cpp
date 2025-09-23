@@ -1645,12 +1645,15 @@ int Search::search_root_lazy_smp(model::Position& pos, int maxDepth,
 
   int mainScore = 0;
 
+  // Snapshot der Ausgangsstellung anlegen, bevor Helfer starten
+  const model::Position rootSnapshot = pos;
+
   // Helfer starten
   std::vector<std::future<int>> futs;
   futs.reserve(threads - 1);
   for (int t = 1; t < threads; ++t) {
-    futs.emplace_back(pool.submit([&, tid = t] {
-      model::Position local = pos;
+    futs.emplace_back(pool.submit([rootSnapshot, &workers, maxDepth, stop, tid = t] {
+      model::Position local = rootSnapshot;
       // Helfer: Root-Ordering möglichst nicht vom TT-Move abhängig machen,
       // damit Main deterministischer bleibt (optional: cfg-Flag verwenden).
       return workers[tid]->search_root_single(local, maxDepth, stop, /*maxNodes*/ 0);
