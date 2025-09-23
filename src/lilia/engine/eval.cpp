@@ -688,47 +688,38 @@ static int king_shelter_storm(const std::array<Bitboard, 6>& W, const std::array
   auto fileShelter = [&](int ksq, bool white) {
     const int kFile = file_of(ksq);
     const int kRank = rank_of(ksq);
+    const Bitboard ownPawns = white ? wp : bp;
+    const Bitboard enemyPawns = white ? bp : wp;
     int total = 0;
 
     for (int df = -1; df <= 1; ++df) {
       int ff = kFile + df;
       if (ff < 0 || ff > 7) continue;
 
+      const int baseSq = (kRank << 3) | ff;
+      const Bitboard mask = white ? M.frontSpanW[baseSq] : M.frontSpanB[baseSq];
+
       if (white) {
-        // squares in front of white king (r+1..7)
-        Bitboard mask = 0;
-        for (int r = kRank + 1; r < 8; ++r) mask |= sq_bb((Square)((r << 3) | ff));
-        // nearest own pawn ahead -> LSB
-        int nearOwnSq = lsb_i(mask & wp);
+        int nearOwnSq = lsb_i(mask & ownPawns);
         int nearOwnR = (nearOwnSq >= 0 ? (nearOwnSq >> 3) : 8);
         int dist = clampi(nearOwnR - kRank, 0, 7);
         int shelterIdx = 7 - dist;  // closer own pawn => bigger shelter
         total += SHELTER[shelterIdx];
 
-        // enemy pawn storm ahead of the white king (r+1..7)
-        Bitboard em = 0;
-        for (int r = kRank + 1; r < 8; ++r) em |= sq_bb((Square)((r << 3) | ff));
-        int nearEnemySq = lsb_i(em & bp);
+        int nearEnemySq = lsb_i(mask & enemyPawns);
         int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : 8);
         int edist = clampi(nearEnemyR - kRank, 0, 7);
         int stormIdx = 7 - edist;  // closer enemy pawn => bigger storm
         total -= STORM[stormIdx] / 2;
 
       } else {
-        // squares in front of black king (r-1..0)
-        Bitboard mask = 0;
-        for (int r = kRank - 1; r >= 0; --r) mask |= sq_bb((Square)((r << 3) | ff));
-        // nearest own pawn ahead (toward rank decreasing) -> MSB
-        int nearOwnSq = msb_i(mask & bp);
+        int nearOwnSq = msb_i(mask & ownPawns);
         int nearOwnR = (nearOwnSq >= 0 ? (nearOwnSq >> 3) : -1);
         int dist = clampi(kRank - nearOwnR, 0, 7);
         int shelterIdx = 7 - dist;  // closer own pawn => bigger shelter
         total += SHELTER[shelterIdx];
 
-        // enemy pawn storm in front of black king (r-1..0)
-        Bitboard em = 0;
-        for (int r = kRank - 1; r >= 0; --r) em |= sq_bb((Square)((r << 3) | ff));
-        int nearEnemySq = msb_i(em & wp);
+        int nearEnemySq = msb_i(mask & enemyPawns);
         int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : -1);
         int edist = clampi(kRank - nearEnemyR, 0, 7);
         int stormIdx = 7 - edist;  // closer enemy pawn => bigger storm
