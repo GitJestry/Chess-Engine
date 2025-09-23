@@ -79,5 +79,38 @@ int main() {
     assert(stats.topMoves[0].second != stats.topMoves[1].second);
   }
 
+  // Node batching should reset/flush between searches with node limits.
+  {
+    model::ChessGame game;
+    game.setPosition("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+    auto& pos = game.getPositionRefForBot();
+
+    model::TT5 tt;
+    engine::Evaluator eval;
+    auto evalPtr = std::shared_ptr<const engine::Evaluator>(&eval, [](const engine::Evaluator*) {});
+    engine::Search search(tt, evalPtr, cfg);
+
+    constexpr std::uint64_t nodeLimit = 128;
+    auto sharedCounter = std::make_shared<std::atomic<std::uint64_t>>(0);
+
+    auto stop1 = std::make_shared<std::atomic<bool>>(false);
+    search.set_node_limit(sharedCounter, nodeLimit);
+    search.search_root_single(pos, 1, stop1, nodeLimit);
+    engine::SearchStats stats1 = search.getStats();
+    std::uint64_t actual1 = sharedCounter->load();
+    assert(!stop1->load());
+    assert(actual1 > 0);
+    assert(stats1.nodes == actual1);
+
+    auto stop2 = std::make_shared<std::atomic<bool>>(false);
+    search.set_node_limit(sharedCounter, nodeLimit);
+    search.search_root_single(pos, 1, stop2, nodeLimit);
+    engine::SearchStats stats2 = search.getStats();
+    std::uint64_t actual2 = sharedCounter->load();
+    assert(!stop2->load());
+    assert(actual2 == actual1);
+    assert(stats2.nodes == actual2);
+  }
+
   return 0;
 }
