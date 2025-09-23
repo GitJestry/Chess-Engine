@@ -376,7 +376,43 @@ struct AttackMap {
   // NEU: per-Typ Angriffe (occ-abhängig)
   Bitboard wN{0}, wB{0}, wR{0}, wQ{0};
   Bitboard bN{0}, bB{0}, bR{0}, bQ{0};
+
+  // Cached slider rays (per piece square)
+  Bitboard wBPos{0}, wRPos{0}, wQPos{0};
+  Bitboard bBPos{0}, bRPos{0}, bQPos{0};
+  std::array<Bitboard, 64> wBishopRays{};
+  std::array<Bitboard, 64> bBishopRays{};
+  std::array<Bitboard, 64> wRookRays{};
+  std::array<Bitboard, 64> bRookRays{};
+  std::array<Bitboard, 64> wQueenBishopRays{};
+  std::array<Bitboard, 64> bQueenBishopRays{};
+  std::array<Bitboard, 64> wQueenRookRays{};
+  std::array<Bitboard, 64> bQueenRookRays{};
 };
+
+inline Bitboard cached_slider_attacks(const AttackMap* A, bool white, magic::Slider s, int sq,
+                                      Bitboard occ) {
+  if (!A || sq < 0) return magic::sliding_attacks(s, static_cast<Square>(sq), occ);
+  Bitboard mask = sq_bb(static_cast<Square>(sq));
+  if (s == magic::Slider::Bishop) {
+    if (white) {
+      if (A->wBPos & mask) return A->wBishopRays[sq];
+      if (A->wQPos & mask) return A->wQueenBishopRays[sq];
+    } else {
+      if (A->bBPos & mask) return A->bBishopRays[sq];
+      if (A->bQPos & mask) return A->bQueenBishopRays[sq];
+    }
+  } else {
+    if (white) {
+      if (A->wRPos & mask) return A->wRookRays[sq];
+      if (A->wQPos & mask) return A->wQueenRookRays[sq];
+    } else {
+      if (A->bRPos & mask) return A->bRookRays[sq];
+      if (A->bQPos & mask) return A->bQueenRookRays[sq];
+    }
+  }
+  return magic::sliding_attacks(s, static_cast<Square>(sq), occ);
+}
 
 static PasserDyn passer_dynamic_bonus(const AttackMap& A, Bitboard occ, int wK, int bK,
                                       Bitboard wPass, Bitboard bPass) {
@@ -488,7 +524,12 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       bb &= bb - 1;
       const Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
       ai.wAll |= a;
-      if (A) A->wB |= a;
+      if (A) {
+        Bitboard sq = sq_bb(static_cast<Square>(s));
+        A->wB |= a;
+        A->wBPos |= sq;
+        A->wBishopRays[s] = a;
+      }
       int c = popcnt(a & safeMaskW);
       if (c > 13) c = 13;
       ai.mg += BI_MOB_MG[c];
@@ -502,7 +543,12 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       bb &= bb - 1;
       const Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
       ai.bAll |= a;
-      if (A) A->bB |= a;
+      if (A) {
+        Bitboard sq = sq_bb(static_cast<Square>(s));
+        A->bB |= a;
+        A->bBPos |= sq;
+        A->bBishopRays[s] = a;
+      }
       int c = popcnt(a & safeMaskB);
       if (c > 13) c = 13;
       ai.mg -= BI_MOB_MG[c];
@@ -518,7 +564,12 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       bb &= bb - 1;
       const Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ);
       ai.wAll |= a;
-      if (A) A->wR |= a;
+      if (A) {
+        Bitboard sq = sq_bb(static_cast<Square>(s));
+        A->wR |= a;
+        A->wRPos |= sq;
+        A->wRookRays[s] = a;
+      }
       int c = popcnt(a & safeMaskW);
       if (c > 14) c = 14;
       ai.mg += RO_MOB_MG[c];
@@ -532,7 +583,12 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       bb &= bb - 1;
       const Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)s, occ);
       ai.bAll |= a;
-      if (A) A->bR |= a;
+      if (A) {
+        Bitboard sq = sq_bb(static_cast<Square>(s));
+        A->bR |= a;
+        A->bRPos |= sq;
+        A->bRookRays[s] = a;
+      }
       int c = popcnt(a & safeMaskB);
       if (c > 14) c = 14;
       ai.mg -= RO_MOB_MG[c];
@@ -550,7 +606,13 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       const Bitboard b = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
       const Bitboard a = r | b;
       ai.wAll |= a;
-      if (A) A->wQ |= a;
+      if (A) {
+        Bitboard sq = sq_bb(static_cast<Square>(s));
+        A->wQ |= a;
+        A->wQPos |= sq;
+        A->wQueenRookRays[s] = r;
+        A->wQueenBishopRays[s] = b;
+      }
       int c = popcnt(a & safeMaskW);
       if (c > 27) c = 27;
       ai.mg += QU_MOB_MG[c];
@@ -566,7 +628,13 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
       const Bitboard b = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
       const Bitboard a = r | b;
       ai.bAll |= a;
-      if (A) A->bQ |= a;
+      if (A) {
+        Bitboard sq = sq_bb(static_cast<Square>(s));
+        A->bQ |= a;
+        A->bQPos |= sq;
+        A->bQueenRookRays[s] = r;
+        A->bQueenBishopRays[s] = b;
+      }
       int c = popcnt(a & safeMaskB);
       if (c > 27) c = 27;
       ai.mg -= QU_MOB_MG[c];
@@ -828,7 +896,7 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
                          Bitboard wp, Bitboard bp, Bitboard wPass,
                          Bitboard bPass,              // NEW use passers from PawnTT
                          Bitboard wPA, Bitboard bPA,  // for semi-open vs King feature
-                         Bitboard occ, int wK, int bK) {
+                         Bitboard occ, int wK, int bK, const AttackMap* A) {
   int s = 0;
   Bitboard wr = W[3], br = B[3];
   if (!wr && !br) return 0;
@@ -864,7 +932,7 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
   }
 
   // connected rooks
-  auto connected = [&](Bitboard rooks, Bitboard occAll) {
+  auto connected = [&](Bitboard rooks, Bitboard occAll, bool /*whiteSide*/) {
     if (popcnt(rooks) != 2) return false;
     int s1 = lsb_i(rooks);
     Bitboard r2 = rooks & (rooks - 1);
@@ -874,13 +942,13 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
     return (ray & sq_bb((Square)s2)) != 0;
   };
   Bitboard occAll = occ;
-  if (connected(wr, occAll)) s += CONNECTED_ROOKS;
-  if (connected(br, occAll)) s -= CONNECTED_ROOKS;
+  if (connected(wr, occAll, true)) s += CONNECTED_ROOKS;
+  if (connected(br, occAll, false)) s -= CONNECTED_ROOKS;
 
   // rook behind passers (uses wPass/bPass)
-  auto behind = [&](int rSq, int pSq, bool pawnWhite, int full, int half) {
+  auto behind = [&](int rSq, int pSq, bool rookWhite, bool pawnWhite, int full, int half) {
     if (file_of(rSq) != file_of(pSq)) return 0;
-    Bitboard ray = magic::sliding_attacks(magic::Slider::Rook, (Square)rSq, occAll);
+    Bitboard ray = cached_slider_attacks(A, rookWhite, magic::Slider::Rook, rSq, occAll);
     if (!(ray & sq_bb((Square)pSq))) return 0;
     if (pawnWhite)
       return (rank_of(rSq) < rank_of(pSq) ? full : half);
@@ -895,13 +963,13 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
     while (f) {
       int ps = lsb_i(f);
       f &= f - 1;
-      s += behind(rs, ps, true, ROOK_BEHIND_PASSER, ROOK_BEHIND_PASSER_HALF);
+      s += behind(rs, ps, true, true, ROOK_BEHIND_PASSER, ROOK_BEHIND_PASSER_HALF);
     }
     f = M.file[rs] & bPass;
     while (f) {
       int ps = lsb_i(f);
       f &= f - 1;
-      s += behind(rs, ps, false, ROOK_BEHIND_PASSER_HALF, ROOK_BEHIND_PASSER_THIRD);
+      s += behind(rs, ps, true, false, ROOK_BEHIND_PASSER_HALF, ROOK_BEHIND_PASSER_THIRD);
     }
   }
   t = br;
@@ -912,13 +980,13 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
     while (f) {
       int ps = lsb_i(f);
       f &= f - 1;
-      s -= behind(rs, ps, false, ROOK_BEHIND_PASSER, ROOK_BEHIND_PASSER_HALF);
+      s -= behind(rs, ps, false, false, ROOK_BEHIND_PASSER, ROOK_BEHIND_PASSER_HALF);
     }
     f = M.file[rs] & wPass;
     while (f) {
       int ps = lsb_i(f);
       f &= f - 1;
-      s -= behind(rs, ps, true, ROOK_BEHIND_PASSER_HALF, ROOK_BEHIND_PASSER_THIRD);
+      s -= behind(rs, ps, false, true, ROOK_BEHIND_PASSER_HALF, ROOK_BEHIND_PASSER_THIRD);
     }
   }
 
@@ -929,7 +997,7 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
     while (tt) {
       int sq = lsb_i(tt);
       tt &= tt - 1;
-      Bitboard attacks = magic::sliding_attacks(magic::Slider::Rook, (Square)sq, occ);
+      Bitboard attacks = cached_slider_attacks(A, white, magic::Slider::Rook, sq, occ);
       if (centralFiles & (sq_bb((Square)sq) | attacks)) sc += ROOK_CENTRAL_FILE;
     }
     return white ? sc : -sc;
@@ -965,14 +1033,15 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
       t &= t - 1;
 
       // rook ray and the king’s file
-      Bitboard ray = magic::sliding_attacks(magic::Slider::Rook, (Square)rsq, occ);
+      Bitboard ray = cached_slider_attacks(A, white, magic::Slider::Rook, rsq, occ);
       Bitboard fileToKing = ray & M.file[ksq];
       if (!(fileToKing & sq_bb((Square)ksq))) continue;  // not pointing at king
 
       // squares strictly between rook and king:
       Bitboard between =
           fileToKing &
-          magic::sliding_attacks(magic::Slider::Rook, (Square)ksq, occ | sq_bb((Square)rsq)) &
+          cached_slider_attacks(A, !white, magic::Slider::Rook, ksq,
+                                occ | sq_bb((Square)rsq)) &
           ~sq_bb((Square)rsq) & ~sq_bb((Square)ksq);
 
       int len = popcnt(between);
@@ -1013,7 +1082,7 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
 // EG-only rook extras: Fortschritt + Königsschnitt
 static int rook_endgame_extras_eg(const std::array<Bitboard, 6>& W,
                                   const std::array<Bitboard, 6>& B, Bitboard wp, Bitboard bp,
-                                  Bitboard occ) {
+                                  Bitboard occ, const AttackMap* A) {
   int eg = 0;
   Bitboard wr = W[3], br = B[3];
 
@@ -1039,7 +1108,8 @@ static int rook_endgame_extras_eg(const std::array<Bitboard, 6>& W,
         int ps = lsb_i(f);
         f &= f - 1;
         bool beh =
-            (magic::sliding_attacks(magic::Slider::Rook, (Square)rs, occ) & sq_bb((Square)ps)) != 0;
+            (cached_slider_attacks(A, white, magic::Slider::Rook, rs, occ) &
+             sq_bb((Square)ps)) != 0;
         if (!beh) continue;
         auto progress_from_home = [&](int ps, bool w) {
           return w ? rank_of(ps) : (7 - rank_of(ps));
@@ -1451,12 +1521,14 @@ inline int sgn(int x) {
   return (x > 0) - (x < 0);
 }
 
-inline Bitboard rook_pins(Bitboard occ, Bitboard own, Bitboard oppRQ, int ksq) {
+inline Bitboard rook_pins(Bitboard occ, Bitboard own, Bitboard oppRQ, int ksq, bool kingWhite,
+                          const AttackMap* A) {
   if (ksq < 0) return 0ULL;
   Bitboard pins = 0ULL;
 
   // candidate blockers are own pieces on rook rays from the king
-  Bitboard blockers = magic::sliding_attacks(magic::Slider::Rook, (Square)ksq, occ) & own;
+  Bitboard blockers =
+      cached_slider_attacks(A, kingWhite, magic::Slider::Rook, ksq, occ) & own;
 
   while (blockers) {
     int b = lsb_i(blockers);
@@ -1479,11 +1551,13 @@ inline Bitboard rook_pins(Bitboard occ, Bitboard own, Bitboard oppRQ, int ksq) {
   return pins;
 }
 
-inline Bitboard bishop_pins(Bitboard occ, Bitboard own, Bitboard oppBQ, int ksq) {
+inline Bitboard bishop_pins(Bitboard occ, Bitboard own, Bitboard oppBQ, int ksq, bool kingWhite,
+                            const AttackMap* A) {
   if (ksq < 0) return 0ULL;
   Bitboard pins = 0ULL;
 
-  Bitboard blockers = magic::sliding_attacks(magic::Slider::Bishop, (Square)ksq, occ) & own;
+  Bitboard blockers =
+      cached_slider_attacks(A, kingWhite, magic::Slider::Bishop, ksq, occ) & own;
 
   while (blockers) {
     int b = lsb_i(blockers);
@@ -1529,7 +1603,7 @@ inline int safe_checks(bool white, const std::array<Bitboard, 6>& W,
 
   // replace the whole slider chunk in safe_checks() with this:
   auto add_slider_moves = [&](Bitboard attackedByUs, magic::Slider sl, int w) {
-    Bitboard rayFromK = magic::sliding_attacks(sl, (Square)oppK, occAll);
+    Bitboard rayFromK = cached_slider_attacks(&A, !white, sl, oppK, occAll);
     Bitboard origins = rayFromK & ~occAll;               // empty squares that would give check
     sc += popcnt(origins & attackedByUs & ~unsafe) * w;  // we can move there safely
   };
@@ -1587,7 +1661,8 @@ inline int pawn_levers(Bitboard wp, Bitboard bp) {
 }
 
 inline int xray_king_file_pressure(bool white, const std::array<Bitboard, 6>& W,
-                                   const std::array<Bitboard, 6>& B, Bitboard occ, int ksq) {
+                                   const std::array<Bitboard, 6>& B, Bitboard occ, int ksq,
+                                   const AttackMap* A) {
   if (ksq < 0) return 0;
   Bitboard rooks = white ? W[3] : B[3];
   int sc = 0;
@@ -1601,8 +1676,8 @@ inline int xray_king_file_pressure(bool white, const std::array<Bitboard, 6>& W,
     // Require same rank or file to avoid cross-corner intersections
     if (file_of(r) != file_of(ksq)) continue;
 
-    Bitboard rookRay = magic::sliding_attacks(magic::Slider::Rook, (Square)r, occ);
-    Bitboard kingRay = magic::sliding_attacks(magic::Slider::Rook, (Square)ksq, occ);
+    Bitboard rookRay = cached_slider_attacks(A, white, magic::Slider::Rook, r, occ);
+    Bitboard kingRay = cached_slider_attacks(A, !white, magic::Slider::Rook, ksq, occ);
     Bitboard between = rookRay & kingRay & ~sq_bb((Square)r) & ~bbK;
 
     if (popcnt(between & occ) == 1) sc += XRAY_KFILE;
@@ -1611,7 +1686,8 @@ inline int xray_king_file_pressure(bool white, const std::array<Bitboard, 6>& W,
 }
 
 inline int queen_bishop_battery(bool white, const std::array<Bitboard, 6>& W,
-                                const std::array<Bitboard, 6>& B, Bitboard occ, int oppK) {
+                                const std::array<Bitboard, 6>& B, Bitboard occ, int oppK,
+                                const AttackMap* A) {
   if (oppK < 0) return 0;
   Bitboard Q = white ? W[4] : B[4];
   Bitboard Bp = white ? W[2] : B[2];
@@ -1620,7 +1696,7 @@ inline int queen_bishop_battery(bool white, const std::array<Bitboard, 6>& W,
   while (t) {
     int s = lsb_i(t);
     t &= t - 1;
-    Bitboard diag = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, occ);
+    Bitboard diag = cached_slider_attacks(A, white, magic::Slider::Bishop, s, occ);
     if ((diag & sq_bb((Square)oppK)) && (diag & Q)) sc += QB_BATTERY;
   }
   return white ? sc : -sc;
@@ -1826,7 +1902,7 @@ int Evaluator::evaluate(model::Position& pos) const {
   int badB = bad_bishop(W, B);
   int outp = outposts_center(W, B, bPA, wPA);
   int rim = rim_knights(W, B);
-  int ract = rook_activity(W, B, W[0], B[0], wPass, bPass, wPA, bPA, occ, wK, bK);
+  int ract = rook_activity(W, B, W[0], B[0], wPass, bPass, wPA, bPA, occ, wK, bK, &A);
   int spc = space_term(W, B, wPA, bPA);
   int trop = king_tropism(W, B);
   int dev = development(W, B);
@@ -1850,9 +1926,11 @@ int Evaluator::evaluate(model::Position& pos) const {
   // ---------------------------------------------------------------------------
   // NEW: Pins
   Bitboard wPins =
-      rook_pins(occ, wocc, (B[3] | B[4]), wK) | bishop_pins(occ, wocc, (B[2] | B[4]), wK);
+      rook_pins(occ, wocc, (B[3] | B[4]), wK, true, &A) |
+      bishop_pins(occ, wocc, (B[2] | B[4]), wK, true, &A);
   Bitboard bPins =
-      rook_pins(occ, bocc, (W[3] | W[4]), bK) | bishop_pins(occ, bocc, (W[2] | W[4]), bK);
+      rook_pins(occ, bocc, (W[3] | W[4]), bK, false, &A) |
+      bishop_pins(occ, bocc, (W[2] | W[4]), bK, false, &A);
 
   int pinScore = 0;
   pinScore += popcnt(wPins & (W[1] | W[2])) * PIN_MINOR + popcnt(wPins & W[3]) * PIN_ROOK +
@@ -1889,11 +1967,13 @@ int Evaluator::evaluate(model::Position& pos) const {
 
   // NEW: X-ray pressure along king file
   int xray =
-      xray_king_file_pressure(true, W, B, occ, bK) + xray_king_file_pressure(false, W, B, occ, wK);
+      xray_king_file_pressure(true, W, B, occ, bK, &A) +
+      xray_king_file_pressure(false, W, B, occ, wK, &A);
 
   // NEW: Queen + bishop battery toward king
   int qbatt =
-      queen_bishop_battery(true, W, B, occ, bK) + queen_bishop_battery(false, W, B, occ, wK);
+      queen_bishop_battery(true, W, B, occ, bK, &A) +
+      queen_bishop_battery(false, W, B, occ, wK, &A);
 
   // NEW: Central blockers (opening-weighted)
   int cblock = central_blockers(W, B, curPhase);
@@ -1988,7 +2068,7 @@ int Evaluator::evaluate(model::Position& pos) const {
   // ---------------------------------------------------------------
 
   // EG extras
-  eg_add += rook_endgame_extras_eg(W, B, W[0], B[0], occ);
+  eg_add += rook_endgame_extras_eg(W, B, W[0], B[0], occ, &A);
   eg_add += king_activity_eg(W, B);
   eg_add += passed_pawn_race_eg(W, B, pos);
 
