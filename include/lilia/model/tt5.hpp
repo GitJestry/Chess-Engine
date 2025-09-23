@@ -122,7 +122,7 @@ class TT5 {
     const std::uint16_t keyHi = static_cast<std::uint16_t>(key >> 48);
 
     for (const auto& ent : c.e) {
-      const std::uint64_t info1 = ent.info.load(std::memory_order_acquire);
+      std::uint64_t info1 = ent.info.load(std::memory_order_acquire);
 
       // empty?
       if (LILIA_UNLIKELY((info1 & INFO_VALID_MASK) == 0ull)) continue;
@@ -160,8 +160,8 @@ class TT5 {
       if ((uint8_t)(cur - entAge) > 8) {
         uint64_t newInfo =
             (info1 & ~(0xFFull << INFO_AGE_SHIFT)) | ((uint64_t)cur << INFO_AGE_SHIFT);
-        (void)const_cast<std::atomic<uint64_t>&>(ent.info).compare_exchange_strong(
-            const_cast<uint64_t&>(info1), newInfo, std::memory_order_relaxed);
+        auto& infoAtomic = const_cast<std::atomic<uint64_t>&>(ent.info);
+        (void)infoAtomic.compare_exchange_strong(info1, newInfo, std::memory_order_relaxed);
       }
       return true;
     }
