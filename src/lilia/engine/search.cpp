@@ -304,25 +304,44 @@ int Search::signed_eval(model::Position& pos) {
   return std::clamp(v, -MATE + 1, MATE - 1);
 }
 
-inline void bump_node_or_stop(const std::shared_ptr<std::atomic<std::uint64_t>>& counter,
-                              std::uint64_t limit,
-                              const std::shared_ptr<std::atomic<bool>>& stopFlag) {
-  // Batch: nur alle 1024 Knoten atomar addieren + Stop prüfen
-  static thread_local uint32_t local = 0;
-  constexpr uint32_t TICK_STEP = 1024;
+namespace {
 
-  // schneller Hot-Path: nur Zähler hochzählen
-  ++local;
+class ThreadNodeBatch {
+ public:
+  void reset() { local_ = 0; }
 
-  // alle 64 Knoten einmal billig auf stopFlag schauen (nur relaxed load)
-  if ((local & 63u) == 0u) {
-    if (stopFlag && stopFlag->load(std::memory_order_relaxed)) {
-      throw SearchStoppedException();
+  void bump(const std::shared_ptr<std::atomic<std::uint64_t>>& counter, std::uint64_t limit,
+            const std::shared_ptr<std::atomic<bool>>& stopFlag) {
+    ++local_;
+    if ((local_ & 63u) == 0u) {
+      if (stopFlag && stopFlag->load(std::memory_order_relaxed)) {
+        throw SearchStoppedException();
+      }
+    }
+    if (local_ >= TICK_STEP) {
+      flush_batch(counter, limit, stopFlag);
     }
   }
 
-  // seltener Slow-Path: Batch flushen + Limit prüfen
-  if ((local & (TICK_STEP - 1u)) == 0u) {
+  std::uint64_t flush(const std::shared_ptr<std::atomic<std::uint64_t>>& counter) {
+    if (!counter) {
+      local_ = 0;
+      return 0;
+    }
+
+    const uint32_t pending = local_;
+    if (pending == 0u) {
+      return counter->load(std::memory_order_relaxed);
+    }
+
+    local_ = 0;
+    return counter->fetch_add(pending, std::memory_order_relaxed) + pending;
+  }
+
+ private:
+  void flush_batch(const std::shared_ptr<std::atomic<std::uint64_t>>& counter, std::uint64_t limit,
+                   const std::shared_ptr<std::atomic<bool>>& stopFlag) {
+    local_ -= TICK_STEP;
     if (counter) {
       std::uint64_t cur = counter->fetch_add(TICK_STEP, std::memory_order_relaxed) + TICK_STEP;
       if (limit && cur >= limit) {
@@ -334,6 +353,29 @@ inline void bump_node_or_stop(const std::shared_ptr<std::atomic<std::uint64_t>>&
       throw SearchStoppedException();
     }
   }
+
+  static constexpr uint32_t TICK_STEP = 1024;
+  uint32_t local_ = 0;
+};
+
+ThreadNodeBatch& node_batch() {
+  static thread_local ThreadNodeBatch instance;
+  return instance;
+}
+
+inline void reset_node_batch() { node_batch().reset(); }
+
+inline std::uint64_t flush_node_batch(
+    const std::shared_ptr<std::atomic<std::uint64_t>>& counter) {
+    return node_batch().flush(counter);
+}
+
+}  // namespace
+
+inline void bump_node_or_stop(const std::shared_ptr<std::atomic<std::uint64_t>>& counter,
+                              std::uint64_t limit,
+                              const std::shared_ptr<std::atomic<bool>>& stopFlag) {
+  node_batch().bump(counter, limit, stopFlag);
 }
 
 // ---------- Quiescence + QTT ----------
@@ -1300,6 +1342,8 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
   if (this->sharedNodes && this->thread_id_ == 0)
     this->sharedNodes->store(0, std::memory_order_relaxed);
 
+  reset_node_batch();
+
   stats = SearchStats{};
 
   auto t0 = steady_clock::now();
@@ -1324,7 +1368,7 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     rootMoves.swap(legalRoot);
   }
   if (rootMoves.empty()) {
-    stats.nodes = sharedNodes ? sharedNodes->load(std::memory_order_relaxed) : 0;
+    stats.nodes = flush_node_batch(sharedNodes);
     update_time_stats();
     this->stopFlag.reset();
     const int score = pos.inCheck() ? mated_in(0) : 0;
@@ -1557,7 +1601,7 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
         const int finalScore = lines.front().score;
 
         // stats & PV
-        stats.nodes = sharedNodes->load(std::memory_order_relaxed);
+        stats.nodes = flush_node_batch(sharedNodes);
         update_time_stats();
 
         stats.bestScore = finalScore;
@@ -1608,7 +1652,7 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     lastScore = stats.bestScore;
   }  // depth loop
 
-  stats.nodes = sharedNodes->load(std::memory_order_relaxed);
+  stats.nodes = flush_node_batch(sharedNodes);
   update_time_stats();
   this->stopFlag.reset();
   return stats.bestScore;
