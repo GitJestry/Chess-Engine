@@ -1557,7 +1557,6 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
 
       // success if inside window
       if (bestScore > alphaTarget && bestScore < betaTarget) {
-        // --- full-window rescore for display & robustness ---
         auto full_rescore = [&](RootLine& rl) {
           MoveUndoGuard rg(pos);
           if (!rg.doMove(rl.m)) return;
@@ -1566,15 +1565,28 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           rl.score = std::clamp(exact, -MATE + 1, MATE - 1);
           rl.bound = model::Bound::Exact;
           rl.exactFull = true;
-          rg.rollback();
         };
 
-        // rescore the winner
         for (auto& rl : lines)
           if (rl.m == bestMove) {
             full_rescore(rl);
             break;
           }
+
+        // Only rescore other moves if cfg.fullRescoreTopK > 1
+        if (cfg.fullRescoreTopK > 1) {
+          std::stable_sort(lines.begin(), lines.end(), [](const RootLine& a, const RootLine& b) {
+            if (a.score != b.score) return a.score > b.score;
+            return a.ordIdx < b.ordIdx;
+          });
+          int rescored = 1;
+          for (auto& rl : lines) {
+            if (rescored >= cfg.fullRescoreTopK) break;
+            if (rl.m == bestMove) continue;
+            full_rescore(rl);
+            ++rescored;
+          }
+        }
 
         // rescore top few others by current bound score
         std::stable_sort(lines.begin(), lines.end(), [](const RootLine& a, const RootLine& b) {
