@@ -1040,8 +1040,7 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
       // squares strictly between rook and king:
       Bitboard between =
           fileToKing &
-          cached_slider_attacks(A, !white, magic::Slider::Rook, ksq,
-                                occ | sq_bb((Square)rsq)) &
+          cached_slider_attacks(A, !white, magic::Slider::Rook, ksq, occ | sq_bb((Square)rsq)) &
           ~sq_bb((Square)rsq) & ~sq_bb((Square)ksq);
 
       int len = popcnt(between);
@@ -1107,9 +1106,8 @@ static int rook_endgame_extras_eg(const std::array<Bitboard, 6>& W,
       while (f) {
         int ps = lsb_i(f);
         f &= f - 1;
-        bool beh =
-            (cached_slider_attacks(A, white, magic::Slider::Rook, rs, occ) &
-             sq_bb((Square)ps)) != 0;
+        bool beh = (cached_slider_attacks(A, white, magic::Slider::Rook, rs, occ) &
+                    sq_bb((Square)ps)) != 0;
         if (!beh) continue;
         auto progress_from_home = [&](int ps, bool w) {
           return w ? rank_of(ps) : (7 - rank_of(ps));
@@ -1527,8 +1525,7 @@ inline Bitboard rook_pins(Bitboard occ, Bitboard own, Bitboard oppRQ, int ksq, b
   Bitboard pins = 0ULL;
 
   // candidate blockers are own pieces on rook rays from the king
-  Bitboard blockers =
-      cached_slider_attacks(A, kingWhite, magic::Slider::Rook, ksq, occ) & own;
+  Bitboard blockers = cached_slider_attacks(A, kingWhite, magic::Slider::Rook, ksq, occ) & own;
 
   while (blockers) {
     int b = lsb_i(blockers);
@@ -1556,8 +1553,7 @@ inline Bitboard bishop_pins(Bitboard occ, Bitboard own, Bitboard oppBQ, int ksq,
   if (ksq < 0) return 0ULL;
   Bitboard pins = 0ULL;
 
-  Bitboard blockers =
-      cached_slider_attacks(A, kingWhite, magic::Slider::Bishop, ksq, occ) & own;
+  Bitboard blockers = cached_slider_attacks(A, kingWhite, magic::Slider::Bishop, ksq, occ) & own;
 
   while (blockers) {
     int b = lsb_i(blockers);
@@ -1925,12 +1921,10 @@ int Evaluator::evaluate(model::Position& pos) const {
 
   // ---------------------------------------------------------------------------
   // NEW: Pins
-  Bitboard wPins =
-      rook_pins(occ, wocc, (B[3] | B[4]), wK, true, &A) |
-      bishop_pins(occ, wocc, (B[2] | B[4]), wK, true, &A);
-  Bitboard bPins =
-      rook_pins(occ, bocc, (W[3] | W[4]), bK, false, &A) |
-      bishop_pins(occ, bocc, (W[2] | W[4]), bK, false, &A);
+  Bitboard wPins = rook_pins(occ, wocc, (B[3] | B[4]), wK, true, &A) |
+                   bishop_pins(occ, wocc, (B[2] | B[4]), wK, true, &A);
+  Bitboard bPins = rook_pins(occ, bocc, (W[3] | W[4]), bK, false, &A) |
+                   bishop_pins(occ, bocc, (W[2] | W[4]), bK, false, &A);
 
   int pinScore = 0;
   pinScore += popcnt(wPins & (W[1] | W[2])) * PIN_MINOR + popcnt(wPins & W[3]) * PIN_ROOK +
@@ -1966,14 +1960,12 @@ int Evaluator::evaluate(model::Position& pos) const {
   int lever = pawn_levers(W[0], B[0]);
 
   // NEW: X-ray pressure along king file
-  int xray =
-      xray_king_file_pressure(true, W, B, occ, bK, &A) +
-      xray_king_file_pressure(false, W, B, occ, wK, &A);
+  int xray = xray_king_file_pressure(true, W, B, occ, bK, &A) +
+             xray_king_file_pressure(false, W, B, occ, wK, &A);
 
   // NEW: Queen + bishop battery toward king
-  int qbatt =
-      queen_bishop_battery(true, W, B, occ, bK, &A) +
-      queen_bishop_battery(false, W, B, occ, wK, &A);
+  int qbatt = queen_bishop_battery(true, W, B, occ, bK, &A) +
+              queen_bishop_battery(false, W, B, occ, wK, &A);
 
   // NEW: Central blockers (opening-weighted)
   int cblock = central_blockers(W, B, curPhase);

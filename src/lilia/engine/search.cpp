@@ -363,11 +363,12 @@ ThreadNodeBatch& node_batch() {
   return instance;
 }
 
-inline void reset_node_batch() { node_batch().reset(); }
+inline void reset_node_batch() {
+  node_batch().reset();
+}
 
-inline std::uint64_t flush_node_batch(
-    const std::shared_ptr<std::atomic<std::uint64_t>>& counter) {
-    return node_batch().flush(counter);
+inline std::uint64_t flush_node_batch(const std::shared_ptr<std::atomic<std::uint64_t>>& counter) {
+  return node_batch().flush(counter);
 }
 
 }  // namespace
@@ -1710,12 +1711,17 @@ int Search::search_root_lazy_smp(model::Position& pos, int maxDepth,
   // Main ist fertig -> Helfer stoppen
   if (stop) stop->store(true, std::memory_order_relaxed);
 
-  // warten
+  // wait
   for (auto& f : futs) {
     try {
       (void)f.get();
     } catch (...) {
     }
+  }
+
+  // NEW: fold worker heuristics back into main
+  for (int t = 1; t < threads; ++t) {
+    this->merge_from(*workers[t]);
   }
 
   return mainScore;
