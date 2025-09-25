@@ -354,7 +354,7 @@ class ThreadNodeBatch {
     }
   }
 
-  static constexpr uint32_t TICK_STEP = 1024;
+  static constexpr uint32_t TICK_STEP = 2048;
   uint32_t local_ = 0;
 };
 
@@ -424,7 +424,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     model::Move ordered[MAXM];
 
     const model::Move prev = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
-    const bool prevOk = (prev.from() >= 0 && prev.to() >= 0 && prev.from() < 64 && prev.to() < 64);
+    const bool prevOk = !prev.isNull() && prev.from() != prev.to();
     const model::Move cm = prevOk ? counterMove[prev.from()][prev.to()] : model::Move{};
 
     for (int i = 0; i < n; ++i) {
@@ -730,12 +730,16 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   // Count non-pawn material once (for SNMP & Nullmove)
   const auto& b = pos.getBoard();
-  auto countSide = [&](core::Color c) {
-    using PT = core::PieceType;
-    return model::bb::popcount(b.getPieces(c, PT::Knight) | b.getPieces(c, PT::Bishop) |
-                               b.getPieces(c, PT::Rook) | b.getPieces(c, PT::Queen));
-  };
-  const int nonP = countSide(core::Color::White) + countSide(core::Color::Black);
+  int nonP = 0;
+  const bool needNonP = (!inCheck && !isPV && (depth <= 3 || (cfg.useNullMove && depth >= 3)));
+  if (needNonP) {
+    auto countSide = [&](core::Color c) {
+      using PT = core::PieceType;
+      return model::bb::popcount(b.getPieces(c, PT::Knight) | b.getPieces(c, PT::Bishop) |
+                                 b.getPieces(c, PT::Rook) | b.getPieces(c, PT::Queen));
+    };
+    nonP = countSide(core::Color::White) + countSide(core::Color::Black);
+  }
 
   // --- Stronger Razoring (D1 + D2), non-PV, not in check ---
   if (!inCheck && !isPV && depth <= 2) {
@@ -848,7 +852,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   // prev for CounterMove
   const model::Move prev = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
-  const bool prevOk = (prev.from() >= 0 && prev.to() >= 0 && prev.from() < 64 && prev.to() < 64);
+  const bool prevOk = !prev.isNull() && prev.from() != prev.to();
   const model::Move cm = prevOk ? counterMove[prev.from()][prev.to()] : model::Move{};
 
   // Ordering
@@ -948,14 +952,29 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     const model::Move m = ordered[idx];
     if (excludedMove && m == *excludedMove) {
-      ++moveCount;
-      continue;
+      continue;  // don’t skew LMR/LMP with a non-searched move
     }
 
     const bool isQuiet = !m.isCapture() && (m.promotion() == core::PieceType::None);
     const auto us = pos.getState().sideToMove;
-    const int qp_sig = isQuiet ? quiet_pawn_push_signal(board, m, us) : 0;
-    const int qpc_sig = isQuiet ? quiet_piece_threat_signal(board, m, us) : 0;
+
+    bool doThreatSignals = cfg.useThreatSignals && depth <= cfg.threatSignalsDepthMax &&
+                           moveCount < cfg.threatSignalsQuietCap;
+
+    if (isQuiet && doThreatSignals) {
+      if (history[m.from()][m.to()] < cfg.threatSignalsHistMin) doThreatSignals = false;
+    }
+
+    int pawn_sig = 0, piece_sig = 0;
+    if (isQuiet && doThreatSignals) {
+      pawn_sig = quiet_pawn_push_signal(board, m, us);
+      piece_sig = quiet_piece_threat_signal(board, m, us);
+    }
+    // else leave at 0
+
+    const int qp_sig = pawn_sig;
+    const int qpc_sig = piece_sig;
+    const bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0);
 
     // pre info
     auto moverOpt = board.getPiece(m.from());
@@ -964,8 +983,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     const bool isQuietHeavy =
         isQuiet && (moverPt == core::PieceType::Queen || moverPt == core::PieceType::Rook);
-
-    const bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0);
 
     if (m.isEnPassant())
       capPt = core::PieceType::Pawn;
@@ -1065,8 +1082,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     // ----- Singular Extension -----
     int seExt = 0;
     if (cfg.useSingularExt && haveTT && m == ttMove && !inCheck && depth >= 6) {
-      const bool ttGood =
-          (ttBound != model::Bound::Upper) && (ttStoredDepth >= depth - 2) && (ttVal > alpha + 8);
+      const bool ttGood = (ttBound != model::Bound::Upper) && (ttStoredDepth >= depth - 2) &&
+                          (ttVal > origAlpha + 8);
       if (ttGood && !is_mate_score(ttVal)) {
         const int R = (depth >= 8 ? 3 : 2);
         const int margin = 64 + 2 * depth;  // was 50 + 2*depth; bump a bit
@@ -1245,8 +1262,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   // --- 5) Early ProbCut pass (cheap capture-only skim) ---
   if (!isPV && !inCheck && depth >= 6) {
-    constexpr int PC_MARGIN = 192;         // a bit lighter than in-node 224
-    const int MAX_SCAN = std::min(n, 12);  // don't scan too many
+    constexpr int PC_MARGIN = 192;        // a bit lighter than in-node 224
+    const int MAX_SCAN = std::min(n, 6);  // don't scan too many
 
     for (int idx = 0; idx < MAX_SCAN; ++idx) {
       const model::Move m = ordered[idx];
@@ -1392,29 +1409,41 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     return 0;
   };
 
-  auto score_root_move = [&](const model::Move& m, const model::Move& ttMove, bool haveTT) {
+  auto score_root_move = [&](const model::Move& m, const model::Move& ttMove, bool haveTT,
+                             int curDepth) {
     int s = 0;
+
     if (haveTT && m == ttMove) s += 2'500'000;
-    if (m.promotion() != core::PieceType::None)
+
+    if (m.promotion() != core::PieceType::None) {
       s += 1'200'000;
-    else if (m.isCapture())
+    } else if (m.isCapture()) {
       s += 1'050'000 + mvv_lva_fast(pos, m);
-    else {
-      const auto board = pos.getBoard();
-      auto mover = board.getPiece(m.from());
+    } else {
+      // quiet move
+      const auto& board = pos.getBoard();
       int h = history[m.from()][m.to()];
       h = std::clamp(h, -20'000, 20'000);
       s += h;
+
+      // Threat-Signale nur wenn sinnvoll
+      auto mover = board.getPiece(m.from());
       if (mover) {
-        const int pawn_sig = (mover->type == core::PieceType::Pawn)
-                                 ? quiet_pawn_push_signal(board, m, pos.getState().sideToMove)
-                                 : 0;
-        const int piece_sig = quiet_piece_threat_signal(board, m, pos.getState().sideToMove);
-        const int sig = std::max(pawn_sig, piece_sig);
-        if (sig == 2)
-          s += 12'000;
-        else if (sig == 1)
-          s += 8'000;
+        bool doThreat = cfg.useThreatSignals && curDepth <= cfg.threatSignalsDepthMax &&
+                        h >= cfg.threatSignalsHistMin;
+
+        if (doThreat) {
+          const auto us = pos.getState().sideToMove;
+          const int pawn_sig =
+              (mover->type == core::PieceType::Pawn) ? quiet_pawn_push_signal(board, m, us) : 0;
+          const int piece_sig = quiet_piece_threat_signal(board, m, us);
+          const int sig = std::max(pawn_sig, piece_sig);
+
+          if (sig == 2)
+            s += 12'000;
+          else if (sig == 1)
+            s += 8'000;
+        }
       }
     }
     return s;
@@ -1458,7 +1487,8 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
     };
     std::vector<Scored> scored;
     scored.reserve(rootMoves.size());
-    for (const auto& m : rootMoves) scored.push_back({m, score_root_move(m, ttMove, haveTT)});
+    for (const auto& m : rootMoves)
+      scored.push_back({m, score_root_move(m, ttMove, haveTT, depth)});
     std::stable_sort(scored.begin(), scored.end(), [](const Scored& a, const Scored& b) {
       if (a.s != b.s) return a.s > b.s;
       if (a.m.from() != b.m.from()) return a.m.from() < b.m.from();
@@ -1586,20 +1616,6 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
             full_rescore(rl);
             ++rescored;
           }
-        }
-
-        // rescore top few others by current bound score
-        std::stable_sort(lines.begin(), lines.end(), [](const RootLine& a, const RootLine& b) {
-          if (a.score != b.score) return a.score > b.score;
-          return a.ordIdx < b.ordIdx;
-        });
-        int rescored = 0;
-        const int RESCORE_TOP = std::min<int>(5, (int)lines.size());
-        for (auto& rl : lines) {
-          if (rescored >= RESCORE_TOP) break;
-          if (rl.m == bestMove) continue;
-          full_rescore(rl);
-          ++rescored;
         }
 
         // pick final best (exact first, then score, then ordIdx)

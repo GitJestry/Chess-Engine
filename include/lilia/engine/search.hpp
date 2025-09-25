@@ -105,7 +105,7 @@ class Search {
   // plus Counter-History-Bonus für genau diesen Antwortzug
   alignas(64) model::Move counterMove[SQ_NB][SQ_NB] = {};
   alignas(64) int16_t counterHist[SQ_NB][SQ_NB] = {};
-  int16_t contHist[CH_LAYERS][PIECE_NB][SQ_NB][PIECE_NB][SQ_NB];
+  alignas(64) int16_t contHist[CH_LAYERS][PIECE_NB][SQ_NB][PIECE_NB][SQ_NB];
 
   void set_thread_id(int id) { thread_id_ = id; }
   int thread_id() const { return thread_id_; }

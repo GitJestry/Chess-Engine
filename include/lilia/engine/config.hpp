@@ -26,6 +26,11 @@ struct EngineConfig {
   bool useProbCut = true;
   bool qsearchQuietChecks = true;
 
+  bool useThreatSignals = true;
+  int threatSignalsDepthMax = 5;     // disable deeper than this (recommended)
+  int threatSignalsQuietCap = 8;     // compute only for first K quiets (recommended)
+  int threatSignalsHistMin = -8000;  // skip if history is really bad
+
   // LMR-Feintuning
   int lmrBase = 1;            // Grundreduktion
   int lmrMax = 3;             // Deckel

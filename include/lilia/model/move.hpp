@@ -85,7 +85,11 @@ struct Move {
   constexpr bool isQuiet() const noexcept {
     return !isCapture() && !isEnPassant() && !isCastle() && promotion() == core::PieceType::None;
   }
-  constexpr bool isNull() const noexcept { return raw == 0u; }
+  constexpr bool isNull() const noexcept {
+    return b.from == 0u && b.to == 0u &&
+           b.promotion == static_cast<std::uint32_t>(core::PieceType::None) && b.capture == 0u &&
+           b.ep == 0u && b.castle == 0u && b.reserved == 0u;
+  }
 
   // 16-bit Pack (kompatibel mit operator==)
   // [0..5] from, [6..11] to, [12..15] promotion
