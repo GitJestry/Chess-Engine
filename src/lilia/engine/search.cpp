@@ -57,6 +57,7 @@ inline int decode_tt_score(int s, int ply) {
   if (s <= -MATE_THR) return s + ply;
   return s;
 }
+
 static constexpr int ROOT_VERIFY_MARGIN_BASE = 60;
 static constexpr int FUT_MARGIN[4] = {0, 110, 210, 300};  // leicht angehoben
 static constexpr int SNMP_MARGINS[4] = {0, 140, 200, 260};
@@ -64,6 +65,7 @@ static constexpr int RAZOR_MARGIN_BASE = 240;  // vorher 220
 static constexpr int RFP_MARGIN_BASE = 190;    // vorher 180
 // LMP-Limits pro Tiefe (nur Quiet-Züge)
 static constexpr int LMP_LIMIT[4] = {0, 5, 9, 14};  // D=1..3
+static constexpr int LOW_MVV_MARGIN = 360;
 
 namespace {
 
@@ -177,6 +179,24 @@ static inline int gen_evasions(model::MoveGenerator& mg, model::Position& pos, m
                                int cap) {
   engine::MoveBuffer buf(out, cap);
   return mg.generateEvasions(pos.getBoard(), pos.getState(), buf);
+}
+
+// Is there one of our advanced pawns on or next to the capture file?
+// (Fast heuristic for clearance sacs that free a passer push next.)
+static inline bool advanced_pawn_adjacent_to(const model::Board& b, core::Color us, int toSq) {
+  using PT = core::PieceType;
+  auto paw = b.getPieces(us, PT::Pawn);
+  const int toF = (int)bb::file_of(toSq);
+  while (paw) {
+    int s = model::bb::ctz64(paw);
+    paw &= paw - 1;
+    int r = (int)bb::rank_of(s);
+    int f = (int)bb::file_of(s);
+    // "Advanced" = already deep enough to matter
+    bool advanced = (us == core::Color::White) ? (r >= 4) : (r <= 3);
+    if (advanced && std::abs(f - toF) <= 1) return true;
+  }
+  return false;
 }
 
 // 0 = no immediate pawn attack; 1 = threatens Q/R/B/N; 2 = gives check
@@ -528,13 +548,18 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     const int mvv = (isCap || isPromo) ? mvv_lva_fast(pos, m) : 0;
 
     // --- 3) stricter low-MVV negative-SEE prune ---
-    if (isCap && !isPromo && mvv < 400) {
+    if (isCap && !isPromo && mvv < LOW_MVV_MARGIN) {
       const model::Move pm = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
       const bool isRecap = (!pm.isNull() && pm.to() == m.to());
-      const int toFile = (m.to() & 7);                         // 0..7
+      const int toFile = bb::file_of(m.to());
       const bool onCenterFile = (toFile == 3 || toFile == 4);  // d or e
+
       if (!isRecap && !onCenterFile) {
-        if (!pos.see(m)) continue;
+        if (!pos.see(m)) {
+          // EXCEPTION: likely a clearance sac for an advanced passer
+          const auto us = pos.getState().sideToMove;
+          if (!advanced_pawn_adjacent_to(pos.getBoard(), us, m.to())) continue;
+        }
       }
     }
 
@@ -1116,7 +1141,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         continue;
       }
     }
-
     // SEE once if needed
     bool seeGood = true;
     if (m.isCapture() && m.promotion() == core::PieceType::None) {
@@ -1126,17 +1150,28 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       if (victimVal < attackerVal) {
         const model::Move pm = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
         const bool isRecap = (!pm.isNull() && pm.to() == m.to());
-        const int toFile = (m.to() & 7);
-        const bool onCenterFile = (toFile == 3 || toFile == 4);
+        const int toFile = bb::file_of(m.to());
+        const bool onCenterFile = (toFile == 3 || toFile == 4);  // d/e files
+        const auto us = pos.getState().sideToMove;
 
-        if (!inCheck && ply > 0 && depth <= 5) {
-          if (!pos.see(m) && !isRecap && !onCenterFile) {
-            ++moveCount;
-            continue;
+        // shallow “pruning” path
+        if (!inCheck && ply > 0 && depth <= 4) {
+          if (!pos.see(m)) {
+            // EXCEPTIONS: allow negative-SEE captures if any of these holds
+            //  - recapture (critical)
+            //  - on center file (often clearance/line-openers)
+            //  - likely clearance for an advanced passer
+            if (!isRecap && !onCenterFile && !advanced_pawn_adjacent_to(board, us, m.to())) {
+              ++moveCount;
+              continue;  // prune it
+            }
           }
-          seeGood = true;
+          seeGood = true;  // passed the gate
         } else {
-          seeGood = pos.see(m) || isRecap || onCenterFile;
+          // deeper/other path: don’t prune; just mark them “good enough”
+          // if SEE ok OR it’s a recapture OR center-file clearance
+          seeGood =
+              pos.see(m) || isRecap || onCenterFile || advanced_pawn_adjacent_to(board, us, m.to());
         }
       }
     }
