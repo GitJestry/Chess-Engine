@@ -17,6 +17,8 @@ struct StartConfig {
   bool blackIsBot{true};
   BotType blackBot{BotType::Lilia};
   std::string fen{core::START_FEN};
+  bool usePgn{false};
+  std::string pgn{};
   int timeBaseSeconds{300};     // default 5 minutes
   int timeIncrementSeconds{0};  // default 0s increment
   bool timeEnabled{true};       // whether clocks are used
@@ -74,6 +76,9 @@ class StartScreen {
   sf::Text m_startText;
   sf::Text m_creditText;
 
+  sf::RectangleShape m_loadGameBtn;
+  sf::Text m_loadGameText;
+
   // Palette selection UI
   sf::RectangleShape m_paletteButton;
   sf::Text m_paletteText;
@@ -85,15 +90,23 @@ class StartScreen {
 
   // FEN popup UI
   bool m_showFenPopup{false};
+  sf::RectangleShape m_modalOverlay;
   sf::RectangleShape m_fenPopup;
   sf::RectangleShape m_fenInputBox;
   sf::Text m_fenInputText;
+  sf::Text m_popupTitleText;
+  sf::Text m_popupHintText;
+  sf::Text m_fenLabelText;
+  sf::Text m_pgnLabelText;
   sf::RectangleShape m_fenBackBtn;
   sf::RectangleShape m_fenContinueBtn;
   sf::Text m_fenBackText;
   sf::Text m_fenContinueText;
   sf::Text m_fenErrorText;
   std::string m_fenString;
+  sf::RectangleShape m_pgnInputBox;
+  sf::Text m_pgnInputText;
+  std::string m_pgnString;
   sf::Clock m_errorClock;
   bool m_showError{false};
 
