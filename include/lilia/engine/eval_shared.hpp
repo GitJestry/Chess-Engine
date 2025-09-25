@@ -87,7 +87,7 @@ constexpr int PASSED_EG[8] = {0, 8, 14, 28, 64, 132, 230, 0};
 constexpr int PASS_BLOCK = 12;      // Blockade vor dem Passer
 constexpr int PASS_FREE = 16;       // freie Vorzugsbahn
 constexpr int PASS_KBOOST = 16;     // eigener König nahe
-constexpr int PASS_KBLOCK = 16;     // gegnerischer König blockt
+constexpr int PASS_KBLOCK = 20;     // gegnerischer König blockt
 constexpr int PASS_PIECE_SUPP = 8;  // gedeckt durch Figur
 constexpr int PASS_KPROX = 4;       // gegnerischer König in Nähe (Abzug)
 
@@ -99,6 +99,9 @@ constexpr int KS_RING_BONUS = 1;
 constexpr int KS_MISS_SHIELD = 8;
 constexpr int KS_OPEN_FILE = 10;
 constexpr int KS_CLAMP = 224;
+constexpr int KS_MG_CLAMP = 400;
+constexpr int KS_EG_CLAMP = 200;
+constexpr int KS_TACTICAL_MG_CLAMP = 300;
 
 // Geometrie / Power-Counting
 constexpr int KING_RING_RADIUS = 2;
@@ -136,7 +139,7 @@ constexpr int OUTPOST_DEEP_EXTRA = 6;
 constexpr int CENTER_CTRL = 6;
 constexpr int OUTPOST_CENTER_SQ_BONUS = 6;
 
-constexpr int KNIGHT_RIM = 12;
+constexpr int KNIGHT_RIM = 10;
 
 constexpr int ROOK_OPEN = 18;
 constexpr int ROOK_SEMI = 10;
@@ -186,6 +189,7 @@ constexpr int THREATS_EG_DEN = 4;
 constexpr int SPACE_BASE = 4;
 constexpr int SPACE_SCALE_BASE = 2;  // 2 + min(#Minors, Sättigung)
 constexpr int SPACE_MINOR_SATURATION = 4;
+constexpr int SPACE_CLAMP = 200;
 
 // =============================================================================
 // Entwicklung & Blockaden
@@ -245,7 +249,7 @@ constexpr int CENTER_BACK_PENALTY_Q_ON = 32;   // König im Zentrum (e/d) mit Da
 constexpr int CENTER_BACK_PENALTY_Q_OFF = 12;  // ohne Damen schwächer
 constexpr int CENTER_BACK_OPEN_FILE_OPEN = 2;  // offene/halb-offene d/e-Dateien verstärken
 constexpr int CENTER_BACK_OPEN_FILE_SEMI = 1;
-constexpr int CENTER_BACK_OPEN_FILE_WEIGHT = 6;
+constexpr int CENTER_BACK_OPEN_FILE_WEIGHT = 4;
 
 constexpr int ROOK_KFILE_PRESS_FREE = 2;     // pro freiem Feld in der Linie zum K
 constexpr int ROOK_KFILE_PRESS_PAWNATT = 3;  // Abzug wenn Feld von Bauern gedeckt

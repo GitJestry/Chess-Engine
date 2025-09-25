@@ -181,7 +181,9 @@ static int space_term(const std::array<Bitboard, 6>& W, const std::array<Bitboar
   int wScale = SPACE_SCALE_BASE + std::min(wMin, SPACE_MINOR_SATURATION);
   int bScale = SPACE_SCALE_BASE + std::min(bMin, SPACE_MINOR_SATURATION);
 
-  return SPACE_BASE * (wSafe * wScale - bSafe * bScale);
+  int raw = SPACE_BASE * (wSafe * wScale - bSafe * bScale);
+  raw = std::clamp(raw, -SPACE_CLAMP, SPACE_CLAMP);  // e.g.  ±200
+  return raw;
 }
 
 // =============================================================================
@@ -1600,8 +1602,11 @@ inline int safe_checks(bool white, const std::array<Bitboard, 6>& W,
   // replace the whole slider chunk in safe_checks() with this:
   auto add_slider_moves = [&](Bitboard attackedByUs, magic::Slider sl, int w) {
     Bitboard rayFromK = cached_slider_attacks(&A, !white, sl, oppK, occAll);
-    Bitboard origins = rayFromK & ~occAll;               // empty squares that would give check
-    sc += popcnt(origins & attackedByUs & ~unsafe) * w;  // we can move there safely
+    Bitboard origins = rayFromK & ~occAll;  // empty squares that would give check
+    // additionally require that the origin is not attacked by enemy pawns,
+    // which approximates “safe landing square” well and filters noisy hits
+    Bitboard notPawnAttacked = origins & ~(white ? A.bPA : A.wPA);
+    sc += popcnt(notPawnAttacked & attackedByUs & ~unsafe) * w;
   };
 
   add_slider_moves(white ? A.wB : A.bB, magic::Slider::Bishop, KS_SAFE_CHECK_B);
@@ -1915,6 +1920,8 @@ int Evaluator::evaluate(model::Position& pos) const {
       (heavyPieces >= KS_MIX_EG_HEAVY_THRESHOLD) ? KS_MIX_EG_IF_HEAVY : KS_MIX_EG_IF_LIGHT;
   int ksMG = ksRaw * ksMulMG / 100;
   int ksEG = ksRaw * ksMulEG / 100;
+  ksMG = std::clamp(ksMG, -KS_MG_CLAMP, KS_MG_CLAMP);  // e.g.  ±400
+  ksEG = std::clamp(ksEG, -KS_EG_CLAMP, KS_EG_CLAMP);  // e.g.  ±200
 
   int shelterMG = shelter;
   int shelterEG = shelter / SHELTER_EG_DEN;
@@ -1927,9 +1934,9 @@ int Evaluator::evaluate(model::Position& pos) const {
                    bishop_pins(occ, bocc, (W[2] | W[4]), bK, false, &A);
 
   int pinScore = 0;
-  pinScore += popcnt(wPins & (W[1] | W[2])) * PIN_MINOR + popcnt(wPins & W[3]) * PIN_ROOK +
+  pinScore -= popcnt(wPins & (W[1] | W[2])) * PIN_MINOR + popcnt(wPins & W[3]) * PIN_ROOK +
               popcnt(wPins & W[4]) * PIN_QUEEN;
-  pinScore -= popcnt(bPins & (B[1] | B[2])) * PIN_MINOR + popcnt(bPins & B[3]) * PIN_ROOK +
+  pinScore += popcnt(bPins & (B[1] | B[2])) * PIN_MINOR + popcnt(bPins & B[3]) * PIN_ROOK +
               popcnt(bPins & B[4]) * PIN_QUEEN;
 
   // NEW: Safe checks
@@ -1961,7 +1968,7 @@ int Evaluator::evaluate(model::Position& pos) const {
 
   // NEW: X-ray pressure along king file
   int xray = xray_king_file_pressure(true, W, B, occ, bK, &A) +
-             xray_king_file_pressure(false, W, B, occ, wK, &A);
+             xray_king_file_pressure(false, W, B, occ, wK, &A) / 2;
 
   // NEW: Queen + bishop battery toward king
   int qbatt = queen_bishop_battery(true, W, B, occ, bK, &A) +
@@ -2037,9 +2044,12 @@ int Evaluator::evaluate(model::Position& pos) const {
   mg_add += pinScore;
   eg_add += pinScore / 2;
 
-  // Safe-checks & x-ray & batteries are king-danger MG terms; tiny EG bleed
-  mg_add += sc + xray + qbatt;
-  eg_add += (sc + xray + qbatt) / 4;
+  // after computing sc (safe checks), xray, qbatt
+  int kingAtkMG =
+      sc + (xray / 2) + qbatt;  // halve xray to reduce double-counting with rook_activity
+  kingAtkMG = std::clamp(kingAtkMG, -KS_TACTICAL_MG_CLAMP, KS_TACTICAL_MG_CLAMP);  // new soft guard
+  mg_add += kingAtkMG;
+  eg_add += kingAtkMG / 4;
 
   // Holes (mostly positional MG; tiny EG)
   mg_add += holeScore;
@@ -2070,17 +2080,18 @@ int Evaluator::evaluate(model::Position& pos) const {
   mg += mg_add;
   eg += eg_add;
 
-  // blend
+  // scale only the EG component
+  {
+    const int scale = endgame_scale(W, B);  // FULL_SCALE == 64 (or whatever you use)
+    eg = (eg * scale) / FULL_SCALE;
+  }
   int score = taper(mg, eg, curPhase);
+  // tempo after blending so tempo doesn’t get “endgame scaled”
 
   // tempo (phase-aware)
   const bool wtm = (pos.getState().sideToMove == Color::White);
   const int tempo = taper(TEMPO_MG, TEMPO_EG, curPhase);
   score += (wtm ? +tempo : -tempo);
-
-  // endgame scaling
-  int scale = endgame_scale(W, B);
-  score = (score * scale) / FULL_SCALE;
 
   score = clampi(score, -MATE + 1, MATE - 1);
 
