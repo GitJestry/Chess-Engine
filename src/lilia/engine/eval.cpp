@@ -142,6 +142,8 @@ static constexpr Masks M = init_masks();
 // =============================================================================
 constexpr Bitboard CENTER4 =
     sq_bb(Square(27)) | sq_bb(Square(28)) | sq_bb(Square(35)) | sq_bb(Square(36));
+constexpr Bitboard CENTER16 =
+    (FILE_C | FILE_D | FILE_E | FILE_F) & (RANK_3 | RANK_4 | RANK_5 | RANK_6);
 
 // Material imbalance (leicht)
 struct MaterialCounts {
@@ -884,6 +886,42 @@ static int outposts_center(const std::array<Bitboard, 6>& W, const std::array<Bi
     s -= add_kn(sq, false);
   }
   return s;
+}
+
+static int centralize_sliders(const std::array<Bitboard, 6>& W,
+                              const std::array<Bitboard, 6>& B, Bitboard occ) {
+  int sc = 0;
+  auto apply = [&](const std::array<Bitboard, 6>& S, int sign) {
+    Bitboard bb = S[(int)PieceType::Bishop];
+    while (bb) {
+      int sq = lsb_i(bb);
+      bb &= bb - 1;
+      Bitboard a = magic::sliding_attacks(magic::Slider::Bishop, (Square)sq, occ);
+      if (a & CENTER16) sc += sign * SLIDER_CENTER_ATTACK;
+      if (sq_bb((Square)sq) & CENTER16) sc += sign * SLIDER_CENTER_SQ_BONUS;
+    }
+    bb = S[(int)PieceType::Rook];
+    while (bb) {
+      int sq = lsb_i(bb);
+      bb &= bb - 1;
+      Bitboard a = magic::sliding_attacks(magic::Slider::Rook, (Square)sq, occ);
+      if (a & CENTER16) sc += sign * SLIDER_CENTER_ATTACK;
+      if (sq_bb((Square)sq) & CENTER16) sc += sign * SLIDER_CENTER_SQ_BONUS;
+    }
+    bb = S[(int)PieceType::Queen];
+    while (bb) {
+      int sq = lsb_i(bb);
+      bb &= bb - 1;
+      Bitboard r = magic::sliding_attacks(magic::Slider::Rook, (Square)sq, occ);
+      Bitboard b = magic::sliding_attacks(magic::Slider::Bishop, (Square)sq, occ);
+      Bitboard a = r | b;
+      if (a & CENTER16) sc += sign * SLIDER_CENTER_ATTACK;
+      if (sq_bb((Square)sq) & CENTER16) sc += sign * SLIDER_CENTER_SQ_BONUS;
+    }
+  };
+  apply(W, +1);
+  apply(B, -1);
+  return sc;
 }
 
 static int rim_knights(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B) {
@@ -1902,6 +1940,7 @@ int Evaluator::evaluate(model::Position& pos) const {
   int bp = bishop_pair_term(W, B);
   int badB = bad_bishop(W, B);
   int outp = outposts_center(W, B, bPA, wPA);
+  int ctr = centralize_sliders(W, B, occ);
   int rim = rim_knights(W, B);
   int ract = rook_activity(W, B, W[0], B[0], wPass, bPass, wPA, bPA, occ, wK, bK, &A);
   int spc = space_term(W, B, wPA, bPA);
@@ -2003,6 +2042,10 @@ int Evaluator::evaluate(model::Position& pos) const {
   // outposts
   mg_add += outp;
   eg_add += outp / 2;
+
+  // slider centralization
+  mg_add += ctr;
+  eg_add += ctr / 2;
 
   // pawn-only (from TT)
   mg_add += pMG;
