@@ -529,8 +529,13 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 
     // --- 3) stricter low-MVV negative-SEE prune ---
     if (isCap && !isPromo && mvv < 400) {
-      // If SEE says it's bad, don't even consider it (unless it's a check later).
-      if (!pos.see(m)) continue;
+      const model::Move pm = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
+      const bool isRecap = (!pm.isNull() && pm.to() == m.to());
+      const int toFile = (m.to() & 7);                         // 0..7
+      const bool onCenterFile = (toFile == 3 || toFile == 4);  // d or e
+      if (!isRecap && !onCenterFile) {
+        if (!pos.see(m)) continue;
+      }
     }
 
     // SEE once if needed
@@ -661,6 +666,52 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     }
   }
 
+  // --- Tiny set of quiet checks in low material endgames ---
+  auto lowMaterial = [&](const model::Board& b) -> bool {
+    using PT = core::PieceType;
+    int minors = model::bb::popcount(
+        b.getPieces(core::Color::White, PT::Knight) | b.getPieces(core::Color::White, PT::Bishop) |
+        b.getPieces(core::Color::Black, PT::Knight) | b.getPieces(core::Color::Black, PT::Bishop));
+    int heavies = model::bb::popcount(
+        b.getPieces(core::Color::White, PT::Rook) | b.getPieces(core::Color::White, PT::Queen) |
+        b.getPieces(core::Color::Black, PT::Rook) | b.getPieces(core::Color::Black, PT::Queen));
+    return minors == 0 && heavies <= 2;
+  };
+
+  if (best < beta && lowMaterial(pos.getBoard())) {
+    // generate pseudo-legal and skim a handful of quiet checks
+    const int qcap = engine::MAX_MOVES;
+    int an = gen_all(mg, pos, genArr_[kply], qcap);
+
+    int tried = 0, LIMIT = 6;
+    for (int i = 0; i < an && tried < LIMIT; ++i) {
+      const model::Move m = genArr_[kply][i];
+      if (m.isCapture() || m.promotion() != core::PieceType::None) continue;
+
+      MoveUndoGuard g(pos);
+      if (!g.doMove(m)) continue;
+      if (!pos.lastMoveGaveCheck()) {
+        g.rollback();
+        continue;
+      }
+
+      prevMove[cap_ply(ply)] = m;
+      int score = -quiescence(pos, -beta, -alpha, ply + 1);
+      score = std::clamp(score, -MATE + 1, MATE - 1);
+
+      ++tried;
+
+      if (score >= beta) {
+        if (!(stopFlag && stopFlag->load()))
+          tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower, m,
+                   (int16_t)stand);
+        return beta;
+      }
+      if (score > best) best = score;
+      if (score > alpha) alpha = score;
+    }
+  }
+
   if (!(stopFlag && stopFlag->load())) {
     model::Bound b = model::Bound::Exact;
     if (best <= alphaOrig)
@@ -730,6 +781,13 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   // Count non-pawn material once (for SNMP & Nullmove)
   const auto& b = pos.getBoard();
+
+  bool queensOn = (b.getPieces(core::Color::White, core::PieceType::Queen) |
+                   b.getPieces(core::Color::Black, core::PieceType::Queen)) != 0;
+  bool nearWindow = (beta - alpha) <= 16;
+  bool highTension = (!inCheck && depth <= 5 && nearWindow && staticEval + 64 >= alpha);
+  bool tacticalNode = queensOn && highTension;
+
   int nonP = 0;
   const bool needNonP = (!inCheck && !isPV && (depth <= 3 || (cfg.useNullMove && depth >= 3)));
   if (needNonP) {
@@ -767,7 +825,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   }
 
   // --- Static Null-Move Pruning (non-PV, not in check, shallow) ---
-  if (!inCheck && !isPV && depth <= 3) {
+  if (!tacticalNode && !inCheck && !isPV && depth <= 3) {
     const int d = std::max(1, std::min(3, depth));
     const int margin = SNMP_MARGINS[d];  // e.g. {0,140,200,260}
     if (staticEval - margin >= beta) {
@@ -808,7 +866,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   const bool sparse = (nonP <= 3);
   const bool prevWasCapture = (ply > 0 && prevMove[cap_ply(ply - 1)].isCapture());
 
-  if (cfg.useNullMove && depth >= 3 && !inCheck && !isPV && !sparse && !prevWasCapture) {
+  if (cfg.useNullMove && depth >= 3 && !inCheck && !isPV && !sparse && !prevWasCapture &&
+      !tacticalNode) {
     const int evalGap = staticEval - beta;
     int rBase = 2 + (depth >= 8 ? 1 : 0);
     if (evalGap > 200) rBase++;
@@ -994,7 +1053,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
                                         : 0;
 
     // LMP (contHist-aware)
-    if (!inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet && !isQuietHeavy) {
+    if (!tacticalNode && !inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet &&
+        !isQuietHeavy) {
       int hist = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
 
       int ch = 0;
@@ -1019,7 +1079,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
 
     // Extra move-count-based pruning for very late quiets
-    if (!inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet) {
+    if (!tacticalNode && !inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet) {
       if (moveCount >= 16 + 4 * depth) {  // after many tries, bail
         ++moveCount;
         continue;
@@ -1027,7 +1087,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
 
     // Extended futility (depth<=3, quiets)
-    if (allowFutility && isQuiet && depth <= 3 && !tacticalQuiet && !isQuietHeavy) {
+    if (allowFutility && isQuiet && depth <= 3 && !tacticalQuiet && !isQuietHeavy &&
+        !tacticalNode) {
       int fut = FUT_MARGIN[depth] + (history[m.from()][m.to()] < -8000 ? 32 : 0);
       if (improving) fut += 48;
       if (staticEval + fut <= alpha) {
@@ -1037,8 +1098,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
 
     // History pruning — gate on improving
-    if (!inCheck && !isPV && isQuiet && depth <= 2 && !tacticalQuiet && !isQuietHeavy &&
-        !improving) {
+    if (!tacticalNode && !inCheck && !isPV && isQuiet && depth <= 2 && !tacticalQuiet &&
+        !isQuietHeavy && !improving) {
       int histScore = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
       if (histScore < -11000 && m != killers[kply][0] && m != killers[kply][1] &&
           (!prevOk || m != cm)) {
@@ -1063,14 +1124,19 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       const int victimVal = capValPre;
 
       if (victimVal < attackerVal) {
+        const model::Move pm = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
+        const bool isRecap = (!pm.isNull() && pm.to() == m.to());
+        const int toFile = (m.to() & 7);
+        const bool onCenterFile = (toFile == 3 || toFile == 4);
+
         if (!inCheck && ply > 0 && depth <= 5) {
-          if (!pos.see(m)) {
+          if (!pos.see(m) && !isRecap && !onCenterFile) {
             ++moveCount;
             continue;
           }
           seeGood = true;
         } else {
-          seeGood = pos.see(m);
+          seeGood = pos.see(m) || isRecap || onCenterFile;
         }
       }
     }
@@ -1171,6 +1237,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         const int ld = ilog2_u32((unsigned)depth);
         const int lm = ilog2_u32((unsigned)(moveCount + 1));
         int r = (ld * (lm + 1)) / 2;
+        if (tacticalNode) r = std::max(0, r - 1);
         if (isQuietHeavy) r = std::max(0, r - 1);
 
         const int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
@@ -1547,6 +1614,7 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
             if (depth >= 10) r++;
             if (moveIdx >= 3) r++;
             if (hist < 0) r++;
+            if (depth <= 7) r = std::max(0, r - 1);  // new: less reduction when shallow
             if (r > depth - 2) r = depth - 2;
             if (r < 0) r = 0;
           }

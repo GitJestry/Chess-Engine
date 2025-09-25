@@ -163,8 +163,8 @@ constexpr int ROOK_CUT_MIN_SEPARATION = 2;
 constexpr int ROOK_CUT_BONUS = 12;
 
 // Stopper-Qualität (wer blockiert das Stoppfeld?)
-constexpr int BLOCK_PASSER_STOP_KNIGHT = 8;  // gut
-constexpr int BLOCK_PASSER_STOP_BISHOP = 8;  // schlecht (als Malus ggü. gut)
+constexpr int BLOCK_PASSER_STOP_KNIGHT = 10;  // gut
+constexpr int BLOCK_PASSER_STOP_BISHOP = 6;   // schlecht (als Malus ggü. gut)
 
 // =============================================================================
 // Threats & Hänger
