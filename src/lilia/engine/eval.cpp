@@ -1968,7 +1968,7 @@ int Evaluator::evaluate(model::Position& pos) const {
 
   // NEW: X-ray pressure along king file
   int xray = xray_king_file_pressure(true, W, B, occ, bK, &A) +
-             xray_king_file_pressure(false, W, B, occ, wK, &A) / 2;
+             xray_king_file_pressure(false, W, B, occ, wK, &A);
 
   // NEW: Queen + bishop battery toward king
   int qbatt = queen_bishop_battery(true, W, B, occ, bK, &A) +
