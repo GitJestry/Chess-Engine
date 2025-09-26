@@ -40,6 +40,19 @@ int main() {
     assert(*res.bestMove == expected);
   }
 
+  // Quiet discovered check after clearance (rook gives the check)
+  {
+    model::ChessGame game;
+    game.setPosition("4k3/8/8/8/8/8/4N3/4R1K1 w - - 0 1");
+    auto res = bot.findBestMove(game, 2, 10);
+    assert(res.bestMove);
+
+    model::Position posCopy = game.getPositionRefForBot();
+    bool applied = posCopy.doMove(*res.bestMove);
+    assert(applied);
+    assert(posCopy.inCheck());
+  }
+
   // Best move should match the first entry in topMoves even when TT suggests a different move
   {
     model::ChessGame game;

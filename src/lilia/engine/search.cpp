@@ -251,6 +251,159 @@ static inline void decay_tables(Search& S, int shift /* e.g. 6 => ~1.6% */) {
 }
 
 // 0 = no signal; 1 = attacks high-value piece; 2 = gives check
+namespace {
+
+struct PostMovePieces {
+  model::bb::Bitboard occ;
+  model::bb::Bitboard pawns;
+  model::bb::Bitboard knights;
+  model::bb::Bitboard bishops;
+  model::bb::Bitboard rooks;
+  model::bb::Bitboard queens;
+  model::bb::Bitboard kings;
+};
+
+static inline void remove_piece_bb(PostMovePieces& pm, core::PieceType pt,
+                                   model::bb::Bitboard mask) {
+  using PT = core::PieceType;
+  switch (pt) {
+    case PT::Pawn:
+      pm.pawns &= ~mask;
+      break;
+    case PT::Knight:
+      pm.knights &= ~mask;
+      break;
+    case PT::Bishop:
+      pm.bishops &= ~mask;
+      break;
+    case PT::Rook:
+      pm.rooks &= ~mask;
+      break;
+    case PT::Queen:
+      pm.queens &= ~mask;
+      break;
+    case PT::King:
+      pm.kings &= ~mask;
+      break;
+    default:
+      break;
+  }
+}
+
+static inline void add_piece_bb(PostMovePieces& pm, core::PieceType pt,
+                                model::bb::Bitboard mask) {
+  using PT = core::PieceType;
+  switch (pt) {
+    case PT::Pawn:
+      pm.pawns |= mask;
+      break;
+    case PT::Knight:
+      pm.knights |= mask;
+      break;
+    case PT::Bishop:
+      pm.bishops |= mask;
+      break;
+    case PT::Rook:
+      pm.rooks |= mask;
+      break;
+    case PT::Queen:
+      pm.queens |= mask;
+      break;
+    case PT::King:
+      pm.kings |= mask;
+      break;
+    default:
+      break;
+  }
+}
+
+static inline bool castle_rook_squares(core::Color us, model::CastleSide cs, core::Square& rf,
+                                       core::Square& rt) {
+  if (cs == model::CastleSide::None) return false;
+
+  if (us == core::Color::White) {
+    if (cs == model::CastleSide::KingSide) {
+      rf = core::Square{7};
+      rt = core::Square{5};
+    } else {
+      rf = core::Square{0};
+      rt = core::Square{3};
+    }
+  } else {
+    if (cs == model::CastleSide::KingSide) {
+      rf = core::Square{63};
+      rt = core::Square{61};
+    } else {
+      rf = core::Square{56};
+      rt = core::Square{59};
+    }
+  }
+  return true;
+}
+
+static inline PostMovePieces compute_post_move_pieces(const model::Board& b, core::Color us,
+                                                      const model::Move& m,
+                                                      core::PieceType moverBefore,
+                                                      core::PieceType moverAfter) {
+  using PT = core::PieceType;
+
+  PostMovePieces pm{};
+  pm.occ = b.getAllPieces();
+  pm.pawns = b.getPieces(us, PT::Pawn);
+  pm.knights = b.getPieces(us, PT::Knight);
+  pm.bishops = b.getPieces(us, PT::Bishop);
+  pm.rooks = b.getPieces(us, PT::Rook);
+  pm.queens = b.getPieces(us, PT::Queen);
+  pm.kings = b.getPieces(us, PT::King);
+
+  const auto fromBB = model::bb::sq_bb(m.from());
+  const auto toBB = model::bb::sq_bb(m.to());
+  pm.occ = (pm.occ & ~fromBB) | toBB;
+
+  if (m.isEnPassant()) {
+    int epCapSq = (us == core::Color::White) ? m.to() - 8 : m.to() + 8;
+    pm.occ &= ~model::bb::sq_bb(epCapSq);
+  }
+
+  core::Square rookFrom{}, rookTo{};
+  if (castle_rook_squares(us, m.castle(), rookFrom, rookTo)) {
+    const auto rookFromBB = model::bb::sq_bb(rookFrom);
+    const auto rookToBB = model::bb::sq_bb(rookTo);
+    pm.occ = (pm.occ & ~rookFromBB) | rookToBB;
+    remove_piece_bb(pm, PT::Rook, rookFromBB);
+    add_piece_bb(pm, PT::Rook, rookToBB);
+  }
+
+  remove_piece_bb(pm, moverBefore, fromBB);
+  add_piece_bb(pm, moverAfter, toBB);
+
+  return pm;
+}
+
+static inline bool enemy_king_attacked(const PostMovePieces& pm, model::bb::Bitboard kBB,
+                                       core::Color us) {
+  if (!kBB) return false;
+
+  const auto ksq = static_cast<core::Square>(model::bb::ctz64(kBB));
+  const auto target = model::bb::sq_bb(ksq);
+
+  const auto pawnAtk = (us == core::Color::White) ? (model::bb::sw(target) | model::bb::se(target))
+                                                  : (model::bb::nw(target) | model::bb::ne(target));
+  if (pawnAtk & pm.pawns) return true;
+
+  if (model::bb::knight_attacks_from(ksq) & pm.knights) return true;
+
+  const auto diag = model::magic::sliding_attacks(model::magic::Slider::Bishop, ksq, pm.occ);
+  if (diag & (pm.bishops | pm.queens)) return true;
+
+  const auto ortho = model::magic::sliding_attacks(model::magic::Slider::Rook, ksq, pm.occ);
+  if (ortho & (pm.rooks | pm.queens)) return true;
+
+  return (model::bb::king_attacks_from(ksq) & pm.kings) != 0;
+}
+
+}  // namespace
+
 static inline int quiet_piece_threat_signal(const model::Board& b, const model::Move& m,
                                             core::Color us) {
   using PT = core::PieceType;
@@ -259,25 +412,27 @@ static inline int quiet_piece_threat_signal(const model::Board& b, const model::
   auto mover = b.getPiece(m.from());
   if (!mover || mover->type == PT::Pawn) return 0;
 
-  const auto fromBB = model::bb::sq_bb(m.from());
-  const auto toBB = model::bb::sq_bb(m.to());
-  auto occ = b.getAllPieces();
-  occ = (occ & ~fromBB) | toBB;
+  const auto kBB = b.getPieces(~us, PT::King);
+  PT moverAfter = mover->type;
+
+  auto pm = compute_post_move_pieces(b, us, m, mover->type, moverAfter);
+
+  if (enemy_king_attacked(pm, kBB, us)) return 2;
 
   model::bb::Bitboard atk = 0;
-  switch (mover->type) {
+  switch (moverAfter) {
     case PT::Knight:
       atk = model::bb::knight_attacks_from(m.to());
       break;
     case PT::Bishop:
-      atk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ);
+      atk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), pm.occ);
       break;
     case PT::Rook:
-      atk = model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ);
+      atk = model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), pm.occ);
       break;
     case PT::Queen:
-      atk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ) |
-            model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ);
+      atk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), pm.occ) |
+            model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), pm.occ);
       break;
     case PT::King:
       atk = model::bb::king_attacks_from(m.to());
@@ -285,8 +440,6 @@ static inline int quiet_piece_threat_signal(const model::Board& b, const model::
     default:
       break;
   }
-
-  if (atk & b.getPieces(~us, PT::King)) return 2;
 
   const auto targets = b.getPieces(~us, PT::Queen) | b.getPieces(~us, PT::Rook) |
                        b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Knight);
@@ -305,49 +458,12 @@ static inline bool would_give_check_after(const model::Position& pos, const mode
   auto mover = b.getPiece(m.from());
   if (!mover) return false;
 
-  const auto fromBB = model::bb::sq_bb(m.from());
-  const auto toBB = model::bb::sq_bb(m.to());
-
-  auto occ = b.getAllPieces();
-  occ = (occ & ~fromBB) | toBB;
-  if (m.isEnPassant()) {
-    int epCapSq = (us == core::Color::White) ? m.to() - 8 : m.to() + 8;
-    occ &= ~model::bb::sq_bb(epCapSq);
-  }
-
   PT moverAfter = mover->type;
   if (m.promotion() != PT::None) moverAfter = m.promotion();
 
-  model::bb::Bitboard atk = 0;
-  switch (moverAfter) {
-    case PT::Knight:
-      atk = model::bb::knight_attacks_from(m.to());
-      break;
-    case PT::Bishop:
-      atk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ);
-      break;
-    case PT::Rook:
-      atk = model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ);
-      break;
-    case PT::Queen: {
-      auto bAtk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ);
-      auto rAtk = model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ);
-      atk = bAtk | rAtk;
-      break;
-    }
-    case PT::King:
-      atk = model::bb::king_attacks_from(m.to());
-      break;
-    case PT::Pawn: {
-      const auto to = model::bb::sq_bb(m.to());
-      atk = (us == core::Color::White) ? (model::bb::ne(to) | model::bb::nw(to))
-                                       : (model::bb::se(to) | model::bb::sw(to));
-      break;
-    }
-    default:
-      break;
-  }
-  return (atk & kBB) != 0;
+  auto pm = compute_post_move_pieces(b, us, m, mover->type, moverAfter);
+
+  return enemy_king_attacked(pm, kBB, us);
 }
 
 }  // namespace
