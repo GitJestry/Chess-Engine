@@ -199,6 +199,42 @@ static inline bool advanced_pawn_adjacent_to(const model::Board& b, core::Color 
   return false;
 }
 
+static inline bool is_advanced_passed_pawn_push(const model::Board& b, const model::Move& m,
+                                                core::Color us) {
+  using PT = core::PieceType;
+  if (m.isCapture() || m.promotion() != PT::None) return false;
+
+  auto mover = b.getPiece(m.from());
+  if (!mover || mover->type != PT::Pawn) return false;
+
+  const int toSq = m.to();
+  const int toFile = bb::file_of(static_cast<core::Square>(toSq));
+  const int toRank = bb::rank_of(static_cast<core::Square>(toSq));
+
+  if (us == core::Color::White) {
+    if (toRank < 4) return false;  // only consider far-advanced pawns
+  } else {
+    if (toRank > 3) return false;
+  }
+
+  auto oppPawns = b.getPieces(~us, PT::Pawn);
+  if (!oppPawns) return true;  // trivially passed
+
+  const int dir = (us == core::Color::White) ? 1 : -1;
+  for (int df = -1; df <= 1; ++df) {
+    int file = toFile + df;
+    if (file < 0 || file > 7) continue;
+
+    for (int r = toRank + dir; r >= 0 && r < 8; r += dir) {
+      int sq = (r << 3) | file;
+      auto sqBB = model::bb::sq_bb(static_cast<core::Square>(sq));
+      if (oppPawns & sqBB) return false;
+    }
+  }
+
+  return true;
+}
+
 // 0 = no immediate pawn attack; 1 = threatens Q/R/B/N; 2 = gives check
 static inline int quiet_pawn_push_signal(const model::Board& b, const model::Move& m,
                                          core::Color us) {
@@ -218,7 +254,12 @@ static inline int quiet_pawn_push_signal(const model::Board& b, const model::Mov
   // Otherwise, immediate threat on heavy/minor pieces?
   const auto targets = b.getPieces(~us, PT::Queen) | b.getPieces(~us, PT::Rook) |
                        b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Knight);
-  return (atk & targets) ? 1 : 0;
+  if (atk & targets) return 1;
+
+  // Advanced passed pawn push – treat as tactical to avoid pruning the follow-up
+  if (is_advanced_passed_pawn_push(b, m, us)) return 1;
+
+  return 0;
 }
 
 static inline void decay_tables(Search& S, int shift /* e.g. 6 => ~1.6% */) {
@@ -1143,12 +1184,17 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // --- Always detect true checks for quiet moves (even if threat signals are gated) ---
     int pawn_sig = 0, piece_sig = 0;
+    bool passed_push = false;
     if (isQuiet) {
       piece_sig = quiet_piece_threat_signal(board, m, us);  // detects checks (==2)
-      if (piece_sig < 2 && doThreatSignals) {
-        pawn_sig = quiet_pawn_push_signal(board, m, us);
+      if (piece_sig < 2) {
+        if (doThreatSignals) {
+          pawn_sig = quiet_pawn_push_signal(board, m, us);
+        }
+        if (is_advanced_passed_pawn_push(board, m, us)) passed_push = true;
       }
     }
+    if (passed_push) pawn_sig = std::max(pawn_sig, 1);
     const int qp_sig = pawn_sig;
     const int qpc_sig = piece_sig;
     const bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0);
@@ -1357,6 +1403,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     // Check extension (light)
     const bool givesCheck = pos.lastMoveGaveCheck();
     if (givesCheck && (isQuiet || seeGood)) newDepth += 1;
+    if (passed_push && isQuiet) newDepth += 1;
 
     // Bad capture reduction
     int reduction = 0;

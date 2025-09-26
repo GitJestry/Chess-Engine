@@ -1,12 +1,14 @@
-#include <cassert>
-#include <memory>
 #include <atomic>
+#include <cassert>
+#include <iostream>
+#include <memory>
 
 #include "lilia/engine/bot_engine.hpp"
 #include "lilia/engine/search.hpp"
 #include "lilia/engine/eval.hpp"
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/tt5.hpp"
+#include "lilia/uci/uci_helper.hpp"
 
 using namespace lilia;
 
@@ -110,6 +112,22 @@ int main() {
     assert(!stop2->load());
     assert(actual2 == actual1);
     assert(stats2.nodes == actual2);
+  }
+
+  // Exchange sacrifice to free an advanced passer should be found
+  {
+    model::ChessGame game;
+    game.setPosition("8/5k2/5p2/pp6/2pB4/P1P3K1/1n1r1P2/1R6 b - - 8 49");
+    auto res = bot.findBestMove(game, 6, 0);
+    assert(res.bestMove);
+    model::Move expected(sq('d', 2), sq('d', 4));
+    if (!res.bestMove || *res.bestMove != expected) {
+      std::cerr << "Expected best move d2d4, got "
+                << (res.bestMove ? move_to_uci(*res.bestMove)
+                                  : std::string("<none>"))
+                << "\n";
+      return 1;
+    }
   }
 
   return 0;
