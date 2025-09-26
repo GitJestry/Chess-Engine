@@ -2,11 +2,13 @@
 
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Window/Event.hpp>
+#include <optional>
 
 #include "lilia/bot/bot_info.hpp"
 #include "lilia/controller/game_controller.hpp"
 #include "lilia/engine/engine.hpp"
 #include "lilia/model/chess_game.hpp"
+#include "lilia/model/pgn_parser.hpp"
 #include "lilia/view/game_view.hpp"
 #include "lilia/view/start_screen.hpp"
 #include "lilia/view/texture_table.hpp"
@@ -42,6 +44,7 @@ int App::run() {
     int baseSeconds = cfg.timeBaseSeconds;
     int incrementSeconds = cfg.timeIncrementSeconds;
     bool timeEnabled = cfg.timeEnabled;
+    std::optional<model::PgnImport> startImport = cfg.pgnImport;
 
     auto whiteCfg = getBotConfig(cfg.whiteBot);
     auto blackCfg = getBotConfig(cfg.blackBot);
@@ -61,7 +64,8 @@ int App::run() {
 
       gameController.startGame(m_start_fen, m_white_is_bot, m_black_is_bot, whiteThinkMs,
                                whiteDepth, blackThinkMs, blackDepth, timeEnabled, baseSeconds,
-                               incrementSeconds);
+                               incrementSeconds, startImport);
+      startImport.reset();
 
       sf::Clock clock;
       while (window.isOpen() && gameController.getNextAction() ==

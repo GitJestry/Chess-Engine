@@ -5,6 +5,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <string>
 
 #include "../chess_types.hpp"
 #include "../constants.hpp"
@@ -35,6 +36,9 @@ public:
                  int whiteThinkTimeMs = 1000, int whiteDepth = 5,
                  int blackThinkTimeMs = 1000, int blackDepth = 5);
   void stopGame();
+
+  bool applyImportedMove(const std::string &uciMove);
+  void resumeBotsAfterImport();
 
   void update(float dt);
 
@@ -79,6 +83,8 @@ private:
 
   void applyMoveAndNotify(const model::Move &mv, bool onClick);
   void startBotIfNeeded();
+
+  bool m_suspendBots{false};
 };
 
 } // namespace lilia::controller

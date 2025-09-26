@@ -5,10 +5,12 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <optional>
 #include <sstream>
-#include <unordered_map>
 
 #include "lilia/bot/bot_info.hpp"
+#include "lilia/model/fen_validator.hpp"
+#include "lilia/model/pgn_parser.hpp"
 #include "lilia/view/color_palette_manager.hpp"
 #include "lilia/view/render_constants.hpp"
 
@@ -101,70 +103,6 @@ std::string botDisplayName(BotType t) {
   return getBotConfig(t).info.name;
 }
 
-// FEN validator (basic)
-bool basicFenCheck(const std::string& fen) {
-  std::istringstream ss(fen);
-  std::string fields[6];
-  for (int i = 0; i < 6; ++i)
-    if (!(ss >> fields[i])) return false;
-  std::string extra;
-  if (ss >> extra) return false;
-  {
-    int rankCount = 0, i = 0;
-    while (i < (int)fields[0].size()) {
-      int fileSum = 0;
-      while (i < (int)fields[0].size() && fields[0][i] != '/') {
-        char c = fields[0][i++];
-        if (std::isdigit((unsigned char)c)) {
-          int n = c - '0';
-          if (n <= 0 || n > 8) return false;
-          fileSum += n;
-        } else {
-          switch (c) {
-            case 'p':
-            case 'r':
-            case 'n':
-            case 'b':
-            case 'q':
-            case 'k':
-            case 'P':
-            case 'R':
-            case 'N':
-            case 'B':
-            case 'Q':
-            case 'K':
-              fileSum += 1;
-              break;
-            default:
-              return false;
-          }
-        }
-        if (fileSum > 8) return false;
-      }
-      if (fileSum != 8) return false;
-      ++rankCount;
-      if (i < (int)fields[0].size() && fields[0][i] == '/') ++i;
-    }
-    if (rankCount != 8) return false;
-  }
-  if (!(fields[1] == "w" || fields[1] == "b")) return false;
-  if (!(fields[2] == "-" || fields[2].find_first_not_of("KQkq") == std::string::npos)) return false;
-  if (!(fields[3] == "-")) {
-    if (fields[3].size() != 2) return false;
-    if (fields[3][0] < 'a' || fields[3][0] > 'h') return false;
-    if (!(fields[3][1] == '3' || fields[3][1] == '6')) return false;
-  }
-  auto isNonNegInt = [](const std::string& s) {
-    if (s.empty()) return false;
-    for (char c : s)
-      if (!std::isdigit((unsigned char)c)) return false;
-    return true;
-  };
-  if (!isNonNegInt(fields[4])) return false;
-  if (!isNonNegInt(fields[5])) return false;
-  if (std::stoi(fields[5]) <= 0) return false;
-  return true;
-}
 
 inline std::string formatHMS(int totalSeconds) {
   totalSeconds = std::max(0, totalSeconds);
@@ -223,13 +161,15 @@ void drawAccentInset(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color acce
 
 // ---------------------- class impl ----------------------
 
-StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
+StartScreen::StartScreen(sf::RenderWindow& window)
+    : m_window(window), m_loadModal(m_font), m_warningDialog(m_font) {
   m_font.loadFromFile(constant::STR_FILE_PATH_FONT);
   m_logoTex.loadFromFile(constant::STR_FILE_PATH_ICON_LILIA_START_SCREEN);
   m_logo.setTexture(m_logoTex);
 
-  // FEN starts empty => STANDARD unless user provides one
-  m_fenString.clear();
+  // Load inputs start empty => STANDARD unless user provides one
+  m_fenInput.clear();
+  m_pgnInput.clear();
 
   // Time defaults (off)
   m_baseSeconds = 300;
@@ -238,6 +178,7 @@ StartScreen::StartScreen(sf::RenderWindow& window) : m_window(window) {
 
   setupUI();
   applyTheme();
+  updateLoadSummary();
   m_listener_id = ColorPaletteManager::get().addListener([this]() { applyTheme(); });
 }
 
@@ -348,30 +289,26 @@ void StartScreen::setupUI() {
                          snapf(y0 + PANEL_H - 120.f));
   centerText(m_startText, m_startBtn.getGlobalBounds());
 
-  // FEN error hint above Start button
-  m_fenErrorText.setFont(m_font);
-  m_fenErrorText.setString("STANDARD FEN");
-  m_fenErrorText.setCharacterSize(14);
-  m_fenErrorText.setFillColor(colInvalid);
-  centerText(m_fenErrorText, m_startBtn.getGlobalBounds(), -(m_startBtn.getSize().y / 2.f + 15.f));
+  m_loadGameBtn.setSize({260.f, 44.f});
+  m_loadGameBtn.setFillColor(colButton);
+  m_loadGameBtn.setOutlineThickness(0.f);
+  m_loadGameBtn.setPosition(
+      snapf(x0 + (PANEL_W - m_loadGameBtn.getSize().x) / 2.f),
+      snapf(m_startBtn.getPosition().y + m_startBtn.getSize().y + 16.f));
 
-  // -------- Inline FEN (50% smaller height) --------
-  const float fenW = PANEL_W * 0.95f;
-  const float fenH = 22.f;  // 44 * 0.5
-  const float fenY = m_startBtn.getPosition().y + m_startBtn.getSize().y + 25.f;
-  const float fenX = x0 + (PANEL_W - fenW) * 0.5f;
+  m_loadGameText.setFont(m_font);
+  m_loadGameText.setCharacterSize(20);
+  m_loadGameText.setFillColor(colText);
+  m_loadGameText.setString("Load Game");
+  centerText(m_loadGameText, m_loadGameBtn.getGlobalBounds());
 
-  m_fenInputBox.setSize({fenW, fenH});
-  m_fenInputBox.setFillColor(colInput);
-  m_fenInputBox.setOutlineThickness(2.f);
-  m_fenInputBox.setOutlineColor(colInputBorder);
-  m_fenInputBox.setPosition(snapf(fenX), snapf(fenY));
-
-  m_fenInputText.setFont(m_font);
-  m_fenInputText.setCharacterSize(15);
-  m_fenInputText.setFillColor(colText);
-  m_fenInputText.setString(m_fenString);
-  leftCenterText(m_fenInputText, m_fenInputBox.getGlobalBounds(), 8.f);
+  m_loadSummaryText.setFont(m_font);
+  m_loadSummaryText.setCharacterSize(14);
+  m_loadSummaryText.setFillColor(colSubtle);
+  m_loadSummaryText.setString("Using standard starting position");
+  m_loadSummaryText.setPosition(
+      snapf(m_loadGameBtn.getPosition().x),
+      snapf(m_loadGameBtn.getPosition().y + m_loadGameBtn.getSize().y + 8.f));
 
   // Build bot option lists
   auto bots = availableBots();
@@ -542,11 +479,9 @@ void StartScreen::applyTheme() {
 
   m_startBtn.setFillColor(colAccent);
   m_startText.setFillColor(constant::COL_DARK_TEXT);
-
-  m_fenErrorText.setFillColor(colInvalid);
-  m_fenInputBox.setFillColor(colInput);
-  m_fenInputBox.setOutlineColor(colInputBorder);
-  m_fenInputText.setFillColor(colText);
+  m_loadGameBtn.setFillColor(colButton);
+  m_loadGameText.setFillColor(colText);
+  m_loadSummaryText.setFillColor(colSubtle);
 
   for (auto& opt : m_whiteBotOptions) {
     opt.box.setFillColor(colButton);
@@ -575,7 +510,45 @@ void StartScreen::applyTheme() {
     c.label.setFillColor(colText);
   }
 
+  m_loadModal.applyTheme();
+  m_warningDialog.applyTheme();
+
   updateTimeToggle();
+  updateLoadSummary();
+}
+
+void StartScreen::updateLoadSummary() {
+  std::string summary;
+  sf::Color color = colSubtle;
+
+  if (!m_pgnInput.empty()) {
+    model::PgnImport import;
+    if (model::parsePgn(m_pgnInput, import, nullptr)) {
+      summary = "Loaded PGN (" + std::to_string(import.movesUci.size()) + " moves)";
+      color = colText;
+    } else {
+      summary = "PGN provided (pending validation)";
+      color = colInvalid;
+    }
+  } else if (!m_fenInput.empty()) {
+    if (validateFen(m_fenInput)) {
+      summary = "Custom FEN set";
+      color = colText;
+    } else {
+      summary = "FEN is invalid – defaults will be used";
+      color = colInvalid;
+    }
+  } else {
+    summary = "Using standard starting position";
+  }
+
+  m_loadSummaryText.setString(summary);
+  m_loadSummaryText.setFillColor(color);
+}
+
+bool StartScreen::validateFen(const std::string& fen) const {
+  if (fen.empty()) return true;
+  return model::isFenWellFormed(fen);
 }
 
 void StartScreen::updateTimeToggle() {
@@ -730,17 +703,48 @@ StartConfig StartScreen::run() {
   cfg.timeIncrementSeconds = m_incrementSeconds;
   cfg.timeEnabled = m_timeEnabled;
 
-  // FEN field state
-  bool fenInputActive = false;
-  bool fenUserEdited = false;
-  const float fenPadX = 8.f;
+  auto attemptStart = [&](StartConfig base, bool showWarnings) -> std::optional<StartConfig> {
+    bool hasFen = !m_fenInput.empty();
+    bool fenValid = validateFen(m_fenInput);
 
-  // Toast
-  bool toastVisible = false;
-  sf::Clock toastClock;
-  std::string toastMsg;
-  // Caret blink
-  sf::Clock caretClock;
+    std::optional<model::PgnImport> parsedPgn;
+    if (!m_pgnInput.empty()) {
+      model::PgnImport import;
+      if (model::parsePgn(m_pgnInput, import, nullptr)) parsedPgn = import;
+    }
+
+    if (!hasFen && m_pgnInput.empty()) {
+      base.fen = core::START_FEN;
+      base.pgnImport.reset();
+      return base;
+    }
+
+    if (parsedPgn) {
+      base.fen = parsedPgn->startFen;
+      base.pgnImport = parsedPgn;
+      return base;
+    }
+
+    if (fenValid) {
+      base.fen = m_fenInput;
+      base.pgnImport.reset();
+      return base;
+    }
+
+    if (!showWarnings) {
+      base.fen = core::START_FEN;
+      base.pgnImport.reset();
+      return base;
+    }
+
+    std::string warning;
+    if (hasFen && !fenValid) warning += "FEN input is invalid.\n";
+    if (!m_pgnInput.empty()) warning += "PGN input is invalid.";
+    if (warning.empty()) warning = "Inputs are invalid.";
+    warning += "\nDo you want to continue with default values?";
+    m_warningDialog.open(warning);
+    return std::nullopt;
+  };
 
   auto drawUI = [&]() {
     drawVerticalGradient(m_window, colBGTop, colBGBottom);
@@ -925,9 +929,6 @@ StartConfig StartScreen::run() {
       }
     }
 
-    const bool fenEmpty = m_fenString.empty();
-    const bool fenValid = (!fenEmpty) && isValidFen(m_fenString);
-
     // Start (beveled)
     {
       auto r = m_startBtn.getGlobalBounds();
@@ -935,70 +936,17 @@ StartConfig StartScreen::run() {
       drawBevelButton3D(m_window, r, colAccent, hov, false);
       centerText(m_startText, r);
       m_window.draw(m_startText);
-      if (!fenEmpty && !fenValid) m_window.draw(m_fenErrorText);
     }
 
-    // -------- FEN field --------
-    m_fenInputBox.setOutlineColor(fenEmpty ? colInputBorder : (fenValid ? colValid : colInvalid));
-    m_window.draw(m_fenInputBox);
-
-    // Text or placeholder
-    if (fenEmpty) {
-      sf::Text placeholder("STANDARD FEN", m_font, 15);
-      placeholder.setFillColor(colSubtle);
-      leftCenterText(placeholder, m_fenInputBox.getGlobalBounds(), fenPadX);
-      m_window.draw(placeholder);
-    } else {
-      m_fenInputText.setString(m_fenString);
-      leftCenterText(m_fenInputText, m_fenInputBox.getGlobalBounds(), fenPadX);
-      m_window.draw(m_fenInputText);
+    // Load button and summary
+    {
+      auto r = m_loadGameBtn.getGlobalBounds();
+      bool hov = contains(r, m_mousePos);
+      drawBevelButton3D(m_window, r, colButton, hov, false);
+      centerText(m_loadGameText, r);
+      m_window.draw(m_loadGameText);
     }
-
-    // Blinking caret when focused
-    if (fenInputActive) {
-      float t = std::fmod(caretClock.getElapsedTime().asSeconds(), 1.0f);
-      if (t < 0.5f) {
-        // caret position = end of current text
-        sf::Text probe(m_fenString, m_font, 15);
-        auto b = probe.getLocalBounds();
-        float left = m_fenInputBox.getPosition().x + fenPadX;
-        float top = m_fenInputBox.getPosition().y;
-        float h = m_fenInputBox.getSize().y;
-        float caretX = left + b.width + 1.f;
-        float maxX = m_fenInputBox.getPosition().x + m_fenInputBox.getSize().x - 2.f;
-        caretX = std::min(caretX, maxX - 1.f);
-        sf::RectangleShape caret({2.f, h * 0.65f});
-        caret.setPosition(snapf(caretX), snapf(top + (h - caret.getSize().y) * 0.5f));
-        caret.setFillColor(colText);
-        m_window.draw(caret);
-      }
-    }
-
-    // Toast (bottom center)
-    if (toastVisible) {
-      float elapsed = toastClock.getElapsedTime().asSeconds();
-      if (elapsed < 2.2f) {
-        sf::Text ttxt(toastMsg, m_font, 14);
-        ttxt.setFillColor(colText);
-        auto tb = ttxt.getLocalBounds();
-        float pad = 12.f;
-        float bw = tb.width + pad * 2.f;
-        float bh = tb.height + pad * 2.f;
-        sf::Vector2u ws = m_window.getSize();
-        float x = (ws.x - bw) * 0.5f;
-        float y = ws.y - bh - 24.f;
-        sf::RectangleShape bg({bw, bh});
-        bg.setPosition(snapf(x), snapf(y));
-        bg.setFillColor(ColorPaletteManager::get().palette().COL_PANEL_ALPHA220);
-        bg.setOutlineThickness(1.f);
-        bg.setOutlineColor(colPanelBorder);
-        m_window.draw(bg);
-        ttxt.setPosition(snapf(x + pad - tb.left), snapf(y + pad - tb.top));
-        m_window.draw(ttxt);
-      } else {
-        toastVisible = false;
-      }
-    }
+    m_window.draw(m_loadSummaryText);
 
     // Developer credit (bottom right)
     {
@@ -1022,6 +970,38 @@ StartConfig StartScreen::run() {
         m_window.close();
         break;
       }
+
+      sf::Vector2f mouseEventPos = m_mousePos;
+      if (e.type == sf::Event::MouseButtonPressed || e.type == sf::Event::MouseButtonReleased) {
+        mouseEventPos = {(float)e.mouseButton.x, (float)e.mouseButton.y};
+      } else if (e.type == sf::Event::MouseMoved) {
+        mouseEventPos = {(float)e.mouseMove.x, (float)e.mouseMove.y};
+      }
+
+      if (m_warningDialog.isOpen()) {
+        auto choice = m_warningDialog.handleEvent(e, mouseEventPos);
+        if (choice == WarningDialog::Choice::UseDefaults) {
+          StartConfig base = cfg;
+          base.timeBaseSeconds = m_baseSeconds;
+          base.timeIncrementSeconds = m_incrementSeconds;
+          base.timeEnabled = m_timeEnabled;
+          base.fen = core::START_FEN;
+          base.pgnImport.reset();
+          return base;
+        }
+        continue;
+      }
+
+      if (m_loadModal.isOpen()) {
+        auto modalResult = m_loadModal.handleEvent(e, mouseEventPos);
+        if (modalResult == LoadGameModal::EventResult::Closed) {
+          m_fenInput = m_loadModal.getFen();
+          m_pgnInput = m_loadModal.getPgn();
+          updateLoadSummary();
+        }
+        if (m_loadModal.isOpen()) continue;
+      }
+
       if (e.type == sf::Event::Resized) {
         setupUI();
       }
@@ -1063,21 +1043,11 @@ StartConfig StartScreen::run() {
           m_incrementSeconds = clampIncSeconds(m_incrementSeconds + 1);
           m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
         } else if (e.key.code == sf::Keyboard::Enter) {
-          // Start game
-          cfg.timeBaseSeconds = m_baseSeconds;
-          cfg.timeIncrementSeconds = m_incrementSeconds;
-          cfg.timeEnabled = m_timeEnabled;
-          if (m_fenString.empty() || !isValidFen(m_fenString)) {
-            if (!m_fenString.empty()) {
-              toastMsg = "INCORRECT. STANDARD WILL BE CHOSEN";
-              toastVisible = true;
-              toastClock.restart();
-            }
-            cfg.fen = core::START_FEN;
-          } else {
-            cfg.fen = m_fenString;
-          }
-          return cfg;
+          StartConfig base = cfg;
+          base.timeBaseSeconds = m_baseSeconds;
+          base.timeIncrementSeconds = m_incrementSeconds;
+          base.timeEnabled = m_timeEnabled;
+          if (auto result = attemptStart(base, true)) return *result;
         }
       }
 
@@ -1115,34 +1085,16 @@ StartConfig StartScreen::run() {
           updateTimeToggle();
           m_holdBaseMinus.active = m_holdBasePlus.active = m_holdIncMinus.active =
               m_holdIncPlus.active = false;
-        } else if (contains(m_fenInputBox.getGlobalBounds(), mp)) {
-          fenInputActive = true;
-          caretClock.restart();
+        } else if (contains(m_loadGameBtn.getGlobalBounds(), mp)) {
+          m_loadModal.open(m_fenInput, m_pgnInput);
         } else {
-          // Blurring FEN: show toast if user edited & invalid (and not empty)
-          if (fenInputActive) {
-            fenInputActive = false;
-            if (fenUserEdited && !m_fenString.empty() && !isValidFen(m_fenString)) {
-              toastMsg = "INCORRECT. STANDARD WILL BE CHOSEN";
-              toastVisible = true;
-              toastClock.restart();
-            }
-          }
           // delegate (sides/presets/start)
           if (handleMouse(mp, cfg)) {
             cfg.timeBaseSeconds = m_baseSeconds;
             cfg.timeIncrementSeconds = m_incrementSeconds;
             cfg.timeEnabled = m_timeEnabled;
-            if (m_fenString.empty() || !isValidFen(m_fenString)) {
-              if (!m_fenString.empty()) {
-                toastMsg = "INCORRECT. STANDARD WILL BE CHOSEN";
-                toastVisible = true;
-                toastClock.restart();
-              }
-              cfg.fen = core::START_FEN;
-            } else
-              cfg.fen = m_fenString;
-            return cfg;
+            StartConfig base = cfg;
+            if (auto result = attemptStart(base, true)) return *result;
           }
         }
       }
@@ -1152,48 +1104,6 @@ StartConfig StartScreen::run() {
             m_holdIncPlus.active = false;
       }
 
-      // Paste to FEN (fit to width; no overflow)
-      if (fenInputActive && e.type == sf::Event::KeyPressed && (e.key.control || e.key.system) &&
-          e.key.code == sf::Keyboard::V) {
-        auto clip = sf::Clipboard::getString().toAnsiString();
-        clip.erase(std::remove(clip.begin(), clip.end(), '\n'), clip.end());
-        clip.erase(std::remove(clip.begin(), clip.end(), '\r'), clip.end());
-        // append only while it fits
-        const float avail = m_fenInputBox.getSize().x - 2.f * fenPadX - 2.f;
-        std::string out = m_fenString;
-        for (char c : clip) {
-          sf::Text probe(out + c, m_font, 15);
-          if (probe.getLocalBounds().width <= avail)
-            out.push_back(c);
-          else
-            break;
-        }
-        if (out != m_fenString) {
-          m_fenString = out;
-          fenUserEdited = true;
-        }
-        m_fenInputText.setString(m_fenString);
-      }
-
-      // Typing into FEN (no overflow)
-      if (fenInputActive && e.type == sf::Event::TextEntered) {
-        if (e.text.unicode == 8) {  // backspace
-          if (!m_fenString.empty()) {
-            m_fenString.pop_back();
-            fenUserEdited = true;
-          }
-        } else if (e.text.unicode >= 32 && e.text.unicode < 127) {
-          const float avail = m_fenInputBox.getSize().x - 2.f * fenPadX - 2.f;
-          std::string tmp = m_fenString;
-          tmp.push_back((char)e.text.unicode);
-          sf::Text probe(tmp, m_font, 15);
-          if (probe.getLocalBounds().width <= avail) {
-            m_fenString.push_back((char)e.text.unicode);
-            fenUserEdited = true;
-          }
-        }
-        m_fenInputText.setString(m_fenString);
-      }
     }
 
     // hold-repeat ticks
@@ -1230,16 +1140,18 @@ StartConfig StartScreen::run() {
     // draw
     m_window.clear();
     drawUI();
+    if (m_loadModal.isOpen()) m_loadModal.draw(m_window);
+    if (m_warningDialog.isOpen()) m_warningDialog.draw(m_window);
     m_window.display();
   }
 
   cfg.timeBaseSeconds = m_baseSeconds;
   cfg.timeIncrementSeconds = m_incrementSeconds;
   cfg.timeEnabled = m_timeEnabled;
-  if (m_fenString.empty() || !isValidFen(m_fenString))
-    cfg.fen = core::START_FEN;
-  else
-    cfg.fen = m_fenString;
+  StartConfig base = cfg;
+  if (auto result = attemptStart(base, false)) return *result;
+  cfg.fen = core::START_FEN;
+  cfg.pgnImport.reset();
   return cfg;
 }
 

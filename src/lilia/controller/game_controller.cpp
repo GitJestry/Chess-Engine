@@ -17,6 +17,7 @@
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/move.hpp"
 #include "lilia/model/move_generator.hpp"
+#include "lilia/model/pgn_parser.hpp"
 #include "lilia/model/position.hpp"
 #include "lilia/uci/uci_helper.hpp"
 #include "lilia/view/render_constants.hpp"
@@ -111,7 +112,9 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
     core::Color stm = this->m_chess_game.getGameState().sideToMove;
     if (this->m_time_controller) {
       core::Color mover = ~stm;
-      this->m_time_controller->onMove(mover);
+      if (!this->m_importingHistory) {
+        this->m_time_controller->onMove(mover);
+      }
       float w = this->m_time_controller->getTime(core::Color::White);
       float b = this->m_time_controller->getTime(core::Color::Black);
       this->m_game_view.updateClock(core::Color::White, w);
@@ -139,7 +142,8 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
                                bool blackIsBot, int whiteThinkTimeMs,
                                int whiteDepth, int blackThinkTimeMs,
                                int blackDepth, bool useTimer, int baseSeconds,
-                               int incrementSeconds) {
+                               int incrementSeconds,
+                               const std::optional<model::PgnImport> &pgnImport) {
   invalidateLegalCache();
   m_sound_manager.playEffect(view::sound::Effect::GameBegins);
   m_game_view.hideResignPopup();
@@ -151,6 +155,7 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
   m_black_is_bot = blackIsBot;
   m_game_manager->startGame(fen, whiteIsBot, blackIsBot, whiteThinkTimeMs,
                             whiteDepth, blackThinkTimeMs, blackDepth);
+  m_importingHistory = false;
 
   // Preallocate frequently growing containers to avoid repeated reallocations
   m_fen_history.clear();
@@ -164,24 +169,27 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
   m_premove_queue.clear();
   m_premove_queue.shrink_to_fit();
 
+  core::Color stm = m_chess_game.getGameState().sideToMove;
   if (useTimer) {
     m_time_controller =
         std::make_unique<TimeController>(baseSeconds, incrementSeconds);
-    core::Color stm = m_chess_game.getGameState().sideToMove;
-    m_time_controller->start(stm);
     m_game_view.setClocksVisible(true);
     m_game_view.updateClock(core::Color::White,
                             static_cast<float>(baseSeconds));
     m_game_view.updateClock(core::Color::Black,
                             static_cast<float>(baseSeconds));
-    m_game_view.setClockActive(m_time_controller->getActive());
+    if (!pgnImport) {
+      m_time_controller->start(stm);
+      m_game_view.setClockActive(m_time_controller->getActive());
+    } else {
+      m_game_view.setClockActive(std::nullopt);
+    }
     m_time_history.push_back({static_cast<float>(baseSeconds),
                               static_cast<float>(baseSeconds), stm});
   } else {
     m_time_controller.reset();
     m_game_view.setClocksVisible(false);
-    m_time_history.push_back(
-        {0.f, 0.f, m_chess_game.getGameState().sideToMove});
+    m_time_history.push_back({0.f, 0.f, stm});
   }
   m_fen_history.push_back(fen);
   m_eval_history.push_back(m_eval_cp.load());
@@ -211,6 +219,25 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
 
   m_game_view.setDefaultCursor();
   m_next_action = NextAction::None;
+
+  if (pgnImport) {
+    m_importingHistory = true;
+    for (const auto &uci : pgnImport->movesUci) {
+      m_skip_next_move_animation = true;
+      if (!m_game_manager->applyImportedMove(uci)) {
+        break;
+      }
+    }
+    m_importingHistory = false;
+    if (m_time_controller) {
+      m_time_controller->start(m_chess_game.getGameState().sideToMove);
+      m_game_view.setClockActive(m_time_controller->getActive());
+    }
+    if (!pgnImport->termination.empty()) {
+      m_game_view.addResult(pgnImport->termination);
+    }
+    m_game_manager->resumeBotsAfterImport();
+  }
 }
 
 void GameController::handleEvent(const sf::Event &event) {
@@ -902,7 +929,7 @@ void GameController::movePieceAndClear(const model::Move &move,
   }
 
   // Keep the skip flag stable for the entire move (king + rook)
-  const bool skipAnim = m_skip_next_move_animation;
+  const bool skipAnim = m_skip_next_move_animation || m_importingHistory;
 
   // If we already applied the instant premove, remove the EP victim now
   if (skipAnim && move.isEnPassant() && epVictimSq != core::NO_SQUARE) {
@@ -961,7 +988,9 @@ void GameController::movePieceAndClear(const model::Move &move,
     effect = isPlayerMove ? view::sound::Effect::PlayerMove
                           : view::sound::Effect::EnemyMove;
 
-  m_sound_manager.playEffect(effect);
+  if (!m_importingHistory) {
+    m_sound_manager.playEffect(effect);
+  }
   if (move.isCapture())
     m_game_view.addCapturedPiece(moverColorBefore, capturedType);
   m_move_history.push_back(

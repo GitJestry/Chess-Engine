@@ -4,6 +4,7 @@
 #include <chrono>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,6 +30,7 @@ class ChessGame;
 struct Move;
 class Position;
 class MoveGenerator;
+struct PgnImport;
 namespace bb {
 struct Piece;
 }
@@ -90,7 +92,8 @@ public:
                  int whiteThinkTimeMs = 1000, int whiteDepth = 5,
                  int blackThinkTimeMs = 1000, int blackDepth = 5,
                  bool useTimer = true, int baseSeconds = 0,
-                 int incrementSeconds = 0);
+                 int incrementSeconds = 0,
+                 const std::optional<model::PgnImport> &pgnImport = std::nullopt);
 
   enum class NextAction { None, NewBot, Rematch };
   [[nodiscard]] NextAction getNextAction() const;
@@ -180,6 +183,7 @@ private:
   core::PieceType m_pending_capture_type = core::PieceType::None;
   core::PieceType m_pending_promotion = core::PieceType::None;
   bool m_skip_next_move_animation = false;
+  bool m_importingHistory = false;
 
   SelectionManager m_selection_manager;
 
