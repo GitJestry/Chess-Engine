@@ -1543,7 +1543,8 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
   this->stopFlag = stop;
   if (!this->sharedNodes) this->sharedNodes = std::make_shared<std::atomic<std::uint64_t>>(0);
   if (maxNodes) this->nodeLimit = maxNodes;
-  if (this->sharedNodes && this->thread_id_ == 0)
+  // Only reset when we're the sole owner (single-thread search).
+  if (this->sharedNodes && this->thread_id_ == 0 && this->sharedNodes.use_count() == 1)
     this->sharedNodes->store(0, std::memory_order_relaxed);
 
   reset_node_batch();
@@ -1890,6 +1891,8 @@ int Search::search_root_lazy_smp(model::Position& pos, int maxDepth,
 
   auto& pool = ThreadPool::instance();
   auto sharedCounter = std::make_shared<std::atomic<std::uint64_t>>(0);
+  sharedCounter->store(0, std::memory_order_relaxed);  // reset once, up front
+  const auto smpStart = steady_clock::now();
 
   std::vector<std::unique_ptr<Search>> workers;
   workers.reserve(threads);
@@ -1941,6 +1944,14 @@ int Search::search_root_lazy_smp(model::Position& pos, int maxDepth,
     this->merge_from(*workers[t]);
   }
 
+  // Finalize stats from all threads
+  this->stats.nodes = sharedCounter->load(std::memory_order_relaxed);
+  const auto ms_total = (std::uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+                            steady_clock::now() - smpStart)
+                            .count();
+  this->stats.elapsedMs = ms_total;
+  this->stats.nps =
+      (ms_total ? (double)this->stats.nodes / (ms_total / 1000.0) : (double)this->stats.nodes);
   return mainScore;
 }
 
