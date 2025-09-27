@@ -342,53 +342,100 @@ static inline bool would_give_check_after(const model::Position& pos, const mode
   const auto& b = pos.getBoard();
   const auto us = pos.getState().sideToMove;
   const auto kBB = b.getPieces(~us, PT::King);
+  if (!kBB) return false;
 
-  auto mover = b.getPiece(m.from());
-  if (!mover) return false;
+  const int kSq = model::bb::ctz64(kBB);
+  const auto fromB = model::bb::sq_bb(m.from());
+  const auto toB = model::bb::sq_bb(m.to());
 
-  const auto fromBB = model::bb::sq_bb(m.from());
-  const auto toBB = model::bb::sq_bb(m.to());
-
+  // Post-move occupancy (handle EP capture)
   auto occ = b.getAllPieces();
-  occ = (occ & ~fromBB) | toBB;
+  occ = (occ & ~fromB) | toB;
   if (m.isEnPassant()) {
-    int epCapSq = (us == core::Color::White) ? m.to() - 8 : m.to() + 8;
+    const int epCapSq = (us == core::Color::White) ? m.to() - 8 : m.to() + 8;
     occ &= ~model::bb::sq_bb(epCapSq);
   }
 
-  PT moverAfter = mover->type;
-  if (m.promotion() != PT::None) moverAfter = m.promotion();
+  // Our piece sets after the move (promotion-aware)
+  auto paw = b.getPieces(us, PT::Pawn);
+  auto kn = b.getPieces(us, PT::Knight);
+  auto bi = b.getPieces(us, PT::Bishop);
+  auto rk = b.getPieces(us, PT::Rook);
+  auto qu = b.getPieces(us, PT::Queen);
+  auto ki = b.getPieces(us, PT::King);
 
-  model::bb::Bitboard atk = 0;
-  switch (moverAfter) {
-    case PT::Knight:
-      atk = model::bb::knight_attacks_from(m.to());
-      break;
-    case PT::Bishop:
-      atk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ);
-      break;
-    case PT::Rook:
-      atk = model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ);
-      break;
-    case PT::Queen: {
-      auto bAtk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ);
-      auto rAtk = model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ);
-      atk = bAtk | rAtk;
-      break;
+  if (auto mover = b.getPiece(m.from())) {
+    PT before = mover->type;
+    PT after = (m.promotion() != PT::None) ? m.promotion() : before;
+    // remove from "before"
+    switch (before) {
+      case PT::Pawn:
+        paw &= ~fromB;
+        break;
+      case PT::Knight:
+        kn &= ~fromB;
+        break;
+      case PT::Bishop:
+        bi &= ~fromB;
+        break;
+      case PT::Rook:
+        rk &= ~fromB;
+        break;
+      case PT::Queen:
+        qu &= ~fromB;
+        break;
+      case PT::King:
+        ki &= ~fromB;
+        break;
+      default:
+        break;
     }
-    case PT::King:
-      atk = model::bb::king_attacks_from(m.to());
-      break;
-    case PT::Pawn: {
-      const auto to = model::bb::sq_bb(m.to());
-      atk = (us == core::Color::White) ? (model::bb::ne(to) | model::bb::nw(to))
-                                       : (model::bb::se(to) | model::bb::sw(to));
-      break;
+    // add to "after"
+    switch (after) {
+      case PT::Pawn:
+        paw |= toB;
+        break;
+      case PT::Knight:
+        kn |= toB;
+        break;
+      case PT::Bishop:
+        bi |= toB;
+        break;
+      case PT::Rook:
+        rk |= toB;
+        break;
+      case PT::Queen:
+        qu |= toB;
+        break;
+      case PT::King:
+        ki |= toB;
+        break;
+      default:
+        break;
     }
-    default:
-      break;
   }
-  return (atk & kBB) != 0;
+
+  const auto kSqBB = model::bb::sq_bb(static_cast<core::Square>(kSq));
+
+  // Pawn attackers on kSq (reverse directions)
+  if (us == core::Color::White) {
+    if ((model::bb::sw(kSqBB) | model::bb::se(kSqBB)) & paw) return true;
+  } else {
+    if ((model::bb::nw(kSqBB) | model::bb::ne(kSqBB)) & paw) return true;
+  }
+
+  // Knight
+  if (model::bb::knight_attacks_from(kSq) & kn) return true;
+
+  // Sliding (reverse from king with post-move occupancy!)
+  if (model::magic::sliding_attacks(model::magic::Slider::Bishop, kSq, occ) & (bi | qu))
+    return true;
+  if (model::magic::sliding_attacks(model::magic::Slider::Rook, kSq, occ) & (rk | qu)) return true;
+
+  // King adjacency
+  if (model::bb::king_attacks_from(kSq) & ki) return true;
+
+  return false;
 }
 
 }  // namespace
