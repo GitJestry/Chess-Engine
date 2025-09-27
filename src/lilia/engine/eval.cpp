@@ -251,6 +251,14 @@ static PawnOnly pawn_structure_pawnhash_only(Bitboard wp, Bitboard bp, Bitboard 
       mg += PASSED_MG[r];
       eg += PASSED_EG[r];
       out.wPass |= sq_bb(Square(s));
+      int steps = 7 - r;
+      if (steps <= 2) {
+        mg += PASS_NEAR_PROMO_STEP2_MG;
+        eg += PASS_NEAR_PROMO_STEP2_EG;
+      } else if (steps == 3) {
+        mg += PASS_NEAR_PROMO_STEP3_MG;
+        eg += PASS_NEAR_PROMO_STEP3_EG;
+      }
     }
   }
   t = bp;
@@ -276,6 +284,14 @@ static PawnOnly pawn_structure_pawnhash_only(Bitboard wp, Bitboard bp, Bitboard 
       mg -= PASSED_MG[7 - rank_of(s)];
       eg -= PASSED_EG[7 - rank_of(s)];
       out.bPass |= sq_bb(Square(s));
+      int steps = rank_of(s);
+      if (steps <= 2) {
+        mg -= PASS_NEAR_PROMO_STEP2_MG;
+        eg -= PASS_NEAR_PROMO_STEP2_EG;
+      } else if (steps == 3) {
+        mg -= PASS_NEAR_PROMO_STEP3_MG;
+        eg -= PASS_NEAR_PROMO_STEP3_EG;
+      }
     }
   }
 

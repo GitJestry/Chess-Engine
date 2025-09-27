@@ -866,8 +866,10 @@ StartConfig StartScreen::run() {
         }
       }
     };
-    if (m_whiteBotListAnim > 0.f) drawBotList(m_whiteBotOptions, m_whiteBotSelection, m_whiteBotListAnim);
-    if (m_blackBotListAnim > 0.f) drawBotList(m_blackBotOptions, m_blackBotSelection, m_blackBotListAnim);
+    if (m_whiteBotListAnim > 0.f)
+      drawBotList(m_whiteBotOptions, m_whiteBotSelection, m_whiteBotListAnim);
+    if (m_blackBotListAnim > 0.f)
+      drawBotList(m_blackBotOptions, m_blackBotSelection, m_blackBotListAnim);
 
     // Time toggle
     {
