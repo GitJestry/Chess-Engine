@@ -1,12 +1,14 @@
-#include <cassert>
-#include <memory>
 #include <atomic>
+#include <cassert>
+#include <iostream>
+#include <memory>
 
 #include "lilia/engine/bot_engine.hpp"
-#include "lilia/engine/search.hpp"
 #include "lilia/engine/eval.hpp"
+#include "lilia/engine/search.hpp"
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/tt5.hpp"
+#include "lilia/uci/uci_helper.hpp"
 
 using namespace lilia;
 
@@ -26,7 +28,7 @@ int main() {
     game.setPosition("4k3/8/8/8/4N3/8/8/4K3 w - - 0 1");
     auto res = bot.findBestMove(game, 2, 10);
     assert(res.bestMove);
-    model::Move expected(sq('e',4), sq('f',6));
+    model::Move expected(sq('e', 4), sq('f', 6));
     assert(*res.bestMove == expected);
   }
 
@@ -36,7 +38,7 @@ int main() {
     game.setPosition("4r2k/8/6B1/8/8/8/8/4K3 w - - 0 1");
     auto res = bot.findBestMove(game, 2, 10);
     assert(res.bestMove);
-    model::Move expected(sq('g',6), sq('f',7));
+    model::Move expected(sq('g', 6), sq('f', 7));
     assert(*res.bestMove == expected);
   }
 
@@ -48,7 +50,7 @@ int main() {
 
     model::TT5 tt;
     engine::Evaluator eval;
-    auto evalPtr = std::shared_ptr<const engine::Evaluator>(&eval, [](const engine::Evaluator*){});
+    auto evalPtr = std::shared_ptr<const engine::Evaluator>(&eval, [](const engine::Evaluator*) {});
     engine::Search search(tt, evalPtr, cfg);
 
     model::Move wrong(sq('a', 2), sq('a', 3));
@@ -69,7 +71,7 @@ int main() {
 
     model::TT5 tt;
     engine::Evaluator eval;
-    auto evalPtr = std::shared_ptr<const engine::Evaluator>(&eval, [](const engine::Evaluator*){});
+    auto evalPtr = std::shared_ptr<const engine::Evaluator>(&eval, [](const engine::Evaluator*) {});
     engine::Search search(tt, evalPtr, cfg);
 
     auto stop = std::make_shared<std::atomic<bool>>(false);
@@ -120,6 +122,34 @@ int main() {
     assert(!stop2->load());
     assert(actual2 == actual1);
     assert(stats2.nodes == actual2);
+  }
+
+  // Exchange sacrifice to free an advanced passer should be found
+  {
+    model::ChessGame game;
+    game.setPosition("8/5k2/5p2/pp6/2pB4/P1P3K1/1n1r1P2/1R6 b - - 8 49");
+    auto res = bot.findBestMove(game, 6, 0);
+    assert(res.bestMove);
+    model::Move expected(sq('d', 2), sq('d', 4));
+    if (!res.bestMove || *res.bestMove != expected) {
+      std::cerr << "Expected best move d2d4, got "
+                << (res.bestMove ? move_to_uci(*res.bestMove) : std::string("<none>")) << "\n";
+      return 1;
+    }
+  }
+
+  // Sacrificing quiet check with a pawn should be found
+  {
+    model::ChessGame game;
+    game.setPosition("6k1/3b1ppp/p7/3R4/2P2p2/7q/4KQ2/8 b - - 1 66");
+    auto res = bot.findBestMove(game, 8, 0);
+    assert(res.bestMove);
+    model::Move expected(sq('f', 4), sq('f', 3));
+    if (!res.bestMove || *res.bestMove != expected) {
+      std::cerr << "Expected best move f4f3, got "
+                << (res.bestMove ? move_to_uci(*res.bestMove) : std::string("<none>")) << "\n";
+      return 1;
+    }
   }
 
   return 0;
