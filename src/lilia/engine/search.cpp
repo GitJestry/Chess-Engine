@@ -1145,8 +1145,15 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     int pawn_sig = 0, piece_sig = 0;
     if (isQuiet) {
       piece_sig = quiet_piece_threat_signal(board, m, us);  // detects checks (==2)
-      if (piece_sig < 2 && doThreatSignals) {
-        pawn_sig = quiet_pawn_push_signal(board, m, us);
+      if (piece_sig < 2) {
+        const int pawn_sig_raw = quiet_pawn_push_signal(board, m, us);
+
+        if (pawn_sig_raw == 2) {
+          // Always detect pawn checks even if threat signals are otherwise gated off.
+          pawn_sig = 2;
+        } else if (doThreatSignals) {
+          pawn_sig = pawn_sig_raw;
+        }
       }
     }
     const int qp_sig = pawn_sig;
