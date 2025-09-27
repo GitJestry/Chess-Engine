@@ -90,6 +90,10 @@ constexpr int PASS_KBOOST = 16;     // eigener König nahe
 constexpr int PASS_KBLOCK = 20;     // gegnerischer König blockt
 constexpr int PASS_PIECE_SUPP = 8;  // gedeckt durch Figur
 constexpr int PASS_KPROX = 4;       // gegnerischer König in Nähe (Abzug)
+constexpr int PASS_NEAR_PROMO_STEP3_MG = 20;
+constexpr int PASS_NEAR_PROMO_STEP3_EG = 40;
+constexpr int PASS_NEAR_PROMO_STEP2_MG = 64;
+constexpr int PASS_NEAR_PROMO_STEP2_EG = 128;
 
 // =============================================================================
 // King safety (Druckgewichtung & Clamp)
