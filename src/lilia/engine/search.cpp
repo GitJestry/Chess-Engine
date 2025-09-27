@@ -1040,13 +1040,14 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       NullUndoGuard ng(pos);
       if (ng.doNull()) {
         model::Move tmpNM{};
-        int nullScore = -negamax(pos, depth - 1 - R, -beta, -beta + 1, ply + 1, tmpNM, staticEval);
+        int nullScore = -negamax(pos, depth - 1 - R, -beta, -beta + 1, ply + 1, tmpNM, -staticEval);
         ng.rollback();
         if (nullScore >= beta) {
           const bool needVerify = (depth >= 8 && R >= 3 && evalGap < 800);
           if (needVerify) {
             model::Move tmpVerify{};
-            int verify = -negamax(pos, depth - 1, -beta, -beta + 1, ply + 1, tmpVerify, staticEval);
+            int verify =
+                -negamax(pos, depth - 1, -beta, -beta + 1, ply + 1, tmpVerify, -staticEval);
             if (verify >= beta) return beta;
           } else {
             return beta;
@@ -1182,9 +1183,15 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       if (history[m.from()][m.to()] < cfg.threatSignalsHistMin) doThreatSignals = false;
     }
 
+    bool passed_push = false;
+    if (isQuiet) {
+      if (auto mover = board.getPiece(m.from()); mover && mover->type == core::PieceType::Pawn) {
+        passed_push = is_advanced_passed_pawn_push(board, m, us);
+      }
+    }
+
     // --- Always detect true checks for quiet moves (even if threat signals are gated) ---
     int pawn_sig = 0, piece_sig = 0;
-    bool passed_push = false;
     bool wouldCheck = false;
     if (isQuiet) {
       piece_sig = quiet_piece_threat_signal(board, m, us);  // detects checks (==2)
@@ -1403,7 +1410,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         const int red = 3;
         const int pcDepth = std::max(1, newDepth - red);
         const int probe =
-            -negamax(pos, pcDepth, -beta, -(beta - 1), ply + 1, childBest, staticEval);
+            -negamax(pos, pcDepth, -beta, -(beta - 1), ply + 1, childBest, -staticEval);
         if (probe >= beta) return beta;
       }
     }
@@ -1419,7 +1426,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // PVS / LMR
     if (moveCount == 0) {
-      value = -negamax(pos, newDepth, -beta, -alpha, ply + 1, childBest, staticEval);
+      value = -negamax(pos, newDepth, -beta, -alpha, ply + 1, childBest, -staticEval);
     } else {
       if (cfg.useLMR && isQuiet && !tacticalQuiet && !inCheck && !givesCheck && newDepth >= 2 &&
           moveCount >= 3) {
@@ -1457,9 +1464,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
 
       value =
-          -negamax(pos, newDepth - reduction, -alpha - 1, -alpha, ply + 1, childBest, staticEval);
+          -negamax(pos, newDepth - reduction, -alpha - 1, -alpha, ply + 1, childBest, -staticEval);
       if (value > alpha && value < beta) {
-        value = -negamax(pos, newDepth, -beta, -alpha, ply + 1, childBest, staticEval);
+        value = -negamax(pos, newDepth, -beta, -alpha, ply + 1, childBest, -staticEval);
       }
     }
 
@@ -1533,7 +1540,8 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       MoveUndoGuard pcg(pos);
       if (!pcg.doMove(m)) continue;
 
-      if (signed_eval(pos) + PC_MARGIN >= beta) {
+      const int childSE = signed_eval(pos);  // opponent POV
+      if (-childSE + PC_MARGIN >= beta) {    // flip the sign
         model::Move tmp{};
         const int probe = -negamax(pos, depth - 3, -beta, -(beta - 1), ply + 1, tmp, INF);
         pcg.rollback();
@@ -1553,7 +1561,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       if (!g.doMove(m)) continue;
 
       model::Move childBest{};
-      int value = -negamax(pos, depth - 1, -beta, -alpha, ply + 1, childBest, staticEval);
+      int value = -negamax(pos, depth - 1, -beta, -alpha, ply + 1, childBest, -staticEval);
       value = std::clamp(value, -MATE + 1, MATE - 1);
 
       best = value;
@@ -1796,7 +1804,8 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           const bool quietCheckRoot = isQuietRoot && would_give_check_after(pos, m);
           bool pawnQuietCheckRoot = false;
           if (quietCheckRoot && isQuietRoot) {
-            if (auto mover = pos.getBoard().getPiece(m.from()); mover && mover->type == core::PieceType::Pawn) {
+            if (auto mover = pos.getBoard().getPiece(m.from());
+                mover && mover->type == core::PieceType::Pawn) {
               pawnQuietCheckRoot = true;
             }
           }
