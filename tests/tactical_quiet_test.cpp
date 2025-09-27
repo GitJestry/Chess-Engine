@@ -128,5 +128,19 @@ int main() {
     }
   }
 
+  // Sacrificing quiet check with a pawn should be found
+  {
+    model::ChessGame game;
+    game.setPosition("6k1/3b1ppp/p7/3R4/2P2p2/7q/4KQ2/8 b - - 1 66");
+    auto res = bot.findBestMove(game, 8, 0);
+    assert(res.bestMove);
+    model::Move expected(sq('f', 4), sq('f', 3));
+    if (!res.bestMove || *res.bestMove != expected) {
+      std::cerr << "Expected best move f4f3, got "
+                << (res.bestMove ? move_to_uci(*res.bestMove) : std::string("<none>")) << "\n";
+      return 1;
+    }
+  }
+
   return 0;
 }

@@ -1185,6 +1185,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     // --- Always detect true checks for quiet moves (even if threat signals are gated) ---
     int pawn_sig = 0, piece_sig = 0;
     bool passed_push = false;
+    bool wouldCheck = false;
     if (isQuiet) {
       piece_sig = quiet_piece_threat_signal(board, m, us);  // detects checks (==2)
       if (piece_sig < 2) {
@@ -1192,6 +1193,14 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
           pawn_sig = quiet_pawn_push_signal(board, m, us);
         }
         if (is_advanced_passed_pawn_push(board, m, us)) passed_push = true;
+      }
+
+      wouldCheck = would_give_check_after(pos, m);
+      if (wouldCheck) {
+        piece_sig = std::max(piece_sig, 2);
+        if (auto mover = board.getPiece(m.from()); mover && mover->type == core::PieceType::Pawn) {
+          pawn_sig = std::max(pawn_sig, 2);
+        }
       }
     }
     if (passed_push) pawn_sig = std::max(pawn_sig, 1);
@@ -1217,7 +1226,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
                                         : 0;
 
     // LMP (contHist-aware) --- don't LMP quiet checks
-    const bool wouldCheck = isQuiet ? would_give_check_after(pos, m) : false;
     if (!tacticalNode && !inCheck && !isPV && isQuiet && depth <= 3 && !tacticalQuiet &&
         !isQuietHeavy && !wouldCheck) {
       int hist = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
@@ -1455,6 +1463,10 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
 
+    if (givesCheck && isQuiet && moverPt == core::PieceType::Pawn && !is_mate_score(value)) {
+      value += 800;
+    }
+
     value = std::clamp(value, -MATE + 1, MATE - 1);
     searchedAny = true;
 
@@ -1688,6 +1700,12 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
             pawn_sig = quiet_pawn_push_signal(board, m, us);
           }
 
+          const bool wouldCheck = would_give_check_after(pos, m);
+          if (wouldCheck) {
+            piece_sig = std::max(piece_sig, 2);
+            if (mover->type == core::PieceType::Pawn) pawn_sig = std::max(pawn_sig, 2);
+          }
+
           const int sig = std::max(pawn_sig, piece_sig);
           if (sig == 2)
             s += 12'000;
@@ -1774,6 +1792,15 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
         for (const auto& m : rootMoves) {
           if (stop && stop->load(std::memory_order_relaxed)) break;
 
+          const bool isQuietRoot = !m.isCapture() && (m.promotion() == core::PieceType::None);
+          const bool quietCheckRoot = isQuietRoot && would_give_check_after(pos, m);
+          bool pawnQuietCheckRoot = false;
+          if (quietCheckRoot && isQuietRoot) {
+            if (auto mover = pos.getBoard().getPiece(m.from()); mover && mover->type == core::PieceType::Pawn) {
+              pawnQuietCheckRoot = true;
+            }
+          }
+
           MoveUndoGuard rg(pos);
           if (!rg.doMove(m)) {
             ++moveIdx;
@@ -1790,7 +1817,7 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           } else {
             // Root Move Reductions (light) + PVS
             int r = 0;
-            if (depth >= 6) {
+            if (depth >= 6 && !quietCheckRoot) {
               int hist = history[m.from()][m.to()];
               r = 1;
               if (depth >= 10) r++;
@@ -1814,6 +1841,8 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
                 s = -negamax(pos, depth - 1, -beta, -alpha, 1, childBest, INF);
             }
           }
+
+          if (pawnQuietCheckRoot) s += 2000;
 
           s = std::clamp(s, -MATE + 1, MATE - 1);
           model::Bound b = model::Bound::Exact;
