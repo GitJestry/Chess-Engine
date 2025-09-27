@@ -91,6 +91,8 @@ public:
                  int blackThinkTimeMs = 1000, int blackDepth = 5,
                  bool useTimer = true, int baseSeconds = 0,
                  int incrementSeconds = 0);
+  void setInitialPgn(const std::string &pgn,
+                     const std::vector<std::string> &uciMoves);
 
   enum class NextAction { None, NewBot, Rematch };
   [[nodiscard]] NextAction getNextAction() const;
@@ -146,6 +148,8 @@ private:
   model::ChessGame &m_chess_game; ///< Game model containing rules and state.
   InputManager m_input_manager;   ///< Handles raw input processing.
   view::sound::SoundManager m_sound_manager; ///< Handles sfx and music
+  std::string m_initial_pgn;
+  std::vector<std::string> m_initial_pgn_moves;
 
   bool m_white_is_bot{false};
   bool m_black_is_bot{false};

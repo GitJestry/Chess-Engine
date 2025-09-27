@@ -17,6 +17,8 @@ struct StartConfig {
   bool blackIsBot{true};
   BotType blackBot{BotType::Lilia};
   std::string fen{core::START_FEN};
+  std::string pgn{};
+  std::vector<std::string> pgnMoves;
   int timeBaseSeconds{300};     // default 5 minutes
   int timeIncrementSeconds{0};  // default 0s increment
   bool timeEnabled{true};       // whether clocks are used
@@ -46,7 +48,7 @@ class StartScreen {
   sf::Texture m_logoTex;
   sf::Sprite m_logo;
   sf::Text m_devByText;    // "@Developed by Julian Meyer" bottom-right
-  sf::Text m_fenInfoText;  // subtle hint below FEN box
+  sf::Text m_fenInfoText;  // subtle hint below Load button
 
   sf::RectangleShape m_whitePlayerBtn;
   sf::RectangleShape m_whiteBotBtn;
@@ -83,19 +85,43 @@ class StartScreen {
   bool m_paletteListForceHide{false};
   float m_paletteListAnim{0.f};
 
-  // FEN popup UI
-  bool m_showFenPopup{false};
+  // Load game button
+  sf::RectangleShape m_loadGameBtn;
+  sf::Text m_loadGameText;
+  sf::Text m_loadSummaryText;
+
+  // Load popup UI
+  bool m_showLoadPopup{false};
   sf::RectangleShape m_fenPopup;
   sf::RectangleShape m_fenInputBox;
   sf::Text m_fenInputText;
+  sf::Text m_fenLabelText;
+  sf::Text m_pgnLabelText;
+  sf::RectangleShape m_pgnInputBox;
+  sf::Text m_pgnInputText;
   sf::RectangleShape m_fenBackBtn;
   sf::RectangleShape m_fenContinueBtn;
   sf::Text m_fenBackText;
   sf::Text m_fenContinueText;
   sf::Text m_fenErrorText;
+  sf::Text m_pgnErrorText;
   std::string m_fenString;
+  std::string m_pgnString;
+  std::vector<std::string> m_cachedPgnMoves;
   sf::Clock m_errorClock;
   bool m_showError{false};
+
+  // Warning popup when invalid inputs remain on start
+  bool m_showWarningPopup{false};
+  bool m_warningInvalidFen{false};
+  bool m_warningInvalidPgn{false};
+  sf::RectangleShape m_warningPopup;
+  sf::Text m_warningTitle;
+  sf::Text m_warningBody;
+  sf::RectangleShape m_warningBackBtn;
+  sf::RectangleShape m_warningContinueBtn;
+  sf::Text m_warningBackText;
+  sf::Text m_warningContinueText;
 
   // time control state
   int m_baseSeconds{300};
@@ -137,8 +163,9 @@ class StartScreen {
   void setupUI();
   void applyTheme();
   bool handleMouse(sf::Vector2f pos, StartConfig &cfg);
-  bool handleFenMouse(sf::Vector2f pos, StartConfig &cfg);
   bool isValidFen(const std::string &fen);
+  bool isValidPgn(const std::string &pgn, const std::string &baseFen,
+                  std::vector<std::string> *uciMoves = nullptr);
   void updateTimeToggle();
   void processHoldRepeater(HoldRepeater &r, const sf::FloatRect &bounds, sf::Vector2f mouse,
                            std::function<void()> stepFn, float initialDelay = 0.35f,

@@ -14,9 +14,38 @@ GameManager::~GameManager() {
   stopGame();
 }
 
+namespace {
+
+core::Square squareFromUci(const std::string &uci, std::size_t offset) {
+  if (uci.size() < offset + 2) return core::NO_SQUARE;
+  char file = uci[offset];
+  char rank = uci[offset + 1];
+  if (file < 'a' || file > 'h' || rank < '1' || rank > '8') return core::NO_SQUARE;
+  int f = file - 'a';
+  int r = rank - '1';
+  return static_cast<core::Square>(r * 8 + f);
+}
+
+core::PieceType promotionFromChar(char c) {
+  switch (c) {
+  case 'q':
+    return core::PieceType::Queen;
+  case 'r':
+    return core::PieceType::Rook;
+  case 'b':
+    return core::PieceType::Bishop;
+  case 'n':
+    return core::PieceType::Knight;
+  default:
+    return core::PieceType::None;
+  }
+}
+
+} // namespace
+
 void GameManager::startGame(const std::string &fen, bool whiteIsBot, bool blackIsBot,
                             int whiteThinkTimeMs, int whiteDepth, int blackThinkTimeMs,
-                            int blackDepth) {
+                            int blackDepth, bool startBotImmediately) {
   std::lock_guard lock(m_mutex);
   m_game.setPosition(fen);
   m_cancel_bot.store(false);
@@ -32,7 +61,7 @@ void GameManager::startGame(const std::string &fen, bool whiteIsBot, bool blackI
   else
     m_black_player.reset();
 
-  startBotIfNeeded();
+  if (startBotImmediately) startBotIfNeeded();
 }
 
 void GameManager::stopGame() {
@@ -108,6 +137,33 @@ void GameManager::completePendingPromotion(core::PieceType promotion) {
   m_waiting_promotion = false;
 }
 
+bool GameManager::applyMoveUci(const std::string &uciMove, bool suppressBotStart) {
+  std::lock_guard lock(m_mutex);
+  if (uciMove.size() < 4) return false;
+
+  core::Square from = squareFromUci(uciMove, 0);
+  core::Square to = squareFromUci(uciMove, 2);
+  if (from == core::NO_SQUARE || to == core::NO_SQUARE) return false;
+
+  core::PieceType promotion = core::PieceType::None;
+  if (uciMove.size() > 4) {
+    promotion = promotionFromChar(uciMove[4]);
+    if (promotion == core::PieceType::None) return false;
+  }
+
+  const auto &moves = m_game.generateLegalMoves();
+  for (const auto &mv : moves) {
+    if (mv.from() != from || mv.to() != to) continue;
+    if (mv.promotion() != promotion) continue;
+
+    applyMoveAndNotify(mv, false);
+    if (!suppressBotStart) startBotIfNeeded();
+    return true;
+  }
+
+  return false;
+}
+
 void GameManager::applyMoveAndNotify(const model::Move &mv, bool onClick) {
   const core::Color mover = m_game.getGameState().sideToMove;
   m_game.doMove(mv.from(), mv.to(), mv.promotion());
@@ -122,6 +178,11 @@ void GameManager::applyMoveAndNotify(const model::Move &mv, bool onClick) {
     // cancel any running bot
     m_cancel_bot.store(true);
   }
+}
+
+void GameManager::resumeBots() {
+  std::lock_guard lock(m_mutex);
+  startBotIfNeeded();
 }
 
 void GameManager::startBotIfNeeded() {

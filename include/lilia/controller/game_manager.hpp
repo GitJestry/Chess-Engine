@@ -33,7 +33,11 @@ public:
   void startGame(const std::string &fen = core::START_FEN,
                  bool whiteIsBot = false, bool blackIsBot = true,
                  int whiteThinkTimeMs = 1000, int whiteDepth = 5,
-                 int blackThinkTimeMs = 1000, int blackDepth = 5);
+                 int blackThinkTimeMs = 1000, int blackDepth = 5,
+                 bool startBotImmediately = true);
+
+  bool applyMoveUci(const std::string &uciMove, bool suppressBotStart = false);
+  void resumeBots();
   void stopGame();
 
   void update(float dt);

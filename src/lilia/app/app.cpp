@@ -59,6 +59,7 @@ int App::run() {
       lilia::view::GameView gameView(window, m_black_is_bot, m_white_is_bot);
       lilia::controller::GameController gameController(gameView, chessGame);
 
+      gameController.setInitialPgn(cfg.pgn, cfg.pgnMoves);
       gameController.startGame(m_start_fen, m_white_is_bot, m_black_is_bot, whiteThinkMs,
                                whiteDepth, blackThinkMs, blackDepth, timeEnabled, baseSeconds,
                                incrementSeconds);

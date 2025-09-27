@@ -150,7 +150,7 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
   m_white_is_bot = whiteIsBot;
   m_black_is_bot = blackIsBot;
   m_game_manager->startGame(fen, whiteIsBot, blackIsBot, whiteThinkTimeMs,
-                            whiteDepth, blackThinkTimeMs, blackDepth);
+                            whiteDepth, blackThinkTimeMs, blackDepth, false);
 
   // Preallocate frequently growing containers to avoid repeated reallocations
   m_fen_history.clear();
@@ -211,6 +211,22 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
 
   m_game_view.setDefaultCursor();
   m_next_action = NextAction::None;
+
+  if (!m_initial_pgn_moves.empty()) {
+    for (const auto &uciMove : m_initial_pgn_moves) {
+      if (!m_game_manager->applyMoveUci(uciMove, true)) {
+        break;
+      }
+    }
+  }
+
+  m_game_manager->resumeBots();
+}
+
+void GameController::setInitialPgn(const std::string &pgn,
+                                   const std::vector<std::string> &uciMoves) {
+  m_initial_pgn = pgn;
+  m_initial_pgn_moves = uciMoves;
 }
 
 void GameController::handleEvent(const sf::Event &event) {
