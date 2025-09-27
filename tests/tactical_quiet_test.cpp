@@ -81,6 +81,16 @@ int main() {
     assert(stats.topMoves[0].second != stats.topMoves[1].second);
   }
 
+  // Quiet pawn sacrifice check should be found
+  {
+    model::ChessGame game;
+    game.setPosition("6k1/3b1ppp/p7/3R4/2P2p2/7q/4KQ2/8 b - - 1 66");
+    auto res = bot.findBestMove(game, 3, 10);
+    assert(res.bestMove);
+    model::Move expected(sq('f', 4), sq('f', 3));
+    assert(*res.bestMove == expected);
+  }
+
   // Node batching should reset/flush between searches with node limits.
   {
     model::ChessGame game;
