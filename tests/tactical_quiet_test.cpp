@@ -91,6 +91,16 @@ int main() {
     assert(*res.bestMove == expected);
   }
 
+  // Creating luft with a quiet pawn push should be kept
+  {
+    model::ChessGame game;
+    game.setPosition("6k1/3b1ppp/p7/3R4/2P5/4Kp1q/5Q2/8 b - - 1 67");
+    auto res = bot.findBestMove(game, 3, 10);
+    assert(res.bestMove);
+    model::Move expected(sq('h', 7), sq('h', 6));
+    assert(*res.bestMove == expected);
+  }
+
   // Node batching should reset/flush between searches with node limits.
   {
     model::ChessGame game;

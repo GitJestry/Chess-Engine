@@ -259,6 +259,16 @@ static inline int quiet_pawn_push_signal(const model::Board& b, const model::Mov
   // Advanced passed pawn push – treat as tactical to avoid pruning the follow-up
   if (is_advanced_passed_pawn_push(b, m, us)) return 1;
 
+  // Creating luft for our king by moving a shield pawn is critical in many tactical
+  // situations. When the pawn we are pushing was guarding a square around our king,
+  // mark the move as tactical so it isn't discarded by quiet-move pruning.
+  const auto kingBB = b.getPieces(us, PT::King);
+  if (kingBB) {
+    const auto kingSq = static_cast<core::Square>(model::bb::ctz64(kingBB));
+    const auto shield = model::bb::king_attacks_from(kingSq) | model::bb::sq_bb(kingSq);
+    if (model::bb::sq_bb(static_cast<core::Square>(m.from())) & shield) return 1;
+  }
+
   return 0;
 }
 
