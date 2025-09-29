@@ -11,8 +11,27 @@
 #include "lilia/bot/bot_info.hpp"
 #include "lilia/view/color_palette_manager.hpp"
 #include "lilia/view/render_constants.hpp"
+#include "lilia/view/start_screen_utils.hpp"
 
 namespace lilia::view {
+
+using start_screen::ui::availableBots;
+using start_screen::ui::basicFenCheck;
+using start_screen::ui::basicPgnCheck;
+using start_screen::ui::botDisplayName;
+using start_screen::ui::centerText;
+using start_screen::ui::clampBaseSeconds;
+using start_screen::ui::clampIncSeconds;
+using start_screen::ui::contains;
+using start_screen::ui::darken;
+using start_screen::ui::drawAccentInset;
+using start_screen::ui::drawBevelButton3D;
+using start_screen::ui::drawVerticalGradient;
+using start_screen::ui::formatHMS;
+using start_screen::ui::leftCenterText;
+using start_screen::ui::lighten;
+using start_screen::ui::snap;
+using start_screen::ui::snapf;
 
 namespace {
 // --------- Layout ---------
@@ -32,6 +51,9 @@ constexpr float CHIP_GAP = 10.f;
 constexpr float TOGGLE_W = TIME_W * 0.80f;
 constexpr float TOGGLE_H = 30.f;
 
+constexpr float MODAL_W = 560.f;
+constexpr float MODAL_H = 320.f;
+
 // Colors sourced from palette manager
 #define colBGTop ColorPaletteManager::get().palette().COL_BG_TOP
 #define colBGBottom ColorPaletteManager::get().palette().COL_BG_BOTTOM
@@ -48,176 +70,6 @@ constexpr float TOGGLE_H = 30.f;
 #define colInputBorder ColorPaletteManager::get().palette().COL_INPUT_BORDER
 #define colValid ColorPaletteManager::get().palette().COL_VALID
 #define colInvalid ColorPaletteManager::get().palette().COL_INVALID
-
-// --------- Utils ---------
-inline float snapf(float v) {
-  return std::round(v);
-}
-inline sf::Vector2f snap(sf::Vector2f v) {
-  return {snapf(v.x), snapf(v.y)};
-}
-
-inline void centerText(sf::Text& t, const sf::FloatRect& box, float dy = 0.f) {
-  auto b = t.getLocalBounds();
-  t.setOrigin(b.left + b.width / 2.f, b.top + b.height / 2.f);
-  t.setPosition(snapf(box.left + box.width / 2.f), snapf(box.top + box.height / 2.f + dy));
-}
-inline void leftCenterText(sf::Text& t, const sf::FloatRect& box, float padX, float dy = 0.f) {
-  auto b = t.getLocalBounds();
-  t.setOrigin(b.left, b.top + b.height / 2.f);
-  t.setPosition(snapf(box.left + padX), snapf(box.top + box.height / 2.f + dy));
-}
-
-void drawVerticalGradient(sf::RenderWindow& window, sf::Color top, sf::Color bottom) {
-  sf::VertexArray va(sf::TriangleStrip, 4);
-  auto size = window.getSize();
-  va[0].position = {0.f, 0.f};
-  va[1].position = {static_cast<float>(size.x), 0.f};
-  va[2].position = {0.f, static_cast<float>(size.y)};
-  va[3].position = {static_cast<float>(size.x), static_cast<float>(size.y)};
-  va[0].color = va[1].color = top;
-  va[2].color = va[3].color = bottom;
-  window.draw(va);
-}
-
-inline sf::Color lighten(sf::Color c, int d) {
-  auto clip = [](int x) { return std::clamp(x, 0, 255); };
-  return sf::Color(clip(c.r + d), clip(c.g + d), clip(c.b + d), c.a);
-}
-inline sf::Color darken(sf::Color c, int d) {
-  return lighten(c, -d);
-}
-
-template <typename T>
-bool contains(const sf::Rect<T>& r, sf::Vector2f p) {
-  return r.contains(p);
-}
-
-// Bots
-std::vector<BotType> availableBots() {
-  return {BotType::Lilia};
-}
-std::string botDisplayName(BotType t) {
-  return getBotConfig(t).info.name;
-}
-
-// FEN validator (basic)
-bool basicFenCheck(const std::string& fen) {
-  std::istringstream ss(fen);
-  std::string fields[6];
-  for (int i = 0; i < 6; ++i)
-    if (!(ss >> fields[i])) return false;
-  std::string extra;
-  if (ss >> extra) return false;
-  {
-    int rankCount = 0, i = 0;
-    while (i < (int)fields[0].size()) {
-      int fileSum = 0;
-      while (i < (int)fields[0].size() && fields[0][i] != '/') {
-        char c = fields[0][i++];
-        if (std::isdigit((unsigned char)c)) {
-          int n = c - '0';
-          if (n <= 0 || n > 8) return false;
-          fileSum += n;
-        } else {
-          switch (c) {
-            case 'p':
-            case 'r':
-            case 'n':
-            case 'b':
-            case 'q':
-            case 'k':
-            case 'P':
-            case 'R':
-            case 'N':
-            case 'B':
-            case 'Q':
-            case 'K':
-              fileSum += 1;
-              break;
-            default:
-              return false;
-          }
-        }
-        if (fileSum > 8) return false;
-      }
-      if (fileSum != 8) return false;
-      ++rankCount;
-      if (i < (int)fields[0].size() && fields[0][i] == '/') ++i;
-    }
-    if (rankCount != 8) return false;
-  }
-  if (!(fields[1] == "w" || fields[1] == "b")) return false;
-  if (!(fields[2] == "-" || fields[2].find_first_not_of("KQkq") == std::string::npos)) return false;
-  if (!(fields[3] == "-")) {
-    if (fields[3].size() != 2) return false;
-    if (fields[3][0] < 'a' || fields[3][0] > 'h') return false;
-    if (!(fields[3][1] == '3' || fields[3][1] == '6')) return false;
-  }
-  auto isNonNegInt = [](const std::string& s) {
-    if (s.empty()) return false;
-    for (char c : s)
-      if (!std::isdigit((unsigned char)c)) return false;
-    return true;
-  };
-  if (!isNonNegInt(fields[4])) return false;
-  if (!isNonNegInt(fields[5])) return false;
-  if (std::stoi(fields[5]) <= 0) return false;
-  return true;
-}
-
-inline std::string formatHMS(int totalSeconds) {
-  totalSeconds = std::max(0, totalSeconds);
-  int h = totalSeconds / 3600, m = (totalSeconds % 3600) / 60, s = totalSeconds % 60;
-  std::ostringstream ss;
-  ss << (h < 10 ? "0" : "") << h << ":" << (m < 10 ? "0" : "") << m << ":" << (s < 10 ? "0" : "")
-     << s;
-  return ss.str();
-}
-inline int clampBaseSeconds(int s) {
-  return std::clamp(s, 60, 2 * 60 * 60);
-}
-inline int clampIncSeconds(int s) {
-  return std::clamp(s, 0, 30);
-}
-
-// Bevel button
-void drawBevelButton3D(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color base, bool hovered,
-                       bool pressed) {
-  // No drop shadow (kept super clean)
-  sf::RectangleShape body({r.width, r.height});
-  body.setPosition(snapf(r.left), snapf(r.top));
-  sf::Color bodyCol = base;
-  if (hovered && !pressed) bodyCol = lighten(bodyCol, 8);
-  if (pressed) bodyCol = darken(bodyCol, 6);
-  body.setFillColor(bodyCol);
-  t.draw(body);
-
-  sf::RectangleShape top({r.width, 1.f});
-  top.setPosition(snapf(r.left), snapf(r.top));
-  top.setFillColor(lighten(bodyCol, 24));
-  t.draw(top);
-  sf::RectangleShape bot({r.width, 1.f});
-  bot.setPosition(snapf(r.left), snapf(r.top + r.height - 1.f));
-  bot.setFillColor(darken(bodyCol, 24));
-  t.draw(bot);
-
-  sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
-  inset.setPosition(snapf(r.left + 1.f), snapf(r.top + 1.f));
-  inset.setFillColor(sf::Color::Transparent);
-  inset.setOutlineThickness(1.f);
-  inset.setOutlineColor(darken(bodyCol, 18));
-  t.draw(inset);
-}
-
-void drawAccentInset(sf::RenderTarget& t, const sf::FloatRect& r, sf::Color accent) {
-  sf::RectangleShape inset({r.width - 2.f, r.height - 2.f});
-  inset.setPosition(snapf(r.left + 1.f), snapf(r.top + 1.f));
-  inset.setFillColor(sf::Color::Transparent);
-  inset.setOutlineThickness(1.f);
-  inset.setOutlineColor(accent);
-  t.draw(inset);
-}
 
 }  // namespace
 
@@ -348,30 +200,129 @@ void StartScreen::setupUI() {
                          snapf(y0 + PANEL_H - 120.f));
   centerText(m_startText, m_startBtn.getGlobalBounds());
 
-  // FEN error hint above Start button
-  m_fenErrorText.setFont(m_font);
-  m_fenErrorText.setString("STANDARD FEN");
-  m_fenErrorText.setCharacterSize(14);
-  m_fenErrorText.setFillColor(colInvalid);
-  centerText(m_fenErrorText, m_startBtn.getGlobalBounds(), -(m_startBtn.getSize().y / 2.f + 15.f));
+  // Load game button
+  m_loadGameBtn.setSize({260.f, 44.f});
+  m_loadGameBtn.setFillColor(colButton);
+  m_loadGameBtn.setOutlineThickness(0.f);
+  m_loadGameBtn.setPosition(
+      snap({x0 + (PANEL_W - m_loadGameBtn.getSize().x) * 0.5f,
+            m_startBtn.getPosition().y + m_startBtn.getSize().y + 18.f}));
 
-  // -------- Inline FEN (50% smaller height) --------
-  const float fenW = PANEL_W * 0.95f;
-  const float fenH = 22.f;  // 44 * 0.5
-  const float fenY = m_startBtn.getPosition().y + m_startBtn.getSize().y + 25.f;
-  const float fenX = x0 + (PANEL_W - fenW) * 0.5f;
+  m_loadGameText.setFont(m_font);
+  m_loadGameText.setCharacterSize(20);
+  m_loadGameText.setFillColor(colText);
+  m_loadGameText.setString("Load Game");
+  centerText(m_loadGameText, m_loadGameBtn.getGlobalBounds());
 
-  m_fenInputBox.setSize({fenW, fenH});
+  // Modal layout (precomputed for consistency)
+  const sf::Vector2f modalPos((ws.x - MODAL_W) * 0.5f, (ws.y - MODAL_H) * 0.5f);
+  const float modalPad = 28.f;
+  const float fieldGap = 18.f;
+
+  m_modalBackdrop.setSize(sf::Vector2f(ws));
+  m_modalBackdrop.setPosition(0.f, 0.f);
+  m_modalBackdrop.setFillColor(sf::Color(0, 0, 0, 140));
+
+  m_modalPanel.setSize({MODAL_W, MODAL_H});
+  m_modalPanel.setPosition(snap(modalPos));
+
+  m_modalTitle.setFont(m_font);
+  m_modalTitle.setCharacterSize(26);
+  m_modalTitle.setString("Load Game");
+  m_modalTitle.setFillColor(colText);
+  m_modalTitle.setPosition(snap({modalPos.x + modalPad, modalPos.y + modalPad}));
+
+  m_modalSubtitle.setFont(m_font);
+  m_modalSubtitle.setCharacterSize(16);
+  m_modalSubtitle.setFillColor(colSubtle);
+  m_modalSubtitle.setString("Paste a FEN or PGN position to start from.");
+  m_modalSubtitle.setPosition(
+      snap({modalPos.x + modalPad, m_modalTitle.getPosition().y + 32.f}));
+
+  float currentY = m_modalSubtitle.getPosition().y + 40.f;
+  const float fieldWidth = MODAL_W - 2.f * modalPad;
+
+  m_modalFenLabel.setFont(m_font);
+  m_modalFenLabel.setCharacterSize(14);
+  m_modalFenLabel.setFillColor(colSubtle);
+  m_modalFenLabel.setString("FEN (optional)");
+  m_modalFenLabel.setPosition(snap({modalPos.x + modalPad, currentY}));
+
+  currentY += 20.f;
+  m_fenInputBox.setSize({fieldWidth, 42.f});
   m_fenInputBox.setFillColor(colInput);
   m_fenInputBox.setOutlineThickness(2.f);
   m_fenInputBox.setOutlineColor(colInputBorder);
-  m_fenInputBox.setPosition(snapf(fenX), snapf(fenY));
+  m_fenInputBox.setPosition(snap({modalPos.x + modalPad, currentY}));
 
   m_fenInputText.setFont(m_font);
-  m_fenInputText.setCharacterSize(15);
+  m_fenInputText.setCharacterSize(16);
   m_fenInputText.setFillColor(colText);
   m_fenInputText.setString(m_fenString);
-  leftCenterText(m_fenInputText, m_fenInputBox.getGlobalBounds(), 8.f);
+  m_fenInputText.setPosition(m_fenInputBox.getPosition().x + 10.f,
+                             m_fenInputBox.getPosition().y + m_fenInputBox.getSize().y / 2.f);
+
+  currentY += m_fenInputBox.getSize().y + 4.f;
+  m_fenErrorText.setFont(m_font);
+  m_fenErrorText.setCharacterSize(13);
+  m_fenErrorText.setFillColor(colInvalid);
+  m_fenErrorText.setString("");
+  m_fenErrorText.setPosition(snap({modalPos.x + modalPad, currentY}));
+
+  currentY += fieldGap;
+  m_modalPgnLabel.setFont(m_font);
+  m_modalPgnLabel.setCharacterSize(14);
+  m_modalPgnLabel.setFillColor(colSubtle);
+  m_modalPgnLabel.setString("PGN (optional)");
+  m_modalPgnLabel.setPosition(snap({modalPos.x + modalPad, currentY}));
+
+  currentY += 20.f;
+  m_pgnInputBox.setSize({fieldWidth, 120.f});
+  m_pgnInputBox.setFillColor(colInput);
+  m_pgnInputBox.setOutlineThickness(2.f);
+  m_pgnInputBox.setOutlineColor(colInputBorder);
+  m_pgnInputBox.setPosition(snap({modalPos.x + modalPad, currentY}));
+
+  m_pgnInputText.setFont(m_font);
+  m_pgnInputText.setCharacterSize(15);
+  m_pgnInputText.setFillColor(colText);
+  m_pgnInputText.setLineSpacing(1.2f);
+  m_pgnInputText.setString(m_pgnString);
+  m_pgnInputText.setPosition(m_pgnInputBox.getPosition().x + 10.f,
+                             m_pgnInputBox.getPosition().y + 10.f);
+
+  currentY += m_pgnInputBox.getSize().y + 4.f;
+  m_pgnErrorText.setFont(m_font);
+  m_pgnErrorText.setCharacterSize(13);
+  m_pgnErrorText.setFillColor(colInvalid);
+  m_pgnErrorText.setString("");
+  m_pgnErrorText.setPosition(snap({modalPos.x + modalPad, currentY}));
+
+  const float buttonY = modalPos.y + MODAL_H - modalPad - 44.f;
+  const sf::Vector2f buttonSize(132.f, 44.f);
+  m_modalApplyBtn.setSize(buttonSize);
+  m_modalApplyBtn.setPosition(
+      snap({modalPos.x + MODAL_W - modalPad - buttonSize.x, buttonY}));
+  m_modalApplyBtn.setFillColor(colAccent);
+  m_modalApplyBtn.setOutlineThickness(0.f);
+
+  m_modalApplyText.setFont(m_font);
+  m_modalApplyText.setCharacterSize(18);
+  m_modalApplyText.setFillColor(constant::COL_DARK_TEXT);
+  m_modalApplyText.setString("Apply");
+  centerText(m_modalApplyText, m_modalApplyBtn.getGlobalBounds());
+
+  m_modalCancelBtn.setSize(buttonSize);
+  m_modalCancelBtn.setPosition(
+      snap({m_modalApplyBtn.getPosition().x - 12.f - buttonSize.x, buttonY}));
+  m_modalCancelBtn.setFillColor(colButton);
+  m_modalCancelBtn.setOutlineThickness(0.f);
+
+  m_modalCancelText.setFont(m_font);
+  m_modalCancelText.setCharacterSize(18);
+  m_modalCancelText.setFillColor(colText);
+  m_modalCancelText.setString("Cancel");
+  centerText(m_modalCancelText, m_modalCancelBtn.getGlobalBounds());
 
   // Build bot option lists
   auto bots = availableBots();
@@ -543,10 +494,29 @@ void StartScreen::applyTheme() {
   m_startBtn.setFillColor(colAccent);
   m_startText.setFillColor(constant::COL_DARK_TEXT);
 
+  m_loadGameBtn.setFillColor(colButton);
+  m_loadGameText.setFillColor(colText);
+
   m_fenErrorText.setFillColor(colInvalid);
   m_fenInputBox.setFillColor(colInput);
   m_fenInputBox.setOutlineColor(colInputBorder);
   m_fenInputText.setFillColor(colText);
+  m_pgnInputBox.setFillColor(colInput);
+  m_pgnInputBox.setOutlineColor(colInputBorder);
+  m_pgnInputText.setFillColor(colText);
+  m_pgnErrorText.setFillColor(colInvalid);
+
+  m_modalPanel.setFillColor(colTextPanel);
+  m_modalPanel.setOutlineColor(colPanelBorder);
+  m_modalPanel.setOutlineThickness(1.f);
+  m_modalTitle.setFillColor(colText);
+  m_modalSubtitle.setFillColor(colSubtle);
+  m_modalFenLabel.setFillColor(colSubtle);
+  m_modalPgnLabel.setFillColor(colSubtle);
+  m_modalCancelBtn.setFillColor(colButton);
+  m_modalCancelText.setFillColor(colText);
+  m_modalApplyBtn.setFillColor(colAccent);
+  m_modalApplyText.setFillColor(constant::COL_DARK_TEXT);
 
   for (auto& opt : m_whiteBotOptions) {
     opt.box.setFillColor(colButton);
@@ -689,20 +659,23 @@ bool StartScreen::handleMouse(sf::Vector2f pos, StartConfig& cfg) {
     }
   }
 
+  if (contains(m_loadGameBtn.getGlobalBounds(), pos)) {
+    m_showLoadModal = true;
+    return false;
+  }
+
   // Start
   if (contains(m_startBtn.getGlobalBounds(), pos)) return true;
 
   return false;
 }
 
-bool StartScreen::handleFenMouse(sf::Vector2f pos, StartConfig& cfg) {
-  (void)pos;
-  (void)cfg;
-  return false;
-}
-
 bool StartScreen::isValidFen(const std::string& fen) {
   return basicFenCheck(fen);
+}
+
+bool StartScreen::isValidPgn(const std::string& pgn) {
+  return basicPgnCheck(pgn);
 }
 
 void StartScreen::processHoldRepeater(HoldRepeater& r, const sf::FloatRect& bounds,
@@ -726,33 +699,177 @@ StartConfig StartScreen::run() {
   cfg.whiteBot = BotType::Lilia;
   cfg.blackBot = BotType::Lilia;
   cfg.fen = core::START_FEN;
+  cfg.pgn.clear();
   cfg.timeBaseSeconds = m_baseSeconds;
   cfg.timeIncrementSeconds = m_incrementSeconds;
   cfg.timeEnabled = m_timeEnabled;
 
-  // FEN field state
-  bool fenInputActive = false;
-  bool fenUserEdited = false;
-  const float fenPadX = 8.f;
+  enum class LoadField { None, Fen, Pgn };
+  LoadField activeField = LoadField::None;
 
-  // Toast
+  bool fenErrorActive = false;
+  bool pgnErrorActive = false;
+
   bool toastVisible = false;
   sf::Clock toastClock;
   std::string toastMsg;
-  // Caret blink
+
   sf::Clock caretClock;
+  sf::Clock frameClock;
+
+  auto resetCaret = [&]() {
+    caretClock.restart();
+  };
+
+  auto closeModal = [&]() {
+    m_showLoadModal = false;
+    activeField = LoadField::None;
+    fenErrorActive = false;
+    pgnErrorActive = false;
+    resetCaret();
+  };
+
+  auto drawLoadModal = [&]() {
+    const bool fenHasText = !m_fenString.empty();
+    const bool fenValid = !fenHasText || isValidFen(m_fenString);
+    const bool showFenError = fenErrorActive && !fenValid;
+
+    const bool pgnHasText = !m_pgnString.empty();
+    const bool pgnValid = !pgnHasText || isValidPgn(m_pgnString);
+    const bool showPgnError = pgnErrorActive && !pgnValid;
+
+    m_window.draw(m_modalBackdrop);
+
+    sf::RectangleShape shadow(m_modalPanel.getSize() + sf::Vector2f(12.f, 12.f));
+    shadow.setPosition(m_modalPanel.getPosition() - sf::Vector2f(6.f, 6.f));
+    shadow.setFillColor(sf::Color(0, 0, 0, 120));
+    m_window.draw(shadow);
+
+    m_window.draw(m_modalPanel);
+
+    m_window.draw(m_modalTitle);
+    m_window.draw(m_modalSubtitle);
+    m_window.draw(m_modalFenLabel);
+    m_window.draw(m_modalPgnLabel);
+
+    sf::Color fenOutline = colInputBorder;
+    if (fenHasText) fenOutline = fenValid ? colValid : colInvalid;
+    if (activeField == LoadField::Fen) fenOutline = colAccent;
+    if (fenHasText && !fenValid) fenOutline = colInvalid;
+    m_fenInputBox.setOutlineColor(fenOutline);
+    m_window.draw(m_fenInputBox);
+
+    if (fenHasText) {
+      sf::Text fenText(m_fenString, m_font, 16);
+      auto fb = fenText.getLocalBounds();
+      fenText.setOrigin(fb.left, fb.top + fb.height / 2.f);
+      fenText.setPosition(m_fenInputBox.getPosition().x + 10.f,
+                          m_fenInputBox.getPosition().y + m_fenInputBox.getSize().y / 2.f);
+      fenText.setFillColor(colText);
+      m_window.draw(fenText);
+    } else {
+      sf::Text placeholder("STANDARD FEN", m_font, 16);
+      auto pb = placeholder.getLocalBounds();
+      placeholder.setOrigin(pb.left, pb.top + pb.height / 2.f);
+      placeholder.setPosition(m_fenInputBox.getPosition().x + 10.f,
+                              m_fenInputBox.getPosition().y + m_fenInputBox.getSize().y / 2.f);
+      placeholder.setFillColor(colSubtle);
+      m_window.draw(placeholder);
+    }
+
+    if (activeField == LoadField::Fen) {
+      float t = std::fmod(caretClock.getElapsedTime().asSeconds(), 1.0f);
+      if (t < 0.5f) {
+        sf::Text fenText(m_fenString, m_font, 16);
+        fenText.setPosition(m_fenInputBox.getPosition().x + 10.f,
+                            m_fenInputBox.getPosition().y + m_fenInputBox.getSize().y / 2.f);
+        auto fb = fenText.getLocalBounds();
+        fenText.setOrigin(fb.left, fb.top + fb.height / 2.f);
+        auto caretPos = fenText.findCharacterPos(fenText.getString().getSize());
+        sf::RectangleShape caret({2.f, m_fenInputBox.getSize().y * 0.6f});
+        caret.setPosition(snapf(caretPos.x + 1.f),
+                          snapf(m_fenInputBox.getPosition().y + (m_fenInputBox.getSize().y - caret.getSize().y) * 0.5f));
+        caret.setFillColor(colText);
+        m_window.draw(caret);
+      }
+    }
+
+    if (showFenError) {
+      m_fenErrorText.setString("Invalid FEN format");
+      m_window.draw(m_fenErrorText);
+    }
+
+    sf::Color pgnOutline = colInputBorder;
+    if (pgnHasText) pgnOutline = pgnValid ? colValid : colInvalid;
+    if (activeField == LoadField::Pgn) pgnOutline = colAccent;
+    if (pgnHasText && !pgnValid) pgnOutline = colInvalid;
+    m_pgnInputBox.setOutlineColor(pgnOutline);
+    m_window.draw(m_pgnInputBox);
+
+    if (pgnHasText) {
+      sf::Text pgnText(m_pgnString, m_font, 15);
+      pgnText.setLineSpacing(1.2f);
+      auto pb = pgnText.getLocalBounds();
+      pgnText.setOrigin(pb.left, pb.top);
+      pgnText.setPosition(m_pgnInputBox.getPosition().x + 10.f,
+                          m_pgnInputBox.getPosition().y + 10.f);
+      pgnText.setFillColor(colText);
+      m_window.draw(pgnText);
+    } else {
+      sf::Text placeholder("Paste PGN notation here", m_font, 15);
+      auto pb = placeholder.getLocalBounds();
+      placeholder.setOrigin(pb.left, pb.top);
+      placeholder.setPosition(m_pgnInputBox.getPosition().x + 10.f,
+                              m_pgnInputBox.getPosition().y + 10.f);
+      placeholder.setFillColor(colSubtle);
+      m_window.draw(placeholder);
+    }
+
+    if (activeField == LoadField::Pgn) {
+      float t = std::fmod(caretClock.getElapsedTime().asSeconds(), 1.0f);
+      if (t < 0.5f) {
+        sf::Text pgnText(m_pgnString, m_font, 15);
+        pgnText.setLineSpacing(1.2f);
+        pgnText.setPosition(m_pgnInputBox.getPosition().x + 10.f,
+                            m_pgnInputBox.getPosition().y + 10.f);
+        auto pb = pgnText.getLocalBounds();
+        pgnText.setOrigin(pb.left, pb.top);
+        auto caretPos = pgnText.findCharacterPos(pgnText.getString().getSize());
+        sf::RectangleShape caret({2.f, 18.f});
+        caret.setPosition(snapf(caretPos.x + 1.f), caretPos.y);
+        caret.setFillColor(colText);
+        m_window.draw(caret);
+      }
+    }
+
+    if (showPgnError) {
+      m_pgnErrorText.setString("Invalid PGN notation");
+      m_window.draw(m_pgnErrorText);
+    }
+
+    auto drawModalButton = [&](sf::RectangleShape& button, sf::Text& text, sf::Color base,
+                               bool hovered, bool pressed) {
+      drawBevelButton3D(m_window, button.getGlobalBounds(), base, hovered, pressed);
+      centerText(text, button.getGlobalBounds());
+      m_window.draw(text);
+    };
+
+    bool cancelHover = contains(m_modalCancelBtn.getGlobalBounds(), m_mousePos);
+    bool applyHover = contains(m_modalApplyBtn.getGlobalBounds(), m_mousePos);
+    drawModalButton(m_modalCancelBtn, m_modalCancelText, colButton, cancelHover, false);
+    drawModalButton(m_modalApplyBtn, m_modalApplyText, colAccent, applyHover, false);
+  };
 
   auto drawUI = [&]() {
     drawVerticalGradient(m_window, colBGTop, colBGBottom);
 
-    // palette selector
-    bool palHover = contains(m_paletteButton.getGlobalBounds(), m_mousePos) || m_showPaletteList ||
-                    m_paletteListAnim > 0.f;
+    bool palHover = (!m_showLoadModal &&
+                     (contains(m_paletteButton.getGlobalBounds(), m_mousePos) || m_showPaletteList ||
+                      m_paletteListAnim > 0.f));
     m_paletteButton.setFillColor(palHover ? colButtonActive : colButton);
-    m_paletteText.setFillColor(colText);
     m_window.draw(m_paletteButton);
     m_window.draw(m_paletteText);
-    if (m_paletteListAnim > 0.f) {
+    if (!m_showLoadModal && m_paletteListAnim > 0.f) {
       for (std::size_t i = 0; i < m_paletteOptions.size(); ++i) {
         const auto& opt = m_paletteOptions[i];
         auto r = opt.box.getGlobalBounds();
@@ -775,7 +892,6 @@ StartConfig StartScreen::run() {
       }
     }
 
-    // faint logo
     if (m_logoTex.getSize().x > 0 && m_logoTex.getSize().y > 0) {
       sf::Sprite logoBG(m_logoTex);
       const auto ws = m_window.getSize();
@@ -789,12 +905,10 @@ StartConfig StartScreen::run() {
       m_window.draw(logoBG, sf::RenderStates(sf::BlendAlpha));
     }
 
-    // main panel
     sf::Vector2f panelPos((m_window.getSize().x - PANEL_W) * 0.5f,
                           (m_window.getSize().y - PANEL_H) * 0.5f);
     drawPanelWithShadow(m_window, panelPos);
 
-    // header
     sf::Text title("Lilia Engine - Bot Sandbox", m_font, 28);
     title.setFillColor(colText);
     title.setPosition(snapf(panelPos.x + 24.f), snapf(panelPos.y + 18.f));
@@ -805,45 +919,32 @@ StartConfig StartScreen::run() {
     subtitle.setPosition(snapf(panelPos.x + 24.f), snapf(panelPos.y + 52.f));
     m_window.draw(subtitle);
 
-    // Sections
     m_window.draw(m_whiteLabel);
     m_window.draw(m_blackLabel);
 
-    // White column
-    {
-      auto humanR = m_whitePlayerBtn.getGlobalBounds();
-      auto botR = m_whiteBotBtn.getGlobalBounds();
-      bool hovH = contains(humanR, m_mousePos);
-      bool hovB = contains(botR, m_mousePos) || m_showWhiteBotList || m_whiteBotListAnim > 0.f;
-      bool selH = !cfg.whiteIsBot, selB = cfg.whiteIsBot;
-      drawBevelButton3D(m_window, humanR, selH ? colButtonActive : colButton, hovH, selH);
-      centerText(m_whitePlayerText, humanR);
-      m_window.draw(m_whitePlayerText);
-      if (selH) drawAccentInset(m_window, humanR, colAccent);
-      drawBevelButton3D(m_window, botR, selB ? colButtonActive : colButton, hovB, selB);
-      centerText(m_whiteBotText, botR);
-      m_window.draw(m_whiteBotText);
-      if (selB) drawAccentInset(m_window, botR, colAccent);
-    }
+    auto drawColumn = [&](sf::RectangleShape& humanBtn, sf::Text& humanTxt, bool humanActive,
+                          sf::RectangleShape& botBtn, sf::Text& botTxt, bool botActive,
+                          bool listVisible) {
+      auto humanR = humanBtn.getGlobalBounds();
+      auto botR = botBtn.getGlobalBounds();
+      bool hovH = !m_showLoadModal && contains(humanR, m_mousePos);
+      bool hovB = !m_showLoadModal && contains(botR, m_mousePos);
+      drawBevelButton3D(m_window, humanR, humanActive ? colButtonActive : colButton, hovH, humanActive);
+      centerText(humanTxt, humanR);
+      m_window.draw(humanTxt);
+      if (humanActive) drawAccentInset(m_window, humanR, colAccent);
+      drawBevelButton3D(m_window, botR, botActive ? colButtonActive : colButton, hovB || listVisible,
+                       botActive);
+      centerText(botTxt, botR);
+      m_window.draw(botTxt);
+      if (botActive) drawAccentInset(m_window, botR, colAccent);
+    };
 
-    // Black column
-    {
-      auto humanR = m_blackPlayerBtn.getGlobalBounds();
-      auto botR = m_blackBotBtn.getGlobalBounds();
-      bool hovH = contains(humanR, m_mousePos);
-      bool hovB = contains(botR, m_mousePos) || m_showBlackBotList || m_blackBotListAnim > 0.f;
-      bool selH = !cfg.blackIsBot, selB = cfg.blackIsBot;
-      drawBevelButton3D(m_window, humanR, selH ? colButtonActive : colButton, hovH, selH);
-      centerText(m_blackPlayerText, humanR);
-      m_window.draw(m_blackPlayerText);
-      if (selH) drawAccentInset(m_window, humanR, colAccent);
-      drawBevelButton3D(m_window, botR, selB ? colButtonActive : colButton, hovB, selB);
-      centerText(m_blackBotText, botR);
-      m_window.draw(m_blackBotText);
-      if (selB) drawAccentInset(m_window, botR, colAccent);
-    }
+    drawColumn(m_whitePlayerBtn, m_whitePlayerText, !cfg.whiteIsBot, m_whiteBotBtn, m_whiteBotText,
+               cfg.whiteIsBot, m_showWhiteBotList);
+    drawColumn(m_blackPlayerBtn, m_blackPlayerText, !cfg.blackIsBot, m_blackBotBtn, m_blackBotText,
+               cfg.blackIsBot, m_showBlackBotList);
 
-    // Bot dropdowns
     auto drawBotList = [&](const std::vector<BotOption>& list, std::size_t selIdx, float anim) {
       for (std::size_t i = 0; i < list.size(); ++i) {
         const auto& opt = list[i];
@@ -866,15 +967,14 @@ StartConfig StartScreen::run() {
         }
       }
     };
-    if (m_whiteBotListAnim > 0.f)
+    if (!m_showLoadModal && m_whiteBotListAnim > 0.f)
       drawBotList(m_whiteBotOptions, m_whiteBotSelection, m_whiteBotListAnim);
-    if (m_blackBotListAnim > 0.f)
+    if (!m_showLoadModal && m_blackBotListAnim > 0.f)
       drawBotList(m_blackBotOptions, m_blackBotSelection, m_blackBotListAnim);
 
-    // Time toggle
     {
       auto gb = m_timeToggleBtn.getGlobalBounds();
-      bool hov = contains(gb, m_mousePos);
+      bool hov = !m_showLoadModal && contains(gb, m_mousePos);
       bool on = m_timeEnabled;
       sf::Color base = on ? colAccent : colTimeOff;
       drawBevelButton3D(m_window, gb, base, hov, on);
@@ -882,11 +982,9 @@ StartConfig StartScreen::run() {
       m_window.draw(m_timeToggleText);
     }
 
-    // Time panel (no shadow)
     if (m_timeEnabled) {
       auto gb = m_timePanel.getGlobalBounds();
       m_window.draw(m_timePanel);
-      // simple inner lines (not shadows)
       sf::RectangleShape top({gb.width, 1.f});
       top.setPosition(gb.left, gb.top);
       top.setFillColor(ColorPaletteManager::get().palette().COL_TOP_HILIGHT);
@@ -896,29 +994,27 @@ StartConfig StartScreen::run() {
       bot.setFillColor(ColorPaletteManager::get().palette().COL_BOTTOM_SHADOW);
       m_window.draw(bot);
 
-      m_window.draw(m_timeTitle);
-
-      auto step = [&](sf::RectangleShape& box, sf::Text& txt, bool hold) {
+      auto stepBtn = [&](sf::RectangleShape& box, sf::Text& txt, bool hold) {
         auto r = box.getGlobalBounds();
-        bool hov = contains(r, m_mousePos);
+        bool hov = !m_showLoadModal && contains(r, m_mousePos);
         bool pressed = hold && hov;
         drawBevelButton3D(m_window, r, colButton, hov, pressed);
         centerText(txt, r);
         m_window.draw(txt);
       };
-      step(m_timeMinusBtn, m_minusTxt, m_holdBaseMinus.active);
-      step(m_timePlusBtn, m_plusTxt, m_holdBasePlus.active);
+      stepBtn(m_timeMinusBtn, m_minusTxt, m_holdBaseMinus.active);
+      stepBtn(m_timePlusBtn, m_plusTxt, m_holdBasePlus.active);
       m_window.draw(m_timeMain);
 
       m_window.draw(m_incLabel);
-      step(m_incMinusBtn, m_incMinusTxt, m_holdIncMinus.active);
-      step(m_incPlusBtn, m_incPlusTxt, m_holdIncPlus.active);
+      stepBtn(m_incMinusBtn, m_incMinusTxt, m_holdIncMinus.active);
+      stepBtn(m_incPlusBtn, m_incPlusTxt, m_holdIncPlus.active);
       m_window.draw(m_incValue);
 
       for (std::size_t i = 0; i < m_presets.size(); ++i) {
         auto& c = m_presets[i];
         auto r = c.box.getGlobalBounds();
-        bool hov = contains(r, m_mousePos);
+        bool hov = !m_showLoadModal && contains(r, m_mousePos);
         bool sel = (m_presetSelection == (int)i);
         drawBevelButton3D(m_window, r, sel ? colButtonActive : colButton, hov, sel);
         centerText(c.label, r, -1.f);
@@ -927,56 +1023,24 @@ StartConfig StartScreen::run() {
       }
     }
 
-    const bool fenEmpty = m_fenString.empty();
-    const bool fenValid = (!fenEmpty) && isValidFen(m_fenString);
-
-    // Start (beveled)
     {
       auto r = m_startBtn.getGlobalBounds();
-      bool hov = contains(r, m_mousePos);
+      bool hov = !m_showLoadModal && contains(r, m_mousePos);
       drawBevelButton3D(m_window, r, colAccent, hov, false);
       centerText(m_startText, r);
       m_window.draw(m_startText);
-      if (!fenEmpty && !fenValid) m_window.draw(m_fenErrorText);
     }
 
-    // -------- FEN field --------
-    m_fenInputBox.setOutlineColor(fenEmpty ? colInputBorder : (fenValid ? colValid : colInvalid));
-    m_window.draw(m_fenInputBox);
-
-    // Text or placeholder
-    if (fenEmpty) {
-      sf::Text placeholder("STANDARD FEN", m_font, 15);
-      placeholder.setFillColor(colSubtle);
-      leftCenterText(placeholder, m_fenInputBox.getGlobalBounds(), fenPadX);
-      m_window.draw(placeholder);
-    } else {
-      m_fenInputText.setString(m_fenString);
-      leftCenterText(m_fenInputText, m_fenInputBox.getGlobalBounds(), fenPadX);
-      m_window.draw(m_fenInputText);
+    {
+      auto r = m_loadGameBtn.getGlobalBounds();
+      bool hov = !m_showLoadModal && contains(r, m_mousePos);
+      bool active = m_showLoadModal;
+      sf::Color base = active ? colButtonActive : colButton;
+      drawBevelButton3D(m_window, r, base, hov, active);
+      centerText(m_loadGameText, r);
+      m_window.draw(m_loadGameText);
     }
 
-    // Blinking caret when focused
-    if (fenInputActive) {
-      float t = std::fmod(caretClock.getElapsedTime().asSeconds(), 1.0f);
-      if (t < 0.5f) {
-        // caret position = end of current text
-        sf::Text probe(m_fenString, m_font, 15);
-        auto b = probe.getLocalBounds();
-        float left = m_fenInputBox.getPosition().x + fenPadX;
-        float top = m_fenInputBox.getPosition().y;
-        float h = m_fenInputBox.getSize().y;
-        float caretX = left + b.width + 1.f;
-        float maxX = m_fenInputBox.getPosition().x + m_fenInputBox.getSize().x - 2.f;
-        caretX = std::min(caretX, maxX - 1.f);
-        sf::RectangleShape caret({2.f, h * 0.65f});
-        caret.setPosition(snapf(caretX), snapf(top + (h - caret.getSize().y) * 0.5f));
-        caret.setFillColor(colText);
-        m_window.draw(caret);
-      }
-    }
-
-    // Toast (bottom center)
     if (toastVisible) {
       float elapsed = toastClock.getElapsedTime().asSeconds();
       if (elapsed < 2.2f) {
@@ -1002,20 +1066,19 @@ StartConfig StartScreen::run() {
       }
     }
 
-    // Developer credit (bottom right)
-    {
-      sf::Text credit("@ 2025 Julian Meyer", m_font, 13);
-      credit.setFillColor(colSubtle);
-      auto cb = credit.getLocalBounds();
-      sf::Vector2u ws = m_window.getSize();
-      credit.setPosition(snapf((float)ws.x - cb.width - 18.f),
-                         snapf((float)ws.y - cb.height - 22.f));
-      m_window.draw(credit);
+    sf::Text credit("@ 2025 Julian Meyer", m_font, 13);
+    credit.setFillColor(colSubtle);
+    auto cb = credit.getLocalBounds();
+    sf::Vector2u ws = m_window.getSize();
+    credit.setPosition(snapf((float)ws.x - cb.width - 18.f),
+                       snapf((float)ws.y - cb.height - 22.f));
+    m_window.draw(credit);
+
+    if (m_showLoadModal) {
+      drawLoadModal();
     }
   };
 
-  // Loop
-  sf::Clock frameClock;
   while (m_window.isOpen()) {
     float dt = frameClock.restart().asSeconds();
     sf::Event e{};
@@ -1029,28 +1092,107 @@ StartConfig StartScreen::run() {
       }
       if (e.type == sf::Event::MouseMoved) {
         m_mousePos = {(float)e.mouseMove.x, (float)e.mouseMove.y};
-        auto updateHover = [&](bool& show, bool& forceHide, const sf::FloatRect& btn,
-                               const auto& options) {
-          bool overBtn = contains(btn, m_mousePos);
-          bool overList = false;
-          for (const auto& opt : options) {
-            if (contains(opt.box.getGlobalBounds(), m_mousePos)) {
-              overList = true;
-              break;
+        if (!m_showLoadModal) {
+          auto updateHover = [&](bool& show, bool& forceHide, const sf::FloatRect& btn,
+                                 const auto& options) {
+            bool overBtn = contains(btn, m_mousePos);
+            bool overList = false;
+            for (const auto& opt : options) {
+              if (contains(opt.box.getGlobalBounds(), m_mousePos)) {
+                overList = true;
+                break;
+              }
             }
-          }
-          if (!overList) forceHide = false;
-          show = !forceHide && (overBtn || overList);
-        };
-        updateHover(m_showPaletteList, m_paletteListForceHide, m_paletteButton.getGlobalBounds(),
-                    m_paletteOptions);
-        updateHover(m_showWhiteBotList, m_whiteListForceHide, m_whiteBotBtn.getGlobalBounds(),
-                    m_whiteBotOptions);
-        updateHover(m_showBlackBotList, m_blackListForceHide, m_blackBotBtn.getGlobalBounds(),
-                    m_blackBotOptions);
+            if (!overList) forceHide = false;
+            show = !forceHide && (overBtn || overList);
+          };
+          updateHover(m_showPaletteList, m_paletteListForceHide, m_paletteButton.getGlobalBounds(),
+                      m_paletteOptions);
+          updateHover(m_showWhiteBotList, m_whiteListForceHide, m_whiteBotBtn.getGlobalBounds(),
+                      m_whiteBotOptions);
+          updateHover(m_showBlackBotList, m_blackListForceHide, m_blackBotBtn.getGlobalBounds(),
+                      m_blackBotOptions);
+        }
       }
 
-      // Keyboard
+      if (m_showLoadModal) {
+        if (e.type == sf::Event::KeyPressed) {
+          if (e.key.code == sf::Keyboard::Escape) {
+            closeModal();
+          } else if (e.key.code == sf::Keyboard::Enter) {
+            bool fenOk = m_fenString.empty() || isValidFen(m_fenString);
+            bool pgnOk = m_pgnString.empty() || isValidPgn(m_pgnString);
+            fenErrorActive = !fenOk && !m_fenString.empty();
+            pgnErrorActive = !pgnOk && !m_pgnString.empty();
+            if (fenOk && pgnOk) closeModal();
+          } else if ((e.key.control || e.key.system) && e.key.code == sf::Keyboard::V) {
+            auto clip = sf::Clipboard::getString().toAnsiString();
+            if (activeField == LoadField::Fen) {
+              std::string cleaned = clip;
+              cleaned.erase(std::remove(cleaned.begin(), cleaned.end(), '\n'), cleaned.end());
+              cleaned.erase(std::remove(cleaned.begin(), cleaned.end(), '\r'), cleaned.end());
+              const float avail = m_fenInputBox.getSize().x - 20.f;
+              std::string out = m_fenString;
+              for (char c : cleaned) {
+                if (c < 32) continue;
+                sf::Text probe(out + c, m_font, 16);
+                if (probe.getLocalBounds().width <= avail)
+                  out.push_back(c);
+                else
+                  break;
+              }
+              m_fenString = out;
+            } else if (activeField == LoadField::Pgn) {
+              m_pgnString += clip;
+            }
+          }
+        }
+
+        if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
+          sf::Vector2f mp((float)e.mouseButton.x, (float)e.mouseButton.y);
+          if (contains(m_modalApplyBtn.getGlobalBounds(), mp)) {
+            bool fenOk = m_fenString.empty() || isValidFen(m_fenString);
+            bool pgnOk = m_pgnString.empty() || isValidPgn(m_pgnString);
+            fenErrorActive = !fenOk && !m_fenString.empty();
+            pgnErrorActive = !pgnOk && !m_pgnString.empty();
+            if (fenOk && pgnOk) closeModal();
+          } else if (contains(m_modalCancelBtn.getGlobalBounds(), mp)) {
+            closeModal();
+          } else if (contains(m_fenInputBox.getGlobalBounds(), mp)) {
+            activeField = LoadField::Fen;
+            resetCaret();
+          } else if (contains(m_pgnInputBox.getGlobalBounds(), mp)) {
+            activeField = LoadField::Pgn;
+            resetCaret();
+          }
+        }
+
+        if (e.type == sf::Event::TextEntered) {
+          if (activeField == LoadField::Fen) {
+            if (e.text.unicode == 8) {
+              if (!m_fenString.empty()) m_fenString.pop_back();
+            } else if (e.text.unicode >= 32 && e.text.unicode < 127) {
+              const float avail = m_fenInputBox.getSize().x - 20.f;
+              std::string tmp = m_fenString;
+              tmp.push_back(static_cast<char>(e.text.unicode));
+              sf::Text probe(tmp, m_font, 16);
+              if (probe.getLocalBounds().width <= avail) {
+                m_fenString.push_back(static_cast<char>(e.text.unicode));
+              }
+            }
+          } else if (activeField == LoadField::Pgn) {
+            if (e.text.unicode == 8) {
+              if (!m_pgnString.empty()) m_pgnString.pop_back();
+            } else if (e.text.unicode == '\r') {
+              m_pgnString.push_back('\n');
+            } else if (e.text.unicode >= 32) {
+              m_pgnString.push_back(static_cast<char>(e.text.unicode));
+            }
+          }
+        }
+        continue;
+      }
+
       if (e.type == sf::Event::KeyPressed) {
         if (m_timeEnabled && e.key.code == sf::Keyboard::Left) {
           m_baseSeconds = clampBaseSeconds(m_baseSeconds - (e.key.shift ? 300 : 60));
@@ -1065,29 +1207,29 @@ StartConfig StartScreen::run() {
           m_incrementSeconds = clampIncSeconds(m_incrementSeconds + 1);
           m_incValue.setString("+" + std::to_string(m_incrementSeconds) + "s");
         } else if (e.key.code == sf::Keyboard::Enter) {
-          // Start game
+          bool fenOk = m_fenString.empty() || isValidFen(m_fenString);
+          bool pgnOk = m_pgnString.empty() || isValidPgn(m_pgnString);
+          if (!fenOk && !m_fenString.empty()) {
+            toastMsg = "Invalid FEN. Using standard.";
+            toastVisible = true;
+            toastClock.restart();
+          }
+          if (!pgnOk && !m_pgnString.empty()) {
+            toastMsg = "Invalid PGN ignored.";
+            toastVisible = true;
+            toastClock.restart();
+          }
           cfg.timeBaseSeconds = m_baseSeconds;
           cfg.timeIncrementSeconds = m_incrementSeconds;
           cfg.timeEnabled = m_timeEnabled;
-          if (m_fenString.empty() || !isValidFen(m_fenString)) {
-            if (!m_fenString.empty()) {
-              toastMsg = "INCORRECT. STANDARD WILL BE CHOSEN";
-              toastVisible = true;
-              toastClock.restart();
-            }
-            cfg.fen = core::START_FEN;
-          } else {
-            cfg.fen = m_fenString;
-          }
+          cfg.fen = fenOk && !m_fenString.empty() ? m_fenString : core::START_FEN;
+          cfg.pgn = pgnOk ? m_pgnString : std::string();
           return cfg;
         }
       }
 
-      // Mouse press
       if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
         sf::Vector2f mp((float)e.mouseButton.x, (float)e.mouseButton.y);
-
-        // steppers
         if (m_timeEnabled && contains(m_timeMinusBtn.getGlobalBounds(), mp)) {
           m_baseSeconds = clampBaseSeconds(m_baseSeconds - 60);
           m_timeMain.setString(formatHMS(m_baseSeconds));
@@ -1117,34 +1259,34 @@ StartConfig StartScreen::run() {
           updateTimeToggle();
           m_holdBaseMinus.active = m_holdBasePlus.active = m_holdIncMinus.active =
               m_holdIncPlus.active = false;
-        } else if (contains(m_fenInputBox.getGlobalBounds(), mp)) {
-          fenInputActive = true;
-          caretClock.restart();
         } else {
-          // Blurring FEN: show toast if user edited & invalid (and not empty)
-          if (fenInputActive) {
-            fenInputActive = false;
-            if (fenUserEdited && !m_fenString.empty() && !isValidFen(m_fenString)) {
-              toastMsg = "INCORRECT. STANDARD WILL BE CHOSEN";
+          bool modalBefore = m_showLoadModal;
+          if (handleMouse(mp, cfg)) {
+            bool fenOk = m_fenString.empty() || isValidFen(m_fenString);
+            bool pgnOk = m_pgnString.empty() || isValidPgn(m_pgnString);
+            if (!fenOk && !m_fenString.empty()) {
+              toastMsg = "Invalid FEN. Using standard.";
               toastVisible = true;
               toastClock.restart();
             }
-          }
-          // delegate (sides/presets/start)
-          if (handleMouse(mp, cfg)) {
+            if (!pgnOk && !m_pgnString.empty()) {
+              toastMsg = "Invalid PGN ignored.";
+              toastVisible = true;
+              toastClock.restart();
+            }
             cfg.timeBaseSeconds = m_baseSeconds;
             cfg.timeIncrementSeconds = m_incrementSeconds;
             cfg.timeEnabled = m_timeEnabled;
-            if (m_fenString.empty() || !isValidFen(m_fenString)) {
-              if (!m_fenString.empty()) {
-                toastMsg = "INCORRECT. STANDARD WILL BE CHOSEN";
-                toastVisible = true;
-                toastClock.restart();
-              }
-              cfg.fen = core::START_FEN;
-            } else
-              cfg.fen = m_fenString;
-            return cfg;
+            cfg.fen = fenOk && !m_fenString.empty() ? m_fenString : core::START_FEN;
+            cfg.pgn = pgnOk ? m_pgnString : std::string();
+            if (m_showLoadModal) closeModal();
+            if (!m_showLoadModal) return cfg;
+          } else if (!modalBefore && m_showLoadModal) {
+            activeField = LoadField::Fen;
+            fenErrorActive = pgnErrorActive = false;
+            resetCaret();
+            m_showPaletteList = m_showWhiteBotList = m_showBlackBotList = false;
+            m_paletteListForceHide = m_whiteListForceHide = m_blackListForceHide = true;
           }
         }
       }
@@ -1153,53 +1295,9 @@ StartConfig StartScreen::run() {
         m_holdBaseMinus.active = m_holdBasePlus.active = m_holdIncMinus.active =
             m_holdIncPlus.active = false;
       }
-
-      // Paste to FEN (fit to width; no overflow)
-      if (fenInputActive && e.type == sf::Event::KeyPressed && (e.key.control || e.key.system) &&
-          e.key.code == sf::Keyboard::V) {
-        auto clip = sf::Clipboard::getString().toAnsiString();
-        clip.erase(std::remove(clip.begin(), clip.end(), '\n'), clip.end());
-        clip.erase(std::remove(clip.begin(), clip.end(), '\r'), clip.end());
-        // append only while it fits
-        const float avail = m_fenInputBox.getSize().x - 2.f * fenPadX - 2.f;
-        std::string out = m_fenString;
-        for (char c : clip) {
-          sf::Text probe(out + c, m_font, 15);
-          if (probe.getLocalBounds().width <= avail)
-            out.push_back(c);
-          else
-            break;
-        }
-        if (out != m_fenString) {
-          m_fenString = out;
-          fenUserEdited = true;
-        }
-        m_fenInputText.setString(m_fenString);
-      }
-
-      // Typing into FEN (no overflow)
-      if (fenInputActive && e.type == sf::Event::TextEntered) {
-        if (e.text.unicode == 8) {  // backspace
-          if (!m_fenString.empty()) {
-            m_fenString.pop_back();
-            fenUserEdited = true;
-          }
-        } else if (e.text.unicode >= 32 && e.text.unicode < 127) {
-          const float avail = m_fenInputBox.getSize().x - 2.f * fenPadX - 2.f;
-          std::string tmp = m_fenString;
-          tmp.push_back((char)e.text.unicode);
-          sf::Text probe(tmp, m_font, 15);
-          if (probe.getLocalBounds().width <= avail) {
-            m_fenString.push_back((char)e.text.unicode);
-            fenUserEdited = true;
-          }
-        }
-        m_fenInputText.setString(m_fenString);
-      }
     }
 
-    // hold-repeat ticks
-    if (m_timeEnabled) {
+    if (!m_showLoadModal && m_timeEnabled) {
       processHoldRepeater(m_holdBaseMinus, m_timeMinusBtn.getGlobalBounds(), m_mousePos, [&] {
         m_baseSeconds = clampBaseSeconds(m_baseSeconds - 60);
         m_timeMain.setString(formatHMS(m_baseSeconds));
@@ -1225,11 +1323,14 @@ StartConfig StartScreen::run() {
       else
         anim = std::max(0.f, anim - speed * dt);
     };
-    animateList(m_showPaletteList, m_paletteListAnim);
-    animateList(m_showWhiteBotList, m_whiteBotListAnim);
-    animateList(m_showBlackBotList, m_blackBotListAnim);
+    if (!m_showLoadModal) {
+      animateList(m_showPaletteList, m_paletteListAnim);
+      animateList(m_showWhiteBotList, m_whiteBotListAnim);
+      animateList(m_showBlackBotList, m_blackBotListAnim);
+    } else {
+      m_paletteListAnim = m_whiteBotListAnim = m_blackBotListAnim = 0.f;
+    }
 
-    // draw
     m_window.clear();
     drawUI();
     m_window.display();
@@ -1238,10 +1339,8 @@ StartConfig StartScreen::run() {
   cfg.timeBaseSeconds = m_baseSeconds;
   cfg.timeIncrementSeconds = m_incrementSeconds;
   cfg.timeEnabled = m_timeEnabled;
-  if (m_fenString.empty() || !isValidFen(m_fenString))
-    cfg.fen = core::START_FEN;
-  else
-    cfg.fen = m_fenString;
+  cfg.fen = m_fenString.empty() || !isValidFen(m_fenString) ? core::START_FEN : m_fenString;
+  cfg.pgn = isValidPgn(m_pgnString) ? m_pgnString : std::string();
   return cfg;
 }
 

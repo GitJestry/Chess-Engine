@@ -17,6 +17,7 @@ struct StartConfig {
   bool blackIsBot{true};
   BotType blackBot{BotType::Lilia};
   std::string fen{core::START_FEN};
+  std::string pgn{};
   int timeBaseSeconds{300};     // default 5 minutes
   int timeIncrementSeconds{0};  // default 0s increment
   bool timeEnabled{true};       // whether clocks are used
@@ -73,6 +74,8 @@ class StartScreen {
   sf::RectangleShape m_startBtn;
   sf::Text m_startText;
   sf::Text m_creditText;
+  sf::RectangleShape m_loadGameBtn;
+  sf::Text m_loadGameText;
 
   // Palette selection UI
   sf::RectangleShape m_paletteButton;
@@ -83,19 +86,26 @@ class StartScreen {
   bool m_paletteListForceHide{false};
   float m_paletteListAnim{0.f};
 
-  // FEN popup UI
-  bool m_showFenPopup{false};
-  sf::RectangleShape m_fenPopup;
+  // Load modal UI
+  bool m_showLoadModal{false};
+  sf::RectangleShape m_modalBackdrop;
+  sf::RectangleShape m_modalPanel;
+  sf::Text m_modalTitle;
+  sf::Text m_modalSubtitle;
+  sf::Text m_modalFenLabel;
+  sf::Text m_modalPgnLabel;
   sf::RectangleShape m_fenInputBox;
   sf::Text m_fenInputText;
-  sf::RectangleShape m_fenBackBtn;
-  sf::RectangleShape m_fenContinueBtn;
-  sf::Text m_fenBackText;
-  sf::Text m_fenContinueText;
+  sf::RectangleShape m_pgnInputBox;
+  sf::Text m_pgnInputText;
   sf::Text m_fenErrorText;
+  sf::Text m_pgnErrorText;
+  sf::RectangleShape m_modalCancelBtn;
+  sf::RectangleShape m_modalApplyBtn;
+  sf::Text m_modalCancelText;
+  sf::Text m_modalApplyText;
   std::string m_fenString;
-  sf::Clock m_errorClock;
-  bool m_showError{false};
+  std::string m_pgnString;
 
   // time control state
   int m_baseSeconds{300};
@@ -137,8 +147,8 @@ class StartScreen {
   void setupUI();
   void applyTheme();
   bool handleMouse(sf::Vector2f pos, StartConfig &cfg);
-  bool handleFenMouse(sf::Vector2f pos, StartConfig &cfg);
   bool isValidFen(const std::string &fen);
+  bool isValidPgn(const std::string &pgn);
   void updateTimeToggle();
   void processHoldRepeater(HoldRepeater &r, const sf::FloatRect &bounds, sf::Vector2f mouse,
                            std::function<void()> stepFn, float initialDelay = 0.35f,
