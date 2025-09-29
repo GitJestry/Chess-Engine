@@ -235,33 +235,6 @@ static inline bool is_advanced_passed_pawn_push(const model::Board& b, const mod
   return true;
 }
 
-// 0 = no immediate pawn attack; 1 = threatens Q/R/B/N; 2 = gives check
-static inline int quiet_pawn_push_signal(const model::Board& b, const model::Move& m,
-                                         core::Color us) {
-  using PT = core::PieceType;
-  if (m.isCapture() || m.promotion() != PT::None) return 0;
-
-  auto mover = b.getPiece(m.from());
-  if (!mover || mover->type != PT::Pawn) return 0;
-
-  const auto toBB = model::bb::sq_bb(m.to());
-  const auto atk = (us == core::Color::White) ? (model::bb::ne(toBB) | model::bb::nw(toBB))
-                                              : (model::bb::se(toBB) | model::bb::sw(toBB));
-
-  // Check first: pushing pawn gives check?
-  if (atk & b.getPieces(~us, PT::King)) return 2;
-
-  // Otherwise, immediate threat on heavy/minor pieces?
-  const auto targets = b.getPieces(~us, PT::Queen) | b.getPieces(~us, PT::Rook) |
-                       b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Knight);
-  if (atk & targets) return 1;
-
-  // Advanced passed pawn push – treat as tactical to avoid pruning the follow-up
-  if (is_advanced_passed_pawn_push(b, m, us)) return 1;
-
-  return 0;
-}
-
 static inline void decay_tables(Search& S, int shift /* e.g. 6 => ~1.6% */) {
   for (int f = 0; f < SQ_NB; ++f)
     for (int t = 0; t < SQ_NB; ++t)
@@ -292,48 +265,6 @@ static inline void decay_tables(Search& S, int shift /* e.g. 6 => ~1.6% */) {
 }
 
 // 0 = no signal; 1 = attacks high-value piece; 2 = gives check
-static inline int quiet_piece_threat_signal(const model::Board& b, const model::Move& m,
-                                            core::Color us) {
-  using PT = core::PieceType;
-  if (m.isCapture() || m.promotion() != PT::None) return 0;
-
-  auto mover = b.getPiece(m.from());
-  if (!mover || mover->type == PT::Pawn) return 0;
-
-  const auto fromBB = model::bb::sq_bb(m.from());
-  const auto toBB = model::bb::sq_bb(m.to());
-  auto occ = b.getAllPieces();
-  occ = (occ & ~fromBB) | toBB;
-
-  model::bb::Bitboard atk = 0;
-  switch (mover->type) {
-    case PT::Knight:
-      atk = model::bb::knight_attacks_from(m.to());
-      break;
-    case PT::Bishop:
-      atk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ);
-      break;
-    case PT::Rook:
-      atk = model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ);
-      break;
-    case PT::Queen:
-      atk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ) |
-            model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ);
-      break;
-    case PT::King:
-      atk = model::bb::king_attacks_from(m.to());
-      break;
-    default:
-      break;
-  }
-
-  if (atk & b.getPieces(~us, PT::King)) return 2;
-
-  const auto targets = b.getPieces(~us, PT::Queen) | b.getPieces(~us, PT::Rook) |
-                       b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Knight);
-  return (atk & targets) ? 1 : 0;
-}
-
 struct CheckTables {
   model::bb::Bitboard KN_FROM[64];
   model::bb::Bitboard K_FROM[64];
@@ -441,85 +372,135 @@ static inline void init_check_tables() {
 }
 
 // --- NEW: pre-move "would give check" detector (EP & promotion aware) ---
-static inline bool would_give_check_after(const model::Position& pos, const model::Move& m) {
+struct QuietSignals {
+  int pawnSignal = 0;
+  int pieceSignal = 0;
+  bool givesCheck = false;
+};
+
+static inline QuietSignals compute_quiet_signals(const model::Position& pos,
+                                                 const model::Move& m) {
+  QuietSignals info{};
   using PT = core::PieceType;
-  if (m.isNull()) return false;
 
-  const auto& b = pos.getBoard();
+  if (m.isNull()) return info;
+
+  const auto& board = pos.getBoard();
   const auto us = pos.getState().sideToMove;
-  const auto kB = b.getPieces(~us, PT::King);
-  if (!kB) return false;
 
-  const int k = lilia::model::bb::ctz64(kB);
-  const auto fromB = lilia::model::bb::sq_bb(m.from());
-  const auto toB = lilia::model::bb::sq_bb(m.to());
+  const auto enemyKingBB = board.getPieces(~us, PT::King);
+  if (!enemyKingBB) return info;
 
-  // Post-move occupancy (EP-aware)
-  auto occ1 = b.getAllPieces();
-  occ1 = (occ1 & ~fromB) | toB;
+  const int kingSq = lilia::model::bb::ctz64(enemyKingBB);
+  const auto fromBB = lilia::model::bb::sq_bb(m.from());
+  const auto toBB = lilia::model::bb::sq_bb(m.to());
+
+  auto occ = board.getAllPieces();
+  occ = (occ & ~fromBB) | toBB;
   if (m.isEnPassant()) {
-    int epCapSq = (us == core::Color::White) ? m.to() - 8 : m.to() + 8;
-    occ1 &= ~lilia::model::bb::sq_bb(static_cast<core::Square>(epCapSq));
+    const int epSq = (us == core::Color::White) ? m.to() - 8 : m.to() + 8;
+    occ &= ~lilia::model::bb::sq_bb(static_cast<core::Square>(epSq));
   }
 
-  // Mover type (promotion-aware)
-  PT before = PT::None;
-  if (auto p = b.getPiece(m.from())) before = p->type;
-  PT after = (m.promotion() != PT::None) ? m.promotion() : before;
+  PT moverBefore = PT::None;
+  if (auto mover = board.getPiece(m.from())) moverBefore = mover->type;
+  PT moverAfter = (m.promotion() != PT::None) ? m.promotion() : moverBefore;
 
-  // --- Direct checks (tables only, no magics) ---
-  if (after == PT::Pawn) {
-    if (CT.PAWN_CHK[(int)us][k] & toB) return true;
-  }
-  if (after == PT::Knight) {
-    if (CT.KN_FROM[m.to()] & kB) return true;
-  }
-  if (after == PT::King) {
-    if (CT.K_FROM[m.to()] & kB) return true;
-  }
-
-  if (after == PT::Bishop || after == PT::Rook || after == PT::Queen) {
-    if (CT.LINE[k][m.to()] && (occ1 & CT.BETWEEN[k][m.to()]) == 0) {
-      // ensure line kind matches piece (rook-line or bishop-line)
-      const bool rookLine = (CT.DIR[k][m.to()] % 2 == 0);    // N/E/S/W
-      const bool bishopLine = (CT.DIR[k][m.to()] % 2 != 0);  // diagonals
-      if ((after == PT::Rook && rookLine) || (after == PT::Bishop && bishopLine) ||
-          (after == PT::Queen))
-        return true;
+  // Direct check detection using precomputed tables and magics
+  if (moverAfter == PT::Pawn) {
+    if (CT.PAWN_CHK[(int)us][kingSq] & toBB) info.givesCheck = true;
+  } else if (moverAfter == PT::Knight) {
+    if (CT.KN_FROM[m.to()] & enemyKingBB) info.givesCheck = true;
+  } else if (moverAfter == PT::King) {
+    if (CT.K_FROM[m.to()] & enemyKingBB) info.givesCheck = true;
+  } else if (moverAfter == PT::Bishop || moverAfter == PT::Rook || moverAfter == PT::Queen) {
+    if (CT.LINE[kingSq][m.to()] && (occ & CT.BETWEEN[kingSq][m.to()]) == 0) {
+      const bool rookLine = (CT.DIR[kingSq][m.to()] % 2 == 0);
+      const bool bishopLine = (CT.DIR[kingSq][m.to()] % 2 != 0);
+      if ((moverAfter == PT::Rook && rookLine) || (moverAfter == PT::Bishop && bishopLine) ||
+          moverAfter == PT::Queen)
+        info.givesCheck = true;
     }
   }
 
-  // --- Discovered check (only if 'from' is aligned with king) ---
-  if (!CT.LINE[k][m.from()]) return false;
+  if (!info.givesCheck && CT.LINE[kingSq][m.from()]) {
+    const int dir = CT.DIR[kingSq][m.from()];
+    auto ray = CT.RAY[kingSq][m.from()];
+    auto blockers = occ & ray;
+    if (blockers) {
+      int firstSq;
+      if (dir == 0 || dir == 1 || dir == 2 || dir == 3)
+        firstSq = lilia::model::bb::ctz64(blockers);
+      else
+        firstSq = 63 - lilia::model::bb::clz64(blockers);
 
-  // We vacated 'from' on a king ray. The king is in check iff the FIRST blocker on
-  // the ray away from the king is our rook/queen (orthogonal dir) or bishop/queen (diagonal dir).
-  const int d = CT.DIR[k][m.from()];
-  auto rayAway = CT.RAY[k][m.from()];  // squares beyond 'from' away from king
-  auto blockers = occ1 & rayAway;
-  if (!blockers) return false;
-
-  // Get first blocker on that ray (lsb vs msb depends on direction).
-  int firstSq;
-  if (d == 0 || d == 1 || d == 2 || d == 3) {
-    // N, NE, E, SE grow toward higher indices on typical 0..63 mapping
-    firstSq = lilia::model::bb::ctz64(blockers);
-  } else {
-    // S, SW, W, NW go toward lower indices
-    firstSq = 63 - lilia::model::bb::clz64(blockers);
+      if (auto firstPiece = board.getPiece(firstSq); firstPiece && firstPiece->color == us) {
+        const bool rookLine = (dir % 2 == 0);
+        const bool bishopLine = (dir % 2 != 0);
+        if ((rookLine && (firstPiece->type == PT::Rook || firstPiece->type == PT::Queen)) ||
+            (bishopLine && (firstPiece->type == PT::Bishop || firstPiece->type == PT::Queen))) {
+          info.givesCheck = true;
+        }
+      }
+    }
   }
 
-  auto firstB = lilia::model::bb::sq_bb(static_cast<core::Square>(firstSq));
-  auto p = b.getPiece(firstSq);
-  if (!p || p->color != us) return false;
+  // Quiet threat signals (only for non-capturing, non-promoting moves)
+  if (!m.isCapture() && m.promotion() == PT::None) {
+    if (moverBefore == PT::Pawn) {
+      const auto to = lilia::model::bb::sq_bb(m.to());
+      const auto pawnAtk = (us == core::Color::White)
+                               ? (lilia::model::bb::ne(to) | lilia::model::bb::nw(to))
+                               : (lilia::model::bb::se(to) | lilia::model::bb::sw(to));
 
-  const bool rookLine = (d % 2 == 0);    // orthogonal
-  const bool bishopLine = (d % 2 != 0);  // diagonal
+      if (pawnAtk & enemyKingBB)
+        info.pawnSignal = 2;
+      else {
+        const auto targets = board.getPieces(~us, PT::Queen) | board.getPieces(~us, PT::Rook) |
+                             board.getPieces(~us, PT::Bishop) | board.getPieces(~us, PT::Knight);
+        if (pawnAtk & targets)
+          info.pawnSignal = 1;
+        else if (is_advanced_passed_pawn_push(board, m, us))
+          info.pawnSignal = 1;
+      }
+    } else if (moverBefore != PT::None) {
+      lilia::model::bb::Bitboard attacks = 0;
+      switch (moverBefore) {
+        case PT::Knight:
+          attacks = lilia::model::bb::knight_attacks_from(m.to());
+          break;
+        case PT::Bishop:
+          attacks = lilia::model::magic::sliding_attacks(lilia::model::magic::Slider::Bishop,
+                                                         m.to(), occ);
+          break;
+        case PT::Rook:
+          attacks = lilia::model::magic::sliding_attacks(lilia::model::magic::Slider::Rook, m.to(),
+                                                         occ);
+          break;
+        case PT::Queen:
+          attacks = lilia::model::magic::sliding_attacks(lilia::model::magic::Slider::Bishop,
+                                                         m.to(), occ) |
+                    lilia::model::magic::sliding_attacks(lilia::model::magic::Slider::Rook, m.to(),
+                                                         occ);
+          break;
+        case PT::King:
+          attacks = lilia::model::bb::king_attacks_from(m.to());
+          break;
+        default:
+          break;
+      }
 
-  if (rookLine && (p->type == PT::Rook || p->type == PT::Queen)) return true;
-  if (bishopLine && (p->type == PT::Bishop || p->type == PT::Queen)) return true;
+      if (attacks & enemyKingBB) {
+        info.pieceSignal = 2;
+      } else {
+        const auto targets = board.getPieces(~us, PT::Queen) | board.getPieces(~us, PT::Rook) |
+                             board.getPieces(~us, PT::Bishop) | board.getPieces(~us, PT::Knight);
+        if (attacks & targets) info.pieceSignal = 1;
+      }
+    }
+  }
 
-  return false;
+  return info;
 }
 
 }  // namespace
@@ -826,64 +807,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       }
     }
 
-    // Would-give-check test (precise; EP occupancy; promotion uses post-move piece)
-    bool wouldGiveCheck = false;
-    {
-      const auto& board = pos.getBoard();
-      const auto us = pos.getState().sideToMove;
-      const auto kBB = board.getPieces(~us, core::PieceType::King);
-      auto mover = board.getPiece(m.from());
-
-      if (mover) {
-        const auto occ0 = board.getAllPieces();
-        const auto fromBB = model::bb::sq_bb(m.from());
-        const auto toBB = model::bb::sq_bb(m.to());
-        auto occ1 = (occ0 & ~fromBB) | toBB;
-        if (m.isEnPassant()) {
-          int epCapSq = (us == core::Color::White) ? m.to() - 8 : m.to() + 8;
-          occ1 &= ~model::bb::sq_bb(epCapSq);
-        }
-
-        using PT = core::PieceType;
-        PT moverAfter = mover->type;
-        if (isPromo) moverAfter = m.promotion();
-
-        switch (moverAfter) {
-          case PT::Knight:
-            wouldGiveCheck = (model::bb::knight_attacks_from(m.to()) & kBB) != 0;
-            break;
-          case PT::Bishop:
-            wouldGiveCheck =
-                (model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ1) & kBB) !=
-                0;
-            break;
-          case PT::Rook:
-            wouldGiveCheck =
-                (model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ1) & kBB) !=
-                0;
-            break;
-          case PT::Queen: {
-            auto bAtk = model::magic::sliding_attacks(model::magic::Slider::Bishop, m.to(), occ1);
-            auto rAtk = model::magic::sliding_attacks(model::magic::Slider::Rook, m.to(), occ1);
-            wouldGiveCheck = ((bAtk | rAtk) & kBB) != 0;
-            break;
-          }
-          case PT::King:
-            wouldGiveCheck = (model::bb::king_attacks_from(m.to()) & kBB) != 0;
-            break;
-          case PT::Pawn: {
-            const auto to = model::bb::sq_bb(m.to());
-            if (us == core::Color::White)
-              wouldGiveCheck = ((model::bb::ne(to) | model::bb::nw(to)) & kBB) != 0;
-            else
-              wouldGiveCheck = ((model::bb::se(to) | model::bb::sw(to)) & kBB) != 0;
-            break;
-          }
-          default:
-            break;
-        }
-      }
-    }
+    const bool wouldGiveCheck = compute_quiet_signals(pos, m).givesCheck;
 
     // Delta pruning (skip if giving check) + discovered-check safeguard
     if (!wouldGiveCheck) {
@@ -954,7 +878,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
       for (int i = 0; i < an; ++i) {
         const model::Move m = genArr_[kply][i];
         if (m.isCapture() || m.promotion() != core::PieceType::None) continue;
-        if (!would_give_check_after(pos, m)) continue;
+        if (!compute_quiet_signals(pos, m).givesCheck) continue;
 
         int sc = history[m.from()][m.to()];
         if (m == killers[kply][0] || m == killers[kply][1]) sc += 6000;
@@ -1144,15 +1068,17 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     int probeN = gen_all(mg, pos, genArr_[cap_ply(ply)], probeCap);
     for (int i = 0; i < probeN && i < probeCap; ++i) {
       const auto& mm = genArr_[cap_ply(ply)][i];
-      if (!mm.isCapture() && mm.promotion() == core::PieceType::None &&
-          would_give_check_after(pos, mm)) {
-        // require either a “threat” (attacks a piece) or decent history
-        int ps = quiet_piece_threat_signal(pos.getBoard(), mm, pos.getState().sideToMove);
-        int h = history[mm.from()][mm.to()];
-        if (ps >= 1 || h > 0) {  // only then disable null move
-          hasQuickQuietCheck = true;
-          break;
-        }
+      if (mm.isCapture() || mm.promotion() != core::PieceType::None) continue;
+
+      const auto signals = compute_quiet_signals(pos, mm);
+      if (!signals.givesCheck) continue;
+
+      // require either a “threat” (attacks a piece) or decent history
+      int ps = signals.pieceSignal;
+      int h = history[mm.from()][mm.to()];
+      if (ps >= 1 || h > 0) {  // only then disable null move
+        hasQuickQuietCheck = true;
+        break;
       }
     }
   }
@@ -1252,9 +1178,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       if (prevOk && m == cm) s += CM_BASE + (counterHist[prev.from()][prev.to()] >> 1);
 
       // tactical quiet bonuses
-      const auto us = pos.getState().sideToMove;
-      const int pawn_sig = quiet_pawn_push_signal(board, m, us);
-      const int piece_sig = quiet_piece_threat_signal(board, m, us);
+      const auto signals = compute_quiet_signals(pos, m);
+      const int pawn_sig = signals.pawnSignal;
+      const int piece_sig = signals.pieceSignal;
       const int sig = pawn_sig > piece_sig ? pawn_sig : piece_sig;
       // NEW (depth aware & modest)
       int chkBoost = 3'000 + 500 * std::min(depth, 6);     // max ~6k
@@ -1334,15 +1260,17 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     int pawn_sig = 0, piece_sig = 0;
     bool wouldCheck = false;
     if (isQuiet) {
-      piece_sig = quiet_piece_threat_signal(board, m, us);  // detects checks (==2)
+      const auto signals = compute_quiet_signals(pos, m);
+      piece_sig = signals.pieceSignal;  // detects direct checks (==2)
+
+      const bool allowPawnThreats = doThreatSignals && piece_sig < 2;
+
       if (piece_sig < 2) {
-        if (doThreatSignals) {
-          pawn_sig = quiet_pawn_push_signal(board, m, us);
-        }
+        if (allowPawnThreats) pawn_sig = signals.pawnSignal;
         if (is_advanced_passed_pawn_push(board, m, us)) passed_push = true;
       }
 
-      wouldCheck = would_give_check_after(pos, m);
+      wouldCheck = signals.givesCheck;
       if (wouldCheck) {
         piece_sig = std::max(piece_sig, 2);
         if (auto mover = board.getPiece(m.from()); mover && mover->type == core::PieceType::Pawn) {
@@ -1453,7 +1381,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         if (!inCheck && ply > 0 && depth <= 4) {
           if (!pos.see(m)) {
             // Keep negative-SEE captures that give check (sacrifices)
-            if (would_give_check_after(pos, m)) {
+            if (compute_quiet_signals(pos, m).givesCheck) {
               // keep
             } else {
               // EXCEPTIONS: allow negative-SEE captures if any of these holds
@@ -1842,20 +1770,17 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
         // Threat-Signale / checks: always detect checks; other signals gated
         auto mover = board.getPiece(m.from());
         if (mover) {
-          const auto us = pos.getState().sideToMove;
-
-          int piece_sig = quiet_piece_threat_signal(board, m, us);  // detects check (==2)
+          const auto signals = compute_quiet_signals(pos, m);
+          int piece_sig = signals.pieceSignal;  // detects direct checks (==2)
           int pawn_sig = 0;
 
           bool doThreat = cfg.useThreatSignals && curDepth <= cfg.threatSignalsDepthMax &&
                           h >= cfg.threatSignalsHistMin;
 
-          if (piece_sig < 2 && doThreat) {
-            pawn_sig = quiet_pawn_push_signal(board, m, us);
-          }
+          const bool allowPawnThreats = doThreat && piece_sig < 2;
+          if (allowPawnThreats) pawn_sig = signals.pawnSignal;
 
-          const bool wouldCheck = would_give_check_after(pos, m);
-          if (wouldCheck) {
+          if (signals.givesCheck) {
             piece_sig = std::max(piece_sig, 2);
             if (mover->type == core::PieceType::Pawn) pawn_sig = std::max(pawn_sig, 2);
           }
@@ -1947,9 +1872,10 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           if (stop && stop->load(std::memory_order_relaxed)) break;
 
           const bool isQuietRoot = !m.isCapture() && (m.promotion() == core::PieceType::None);
-          const bool quietCheckRoot = isQuietRoot && would_give_check_after(pos, m);
+          const QuietSignals rootSignals = isQuietRoot ? compute_quiet_signals(pos, m) : QuietSignals{};
+          const bool quietCheckRoot = isQuietRoot && rootSignals.givesCheck;
           bool pawnQuietCheckRoot = false;
-          if (quietCheckRoot && isQuietRoot) {
+          if (quietCheckRoot) {
             if (auto mover = pos.getBoard().getPiece(m.from());
                 mover && mover->type == core::PieceType::Pawn) {
               pawnQuietCheckRoot = true;
