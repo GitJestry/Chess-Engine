@@ -334,6 +334,112 @@ static inline int quiet_piece_threat_signal(const model::Board& b, const model::
   return (atk & targets) ? 1 : 0;
 }
 
+struct CheckTables {
+  model::bb::Bitboard KN_FROM[64];
+  model::bb::Bitboard K_FROM[64];
+  model::bb::Bitboard PAWN_CHK[2][64];  // [us][kSq]
+  model::bb::Bitboard LINE[64][64];
+  model::bb::Bitboard BETWEEN[64][64];
+  model::bb::Bitboard RAY[64][64];  // ray starting at a towards b
+  int DIR[64][64];                  // -1 if not aligned, else 0..7 for N,NE,E,SE,S,SW,W,NW
+} CT;
+
+static inline void init_check_tables() {
+  using namespace lilia::model::bb;
+  for (int s = 0; s < 64; ++s) {
+    CT.KN_FROM[s] = knight_attacks_from(static_cast<core::Square>(s));
+    CT.K_FROM[s] = king_attacks_from(static_cast<core::Square>(s));
+  }
+  for (int k = 0; k < 64; ++k) {
+    auto kB = sq_bb(static_cast<core::Square>(k));
+    CT.PAWN_CHK[(int)core::Color::White][k] = sw(kB) | se(kB);
+    CT.PAWN_CHK[(int)core::Color::Black][k] = nw(kB) | ne(kB);
+  }
+
+  auto on_line = [&](int a, int b) -> bool {
+    int ra = rank_of(static_cast<core::Square>(a));
+    int fa = file_of(static_cast<core::Square>(a));
+    int rb = rank_of(static_cast<core::Square>(b));
+    int fb = file_of(static_cast<core::Square>(b));
+    return (ra == rb) || (fa == fb) || (std::abs(ra - rb) == std::abs(fa - fb));
+  };
+
+  auto dir_from_to = [&](int a, int b) -> int {
+    int ra = rank_of(static_cast<core::Square>(a));
+    int fa = file_of(static_cast<core::Square>(a));
+    int rb = rank_of(static_cast<core::Square>(b));
+    int fb = file_of(static_cast<core::Square>(b));
+    int dr = (rb > ra) - (rb < ra);  // -1,0,1
+    int df = (fb > fa) - (fb < fa);
+    if (dr == 0 && df == 0) return -1;
+    if (dr == 0 && df == 1) return 2;    // E
+    if (dr == 0 && df == -1) return 6;   // W
+    if (dr == 1 && df == 0) return 0;    // N
+    if (dr == -1 && df == 0) return 4;   // S
+    if (dr == 1 && df == 1) return 1;    // NE
+    if (dr == 1 && df == -1) return 7;   // NW
+    if (dr == -1 && df == 1) return 3;   // SE
+    if (dr == -1 && df == -1) return 5;  // SW
+    return -1;
+  };
+
+  auto step = [](int dir, model::bb::Bitboard b) {
+    using namespace lilia::model::bb;
+    switch (dir) {
+      case 0:
+        return north(b);
+      case 1:
+        return ne(b);
+      case 2:
+        return east(b);
+      case 3:
+        return se(b);
+      case 4:
+        return south(b);
+      case 5:
+        return sw(b);
+      case 6:
+        return west(b);
+      case 7:
+        return nw(b);
+    }
+    return (model::bb::Bitboard)0;
+  };
+
+  for (int a = 0; a < 64; ++a)
+    for (int b = 0; b < 64; ++b) {
+      CT.DIR[a][b] = dir_from_to(a, b);
+      if (!on_line(a, b)) {
+        CT.LINE[a][b] = 0;
+        CT.BETWEEN[a][b] = 0;
+        CT.RAY[a][b] = 0;
+        continue;
+      }
+      auto A = lilia::model::bb::sq_bb(static_cast<core::Square>(a));
+      auto B = lilia::model::bb::sq_bb(static_cast<core::Square>(b));
+      int d = CT.DIR[a][b];
+      // RAY[a][b]: from a toward b, exclusive
+      model::bb::Bitboard ray = 0, r = step(d, A);
+      while (r) {
+        ray |= r;
+        if (r & B) break;
+        r = step(d, r);
+      }
+      CT.RAY[a][b] = ray;
+      // BETWEEN[a][b]: squares strictly between
+      CT.BETWEEN[a][b] = ray & ~B;
+      // LINE[a][b]: whole line through a,b (union of both rays + endpoints)
+      // Build opposite ray too:
+      int dOpp = (d + 4) & 7;
+      model::bb::Bitboard rayOpp = 0, r2 = step(dOpp, A);
+      while (r2) {
+        rayOpp |= r2;
+        r2 = step(dOpp, r2);
+      }
+      CT.LINE[a][b] = ray | rayOpp | A | B;
+    }
+}
+
 // --- NEW: pre-move "would give check" detector (EP & promotion aware) ---
 static inline bool would_give_check_after(const model::Position& pos, const model::Move& m) {
   using PT = core::PieceType;
@@ -341,99 +447,77 @@ static inline bool would_give_check_after(const model::Position& pos, const mode
 
   const auto& b = pos.getBoard();
   const auto us = pos.getState().sideToMove;
-  const auto kBB = b.getPieces(~us, PT::King);
-  if (!kBB) return false;
+  const auto kB = b.getPieces(~us, PT::King);
+  if (!kB) return false;
 
-  const int kSq = model::bb::ctz64(kBB);
-  const auto fromB = model::bb::sq_bb(m.from());
-  const auto toB = model::bb::sq_bb(m.to());
+  const int k = lilia::model::bb::ctz64(kB);
+  const auto fromB = lilia::model::bb::sq_bb(m.from());
+  const auto toB = lilia::model::bb::sq_bb(m.to());
 
-  // Post-move occupancy (handle EP capture)
-  auto occ = b.getAllPieces();
-  occ = (occ & ~fromB) | toB;
+  // Post-move occupancy (EP-aware)
+  auto occ1 = b.getAllPieces();
+  occ1 = (occ1 & ~fromB) | toB;
   if (m.isEnPassant()) {
-    const int epCapSq = (us == core::Color::White) ? m.to() - 8 : m.to() + 8;
-    occ &= ~model::bb::sq_bb(epCapSq);
+    int epCapSq = (us == core::Color::White) ? m.to() - 8 : m.to() + 8;
+    occ1 &= ~lilia::model::bb::sq_bb(static_cast<core::Square>(epCapSq));
   }
 
-  // Our piece sets after the move (promotion-aware)
-  auto paw = b.getPieces(us, PT::Pawn);
-  auto kn = b.getPieces(us, PT::Knight);
-  auto bi = b.getPieces(us, PT::Bishop);
-  auto rk = b.getPieces(us, PT::Rook);
-  auto qu = b.getPieces(us, PT::Queen);
-  auto ki = b.getPieces(us, PT::King);
+  // Mover type (promotion-aware)
+  PT before = PT::None;
+  if (auto p = b.getPiece(m.from())) before = p->type;
+  PT after = (m.promotion() != PT::None) ? m.promotion() : before;
 
-  if (auto mover = b.getPiece(m.from())) {
-    PT before = mover->type;
-    PT after = (m.promotion() != PT::None) ? m.promotion() : before;
-    // remove from "before"
-    switch (before) {
-      case PT::Pawn:
-        paw &= ~fromB;
-        break;
-      case PT::Knight:
-        kn &= ~fromB;
-        break;
-      case PT::Bishop:
-        bi &= ~fromB;
-        break;
-      case PT::Rook:
-        rk &= ~fromB;
-        break;
-      case PT::Queen:
-        qu &= ~fromB;
-        break;
-      case PT::King:
-        ki &= ~fromB;
-        break;
-      default:
-        break;
-    }
-    // add to "after"
-    switch (after) {
-      case PT::Pawn:
-        paw |= toB;
-        break;
-      case PT::Knight:
-        kn |= toB;
-        break;
-      case PT::Bishop:
-        bi |= toB;
-        break;
-      case PT::Rook:
-        rk |= toB;
-        break;
-      case PT::Queen:
-        qu |= toB;
-        break;
-      case PT::King:
-        ki |= toB;
-        break;
-      default:
-        break;
+  // --- Direct checks (tables only, no magics) ---
+  if (after == PT::Pawn) {
+    if (CT.PAWN_CHK[(int)us][k] & toB) return true;
+  }
+  if (after == PT::Knight) {
+    if (CT.KN_FROM[m.to()] & kB) return true;
+  }
+  if (after == PT::King) {
+    if (CT.K_FROM[m.to()] & kB) return true;
+  }
+
+  if (after == PT::Bishop || after == PT::Rook || after == PT::Queen) {
+    if (CT.LINE[k][m.to()] && (occ1 & CT.BETWEEN[k][m.to()]) == 0) {
+      // ensure line kind matches piece (rook-line or bishop-line)
+      const bool rookLine = (CT.DIR[k][m.to()] % 2 == 0);    // N/E/S/W
+      const bool bishopLine = (CT.DIR[k][m.to()] % 2 != 0);  // diagonals
+      if ((after == PT::Rook && rookLine) || (after == PT::Bishop && bishopLine) ||
+          (after == PT::Queen))
+        return true;
     }
   }
 
-  const auto kSqBB = model::bb::sq_bb(static_cast<core::Square>(kSq));
+  // --- Discovered check (only if 'from' is aligned with king) ---
+  if (!CT.LINE[k][m.from()]) return false;
 
-  // Pawn attackers on kSq (reverse directions)
-  if (us == core::Color::White) {
-    if ((model::bb::sw(kSqBB) | model::bb::se(kSqBB)) & paw) return true;
+  // We vacated 'from' on a king ray. The king is in check iff the FIRST blocker on
+  // the ray away from the king is our rook/queen (orthogonal dir) or bishop/queen (diagonal dir).
+  const int d = CT.DIR[k][m.from()];
+  auto rayAway = CT.RAY[k][m.from()];  // squares beyond 'from' away from king
+  auto blockers = occ1 & rayAway;
+  if (!blockers) return false;
+
+  // Get first blocker on that ray (lsb vs msb depends on direction).
+  int firstSq;
+  if (d == 0 || d == 1 || d == 2 || d == 3) {
+    // N, NE, E, SE grow toward higher indices on typical 0..63 mapping
+    firstSq = lilia::model::bb::ctz64(blockers);
   } else {
-    if ((model::bb::nw(kSqBB) | model::bb::ne(kSqBB)) & paw) return true;
+    // S, SW, W, NW go toward lower indices
+    firstSq = 63 - lilia::model::bb::clz64(blockers);
   }
 
-  // Knight
-  if (model::bb::knight_attacks_from(kSq) & kn) return true;
+  auto firstB = lilia::model::bb::sq_bb(static_cast<core::Square>(firstSq));
+  auto p = b.getPiece(firstSq);
+  if (!p || p->color != us) return false;
 
-  // Sliding (reverse from king with post-move occupancy!)
-  if (model::magic::sliding_attacks(model::magic::Slider::Bishop, kSq, occ) & (bi | qu))
-    return true;
-  if (model::magic::sliding_attacks(model::magic::Slider::Rook, kSq, occ) & (rk | qu)) return true;
+  const bool rookLine = (d % 2 == 0);    // orthogonal
+  const bool bishopLine = (d % 2 != 0);  // diagonal
 
-  // King adjacency
-  if (model::bb::king_attacks_from(kSq) & ki) return true;
+  if (rookLine && (p->type == PT::Rook || p->type == PT::Queen)) return true;
+  if (bishopLine && (p->type == PT::Bishop || p->type == PT::Queen)) return true;
 
   return false;
 }
@@ -461,6 +545,7 @@ Search::Search(model::TT5& tt_, std::shared_ptr<const Evaluator> eval_, const En
   sharedNodes.reset();  // NEW
   nodeLimit = 0;        // NEW
   stats = SearchStats{};
+  init_check_tables();
 }
 
 int Search::signed_eval(model::Position& pos) {
@@ -519,7 +604,7 @@ class ThreadNodeBatch {
     }
   }
 
-  static constexpr uint32_t TICK_STEP = 2048;
+  static constexpr uint32_t TICK_STEP = 8192;
   uint32_t local_ = 0;
 };
 
