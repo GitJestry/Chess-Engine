@@ -1491,8 +1491,16 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     // Check extension (light)
     const bool givesCheck = pos.lastMoveGaveCheck();
     if (givesCheck) {
-      if (!isQuiet && seeGood) {
-        newDepth += 1;  // capturing checks still get a light extension
+      if (!isQuiet) {
+        bool allowCaptureExt = seeGood;
+        if (allowCaptureExt && m.isCapture()) {
+          const int attackerVal = base_value[(int)moverPt];
+          const int victimVal = capValPre;
+          if (victimVal < attackerVal && !pos.see(m)) {
+            allowCaptureExt = false;  // speculative sacrifices stay shallow
+          }
+        }
+        if (allowCaptureExt) newDepth += 1;  // capturing checks still get a light extension
       } else if (isQuiet) {
         bool okQuietExt = (depth <= 3) &&                    // only shallow
                           (history[m.from()][m.to()] > 0 ||  // some prior success
