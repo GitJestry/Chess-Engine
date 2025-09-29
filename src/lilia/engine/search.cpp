@@ -559,6 +559,238 @@ inline void bump_node_or_stop(const std::shared_ptr<std::atomic<std::uint64_t>>&
   node_batch().bump(counter, limit, stopFlag);
 }
 
+namespace {
+
+class StagedMovePicker {
+ public:
+  StagedMovePicker(model::Position& pos, const model::Move* moves, int count,
+                   const model::Move* excludedMove, const model::Move& ttMove, bool useTTMove,
+                   const model::Move killers[2], const model::Move& counterMove, bool counterOk,
+                   const std::array<model::Move, MAX_PLY>& prevMoves, int ply, int depth,
+                   const std::array<std::array<int16_t, SQ_NB>, SQ_NB>& history,
+                   const int16_t (*quietHist)[SQ_NB],
+                   const int16_t (*captureHist)[SQ_NB][PIECE_NB],
+                   const int16_t counterHist[SQ_NB][SQ_NB],
+                   const int16_t (*contHist)[PIECE_NB][SQ_NB][PIECE_NB][SQ_NB])
+      : ttMove_(ttMove),
+        useTTMove_(useTTMove && !ttMove.isNull()),
+        killers_{killers[0], killers[1]},
+        counterMove_(counterMove),
+        counterOk_(counterOk && !counterMove.isNull()),
+        prevMoves_(prevMoves),
+        ply_(ply),
+        depth_(depth),
+        history_(history),
+        quietHist_(quietHist),
+        captureHist_(captureHist),
+        counterHist_(counterHist),
+        contHist_(contHist) {
+    const auto& board = pos.getBoard();
+    const auto us = pos.getState().sideToMove;
+
+    bool ttFound = false;
+
+    goodCaps_.reserve(count);
+    badCaps_.reserve(count);
+    quiets_.reserve(count);
+
+    for (int i = 0; i < count; ++i) {
+      const model::Move m = moves[i];
+      if (excludedMove && m == *excludedMove) continue;
+
+      if (useTTMove_ && m == ttMove_) {
+        ttFound = true;
+        continue;
+      }
+
+      const bool isCap = m.isCapture();
+      const bool isPromo = (m.promotion() != core::PieceType::None);
+
+      if (isCap || isPromo) {
+        auto moverOpt = board.getPiece(m.from());
+        const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
+        core::PieceType capPt = core::PieceType::Pawn;
+        if (m.isEnPassant()) {
+          capPt = core::PieceType::Pawn;
+        } else if (auto capOpt = board.getPiece(m.to())) {
+          capPt = capOpt->type;
+        }
+
+        const int mvv = mvv_lva_fast(pos, m);
+        const int ch = captureHist_[pidx(moverPt)][m.to()][pidx(capPt)];
+        int score = 0;
+        if (isPromo && !isCap) {
+          score = PROMO_BASE + mvv;
+        } else {
+          score = CAP_BASE_GOOD + mvv + (ch >> 2);
+        }
+
+        const bool goodSee = !isCap || pos.see(m);
+        if (isCap && !goodSee)
+          badCaps_.emplace_back(score, m);
+        else
+          goodCaps_.emplace_back(score, m);
+      } else {
+        auto moverOpt = board.getPiece(m.from());
+        const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
+
+        int score = history_[m.from()][m.to()] + (quietHist_[pidx(moverPt)][m.to()] >> 1);
+
+        const bool isCounter = counterOk_ && m == counterMove_;
+        const bool isKiller = (m == killers_[0]) || (m == killers_[1]);
+
+        if (isKiller) score += KILLER_BASE;
+        if (isCounter) score += CM_BASE + (counterHist_[counterMove_.from()][counterMove_.to()] >> 1);
+
+        const int pawnSig = quiet_pawn_push_signal(board, m, us);
+        const int pieceSig = quiet_piece_threat_signal(board, m, us);
+        const int sig = pawnSig > pieceSig ? pawnSig : pieceSig;
+
+        const int chkBoost = 3'000 + 500 * std::min(depth_, 6);
+        const int threatBoost = 1'500 + 250 * std::min(depth_, 6);
+        if (sig == 2)
+          score += chkBoost;
+        else if (sig == 1)
+          score += threatBoost;
+
+        if ((moverPt == core::PieceType::Queen || moverPt == core::PieceType::Rook) && sig == 0) {
+          score -= 6'000;
+        }
+
+        int chSum = 0;
+        if (ply_ >= 1) {
+          const model::Move pm1 = prevMoves_[cap_ply(ply_ - 1)];
+          if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.to() < 64) {
+            if (auto po1 = board.getPiece(pm1.to()))
+              chSum += contHist_[0][pidx(po1->type)][pm1.to()][pidx(moverPt)][m.to()];
+          }
+        }
+        if (ply_ >= 2) {
+          const model::Move pm2 = prevMoves_[cap_ply(ply_ - 2)];
+          if (pm2.from() >= 0 && pm2.to() >= 0 && pm2.to() < 64) {
+            if (auto po2 = board.getPiece(pm2.to()))
+              chSum += contHist_[1][pidx(po2->type)][pm2.to()][pidx(moverPt)][m.to()] >> 1;
+          }
+        }
+        if (ply_ >= 3) {
+          const model::Move pm3 = prevMoves_[cap_ply(ply_ - 3)];
+          if (pm3.from() >= 0 && pm3.to() >= 0 && pm3.to() < 64) {
+            if (auto po3 = board.getPiece(pm3.to()))
+              chSum += contHist_[2][pidx(po3->type)][pm3.to()][pidx(moverPt)][m.to()] >> 2;
+          }
+        }
+        score += (chSum >> 1);
+
+        if (isCounter) {
+          if (std::none_of(counterMoves_.begin(), counterMoves_.end(),
+                           [&](const auto& kv) { return kv.second == m; })) {
+            counterMoves_.emplace_back(score, m);
+          }
+        } else if (isKiller) {
+          if (std::none_of(killerMoves_.begin(), killerMoves_.end(),
+                           [&](const auto& kv) { return kv.second == m; })) {
+            killerMoves_.emplace_back(score, m);
+          }
+        } else {
+          quiets_.emplace_back(score, m);
+        }
+      }
+    }
+
+    useTTMove_ = useTTMove_ && ttFound;
+
+    auto cmp = [](const auto& a, const auto& b) { return a.first > b.first; };
+    std::sort(goodCaps_.begin(), goodCaps_.end(), cmp);
+    std::sort(badCaps_.begin(), badCaps_.end(), cmp);
+    std::sort(counterMoves_.begin(), counterMoves_.end(), cmp);
+    std::sort(killerMoves_.begin(), killerMoves_.end(), cmp);
+    std::sort(quiets_.begin(), quiets_.end(), cmp);
+
+    goodCapMoves_.reserve(goodCaps_.size());
+    for (const auto& kv : goodCaps_) goodCapMoves_.push_back(kv.second);
+  }
+
+  model::Move next() {
+    while (true) {
+      switch (stage_) {
+        case Stage::TT:
+          stage_ = Stage::GOOD_CAPTURES;
+          if (useTTMove_) {
+            useTTMove_ = false;
+            return ttMove_;
+          }
+          break;
+        case Stage::GOOD_CAPTURES:
+          if (goodIdx_ < goodCaps_.size()) return goodCaps_[goodIdx_++].second;
+          stage_ = Stage::COUNTER;
+          break;
+        case Stage::COUNTER:
+          if (counterIdx_ < counterMoves_.size()) return counterMoves_[counterIdx_++].second;
+          stage_ = Stage::KILLERS;
+          break;
+        case Stage::KILLERS:
+          if (killerIdx_ < killerMoves_.size()) return killerMoves_[killerIdx_++].second;
+          stage_ = Stage::QUIETS;
+          break;
+        case Stage::QUIETS:
+          if (quietIdx_ < quiets_.size()) return quiets_[quietIdx_++].second;
+          stage_ = Stage::BAD_CAPTURES;
+          break;
+        case Stage::BAD_CAPTURES:
+          if (badIdx_ < badCaps_.size()) return badCaps_[badIdx_++].second;
+          stage_ = Stage::END;
+          break;
+        case Stage::END:
+        default:
+          return model::Move{};
+      }
+    }
+  }
+
+  const std::vector<model::Move>& good_captures() const { return goodCapMoves_; }
+
+ private:
+  enum class Stage { TT, GOOD_CAPTURES, COUNTER, KILLERS, QUIETS, BAD_CAPTURES, END };
+
+  static constexpr int CAP_BASE_GOOD = 180'000;
+  static constexpr int PROMO_BASE = 160'000;
+  static constexpr int KILLER_BASE = 120'000;
+  static constexpr int CM_BASE = 140'000;
+
+  Stage stage_ = Stage::TT;
+  model::Move ttMove_{};
+  bool useTTMove_ = false;
+  model::Move killers_[2];
+  model::Move counterMove_{};
+  bool counterOk_ = false;
+
+  const std::array<model::Move, MAX_PLY>& prevMoves_;
+  int ply_ = 0;
+  int depth_ = 0;
+
+  const std::array<std::array<int16_t, SQ_NB>, SQ_NB>& history_;
+  const int16_t (*quietHist_)[SQ_NB];
+  const int16_t (*captureHist_)[SQ_NB][PIECE_NB];
+  const int16_t (*counterHist_)[SQ_NB];
+  const int16_t (*contHist_)[PIECE_NB][SQ_NB][PIECE_NB][SQ_NB];
+
+  std::vector<std::pair<int, model::Move>> goodCaps_;
+  std::vector<std::pair<int, model::Move>> badCaps_;
+  std::vector<std::pair<int, model::Move>> counterMoves_;
+  std::vector<std::pair<int, model::Move>> killerMoves_;
+  std::vector<std::pair<int, model::Move>> quiets_;
+
+  std::vector<model::Move> goodCapMoves_;
+
+  std::size_t goodIdx_ = 0;
+  std::size_t badIdx_ = 0;
+  std::size_t counterIdx_ = 0;
+  std::size_t killerIdx_ = 0;
+  std::size_t quietIdx_ = 0;
+};
+
+}  // namespace
+
 // ---------- Quiescence + QTT ----------
 int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   bump_node_or_stop(sharedNodes, nodeLimit, stopFlag);
@@ -1125,105 +1357,23 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   const bool prevOk = !prev.isNull() && prev.from() != prev.to();
   const model::Move cm = prevOk ? counterMove[prev.from()][prev.to()] : model::Move{};
 
-  // Ordering
-  constexpr int MAX_MOVES = engine::MAX_MOVES;
-  int scores[MAX_MOVES];
-  model::Move ordered[MAX_MOVES];
-
-  constexpr int TT_BONUS = 2'400'000;
-  constexpr int CAP_BASE_GOOD = 180'000;
-  constexpr int PROMO_BASE = 160'000;
-  constexpr int KILLER_BASE = 120'000;
-  constexpr int CM_BASE = 140'000;
+  const bool allowFutility = !inCheck && !isPV;
 
   const auto& board = pos.getBoard();
+  const model::Move killersList[2] = {killers[kply][0], killers[kply][1]};
+  const bool counterValid = prevOk && !cm.isNull();
+  StagedMovePicker picker(pos, genArr_[kply], n, excludedMove, ttMove, haveTT, killersList, cm,
+                          counterValid, prevMove, ply, depth, history, quietHist, captureHist,
+                          counterHist, contHist);
 
-  for (int i = 0; i < n; ++i) {
-    const auto& m = genArr_[kply][i];
-    int s = 0;
-
-    if (haveTT && m == ttMove) {
-      s = TT_BONUS;
-    } else if (m.isCapture() || m.promotion() != core::PieceType::None) {
-      auto moverOpt = board.getPiece(m.from());
-      const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
-      core::PieceType capPt = core::PieceType::Pawn;
-      if (m.isEnPassant())
-        capPt = core::PieceType::Pawn;
-      else if (auto cap = board.getPiece(m.to()))
-        capPt = cap->type;
-
-      const int mvv = mvv_lva_fast(pos, m);
-      const int ch = captureHist[pidx(moverPt)][m.to()][pidx(capPt)];
-      if (m.promotion() != core::PieceType::None && !m.isCapture())
-        s = PROMO_BASE + mvv;
-      else
-        s = CAP_BASE_GOOD + mvv + (ch >> 2);
-    } else {
-      auto moverOpt = board.getPiece(m.from());
-      const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
-      s = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
-      if (m == killers[kply][0] || m == killers[kply][1]) s += KILLER_BASE;
-      if (prevOk && m == cm) s += CM_BASE + (counterHist[prev.from()][prev.to()] >> 1);
-
-      // tactical quiet bonuses
-      const auto us = pos.getState().sideToMove;
-      const int pawn_sig = quiet_pawn_push_signal(board, m, us);
-      const int piece_sig = quiet_piece_threat_signal(board, m, us);
-      const int sig = pawn_sig > piece_sig ? pawn_sig : piece_sig;
-      // NEW (depth aware & modest)
-      int chkBoost = 3'000 + 500 * std::min(depth, 6);     // max ~6k
-      int threatBoost = 1'500 + 250 * std::min(depth, 6);  // max ~3k
-      if (sig == 2)
-        s += chkBoost;
-      else if (sig == 1)
-        s += threatBoost;
-
-      // tiny malus for non-tactical heavy piece shuffles
-      if ((moverPt == core::PieceType::Queen || moverPt == core::PieceType::Rook) && (sig == 0)) {
-        s -= 6000;
-      }
-
-      // Continuation History Contribution (layered)
-      int chSum = 0;
-
-      if (ply >= 1) {
-        const model::Move pm1 = prevMove[cap_ply(ply - 1)];
-        if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.to() < 64) {
-          if (auto po1 = board.getPiece(pm1.to()))
-            chSum += contHist[0][pidx(po1->type)][pm1.to()][pidx(moverPt)][m.to()];
-        }
-      }
-      if (ply >= 2) {
-        const model::Move pm2 = prevMove[cap_ply(ply - 2)];
-        if (pm2.from() >= 0 && pm2.to() >= 0 && pm2.to() < 64) {
-          if (auto po2 = board.getPiece(pm2.to()))
-            chSum += contHist[1][pidx(po2->type)][pm2.to()][pidx(moverPt)][m.to()] >> 1;
-        }
-      }
-      if (ply >= 3) {
-        const model::Move pm3 = prevMove[cap_ply(ply - 3)];
-        if (pm3.from() >= 0 && pm3.to() >= 0 && pm3.to() < 64) {
-          if (auto po3 = board.getPiece(pm3.to()))
-            chSum += contHist[2][pidx(po3->type)][pm3.to()][pidx(moverPt)][m.to()] >> 2;
-        }
-      }
-      s += (chSum >> 1);
-    }
-
-    scores[i] = s;
-    ordered[i] = m;
-  }
-  sort_by_score_desc(scores, ordered, n);
-
-  const bool allowFutility = !inCheck && !isPV;
   int moveCount = 0;
   bool searchedAny = false;
 
-  for (int idx = 0; idx < n; ++idx) {
+  for (int idx = 0;; ++idx) {
     if ((idx & 63) == 0) check_stop(stopFlag);
 
-    const model::Move m = ordered[idx];
+    const model::Move m = picker.next();
+    if (m.isNull()) break;
     if (excludedMove && m == *excludedMove) {
       continue;  // don’t skew LMR/LMP with a non-searched move
     }
@@ -1590,11 +1740,21 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   // --- 5) Early ProbCut pass (cheap capture-only skim) ---
   if (!isPV && !inCheck && depth >= 6) {
-    constexpr int PC_MARGIN = 192;        // a bit lighter than in-node 224
-    const int MAX_SCAN = std::min(n, 6);  // don't scan too many
+    constexpr int PC_MARGIN = 192;  // a bit lighter than in-node 224
+
+    std::vector<model::Move> probMoves;
+    probMoves.reserve(7);
+    if (haveTT && !ttMove.isNull() && ttMove.isCapture()) probMoves.push_back(ttMove);
+    for (const auto& cap : picker.good_captures()) {
+      if (probMoves.size() >= 7) break;
+      if (std::find(probMoves.begin(), probMoves.end(), cap) != probMoves.end()) continue;
+      probMoves.push_back(cap);
+    }
+
+    const int MAX_SCAN = std::min(static_cast<int>(probMoves.size()), 6);
 
     for (int idx = 0; idx < MAX_SCAN; ++idx) {
-      const model::Move m = ordered[idx];
+      const model::Move m = probMoves[idx];
       if (!m.isCapture()) continue;
       if (mvv_lva_fast(pos, m) < 500) continue;  // need a meaningful tactical swing
 
@@ -1615,8 +1775,12 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   // safety: never leave node without searching at least one move (non-check)
   if (!searchedAny) {
-    for (int idx = 0; idx < n; ++idx) {
-      const model::Move m = ordered[idx];
+    StagedMovePicker fallback(pos, genArr_[kply], n, excludedMove, ttMove, haveTT, killersList, cm,
+                              counterValid, prevMove, ply, depth, history, quietHist, captureHist,
+                              counterHist, contHist);
+    while (true) {
+      const model::Move m = fallback.next();
+      if (m.isNull()) break;
       if (excludedMove && m == *excludedMove) continue;
       MoveUndoGuard g(pos);
       if (!g.doMove(m)) continue;
