@@ -2146,13 +2146,13 @@ int Search::search_root_lazy_smp(model::Position& pos, int maxDepth,
                                  std::shared_ptr<std::atomic<bool>> stop, int maxThreads,
                                  std::uint64_t maxNodes) {
   const int threads = std::max(1, maxThreads > 0 ? std::min(maxThreads, cfg.threads) : cfg.threads);
-  if (threads <= 1) return search_root_single(pos, maxDepth, stop, maxNodes);
-
   // Eine gemeinsame TT-Generation
   try {
     tt.new_generation();
   } catch (...) {
   }
+
+  if (threads <= 1) return search_root_single(pos, maxDepth, stop, maxNodes);
 
   auto& pool = ThreadPool::instance();
   auto sharedCounter = std::make_shared<std::atomic<std::uint64_t>>(0);

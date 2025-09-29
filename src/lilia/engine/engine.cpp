@@ -61,11 +61,7 @@ std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxD
                                                   std::shared_ptr<std::atomic<bool>> stop) {
   if (maxDepth <= 0) maxDepth = pimpl->cfg.maxDepth;
 
-  // Suche immer sauber zurücksetzen (TT, Killers/History etc.)
-  try {
-    pimpl->tt.clear();
-  } catch (...) {
-  }
+  // Suche immer sauber zurücksetzen (Killers/History etc.)
   try {
     pimpl->search->clearSearchState();
   } catch (...) {
