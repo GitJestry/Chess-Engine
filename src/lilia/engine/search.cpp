@@ -63,6 +63,7 @@ static constexpr int FUT_MARGIN[4] = {0, 110, 210, 300};  // leicht angehoben
 static constexpr int SNMP_MARGINS[4] = {0, 140, 200, 260};
 static constexpr int RAZOR_MARGIN_BASE = 240;  // vorher 220
 static constexpr int RFP_MARGIN_BASE = 190;    // vorher 180
+static constexpr int ROOT_RUNNER_BONUS = 15000;
 // LMP-Limits pro Tiefe (nur Quiet-Züge)
 static constexpr int LMP_LIMIT[4] = {0, 5, 9, 14};  // D=1..3
 static constexpr int LOW_MVV_MARGIN = 360;
@@ -207,14 +208,19 @@ static inline bool is_advanced_passed_pawn_push(const model::Board& b, const mod
   auto mover = b.getPiece(m.from());
   if (!mover || mover->type != PT::Pawn) return false;
 
+  const int fromSq = m.from();
   const int toSq = m.to();
   const int toFile = bb::file_of(static_cast<core::Square>(toSq));
   const int toRank = bb::rank_of(static_cast<core::Square>(toSq));
+  const int fromRank = bb::rank_of(static_cast<core::Square>(fromSq));
+  const bool doublePush = std::abs(toRank - fromRank) == 2;
 
   if (us == core::Color::White) {
-    if (toRank < 4) return false;  // only consider far-advanced pawns
+    if (toRank < 4 && !(doublePush && toRank == 3))
+      return false;  // only consider far-advanced pawns or double pushes reaching 4th rank
   } else {
-    if (toRank > 3) return false;
+    if (toRank > 3 && !(doublePush && toRank == 4))
+      return false;
   }
 
   auto oppPawns = b.getPieces(~us, PT::Pawn);
@@ -237,7 +243,7 @@ static inline bool is_advanced_passed_pawn_push(const model::Board& b, const mod
 
 // 0 = no immediate pawn attack; 1 = threatens Q/R/B/N; 2 = gives check
 static inline int quiet_pawn_push_signal(const model::Board& b, const model::Move& m,
-                                         core::Color us) {
+                                          core::Color us) {
   using PT = core::PieceType;
   if (m.isCapture() || m.promotion() != PT::None) return 0;
 
@@ -260,6 +266,33 @@ static inline int quiet_pawn_push_signal(const model::Board& b, const model::Mov
   if (is_advanced_passed_pawn_push(b, m, us)) return 1;
 
   return 0;
+}
+
+static bool queen_supported_rook_runner(const model::Board& board, const model::Move& m,
+                                        core::Color us) {
+  using PT = core::PieceType;
+  if (m.isCapture() || m.promotion() != PT::None) return false;
+
+  auto mover = board.getPiece(m.from());
+  if (!mover || mover->type != PT::Pawn) return false;
+
+  int file = bb::file_of(static_cast<core::Square>(m.from()));
+  if (file != 0 && file != 7) return false;
+
+  int delta = m.to() - m.from();
+  if (delta != 16 && delta != -16) return false;  // only two-square pushes
+
+  auto queenBB = board.getPieces(us, PT::Queen);
+  if (!queenBB) return false;
+
+  int step = (us == core::Color::White) ? 8 : -8;
+  for (int sq = m.to() + step; sq >= 0 && sq < 64; sq += step) {
+    auto bb = model::bb::sq_bb(static_cast<core::Square>(sq));
+    if (queenBB & bb) return true;
+    auto piece = board.getPiece(sq);
+    if (piece) break;
+  }
+  return false;
 }
 
 static inline void decay_tables(Search& S, int shift /* e.g. 6 => ~1.6% */) {
@@ -1865,6 +1898,11 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
             s += 3'000;
           else if (sig == 1)
             s += 1'000;
+
+          if (mover->type == core::PieceType::Pawn &&
+              queen_supported_rook_runner(board, m, us)) {
+            s += ROOT_RUNNER_BONUS;
+          }
         }
       }
       return s;
@@ -1949,6 +1987,8 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           const bool isQuietRoot = !m.isCapture() && (m.promotion() == core::PieceType::None);
           const bool quietCheckRoot = isQuietRoot && would_give_check_after(pos, m);
           bool pawnQuietCheckRoot = false;
+          const bool runnerCandidate =
+              isQuietRoot && queen_supported_rook_runner(pos.getBoard(), m, pos.getState().sideToMove);
           if (quietCheckRoot && isQuietRoot) {
             if (auto mover = pos.getBoard().getPiece(m.from());
                 mover && mover->type == core::PieceType::Pawn) {
@@ -2005,6 +2045,7 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           }
 
           s = std::clamp(s, -MATE + 1, MATE - 1);
+          if (runnerCandidate) s += ROOT_RUNNER_BONUS;
           model::Bound b = model::Bound::Exact;
           if (s <= alpha)
             b = model::Bound::Upper;

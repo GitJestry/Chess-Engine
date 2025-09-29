@@ -432,8 +432,11 @@ inline Bitboard cached_slider_attacks(const AttackMap* A, bool white, magic::Sli
   return magic::sliding_attacks(s, static_cast<Square>(sq), occ);
 }
 
-static PasserDyn passer_dynamic_bonus(const AttackMap& A, Bitboard occ, int wK, int bK,
-                                      Bitboard wPass, Bitboard bPass) {
+static PasserDyn passer_dynamic_bonus(const AttackMap& A, Bitboard occ, Bitboard wocc,
+                                      Bitboard bocc, int wK, int bK, Bitboard wPass,
+                                      Bitboard bPass,
+                                      const std::array<Bitboard, 6>& W,
+                                      const std::array<Bitboard, 6>& B) {
   PasserDyn d{};
 
   auto add_side = [&](bool white) {
@@ -441,6 +444,9 @@ static PasserDyn passer_dynamic_bonus(const AttackMap& A, Bitboard occ, int wK, 
     int K = white ? wK : bK;
     Bitboard ownNBRQ = white ? (A.wN | A.wB | A.wR | A.wQ) : (A.bN | A.bB | A.bR | A.bQ);
     Bitboard oppKBB = white ? sq_bb(Square(bK)) : sq_bb(Square(wK));
+    Bitboard ownOcc = white ? wocc : bocc;
+    Bitboard enemyOcc = white ? bocc : wocc;
+    Bitboard ownPawns = white ? W[0] : B[0];
     while (pass) {
       int s = lsb_i(pass);
       pass &= pass - 1;
@@ -452,7 +458,11 @@ static PasserDyn passer_dynamic_bonus(const AttackMap& A, Bitboard occ, int wK, 
         egB -= PASS_BLOCK;
       }
       // free path ahead
-      if (((white ? M.wFront[s] : M.bFront[s]) & occ) == 0) {
+      Bitboard path = white ? M.wFront[s] : M.bFront[s];
+      bool pathClear = (path & occ) == 0;
+      Bitboard enemyBlockers = path & enemyOcc;
+      Bitboard friendlyBlockers = path & ownOcc;
+      if (pathClear) {
         mgB += PASS_FREE;
         egB += PASS_FREE;
       }
@@ -477,6 +487,22 @@ static PasserDyn passer_dynamic_bonus(const AttackMap& A, Bitboard occ, int wK, 
         int prox = std::max(0, 4 - dist) * PASS_KPROX;
         mgB -= prox;
         egB -= prox;
+      }
+
+      Bitboard friendlyQueen = white ? W[4] : B[4];
+      bool queenOnPath = (friendlyBlockers & friendlyQueen) != 0;
+      if (enemyBlockers == 0 && (friendlyBlockers & ownPawns) == 0 && queenOnPath) {
+        const int promSq = white ? ((s & 7) | (7 << 3)) : ((s & 7) | (0 << 3));
+        const int stepsToGo = white ? (7 - rank_of(static_cast<Square>(s)))
+                                    : rank_of(static_cast<Square>(s));
+        const int oppKing = white ? bK : wK;
+        const bool kingFar = (oppKing < 0) || (king_manhattan(oppKing, promSq) >= stepsToGo + 1);
+        const int file = file_of(static_cast<Square>(s));
+        const bool isRookFile = (file == 0) || (file == 7);
+        if (kingFar && stepsToGo <= 4 && isRookFile) {
+          mgB += PASS_RUNNER_MG;
+          egB += PASS_RUNNER_EG;
+        }
       }
       d.mg += white ? mgB : -mgB;
       d.eg += white ? egB : -egB;
@@ -2080,7 +2106,7 @@ int Evaluator::evaluate(model::Position& pos) const {
 
   // dynamic passer adds (needs A/occ/kings)
   {
-    PasserDyn pd = passer_dynamic_bonus(A, occ, wK, bK, wPass, bPass);
+    PasserDyn pd = passer_dynamic_bonus(A, occ, wocc, bocc, wK, bK, wPass, bPass, W, B);
     mg_add += pd.mg;
     eg_add += pd.eg;
   }

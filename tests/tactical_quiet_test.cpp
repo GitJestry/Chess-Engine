@@ -81,13 +81,13 @@ int main() {
     assert(stats.topMoves[0].second != stats.topMoves[1].second);
   }
 
-  // Stockfish now prefers the quiet queen lift h3h6 in this position
+  // Stockfish now prefers the quiet pawn thrust h7h5 in this position
   {
     model::ChessGame game;
-    game.setPosition("6k1/3b1ppp/p7/3R4/2P2p2/7q/4KQ2/8 b - - 1 66");
+    game.setPosition("6k1/3b1ppp/p7/3R4/2P5/4Kp1q/5Q2/8 b - - 1 67");
     auto res = bot.findBestMove(game, 3, 10);
     assert(res.bestMove);
-    model::Move expected(sq('h', 3), sq('h', 6));
+    model::Move expected(sq('h', 7), sq('h', 5));
     assert(*res.bestMove == expected);
   }
 
@@ -138,15 +138,15 @@ int main() {
     }
   }
 
-  // And the deeper search should keep h3h6 as the best move
+  // And the deeper search should keep h7h5 as the best move
   {
     model::ChessGame game;
-    game.setPosition("6k1/3b1ppp/p7/3R4/2P2p2/7q/4KQ2/8 b - - 1 66");
+    game.setPosition("6k1/3b1ppp/p7/3R4/2P5/4Kp1q/5Q2/8 b - - 1 67");
     auto res = bot.findBestMove(game, 8, 0);
     assert(res.bestMove);
-    model::Move expected(sq('h', 3), sq('h', 6));
+    model::Move expected(sq('h', 7), sq('h', 5));
     if (!res.bestMove || *res.bestMove != expected) {
-      std::cerr << "Expected best move h3h6, got "
+      std::cerr << "Expected best move h7h5, got "
                 << (res.bestMove ? move_to_uci(*res.bestMove) : std::string("<none>")) << "\n";
       return 1;
     }

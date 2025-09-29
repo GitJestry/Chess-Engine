@@ -94,6 +94,8 @@ constexpr int PASS_NEAR_PROMO_STEP3_MG = 20;
 constexpr int PASS_NEAR_PROMO_STEP3_EG = 40;
 constexpr int PASS_NEAR_PROMO_STEP2_MG = 64;
 constexpr int PASS_NEAR_PROMO_STEP2_EG = 128;
+constexpr int PASS_RUNNER_MG = 220;
+constexpr int PASS_RUNNER_EG = 420;
 
 // =============================================================================
 // King safety (Druckgewichtung & Clamp)
