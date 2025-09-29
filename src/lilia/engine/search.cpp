@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <array>
 #include <cassert>
 #include <chrono>
 #include <cmath>
@@ -68,6 +69,52 @@ static constexpr int LMP_LIMIT[4] = {0, 5, 9, 14};  // D=1..3
 static constexpr int LOW_MVV_MARGIN = 360;
 
 namespace {
+
+using model::bb::Bitboard;
+
+constexpr std::array<std::array<Bitboard, 64>, 2> build_pawn_check_table() {
+  std::array<std::array<Bitboard, 64>, 2> table{};
+  for (int sq = 0; sq < 64; ++sq) {
+    const auto sqBB = model::bb::sq_bb(static_cast<core::Square>(sq));
+    table[model::bb::ci(core::Color::White)][sq] = model::bb::sw(sqBB) | model::bb::se(sqBB);
+    table[model::bb::ci(core::Color::Black)][sq] = model::bb::nw(sqBB) | model::bb::ne(sqBB);
+  }
+  return table;
+}
+
+constexpr std::array<Bitboard, 64> build_knight_check_table() {
+  std::array<Bitboard, 64> table{};
+  for (int sq = 0; sq < 64; ++sq)
+    table[sq] = model::bb::knight_attacks_from(static_cast<core::Square>(sq));
+  return table;
+}
+
+constexpr std::array<Bitboard, 64> build_king_check_table() {
+  std::array<Bitboard, 64> table{};
+  for (int sq = 0; sq < 64; ++sq)
+    table[sq] = model::bb::king_attacks_from(static_cast<core::Square>(sq));
+  return table;
+}
+
+constexpr std::array<Bitboard, 64> build_bishop_check_table() {
+  std::array<Bitboard, 64> table{};
+  for (int sq = 0; sq < 64; ++sq)
+    table[sq] = model::bb::bishop_attacks(static_cast<core::Square>(sq), 0ULL);
+  return table;
+}
+
+constexpr std::array<Bitboard, 64> build_rook_check_table() {
+  std::array<Bitboard, 64> table{};
+  for (int sq = 0; sq < 64; ++sq)
+    table[sq] = model::bb::rook_attacks(static_cast<core::Square>(sq), 0ULL);
+  return table;
+}
+
+constexpr auto PawnCheckTable = build_pawn_check_table();
+constexpr auto KnightCheckTable = build_knight_check_table();
+constexpr auto KingCheckTable = build_king_check_table();
+constexpr auto BishopCheckTable = build_bishop_check_table();
+constexpr auto RookCheckTable = build_rook_check_table();
 
 // ---- Guards ----
 
@@ -341,99 +388,122 @@ static inline bool would_give_check_after(const model::Position& pos, const mode
 
   const auto& b = pos.getBoard();
   const auto us = pos.getState().sideToMove;
-  const auto kBB = b.getPieces(~us, PT::King);
+  const auto them = ~us;
+
+  const auto mover = b.getPiece(m.from());
+  if (!mover) return false;
+
+  const auto kBB = b.getPieces(them, PT::King);
   if (!kBB) return false;
 
   const int kSq = model::bb::ctz64(kBB);
-  const auto fromB = model::bb::sq_bb(m.from());
-  const auto toB = model::bb::sq_bb(m.to());
+  const auto kSquare = static_cast<core::Square>(kSq);
 
-  // Post-move occupancy (handle EP capture)
+  PT afterType = mover->type;
+  if (m.promotion() != PT::None) afterType = m.promotion();
+
+  const auto fromSq = m.from();
+  const auto toSq = m.to();
+  const auto fromMask = model::bb::sq_bb(fromSq);
+  const auto toMask = model::bb::sq_bb(toSq);
+
   auto occ = b.getAllPieces();
-  occ = (occ & ~fromB) | toB;
-  if (m.isEnPassant()) {
-    const int epCapSq = (us == core::Color::White) ? m.to() - 8 : m.to() + 8;
-    occ &= ~model::bb::sq_bb(epCapSq);
+  occ &= ~fromMask;
+
+  auto bishops = b.getPieces(us, PT::Bishop);
+  auto rooks = b.getPieces(us, PT::Rook);
+  auto queens = b.getPieces(us, PT::Queen);
+
+  switch (mover->type) {
+    case PT::Bishop:
+      bishops &= ~fromMask;
+      break;
+    case PT::Rook:
+      rooks &= ~fromMask;
+      break;
+    case PT::Queen:
+      queens &= ~fromMask;
+      break;
+    default:
+      break;
   }
 
-  // Our piece sets after the move (promotion-aware)
-  auto paw = b.getPieces(us, PT::Pawn);
-  auto kn = b.getPieces(us, PT::Knight);
-  auto bi = b.getPieces(us, PT::Bishop);
-  auto rk = b.getPieces(us, PT::Rook);
-  auto qu = b.getPieces(us, PT::Queen);
-  auto ki = b.getPieces(us, PT::King);
+  if (m.isCastle()) {
+    occ |= toMask;
 
-  if (auto mover = b.getPiece(m.from())) {
-    PT before = mover->type;
-    PT after = (m.promotion() != PT::None) ? m.promotion() : before;
-    // remove from "before"
-    switch (before) {
-      case PT::Pawn:
-        paw &= ~fromB;
-        break;
-      case PT::Knight:
-        kn &= ~fromB;
-        break;
-      case PT::Bishop:
-        bi &= ~fromB;
-        break;
-      case PT::Rook:
-        rk &= ~fromB;
-        break;
-      case PT::Queen:
-        qu &= ~fromB;
-        break;
-      case PT::King:
-        ki &= ~fromB;
-        break;
-      default:
-        break;
+    bool handled = false;
+    core::Square rookFrom = core::Square{0};
+    core::Square rookTo = core::Square{0};
+    if (us == core::Color::White) {
+      if (m.castle() == model::CastleSide::KingSide) {
+        rookFrom = model::bb::H1;
+        rookTo = model::bb::F1;
+        handled = true;
+      } else if (m.castle() == model::CastleSide::QueenSide) {
+        rookFrom = model::bb::A1;
+        rookTo = model::bb::D1;
+        handled = true;
+      }
+    } else {
+      if (m.castle() == model::CastleSide::KingSide) {
+        rookFrom = model::bb::H8;
+        rookTo = model::bb::F8;
+        handled = true;
+      } else if (m.castle() == model::CastleSide::QueenSide) {
+        rookFrom = model::bb::A8;
+        rookTo = model::bb::D8;
+        handled = true;
+      }
     }
-    // add to "after"
-    switch (after) {
-      case PT::Pawn:
-        paw |= toB;
-        break;
-      case PT::Knight:
-        kn |= toB;
-        break;
-      case PT::Bishop:
-        bi |= toB;
-        break;
-      case PT::Rook:
-        rk |= toB;
-        break;
-      case PT::Queen:
-        qu |= toB;
-        break;
-      case PT::King:
-        ki |= toB;
-        break;
-      default:
-        break;
+
+    if (handled) {
+      const auto rookFromMask = model::bb::sq_bb(rookFrom);
+      const auto rookToMask = model::bb::sq_bb(rookTo);
+      occ &= ~rookFromMask;
+      occ |= rookToMask;
+      rooks &= ~rookFromMask;
+      rooks |= rookToMask;
     }
-  }
-
-  const auto kSqBB = model::bb::sq_bb(static_cast<core::Square>(kSq));
-
-  // Pawn attackers on kSq (reverse directions)
-  if (us == core::Color::White) {
-    if ((model::bb::sw(kSqBB) | model::bb::se(kSqBB)) & paw) return true;
+  } else if (m.isEnPassant()) {
+    const int toIndex = static_cast<int>(toSq);
+    const int epCapIndex = (us == core::Color::White) ? (toIndex - 8) : (toIndex + 8);
+    occ &= ~model::bb::sq_bb(static_cast<core::Square>(epCapIndex));
+    occ |= toMask;
   } else {
-    if ((model::bb::nw(kSqBB) | model::bb::ne(kSqBB)) & paw) return true;
+    if (m.isCapture()) occ &= ~toMask;
+    occ |= toMask;
   }
 
-  // Knight
-  if (model::bb::knight_attacks_from(kSq) & kn) return true;
+  switch (afterType) {
+    case PT::Bishop:
+      bishops |= toMask;
+      break;
+    case PT::Rook:
+      rooks |= toMask;
+      break;
+    case PT::Queen:
+      queens |= toMask;
+      break;
+    default:
+      break;
+  }
 
-  // Sliding (reverse from king with post-move occupancy!)
-  if (model::magic::sliding_attacks(model::magic::Slider::Bishop, kSq, occ) & (bi | qu))
+  const int usIdx = model::bb::ci(us);
+  if (afterType == PT::Pawn && (PawnCheckTable[usIdx][kSq] & toMask)) return true;
+
+  if (afterType == PT::Knight && (KnightCheckTable[kSq] & toMask)) return true;
+
+  if (afterType == PT::King && (KingCheckTable[kSq] & toMask)) return true;
+
+  const auto diagSliders = bishops | queens;
+  if ((diagSliders & BishopCheckTable[kSq]) &&
+      (model::magic::sliding_attacks(model::magic::Slider::Bishop, kSquare, occ) & diagSliders))
     return true;
-  if (model::magic::sliding_attacks(model::magic::Slider::Rook, kSq, occ) & (rk | qu)) return true;
 
-  // King adjacency
-  if (model::bb::king_attacks_from(kSq) & ki) return true;
+  const auto orthoSliders = rooks | queens;
+  if ((orthoSliders & RookCheckTable[kSq]) &&
+      (model::magic::sliding_attacks(model::magic::Slider::Rook, kSquare, occ) & orthoSliders))
+    return true;
 
   return false;
 }
