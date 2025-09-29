@@ -522,6 +522,11 @@ static inline bool would_give_check_after(const model::Position& pos, const mode
   return false;
 }
 
+inline void ensure_check_tables_initialized() {
+  static std::once_flag init_flag;
+  std::call_once(init_flag, [] { init_check_tables(); });
+}
+
 }  // namespace
 
 // ---------- Search ----------
@@ -545,7 +550,7 @@ Search::Search(model::TT5& tt_, std::shared_ptr<const Evaluator> eval_, const En
   sharedNodes.reset();  // NEW
   nodeLimit = 0;        // NEW
   stats = SearchStats{};
-  init_check_tables();
+  ensure_check_tables_initialized();
 }
 
 int Search::signed_eval(model::Position& pos) {
