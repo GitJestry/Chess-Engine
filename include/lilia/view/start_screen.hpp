@@ -2,12 +2,14 @@
 
 #include <SFML/Graphics.hpp>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "lilia/bot/bot_info.hpp"
 #include "lilia/constants.hpp"
 #include "lilia/view/color_palette_manager.hpp"
+#include "lilia/view/start_load_dialog.hpp"
 
 namespace lilia::view {
 
@@ -45,8 +47,7 @@ class StartScreen {
   sf::Font m_font;
   sf::Texture m_logoTex;
   sf::Sprite m_logo;
-  sf::Text m_devByText;    // "@Developed by Julian Meyer" bottom-right
-  sf::Text m_fenInfoText;  // subtle hint below FEN box
+  sf::Text m_devByText;  // "@Developed by Julian Meyer" bottom-right
 
   sf::RectangleShape m_whitePlayerBtn;
   sf::RectangleShape m_whiteBotBtn;
@@ -73,6 +74,13 @@ class StartScreen {
   sf::RectangleShape m_startBtn;
   sf::Text m_startText;
   sf::Text m_creditText;
+  sf::RectangleShape m_loadGameBtn;
+  sf::Text m_loadGameText;
+  sf::Text m_loadGameHint;
+  sf::FloatRect m_panelBounds;
+  std::string m_fenString;
+  std::string m_pgnString;
+  std::unique_ptr<StartLoadDialog> m_loadDialog;
 
   // Palette selection UI
   sf::RectangleShape m_paletteButton;
@@ -82,20 +90,6 @@ class StartScreen {
   bool m_showPaletteList{false};
   bool m_paletteListForceHide{false};
   float m_paletteListAnim{0.f};
-
-  // FEN popup UI
-  bool m_showFenPopup{false};
-  sf::RectangleShape m_fenPopup;
-  sf::RectangleShape m_fenInputBox;
-  sf::Text m_fenInputText;
-  sf::RectangleShape m_fenBackBtn;
-  sf::RectangleShape m_fenContinueBtn;
-  sf::Text m_fenBackText;
-  sf::Text m_fenContinueText;
-  sf::Text m_fenErrorText;
-  std::string m_fenString;
-  sf::Clock m_errorClock;
-  bool m_showError{false};
 
   // time control state
   int m_baseSeconds{300};
@@ -137,12 +131,12 @@ class StartScreen {
   void setupUI();
   void applyTheme();
   bool handleMouse(sf::Vector2f pos, StartConfig &cfg);
-  bool handleFenMouse(sf::Vector2f pos, StartConfig &cfg);
   bool isValidFen(const std::string &fen);
   void updateTimeToggle();
   void processHoldRepeater(HoldRepeater &r, const sf::FloatRect &bounds, sf::Vector2f mouse,
                            std::function<void()> stepFn, float initialDelay = 0.35f,
                            float repeatRate = 0.06f);
+  void updateLoadGameHint();
 };
 
 }  // namespace lilia::view
