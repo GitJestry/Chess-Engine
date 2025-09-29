@@ -177,6 +177,10 @@ constexpr int THR_PAWN_MINOR = 8;
 constexpr int THR_PAWN_ROOK = 16;
 constexpr int THR_PAWN_QUEEN = 20;
 
+constexpr int QUEEN_PAWN_CHASE_IMMEDIATE = 90;
+constexpr int QUEEN_PAWN_CHASE_SINGLE = 60;
+constexpr int QUEEN_PAWN_CHASE_DOUBLE = 45;
+
 constexpr int HANG_MINOR = 10;
 constexpr int HANG_ROOK = 14;
 constexpr int HANG_QUEEN = 22;

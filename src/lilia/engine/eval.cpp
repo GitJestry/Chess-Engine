@@ -711,6 +711,56 @@ static int threats(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 
   if ((A.wN | A.wB) & B[4]) sc += MINOR_ON_QUEEN;
   if ((A.bN | A.bB) & W[4]) sc -= MINOR_ON_QUEEN;
 
+  Bitboard occAll = 0;
+  for (int i = 0; i < 6; ++i) {
+    occAll |= W[i];
+    occAll |= B[i];
+  }
+
+  auto queen_pawn_chase_penalty = [&](bool whiteSide) {
+    Bitboard queens = whiteSide ? W[4] : B[4];
+    if (!queens) return 0;
+
+    Bitboard enemyPawns = whiteSide ? B[0] : W[0];
+    if (!enemyPawns) return 0;
+
+    int penalty = 0;
+    const auto pawn_attacks = whiteSide ? black_pawn_attacks : white_pawn_attacks;
+    const auto pawn_push_one = whiteSide ? south : north;
+    const Bitboard startRank = whiteSide ? RANK_7 : RANK_2;
+
+    Bitboard direct = pawn_attacks(enemyPawns);
+
+    while (queens) {
+      int sq = lsb_i(queens);
+      queens &= queens - 1;
+      Bitboard target = sq_bb(static_cast<Square>(sq));
+
+      if (direct & target) {
+        penalty += QUEEN_PAWN_CHASE_IMMEDIATE;
+        continue;
+      }
+
+      Bitboard pushOne = pawn_push_one(enemyPawns) & ~occAll;
+      if (pawn_attacks(pushOne) & target) {
+        penalty += QUEEN_PAWN_CHASE_SINGLE;
+        continue;
+      }
+
+      Bitboard startPawns = enemyPawns & startRank;
+      Bitboard mid = pawn_push_one(startPawns) & ~occAll;
+      Bitboard pushTwo = pawn_push_one(mid) & ~occAll;
+      if (pawn_attacks(pushTwo) & target) {
+        penalty += QUEEN_PAWN_CHASE_DOUBLE;
+      }
+    }
+
+    return penalty;
+  };
+
+  sc -= queen_pawn_chase_penalty(true);
+  sc += queen_pawn_chase_penalty(false);
+
   return sc;
 }
 

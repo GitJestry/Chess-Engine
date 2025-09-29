@@ -81,13 +81,13 @@ int main() {
     assert(stats.topMoves[0].second != stats.topMoves[1].second);
   }
 
-  // Quiet pawn sacrifice check should be found
+  // Stockfish now prefers the quiet queen lift h3h6 in this position
   {
     model::ChessGame game;
     game.setPosition("6k1/3b1ppp/p7/3R4/2P2p2/7q/4KQ2/8 b - - 1 66");
     auto res = bot.findBestMove(game, 3, 10);
     assert(res.bestMove);
-    model::Move expected(sq('f', 4), sq('f', 3));
+    model::Move expected(sq('h', 3), sq('h', 6));
     assert(*res.bestMove == expected);
   }
 
@@ -138,15 +138,29 @@ int main() {
     }
   }
 
-  // Sacrificing quiet check with a pawn should be found
+  // And the deeper search should keep h3h6 as the best move
   {
     model::ChessGame game;
     game.setPosition("6k1/3b1ppp/p7/3R4/2P2p2/7q/4KQ2/8 b - - 1 66");
     auto res = bot.findBestMove(game, 8, 0);
     assert(res.bestMove);
-    model::Move expected(sq('f', 4), sq('f', 3));
+    model::Move expected(sq('h', 3), sq('h', 6));
     if (!res.bestMove || *res.bestMove != expected) {
-      std::cerr << "Expected best move f4f3, got "
+      std::cerr << "Expected best move h3h6, got "
+                << (res.bestMove ? move_to_uci(*res.bestMove) : std::string("<none>")) << "\n";
+      return 1;
+    }
+  }
+
+  // Stockfish-approved quiet queen retreat should be found
+  {
+    model::ChessGame game;
+    game.setPosition("4kb1r/prQ1p1pp/4q3/3b1p2/1n1PP3/5P2/PP1N2PP/R1B1KB1R w KQk - 1 15");
+    auto res = bot.findBestMove(game, 12, 0);
+    assert(res.bestMove);
+    model::Move expected(sq('c', 7), sq('c', 5));
+    if (!res.bestMove || *res.bestMove != expected) {
+      std::cerr << "Expected best move c7c5, got "
                 << (res.bestMove ? move_to_uci(*res.bestMove) : std::string("<none>")) << "\n";
       return 1;
     }
