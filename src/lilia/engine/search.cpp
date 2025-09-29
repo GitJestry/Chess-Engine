@@ -1061,8 +1061,13 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       const auto& mm = genArr_[cap_ply(ply)][i];
       if (!mm.isCapture() && mm.promotion() == core::PieceType::None &&
           would_give_check_after(pos, mm)) {
-        hasQuickQuietCheck = true;
-        break;
+        // require either a “threat” (attacks a piece) or decent history
+        int ps = quiet_piece_threat_signal(pos.getBoard(), mm, pos.getState().sideToMove);
+        int h = history[mm.from()][mm.to()];
+        if (ps >= 1 || h > 0) {  // only then disable null move
+          hasQuickQuietCheck = true;
+          break;
+        }
       }
     }
   }
@@ -1166,10 +1171,13 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       const int pawn_sig = quiet_pawn_push_signal(board, m, us);
       const int piece_sig = quiet_piece_threat_signal(board, m, us);
       const int sig = pawn_sig > piece_sig ? pawn_sig : piece_sig;
+      // NEW (depth aware & modest)
+      int chkBoost = 3'000 + 500 * std::min(depth, 6);     // max ~6k
+      int threatBoost = 1'500 + 250 * std::min(depth, 6);  // max ~3k
       if (sig == 2)
-        s += 220'000;
+        s += chkBoost;
       else if (sig == 1)
-        s += 180'000;
+        s += threatBoost;
 
       // tiny malus for non-tactical heavy piece shuffles
       if ((moverPt == core::PieceType::Queen || moverPt == core::PieceType::Rook) && (sig == 0)) {
@@ -1464,7 +1472,17 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // Check extension (light)
     const bool givesCheck = pos.lastMoveGaveCheck();
-    if (givesCheck && (isQuiet || seeGood)) newDepth += 1;
+    if (givesCheck) {
+      if (!isQuiet && seeGood) {
+        newDepth += 1;  // capturing checks still get a light extension
+      } else if (isQuiet) {
+        bool okQuietExt = (depth <= 3) &&                    // only shallow
+                          (history[m.from()][m.to()] > 0 ||  // some prior success
+                           (beta - alpha) <= 16 ||           // narrow window / tense node
+                           improving);                       // eval isn't deteriorating
+        if (okQuietExt) newDepth += 1;
+      }
+    }
     if (passed_push && isQuiet) newDepth += 1;
 
     // Bad capture reduction
@@ -1515,10 +1533,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       if (value > alpha && value < beta) {
         value = -negamax(pos, newDepth, -beta, -alpha, ply + 1, childBest, -staticEval);
       }
-    }
-
-    if (givesCheck && isQuiet && moverPt == core::PieceType::Pawn && !is_mate_score(value)) {
-      value += 800;
     }
 
     value = std::clamp(value, -MATE + 1, MATE - 1);
@@ -1763,9 +1777,9 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
 
           const int sig = std::max(pawn_sig, piece_sig);
           if (sig == 2)
-            s += 12'000;
+            s += 3'000;
           else if (sig == 1)
-            s += 8'000;
+            s += 1'000;
         }
       }
       return s;
@@ -1873,15 +1887,22 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           } else {
             // Root Move Reductions (light) + PVS
             int r = 0;
-            if (depth >= 6 && !quietCheckRoot) {
+            if (depth >= 6) {
               int hist = history[m.from()][m.to()];
-              r = 1;
+              bool isQuietRoot = !m.isCapture() && (m.promotion() == core::PieceType::None);
+
+              // Base reduction for later root moves
+              if (isQuietRoot) r = 1;
               if (depth >= 10) r++;
               if (moveIdx >= 3) r++;
               if (hist < 0) r++;
-              if (depth <= 7) r = std::max(0, r - 1);  // new: less reduction when shallow
-              if (r > depth - 2) r = depth - 2;
-              if (r < 0) r = 0;
+
+              // Slight preference for quiet checks: reduce one step less, but never to zero just
+              // because it checks
+              if (isQuietRoot && quietCheckRoot) r = std::max(0, r - 1);
+
+              if (depth <= 7) r = std::max(0, r - 1);
+              r = std::clamp(r, 0, depth - 2);
             }
 
             if (r > 0) {
@@ -1897,8 +1918,6 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
                 s = -negamax(pos, depth - 1, -beta, -alpha, 1, childBest, INF);
             }
           }
-
-          if (pawnQuietCheckRoot) s += 2000;
 
           s = std::clamp(s, -MATE + 1, MATE - 1);
           model::Bound b = model::Bound::Exact;
