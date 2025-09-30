@@ -2,9 +2,11 @@
 #include <cassert>
 #include <iostream>
 #include <memory>
+#include <string>
 
 #include "lilia/engine/bot_engine.hpp"
 #include "lilia/engine/eval.hpp"
+#include "lilia/engine/eval_shared.hpp"
 #include "lilia/engine/search.hpp"
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/tt5.hpp"
@@ -164,6 +166,31 @@ int main() {
                 << (res.bestMove ? move_to_uci(*res.bestMove) : std::string("<none>")) << "\n";
       return 1;
     }
+  }
+
+  // Regression: detect fianchetto bonus for a long-castled king protected by the b-pawn.
+  {
+    engine::Evaluator eval;
+
+    auto evalFen = [&](const std::string& fen) {
+      model::ChessGame game;
+      game.setPosition(fen);
+      auto& pos = game.getPositionRefForBot();
+      return eval.evaluate(pos);
+    };
+
+    const std::string fenB2 = "4k3/8/8/8/8/8/1P6/2K5 w - - 0 1";
+    const std::string fenB3 = "4k3/8/8/8/8/1P6/8/2K5 w - - 0 1";
+    const std::string fenB4 = "4k3/8/8/8/1P6/8/8/2K5 w - - 0 1";
+
+    const int scoreB2 = evalFen(fenB2);
+    const int scoreB3 = evalFen(fenB3);
+    const int scoreB4 = evalFen(fenB4);
+
+    const int expectedSwing = engine::FIANCHETTO_OK + engine::FIANCHETTO_HOLE;
+
+    assert(scoreB2 - scoreB4 >= expectedSwing - 2);
+    assert(scoreB3 - scoreB4 >= expectedSwing - 2);
   }
 
   return 0;

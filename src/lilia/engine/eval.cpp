@@ -1823,7 +1823,7 @@ inline int weakly_defended(const std::array<Bitboard, 6>& W, const std::array<Bi
 }
 
 // Fianchetto structure (MG only):
-// - If king sits on g-file (short castle) or b-file (long) near home ranks,
+// - If king sits on g-file (short castle) or has long-castled onto the c- or b-file,
 //   give +FIANCHETTO_OK when the "fianchetto pawn" is on rank 2/3 (white) or 7/6 (black).
 // - If that pawn is missing OR on the same file but elsewhere (advanced/abandoned), give
 // -FIANCHETTO_HOLE. Call: mg_add += fianchetto_structure_ksmg(W, B, wK, bK);
@@ -1839,17 +1839,20 @@ static int fianchetto_structure_ksmg(const std::array<Bitboard, 6>& W,
     const int kRank = rank_of(k);
     const Bitboard paw = white ? W[0] : B[0];
 
-    // consider king "behind" a fianchetto if it's on g-file (6) or b-file (1) near home ranks
+    // consider king "behind" a fianchetto if it's on g-file (6) for short castles or
+    // on the queenside files (c- or b-file) after long castling, near the home ranks
     const bool nearHome = white ? (kRank <= 2) : (kRank >= 5);
-    if (!nearHome || (kFile != 6 && kFile != 1)) return 0;
+    const bool kingSide = (kFile == 6);
+    const bool queenSide = (kFile == 1) || (kFile == 2);
+    if (!nearHome || (!kingSide && !queenSide)) return 0;
 
-    const int f = kFile;  // 6 (g-file) or 1 (b-file)
-    // acceptable fianchetto pawn squares (OK):
+    const int f = kingSide ? 6 : 1;  // use b-file for long castles (king on b/c-file)
+    // acceptable fianchetto pawn squares (OK) on the relevant file (g- or b-file):
     const int okR1 = white ? 1 : 6;  // g2/b2 or g7/b7
     const int okR2 = white ? 2 : 5;  // g3/b3 or g6/b6
     const Bitboard okMask = sqbb(f, okR1) | sqbb(f, okR2);
 
-    // any pawn on that file at all?
+    // any pawn on that (g- or b-) file at all? (queenside uses the b-file mask)
     const Bitboard anyOnFile = paw & M.file[f];
 
     if (paw & okMask) {
