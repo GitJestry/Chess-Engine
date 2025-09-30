@@ -1150,13 +1150,26 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   const bool prevOk = !prev.isNull() && prev.from() != prev.to();
   const model::Move cm = prevOk ? counterMove[prev.from()][prev.to()] : model::Move{};
 
-  // Ordering
+  // --------- Staged move ordering (Stockfish-style) ---------
   constexpr int MAX_MOVES = engine::MAX_MOVES;
   int scores[MAX_MOVES];
   model::Move ordered[MAX_MOVES];
 
+  // Large bucket to enforce stages (descending sort => higher bucket first)
+  constexpr int BUCKET = 10'000'000;
+
+  // stage weights (higher = earlier)
+  enum : int {
+    ST_TT = 5,
+    ST_GOOD_CAP = 4,
+    ST_KILLER_CM_QP = 3,  // killers, countermove, quiet promotions
+    ST_QUIET = 2,
+    ST_BAD_CAP = 1
+  };
+
   constexpr int TT_BONUS = 2'400'000;
   constexpr int CAP_BASE_GOOD = 180'000;
+  constexpr int CAP_BASE_BAD = 20'000;  // tiny base for losing caps (still searched)
   constexpr int PROMO_BASE = 160'000;
   constexpr int KILLER_BASE = 120'000;
   constexpr int CM_BASE = 140'000;
@@ -1165,88 +1178,86 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
   for (int i = 0; i < n; ++i) {
     const auto& m = genArr_[kply][i];
-    int s = 0;
 
-    if (haveTT && m == ttMove) {
-      s = TT_BONUS;
-    } else if (m.isCapture() || m.promotion() != core::PieceType::None) {
-      auto moverOpt = board.getPiece(m.from());
-      const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
-      core::PieceType capPt = core::PieceType::Pawn;
-      if (m.isEnPassant())
-        capPt = core::PieceType::Pawn;
-      else if (auto cap = board.getPiece(m.to()))
-        capPt = cap->type;
+    // Skip duplicates of TT later by just giving TT the best bucket;
+    // search loop will naturally attempt TT first anyway.
+    int stage = ST_QUIET;  // default
+    int base = 0;
 
-      const int mvv = mvv_lva_fast(pos, m);
-      const int ch = captureHist[pidx(moverPt)][m.to()][pidx(capPt)];
-      if (m.promotion() != core::PieceType::None && !m.isCapture())
-        s = PROMO_BASE + mvv;
-      else
-        s = CAP_BASE_GOOD + mvv + (ch >> 2);
-    } else {
-      auto moverOpt = board.getPiece(m.from());
-      const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
-      s = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
-      if (m == killers[kply][0] || m == killers[kply][1]) s += KILLER_BASE;
-      if (prevOk && m == cm) s += CM_BASE + (counterHist[prev.from()][prev.to()] >> 1);
+    const bool isCap = m.isCapture();
+    const bool isPromo = (m.promotion() != core::PieceType::None);
+    const bool isQuiet = !isCap && !isPromo;
 
-      // tactical quiet bonuses
-      const auto signals = compute_quiet_signals(pos, m);
-      const int pawn_sig = signals.pawnSignal;
-      const int piece_sig = signals.pieceSignal;
-      const int sig = pawn_sig > piece_sig ? pawn_sig : piece_sig;
+    // recapture detection (useful to treat as "good cap")
+    const model::Move pm = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
+    const bool isRecap = (!pm.isNull() && pm.to() == m.to());
 
-      // NEW: make these boosts modest and depth-agnostic (stop overvaluing checks)
-      int chkBoost = 1200;    // was ~3000..6000
-      int threatBoost = 400;  // was ~1500..3000
-
-      if (sig == 2)
-        s += chkBoost;
-      else if (sig == 1)
-        s += threatBoost;
-
-      // NEW: queen "poke check" penalty if history is poor
-      if (moverPt == core::PieceType::Queen && sig == 2) {
-        int hq = history[m.from()][m.to()];
-        if (hq < 2000) s -= 900;  // don't let low-quality queen checks jump the queue
-      }
-
-      // tiny malus for non-tactical heavy piece shuffles
-      if ((moverPt == core::PieceType::Queen || moverPt == core::PieceType::Rook) && (sig == 0)) {
-        s -= 6000;
-      }
-
-      // Continuation History Contribution (layered)
-      int chSum = 0;
-
-      if (ply >= 1) {
-        const model::Move pm1 = prevMove[cap_ply(ply - 1)];
-        if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.to() < 64) {
-          if (auto po1 = board.getPiece(pm1.to()))
-            chSum += contHist[0][pidx(po1->type)][pm1.to()][pidx(moverPt)][m.to()];
-        }
-      }
-      if (ply >= 2) {
-        const model::Move pm2 = prevMove[cap_ply(ply - 2)];
-        if (pm2.from() >= 0 && pm2.to() >= 0 && pm2.to() < 64) {
-          if (auto po2 = board.getPiece(pm2.to()))
-            chSum += contHist[1][pidx(po2->type)][pm2.to()][pidx(moverPt)][m.to()] >> 1;
-        }
-      }
-      if (ply >= 3) {
-        const model::Move pm3 = prevMove[cap_ply(ply - 3)];
-        if (pm3.from() >= 0 && pm3.to() >= 0 && pm3.to() < 64) {
-          if (auto po3 = board.getPiece(pm3.to()))
-            chSum += contHist[2][pidx(po3->type)][pm3.to()][pidx(moverPt)][m.to()] >> 2;
-        }
-      }
-      s += (chSum >> 1);
+    // classify captures now: good vs bad (seeGood computed later per-move too,
+    // but we also need a quick pre-pass; we can recompute here cheaply)
+    bool seeGoodLocal = true;
+    core::PieceType capPt = core::PieceType::Pawn;
+    if (m.isEnPassant()) {
+      capPt = core::PieceType::Pawn;
+    } else if (isCap) {
+      if (auto cap = board.getPiece(m.to())) capPt = cap->type;
+    }
+    if (isCap && m.promotion() == core::PieceType::None) {
+      seeGoodLocal = pos.see(m);
     }
 
-    scores[i] = s;
+    // TT move first
+    if (haveTT && m == ttMove) {
+      stage = ST_TT;
+      base = TT_BONUS;
+    }
+    // Captures next (good first)
+    else if (isCap) {
+      const int mvv = mvv_lva_fast(pos, m);
+      // treat recaptures or big victims as "good", even if SEE<0
+      const bool bigVictim = (capPt == core::PieceType::Rook || capPt == core::PieceType::Queen);
+      const bool good = seeGoodLocal || isRecap || bigVictim || isPromo;
+
+      if (good) {
+        stage = ST_GOOD_CAP;
+        // lightweight capture history used here is optional; keep MVV as core
+        base = CAP_BASE_GOOD + mvv;
+      } else {
+        stage = ST_BAD_CAP;
+        base = CAP_BASE_BAD + mvv;  // still sorted among themselves
+      }
+    }
+    // Quiet promotions are high-priority quiets (like Stockfish)
+    else if (isPromo) {
+      stage = ST_KILLER_CM_QP;
+      base = PROMO_BASE;
+    }
+    // Killers & countermove
+    else if (m == killers[kply][0] || m == killers[kply][1]) {
+      stage = ST_KILLER_CM_QP;
+      base = KILLER_BASE;
+    } else {
+      const model::Move cm = (prevOk ? counterMove[prev.from()][prev.to()] : model::Move{});
+      if (prevOk && m == cm) {
+        stage = ST_KILLER_CM_QP;
+        base = CM_BASE + (counterHist[prev.from()][prev.to()] >> 1);
+      } else {
+        // regular quiet: history + quietHist + a tiny malus for heavy non-tactical shuffles
+        auto moverOpt = board.getPiece(m.from());
+        const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
+        base = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
+
+        if (moverPt == core::PieceType::Queen || moverPt == core::PieceType::Rook) {
+          base -= 6000;  // small malus; your Search will still favor tactical quiets
+        }
+        stage = ST_QUIET;
+      }
+    }
+
+    scores[i] = stage * BUCKET + base;
     ordered[i] = m;
   }
+
+  // Staged order enforced by bucket; within each stage, your existing heuristics sort
   sort_by_score_desc(scores, ordered, n);
 
   const bool allowFutility = !inCheck && !isPV;
@@ -1386,27 +1397,15 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         continue;
       }
     }
-    // SEE once if needed
+    // SEE once if needed (do not prune losing captures; just mark them "bad")
     bool seeGood = true;
     if (m.isCapture() && m.promotion() == core::PieceType::None) {
-      const int attackerVal = base_value[(int)moverPt];
-      const int victimVal = capValPre;
+      auto moverOptQ = board.getPiece(m.from());
+      const core::PieceType attackerPtQ = moverOptQ ? moverOptQ->type : core::PieceType::Pawn;
 
-      if (victimVal < attackerVal) {
-        // Only keep if SEE says it's not awful OR special cases; don't keep just for "check".
-        bool keep = pos.see(m);
-        if (!keep) {
-          const model::Move pm = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
-          const bool isRecap = (!pm.isNull() && pm.to() == m.to());
-          const bool bigVictim = victimVal >= base_value[(int)core::PieceType::Rook];
-          if (isRecap || bigVictim) keep = true;
-        }
-        if (!keep) {
-          ++moveCount;
-          continue;  // prune speculative Bxd2+ style moves that merely give check
-        }
-        seeGood = true;
-      }
+      (void)attackerPtQ;  // attacker value no longer used for pruning here
+      // classify capture quality once for later (probcut / reductions / staging)
+      seeGood = pos.see(m);
     }
 
     const int mvvBefore =
