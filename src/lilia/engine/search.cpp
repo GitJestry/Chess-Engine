@@ -1145,6 +1145,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   constexpr int MAX_MOVES = engine::MAX_MOVES;
   int scores[MAX_MOVES];
   model::Move ordered[MAX_MOVES];
+  QuietSignals quietSignals[MAX_MOVES];
+  bool quietSignalsValid[MAX_MOVES];
+  bool quietPassed[MAX_MOVES];
 
   constexpr int TT_BONUS = 2'400'000;
   constexpr int CAP_BASE_GOOD = 180'000;
@@ -1153,10 +1156,15 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   constexpr int CM_BASE = 140'000;
 
   const auto& board = pos.getBoard();
+  const auto us = pos.getState().sideToMove;
 
   for (int i = 0; i < n; ++i) {
     const auto& m = genArr_[kply][i];
     int s = 0;
+
+    quietSignals[i] = QuietSignals{};
+    quietSignalsValid[i] = false;
+    quietPassed[i] = false;
 
     if (haveTT && m == ttMove) {
       s = TT_BONUS;
@@ -1184,6 +1192,15 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
       // tactical quiet bonuses
       const auto signals = compute_quiet_signals(pos, m);
+      quietSignals[i] = signals;
+      quietSignalsValid[i] = true;
+
+      bool passedPush = false;
+      if (moverOpt && moverOpt->type == core::PieceType::Pawn) {
+        passedPush = is_advanced_passed_pawn_push(board, m, us);
+      }
+      quietPassed[i] = passedPush;
+
       const int pawn_sig = signals.pawnSignal;
       const int piece_sig = signals.pieceSignal;
       const int sig = pawn_sig > piece_sig ? pawn_sig : piece_sig;
@@ -1230,7 +1247,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     scores[i] = s;
     ordered[i] = m;
   }
-  sort_by_score_desc(scores, ordered, n);
+  sort_by_score_desc(scores, ordered, n, quietSignals, quietSignalsValid, quietPassed);
 
   const bool allowFutility = !inCheck && !isPV;
   int moveCount = 0;
@@ -1245,7 +1262,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
 
     const bool isQuiet = !m.isCapture() && (m.promotion() == core::PieceType::None);
-    const auto us = pos.getState().sideToMove;
 
     bool doThreatSignals = cfg.useThreatSignals && depth <= cfg.threatSignalsDepthMax &&
                            moveCount < cfg.threatSignalsQuietCap;
@@ -1254,10 +1270,19 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       if (history[m.from()][m.to()] < cfg.threatSignalsHistMin) doThreatSignals = false;
     }
 
-    bool passed_push = false;
+    auto moverOpt = board.getPiece(m.from());
+    const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
+
+    bool passed_push = isQuiet && quietPassed[idx];
+    QuietSignals cachedSignals{};
     if (isQuiet) {
-      if (auto mover = board.getPiece(m.from()); mover && mover->type == core::PieceType::Pawn) {
-        passed_push = is_advanced_passed_pawn_push(board, m, us);
+      if (quietSignalsValid[idx]) {
+        cachedSignals = quietSignals[idx];
+      } else {
+        cachedSignals = compute_quiet_signals(pos, m);
+        if (moverOpt && moverOpt->type == core::PieceType::Pawn) {
+          passed_push = is_advanced_passed_pawn_push(board, m, us);
+        }
       }
     }
 
@@ -1265,20 +1290,18 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     int pawn_sig = 0, piece_sig = 0;
     bool wouldCheck = false;
     if (isQuiet) {
-      const auto signals = compute_quiet_signals(pos, m);
-      piece_sig = signals.pieceSignal;  // detects direct checks (==2)
+      piece_sig = cachedSignals.pieceSignal;  // detects direct checks (==2)
 
       const bool allowPawnThreats = doThreatSignals && piece_sig < 2;
 
       if (piece_sig < 2) {
-        if (allowPawnThreats) pawn_sig = signals.pawnSignal;
-        if (is_advanced_passed_pawn_push(board, m, us)) passed_push = true;
+        if (allowPawnThreats) pawn_sig = cachedSignals.pawnSignal;
       }
 
-      wouldCheck = signals.givesCheck;
+      wouldCheck = cachedSignals.givesCheck;
       if (wouldCheck) {
         piece_sig = std::max(piece_sig, 2);
-        if (auto mover = board.getPiece(m.from()); mover && mover->type == core::PieceType::Pawn) {
+        if (moverOpt && moverOpt->type == core::PieceType::Pawn) {
           pawn_sig = std::max(pawn_sig, 2);
         }
       }
@@ -1289,8 +1312,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     const bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0);
 
     // pre info
-    auto moverOpt = board.getPiece(m.from());
-    const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
     core::PieceType capPt = core::PieceType::Pawn;
 
     const bool isQuietHeavy =
