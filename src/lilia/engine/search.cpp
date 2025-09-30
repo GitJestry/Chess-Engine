@@ -378,8 +378,7 @@ struct QuietSignals {
   bool givesCheck = false;
 };
 
-static inline QuietSignals compute_quiet_signals(const model::Position& pos,
-                                                 const model::Move& m) {
+static inline QuietSignals compute_quiet_signals(const model::Position& pos, const model::Move& m) {
   QuietSignals info{};
   using PT = core::PieceType;
 
@@ -474,14 +473,14 @@ static inline QuietSignals compute_quiet_signals(const model::Position& pos,
                                                          m.to(), occ);
           break;
         case PT::Rook:
-          attacks = lilia::model::magic::sliding_attacks(lilia::model::magic::Slider::Rook, m.to(),
-                                                         occ);
+          attacks =
+              lilia::model::magic::sliding_attacks(lilia::model::magic::Slider::Rook, m.to(), occ);
           break;
         case PT::Queen:
-          attacks = lilia::model::magic::sliding_attacks(lilia::model::magic::Slider::Bishop,
-                                                         m.to(), occ) |
-                    lilia::model::magic::sliding_attacks(lilia::model::magic::Slider::Rook, m.to(),
-                                                         occ);
+          attacks =
+              lilia::model::magic::sliding_attacks(lilia::model::magic::Slider::Bishop, m.to(),
+                                                   occ) |
+              lilia::model::magic::sliding_attacks(lilia::model::magic::Slider::Rook, m.to(), occ);
           break;
         case PT::King:
           attacks = lilia::model::bb::king_attacks_from(m.to());
@@ -867,51 +866,61 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
 
   // --- NEW: limited quiet checks in qsearch (not just low material) ---
   if (best < beta) {
-    const int LIMIT = 10;   // keep small
-    const int MARGIN = 64;  // only try if position isn't already hopeless for side-to-move
+    // MATERIAL gate: don't add quiet checks in bare endgames (king chases)
+    auto countSideNP = [&](core::Color c) {
+      using PT = core::PieceType;
+      const auto& B = pos.getBoard();
+      return model::bb::popcount(B.getPieces(c, PT::Knight) | B.getPieces(c, PT::Bishop) |
+                                 B.getPieces(c, PT::Rook) | B.getPieces(c, PT::Queen));
+    };
+    const int nonP = countSideNP(core::Color::White) + countSideNP(core::Color::Black);
+    if (nonP >= 2) {          // skip in K+minor vs K or K vs K situations
+      const int LIMIT = 10;   // keep small
+      const int MARGIN = 64;  // only try if position isn't already hopeless for side-to-move
 
-    if (stand + MARGIN > alpha) {
-      int an = gen_all(mg, pos, genArr_[kply], engine::MAX_MOVES);
+      if (stand + MARGIN > alpha) {
+        int an = gen_all(mg, pos, genArr_[kply], engine::MAX_MOVES);
 
-      struct QS {
-        model::Move m;
-        int s;
-      };
-      QS cand[engine::MAX_MOVES];
-      int cn = 0;
+        struct QS {
+          model::Move m;
+          int s;
+        };
+        QS cand[engine::MAX_MOVES];
+        int cn = 0;
 
-      for (int i = 0; i < an; ++i) {
-        const model::Move m = genArr_[kply][i];
-        if (m.isCapture() || m.promotion() != core::PieceType::None) continue;
-        if (!compute_quiet_signals(pos, m).givesCheck) continue;
+        for (int i = 0; i < an; ++i) {
+          const model::Move m = genArr_[kply][i];
+          if (m.isCapture() || m.promotion() != core::PieceType::None) continue;
+          if (!compute_quiet_signals(pos, m).givesCheck) continue;
 
-        int sc = history[m.from()][m.to()];
-        if (m == killers[kply][0] || m == killers[kply][1]) sc += 6000;
-        cand[cn++] = {m, sc};
-      }
-
-      if (cn > 1) std::sort(cand, cand + cn, [](const QS& a, const QS& b) { return a.s > b.s; });
-
-      int tried = 0;
-      for (int i = 0; i < cn && tried < LIMIT; ++i) {
-        const model::Move m = cand[i].m;
-
-        MoveUndoGuard g(pos);
-        if (!g.doMove(m)) continue;
-
-        prevMove[cap_ply(ply)] = m;
-        int score = -quiescence(pos, -beta, -alpha, ply + 1);
-        score = std::clamp(score, -MATE + 1, MATE - 1);
-        ++tried;
-
-        if (score >= beta) {
-          if (!(stopFlag && stopFlag->load()))
-            tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower, m,
-                     (int16_t)stand);
-          return beta;
+          int sc = history[m.from()][m.to()];
+          if (m == killers[kply][0] || m == killers[kply][1]) sc += 6000;
+          cand[cn++] = {m, sc};
         }
-        if (score > best) best = score;
-        if (score > alpha) alpha = score;
+
+        if (cn > 1) std::sort(cand, cand + cn, [](const QS& a, const QS& b) { return a.s > b.s; });
+
+        int tried = 0;
+        for (int i = 0; i < cn && tried < LIMIT; ++i) {
+          const model::Move m = cand[i].m;
+
+          MoveUndoGuard g(pos);
+          if (!g.doMove(m)) continue;
+
+          prevMove[cap_ply(ply)] = m;
+          int score = -quiescence(pos, -beta, -alpha, ply + 1);
+          score = std::clamp(score, -MATE + 1, MATE - 1);
+          ++tried;
+
+          if (score >= beta) {
+            if (!(stopFlag && stopFlag->load()))
+              tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower, m,
+                       (int16_t)stand);
+            return beta;
+          }
+          if (score > best) best = score;
+          if (score > alpha) alpha = score;
+        }
       }
     }
   }
@@ -1187,13 +1196,21 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       const int pawn_sig = signals.pawnSignal;
       const int piece_sig = signals.pieceSignal;
       const int sig = pawn_sig > piece_sig ? pawn_sig : piece_sig;
-      // NEW (depth aware & modest)
-      int chkBoost = 3'000 + 500 * std::min(depth, 6);     // max ~6k
-      int threatBoost = 1'500 + 250 * std::min(depth, 6);  // max ~3k
+
+      // NEW: make these boosts modest and depth-agnostic (stop overvaluing checks)
+      int chkBoost = 1200;    // was ~3000..6000
+      int threatBoost = 400;  // was ~1500..3000
+
       if (sig == 2)
         s += chkBoost;
       else if (sig == 1)
         s += threatBoost;
+
+      // NEW: queen "poke check" penalty if history is poor
+      if (moverPt == core::PieceType::Queen && sig == 2) {
+        int hq = history[m.from()][m.to()];
+        if (hq < 2000) s -= 900;  // don't let low-quality queen checks jump the queue
+      }
 
       // tiny malus for non-tactical heavy piece shuffles
       if ((moverPt == core::PieceType::Queen || moverPt == core::PieceType::Rook) && (sig == 0)) {
@@ -1376,36 +1393,19 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       const int victimVal = capValPre;
 
       if (victimVal < attackerVal) {
-        const model::Move pm = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
-        const bool isRecap = (!pm.isNull() && pm.to() == m.to());
-        const int toFile = bb::file_of(m.to());
-        const bool onCenterFile = (toFile == 3 || toFile == 4);  // d/e files
-        const auto us2 = pos.getState().sideToMove;
-
-        // shallow “pruning” path
-        if (!inCheck && ply > 0 && depth <= 4) {
-          if (!pos.see(m)) {
-            // Keep negative-SEE captures that give check (sacrifices)
-            if (compute_quiet_signals(pos, m).givesCheck) {
-              // keep
-            } else {
-              // EXCEPTIONS: allow negative-SEE captures if any of these holds
-              //  - recapture (critical)
-              //  - on center file (often clearance/line-openers)
-              //  - likely clearance for an advanced passer
-              if (!isRecap && !onCenterFile && !advanced_pawn_adjacent_to(board, us2, m.to())) {
-                ++moveCount;
-                continue;  // prune it
-              }
-            }
-          }
-          seeGood = true;  // passed the gate
-        } else {
-          // deeper/other path: don’t prune; just mark them “good enough”
-          // if SEE ok OR it’s a recapture OR center-file clearance
-          seeGood = pos.see(m) || isRecap || onCenterFile ||
-                    advanced_pawn_adjacent_to(board, us2, m.to());
+        // Only keep if SEE says it's not awful OR special cases; don't keep just for "check".
+        bool keep = pos.see(m);
+        if (!keep) {
+          const model::Move pm = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
+          const bool isRecap = (!pm.isNull() && pm.to() == m.to());
+          const bool bigVictim = victimVal >= base_value[(int)core::PieceType::Rook];
+          if (isRecap || bigVictim) keep = true;
         }
+        if (!keep) {
+          ++moveCount;
+          continue;  // prune speculative Bxd2+ style moves that merely give check
+        }
+        seeGood = true;
       }
     }
 
@@ -1492,20 +1492,26 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     const bool givesCheck = pos.lastMoveGaveCheck();
     if (givesCheck) {
       if (!isQuiet) {
-        bool allowCaptureExt = seeGood;
-        if (allowCaptureExt && m.isCapture()) {
-          const int attackerVal = base_value[(int)moverPt];
-          const int victimVal = capValPre;
-          if (victimVal < attackerVal && !pos.see(m)) {
-            allowCaptureExt = false;  // speculative sacrifices stay shallow
-          }
-        }
-        if (allowCaptureExt) newDepth += 1;  // capturing checks still get a light extension
-      } else if (isQuiet) {
-        bool okQuietExt = (depth <= 3) &&                    // only shallow
-                          (history[m.from()][m.to()] > 0 ||  // some prior success
-                           (beta - alpha) <= 16 ||           // narrow window / tense node
-                           improving);                       // eval isn't deteriorating
+        // CAPTURING CHECK: extend only if SEE is >= 0, or it's a recapture, or a big victim
+        bool allowCaptureExt = false;
+        const int attackerVal = base_value[(int)moverPt];
+        const int victimVal = capValPre;
+
+        const model::Move pm = (ply > 0 ? prevMove[cap_ply(ply - 1)] : model::Move{});
+        const bool isRecap = (!pm.isNull() && pm.to() == m.to());
+
+        if (pos.see(m))
+          allowCaptureExt = true;
+        else if (isRecap)
+          allowCaptureExt = true;
+        else if (victimVal >= base_value[(int)core::PieceType::Rook])
+          allowCaptureExt = true;  // RxQ/R
+
+        if (allowCaptureExt) newDepth += 1;
+      } else {
+        // QUIET CHECK: only very lightly extend and only in PV nodes (and not queen shuffles)
+        bool okQuietExt = isPV && depth <= 2 && (history[m.from()][m.to()] > 0) &&
+                          (moverPt != core::PieceType::Queen);
         if (okQuietExt) newDepth += 1;
       }
     }
@@ -1526,7 +1532,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         int r = (ld * (lm + 1)) / 2;
         if (tacticalNode) r = std::max(0, r - 1);
         if (isQuietHeavy) r = std::max(0, r - 1);
-
         const int h = history[m.from()][m.to()] + (quietHist[pidx(moverPt)][m.to()] >> 1);
         int ch = 0;
         if (ply >= 1) {
@@ -1544,6 +1549,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         if (ply <= 2) r -= 1;
         if (beta - alpha <= 8) r -= 1;
         if (!improving) r += 1;
+        if (history[m.from()][m.to()] < 2000 && qpc_sig == 2 /*it's a quiet check*/) r += 1;
 
         // extra safety: avoid reducing the first 3 quiets at shallow depth
         if (newDepth <= 2 && moveCount < 3) r = 0;
@@ -1885,7 +1891,8 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           if (stop && stop->load(std::memory_order_relaxed)) break;
 
           const bool isQuietRoot = !m.isCapture() && (m.promotion() == core::PieceType::None);
-          const QuietSignals rootSignals = isQuietRoot ? compute_quiet_signals(pos, m) : QuietSignals{};
+          const QuietSignals rootSignals =
+              isQuietRoot ? compute_quiet_signals(pos, m) : QuietSignals{};
           const bool quietCheckRoot = isQuietRoot && rootSignals.givesCheck;
           bool pawnQuietCheckRoot = false;
           if (quietCheckRoot) {
