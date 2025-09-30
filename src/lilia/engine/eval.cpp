@@ -39,7 +39,11 @@ inline int clampi(int x, int lo, int hi) {
 }
 inline int king_manhattan(int a, int b) {
   if (a < 0 || b < 0) return 7;
-  return (std::abs((a & 7) - (b & 7)) + std::abs((a >> 3) - (b >> 3)));
+  const int af = a & 7, bf = b & 7;
+  const int ar = a >> 3, br = b >> 3;
+  const int df = af > bf ? af - bf : bf - af;
+  const int dr = ar > br ? ar - br : br - ar;
+  return df + dr;
 }
 
 // micro helpers
@@ -670,7 +674,7 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
 }
 
 static int threats(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
-                   const AttackMap& A, Bitboard /*occ*/) {
+                   const AttackMap& A, Bitboard occ) {
   int sc = 0;
 
   // Pawn threats (wie gehabt)
@@ -711,12 +715,6 @@ static int threats(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 
   if ((A.wN | A.wB) & B[4]) sc += MINOR_ON_QUEEN;
   if ((A.bN | A.bB) & W[4]) sc -= MINOR_ON_QUEEN;
 
-  Bitboard occAll = 0;
-  for (int i = 0; i < 6; ++i) {
-    occAll |= W[i];
-    occAll |= B[i];
-  }
-
   auto queen_pawn_chase_penalty = [&](bool whiteSide) {
     Bitboard queens = whiteSide ? W[4] : B[4];
     if (!queens) return 0;
@@ -741,15 +739,15 @@ static int threats(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 
         continue;
       }
 
-      Bitboard pushOne = pawn_push_one(enemyPawns) & ~occAll;
+      Bitboard pushOne = pawn_push_one(enemyPawns) & ~occ;
       if (pawn_attacks(pushOne) & target) {
         penalty += QUEEN_PAWN_CHASE_SINGLE;
         continue;
       }
 
       Bitboard startPawns = enemyPawns & startRank;
-      Bitboard mid = pawn_push_one(startPawns) & ~occAll;
-      Bitboard pushTwo = pawn_push_one(mid) & ~occAll;
+      Bitboard mid = pawn_push_one(startPawns) & ~occ;
+      Bitboard pushTwo = pawn_push_one(mid) & ~occ;
       if (pawn_attacks(pushTwo) & target) {
         penalty += QUEEN_PAWN_CHASE_DOUBLE;
       }
@@ -1149,23 +1147,16 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
 // EG-only rook extras: Fortschritt + Königsschnitt
 static int rook_endgame_extras_eg(const std::array<Bitboard, 6>& W,
                                   const std::array<Bitboard, 6>& B, Bitboard wp, Bitboard bp,
-                                  Bitboard occ, const AttackMap* A) {
+                                  Bitboard occ, const AttackMap* A, Bitboard wPass_cached,
+                                  Bitboard bPass_cached) {
   int eg = 0;
   Bitboard wr = W[3], br = B[3];
 
   // Fortschritts-Skalierung hinter eigenem Passer
   auto add_progress = [&](bool white) {
     Bitboard rooks = white ? wr : br;
-    Bitboard pass = 0;
-    Bitboard wp2 = white ? wp : bp;
-    Bitboard bp2 = white ? bp : wp;
-    // compute passers of side
-    Bitboard t2 = wp2;
-    while (t2) {
-      int ps = lsb_i(t2);
-      t2 &= t2 - 1;
-      if ((white ? (M.wPassed[ps] & bp2) : (M.bPassed[ps] & bp2)) == 0) pass |= sq_bb((Square)ps);
-    }
+    // Reuse pawn TT passers – do not recompute
+    Bitboard pass = white ? wPass_cached : bPass_cached;
     Bitboard t = rooks;
     while (t) {
       int rs = lsb_i(t);
@@ -1465,6 +1456,19 @@ static int endgame_scale(const std::array<Bitboard, 6>& W, const std::array<Bitb
     return KN_CORNER_PAWN_SCALE;
   if (bN == 1 && bP == 1 && is_corner_pawn(B[0]) && (wN | wB | wR | wQ | wP) == 0)
     return KN_CORNER_PAWN_SCALE;
+
+  // ---------- NEW: Insufficient/minor-only endings ----------
+  // No pawns, no heavy pieces -> scale strongly toward draw in bare-minor cases.
+  if (wP == 0 && bP == 0 && wR == 0 && bR == 0 && wQ == 0 && bQ == 0) {
+    int wMin = wN + wB, bMin = bN + bB;
+    // K vs K / KN vs K / KB vs K / KN vs KN / KB vs KB
+    if (wMin <= 1 && bMin <= 1) return SCALE_DRAW;
+    // K  2N vs K (generally drawn with best play)
+    if ((wN == 2 && wB == 0 && bMin == 0) || (bN == 2 && bB == 0 && wMin == 0))
+      return SCALE_VERY_DRAWISH;
+    // Minor vs minor of the same type: very drawish without pawns
+    if ((wMin == 1 && bMin == 1) && ((wN == bN) || (wB == bB))) return SCALE_VERY_DRAWISH;
+  }
 
   return FULL_SCALE;
 }
@@ -2136,7 +2140,7 @@ int Evaluator::evaluate(model::Position& pos) const {
   // ---------------------------------------------------------------
 
   // EG extras
-  eg_add += rook_endgame_extras_eg(W, B, W[0], B[0], occ, &A);
+  eg_add += rook_endgame_extras_eg(W, B, W[0], B[0], occ, &A, wPass, bPass);
   eg_add += king_activity_eg(W, B);
   eg_add += passed_pawn_race_eg(W, B, pos);
 
