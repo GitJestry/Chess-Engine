@@ -741,9 +741,11 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
   // Not in check: stand pat
   const int stand = signed_eval(pos);
   if (stand >= beta) {
-    if (!(stopFlag && stopFlag->load()))
+    if (!(stopFlag && stopFlag->load())) {
+      constexpr int16_t SE_UNSET = std::numeric_limits<int16_t>::min();
       tt.store(parentKey, encode_tt_score(beta, kply), 0, model::Bound::Lower, model::Move{},
-               (int16_t)stand);
+               inCheck ? SE_UNSET : (int16_t)stand);
+    }
     return beta;
   }
   if (alpha < stand) alpha = stand;
@@ -1044,9 +1046,10 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (staticEval - margin >= beta) {
       // Cheap cutoff – this saves a lot of leaf work with basically no tactical risk.
       if (!(stopFlag && stopFlag->load())) {
-        tt.store(pos.hash(), encode_tt_score(staticEval, cap_ply(ply)), static_cast<int16_t>(depth),
-                 model::Bound::Lower, /*best*/ model::Move{},
-                 inCheck ? std::numeric_limits<int16_t>::min() : (int16_t)staticEval);
+        constexpr int16_t SE_UNSET = std::numeric_limits<int16_t>::min();
+        tt.store(pos.hash(), encode_tt_score(staticEval, cap_ply(ply)),
+                 /*depth*/ 0, model::Bound::Lower, /*best*/ model::Move{},
+                 inCheck ? SE_UNSET : (int16_t)staticEval);
       }
       return staticEval;
     }
@@ -1415,11 +1418,12 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     // ----- Singular Extension -----
     int seExt = 0;
     if (cfg.useSingularExt && haveTT && m == ttMove && !inCheck && depth >= 6) {
-      const bool ttGood = (ttBound != model::Bound::Upper) && (ttStoredDepth >= depth - 2) &&
-                          (ttVal > origAlpha + 8);
-      if (ttGood && !is_mate_score(ttVal)) {
+      // Only trust a LOWER bound close to current depth; this mirrors SF and avoids bogus SE.
+      const bool ttGood =
+          (ttBound == model::Bound::Lower) && (ttStoredDepth >= depth - 1) && !is_mate_score(ttVal);
+      if (ttGood) {
         const int R = (depth >= 8 ? 3 : 2);
-        const int margin = 64 + 2 * depth;  // was 50 + 2*depth; bump a bit
+        const int margin = 64 + 2 * depth;
         const int singBeta = ttVal - margin;
 
         if (singBeta > -MATE + 64) {
@@ -1642,6 +1646,13 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         pcg.rollback();
       }
     }
+  }
+
+  // If this was a singular-extension verification search that excluded a move and
+  // we ended up searching nothing (e.g., the excluded TT move is the only legal move),
+  // return a clear fail-low instead of 0/stalemate. This lets SE trigger correctly.
+  if (excludedMove && !searchedAny) {
+    return -INF + 1;
   }
 
   // safety: never leave node without searching at least one move (non-check)
@@ -1917,7 +1928,11 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           } else {
             // Root Move Reductions (light) + PVS
             int r = 0;
-            if (depth >= 6) {
+            const bool rootIsCapture = m.isCapture();
+            const bool rootIsPromo = (m.promotion() != core::PieceType::None);
+            if (rootIsCapture || rootIsPromo)
+              r = 0;  // never reduce tactical roots
+            else if (depth >= 6) {
               int hist = history[m.from()][m.to()];
               bool isQuietRoot = !m.isCapture() && (m.promotion() == core::PieceType::None);
 
