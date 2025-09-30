@@ -1763,8 +1763,19 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
       return 0;
     };
 
+    struct Scored {
+      model::Move m{};
+      int s = 0;
+      bool isQuiet = false;
+      QuietSignals quietSignals{};
+      bool quietMoverIsPawn = false;
+    };
+
     auto score_root_move = [&](const model::Move& m, const model::Move& ttMove, bool haveTT,
                                int curDepth) {
+      Scored res{};
+      res.m = m;
+
       int s = 0;
 
       if (haveTT && m == ttMove) s += 2'500'000;
@@ -1775,6 +1786,7 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
         s += 1'050'000 + mvv_lva_fast(pos, m);
       } else {
         // quiet move
+        res.isQuiet = true;
         const auto& board = pos.getBoard();
         int h = history[m.from()][m.to()];
         h = std::clamp(h, -20'000, 20'000);
@@ -1783,19 +1795,20 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
         // Threat-Signale / checks: always detect checks; other signals gated
         auto mover = board.getPiece(m.from());
         if (mover) {
-          const auto signals = compute_quiet_signals(pos, m);
-          int piece_sig = signals.pieceSignal;  // detects direct checks (==2)
+          res.quietMoverIsPawn = mover->type == core::PieceType::Pawn;
+          res.quietSignals = compute_quiet_signals(pos, m);
+          int piece_sig = res.quietSignals.pieceSignal;  // detects direct checks (==2)
           int pawn_sig = 0;
 
           bool doThreat = cfg.useThreatSignals && curDepth <= cfg.threatSignalsDepthMax &&
                           h >= cfg.threatSignalsHistMin;
 
           const bool allowPawnThreats = doThreat && piece_sig < 2;
-          if (allowPawnThreats) pawn_sig = signals.pawnSignal;
+          if (allowPawnThreats) pawn_sig = res.quietSignals.pawnSignal;
 
-          if (signals.givesCheck) {
+          if (res.quietSignals.givesCheck) {
             piece_sig = std::max(piece_sig, 2);
-            if (mover->type == core::PieceType::Pawn) pawn_sig = std::max(pawn_sig, 2);
+            if (res.quietMoverIsPawn) pawn_sig = std::max(pawn_sig, 2);
           }
 
           const int sig = std::max(pawn_sig, piece_sig);
@@ -1805,7 +1818,9 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
             s += 1'000;
         }
       }
-      return s;
+
+      res.s = s;
+      return res;
     };
 
     struct RootLine {
@@ -1814,6 +1829,15 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
       model::Bound bound = model::Bound::Upper;
       int ordIdx = 0;  // stable order index
       bool exactFull = false;
+      bool isQuiet = false;
+      QuietSignals quietSignals{};
+      bool quietMoverIsPawn = false;
+    };
+
+    struct RootMeta {
+      bool isQuiet = false;
+      QuietSignals quietSignals{};
+      bool quietMoverIsPawn = false;
     };
 
     // aspiration seed
@@ -1840,25 +1864,31 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
       }
 
       // order root moves (stable)
-      struct Scored {
-        model::Move m;
-        int s;
-      };
       std::vector<Scored> scored;
       scored.reserve(rootMoves.size());
       for (const auto& m : rootMoves)
-        scored.push_back({m, score_root_move(m, ttMove, haveTT, depth)});
+        scored.push_back(score_root_move(m, ttMove, haveTT, depth));
       std::stable_sort(scored.begin(), scored.end(), [](const Scored& a, const Scored& b) {
         if (a.s != b.s) return a.s > b.s;
         if (a.m.from() != b.m.from()) return a.m.from() < b.m.from();
         return a.m.to() < b.m.to();
       });
-      for (std::size_t i = 0; i < scored.size(); ++i) rootMoves[i] = scored[i].m;
+      std::vector<RootMeta> rootMeta(rootMoves.size());
+      for (std::size_t i = 0; i < scored.size(); ++i) {
+        rootMoves[i] = scored[i].m;
+        rootMeta[i].isQuiet = scored[i].isQuiet;
+        rootMeta[i].quietSignals = scored[i].quietSignals;
+        rootMeta[i].quietMoverIsPawn = scored[i].quietMoverIsPawn;
+      }
 
       // push previous best to front for stability
       if (prevBest.from() != prevBest.to()) {
         auto it = std::find(rootMoves.begin(), rootMoves.end(), prevBest);
-        if (it != rootMoves.end()) std::rotate(rootMoves.begin(), it, it + 1);
+        if (it != rootMoves.end()) {
+          auto idx = std::distance(rootMoves.begin(), it);
+          std::rotate(rootMoves.begin(), it, it + 1);
+          std::rotate(rootMeta.begin(), rootMeta.begin() + idx, rootMeta.begin() + idx + 1);
+        }
       }
 
       // aspiration window
@@ -1881,19 +1911,15 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
         lines.reserve(rootMoves.size());
 
         int moveIdx = 0;
-        for (const auto& m : rootMoves) {
+        for (std::size_t metaIdx = 0; metaIdx < rootMoves.size(); ++metaIdx) {
+          const auto& m = rootMoves[metaIdx];
+          const auto& meta = rootMeta[metaIdx];
           if (stop && stop->load(std::memory_order_relaxed)) break;
 
-          const bool isQuietRoot = !m.isCapture() && (m.promotion() == core::PieceType::None);
-          const QuietSignals rootSignals = isQuietRoot ? compute_quiet_signals(pos, m) : QuietSignals{};
+          const bool isQuietRoot = meta.isQuiet;
+          const QuietSignals& rootSignals = meta.quietSignals;
           const bool quietCheckRoot = isQuietRoot && rootSignals.givesCheck;
-          bool pawnQuietCheckRoot = false;
-          if (quietCheckRoot) {
-            if (auto mover = pos.getBoard().getPiece(m.from());
-                mover && mover->type == core::PieceType::Pawn) {
-              pawnQuietCheckRoot = true;
-            }
-          }
+          const bool pawnQuietCheckRoot = quietCheckRoot && meta.quietMoverIsPawn;
 
           MoveUndoGuard rg(pos);
           if (!rg.doMove(m)) {
@@ -1913,7 +1939,7 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
             int r = 0;
             if (depth >= 6) {
               int hist = history[m.from()][m.to()];
-              bool isQuietRoot = !m.isCapture() && (m.promotion() == core::PieceType::None);
+              bool isQuietRoot = meta.isQuiet;
 
               // Base reduction for later root moves
               if (isQuietRoot) r = 1;
@@ -1950,7 +1976,9 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           else if (s >= beta)
             b = model::Bound::Lower;
 
-          lines.push_back(RootLine{m, s, b, moveIdx, /*exactFull*/ false});
+          lines.push_back(
+              RootLine{m, s, b, moveIdx, /*exactFull*/ false, isQuietRoot, rootSignals,
+                       meta.quietMoverIsPawn});
 
           if (s > bestScore) {
             bestScore = s;
