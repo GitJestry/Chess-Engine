@@ -177,9 +177,11 @@ static int space_term(const std::array<Bitboard, 6>& W, const std::array<Bitboar
   Bitboard wMask = RANK_2 | RANK_3 | RANK_4;
   Bitboard bMask = RANK_7 | RANK_6 | RANK_5;
 
-  // Safe, *empty* squares not attacked by enemy pawns, excluding own pieces
-  int wSafe = popcount((wMask & ~wocc) & ~bPA);
-  int bSafe = popcount((bMask & ~bocc) & ~wPA);
+  Bitboard occ = wocc | bocc;
+  Bitboard empty = ~occ;
+
+  int wSafe = popcount((wMask & empty) & ~bPA);
+  int bSafe = popcount((bMask & empty) & ~wPA);
 
   int wMin = popcount(W[1] | W[2]), bMin = popcount(B[1] | B[2]);
   int wScale = SPACE_SCALE_BASE + std::min(wMin, SPACE_MINOR_SATURATION);
@@ -1602,16 +1604,18 @@ inline Bitboard rook_pins(Bitboard occ, Bitboard own, Bitboard oppRQ, int ksq, b
   while (blockers) {
     int b = lsb_i(blockers);
     blockers &= blockers - 1;
+
     int df = sgn(file_of(b) - file_of(ksq));
     int dr = sgn(rank_of(b) - rank_of(ksq));
 
-    // step from blocker away from king
-    int s = b;
-    while (true) {
-      s += df + 8 * dr;
-      if (s < 0 || s >= 64) break;
+    int f = file_of(b), r = rank_of(b);
+    for (;;) {
+      f += df;
+      r += dr;
+      if (f < 0 || f > 7 || r < 0 || r > 7) break;
+      int s = (r << 3) | f;
       Bitboard bb = sq_bb((Square)s);
-      if (bb & occ) {  // first piece behind the blocker
+      if (bb & occ) {
         if (bb & oppRQ) pins |= sq_bb((Square)b);
         break;
       }
@@ -1630,13 +1634,16 @@ inline Bitboard bishop_pins(Bitboard occ, Bitboard own, Bitboard oppBQ, int ksq,
   while (blockers) {
     int b = lsb_i(blockers);
     blockers &= blockers - 1;
+
     int df = sgn(file_of(b) - file_of(ksq));
     int dr = sgn(rank_of(b) - rank_of(ksq));
 
-    int s = b;
-    while (true) {
-      s += df + 8 * dr;
-      if (s < 0 || s >= 64) break;
+    int f = file_of(b), r = rank_of(b);
+    for (;;) {
+      f += df;
+      r += dr;
+      if (f < 0 || f > 7 || r < 0 || r > 7) break;
+      int s = (r << 3) | f;
       Bitboard bb = sq_bb((Square)s);
       if (bb & occ) {
         if (bb & oppBQ) pins |= sq_bb((Square)b);
@@ -1691,22 +1698,22 @@ inline int safe_checks(bool white, const std::array<Bitboard, 6>& W,
 }
 
 inline Bitboard holes_for_white(Bitboard bp) {
-  // current attacks
   Bitboard cur = black_pawn_attacks(bp);
-  // future attacks: any black pawn that could advance to attack a square
-  // If a square lies behind all black pawns on adjacent files, it’s “safe forever”.
   Bitboard future = 0;
   Bitboard t = bp;
   while (t) {
     int s = lsb_i(t);
     t &= t - 1;
-    int f = file_of((Square)s);
-    Bitboard adj = (f > 0 ? M.file[f - 1] : 0) | (f < 7 ? M.file[f + 1] : 0);
-    // squares *ahead* of this pawn on adj files
-    future |= (M.bFront[s] & adj);
+    int r = rank_of((Square)s);
+    // ranks strictly in front of this black pawn
+    Bitboard forward = 0;
+    for (int rr = r - 1; rr >= 0; --rr) forward |= (RANK_1 << (8 * rr));
+    Bitboard diag = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, 0ULL);
+    future |= (diag & forward);
   }
   return ~(cur | future);
 }
+
 inline Bitboard holes_for_black(Bitboard wp) {
   Bitboard cur = white_pawn_attacks(wp);
   Bitboard future = 0;
@@ -1714,9 +1721,12 @@ inline Bitboard holes_for_black(Bitboard wp) {
   while (t) {
     int s = lsb_i(t);
     t &= t - 1;
-    int f = file_of((Square)s);
-    Bitboard adj = (f > 0 ? M.file[f - 1] : 0) | (f < 7 ? M.file[f + 1] : 0);
-    future |= (M.wFront[s] & adj);
+    int r = rank_of((Square)s);
+    // ranks strictly in front of this white pawn
+    Bitboard forward = 0;
+    for (int rr = r + 1; rr < 8; ++rr) forward |= (RANK_1 << (8 * rr));
+    Bitboard diag = magic::sliding_attacks(magic::Slider::Bishop, (Square)s, 0ULL);
+    future |= (diag & forward);
   }
   return ~(cur | future);
 }
@@ -1757,20 +1767,16 @@ inline int xray_king_file_pressure(bool white, const std::array<Bitboard, 6>& W,
 }
 
 inline int queen_bishop_battery(bool white, const std::array<Bitboard, 6>& W,
-                                const std::array<Bitboard, 6>& B, Bitboard occ, int oppK,
-                                const AttackMap* A) {
+                                const std::array<Bitboard, 6>& B, Bitboard /*occ*/, int oppK,
+                                const AttackMap* /*A*/) {
   if (oppK < 0) return 0;
   Bitboard Q = white ? W[4] : B[4];
-  Bitboard Bp = white ? W[2] : B[2];
-  int sc = 0;
-  Bitboard t = Bp;
-  while (t) {
-    int s = lsb_i(t);
-    t &= t - 1;
-    Bitboard diag = cached_slider_attacks(A, white, magic::Slider::Bishop, s, occ);
-    if ((diag & sq_bb((Square)oppK)) && (diag & Q)) sc += QB_BATTERY;
-  }
-  return white ? sc : -sc;
+  Bitboard Bs = white ? W[2] : B[2];
+  if (!Q || !Bs) return 0;
+
+  Bitboard kDiag = magic::sliding_attacks(magic::Slider::Bishop, (Square)oppK, 0ULL);
+  bool aligned = (kDiag & Q) && (kDiag & Bs);
+  return (white ? +1 : -1) * (aligned ? QB_BATTERY : 0);
 }
 
 static int central_blockers(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
