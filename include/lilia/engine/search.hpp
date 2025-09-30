@@ -118,6 +118,7 @@ class Search {
   int quiescence(model::Position& pos, int alpha, int beta, int ply);
   std::vector<model::Move> build_pv_from_tt(model::Position pos, int max_len = 16);
   int signed_eval(model::Position& pos);
+  bool quiet_sacrifice_candidate(model::Position& pos, const model::Move& m, core::PieceType moverPt);
   // Copy global heuristics into this worker (killers are reset, on purpose)
   void copy_heuristics_from(const Search& src);
   // Merge this worker's heuristics into the global (killers are NOT merged)

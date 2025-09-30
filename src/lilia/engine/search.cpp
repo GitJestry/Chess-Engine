@@ -22,6 +22,7 @@
 #include "lilia/engine/thread_pool.hpp"
 #include "lilia/model/core/bitboard.hpp"
 #include "lilia/model/core/magic.hpp"
+#include "lilia/model/move_helper.hpp"
 
 namespace lilia::engine {
 
@@ -509,6 +510,50 @@ inline void ensure_check_tables_initialized() {
 }
 
 }  // namespace
+
+bool Search::quiet_sacrifice_candidate(model::Position& pos, const model::Move& m,
+                                       core::PieceType moverPt) {
+  using core::PieceType;
+
+  if (m.isCapture() || m.promotion() != PieceType::None || m.isNull()) return false;
+
+  MoveUndoGuard guard(pos);
+  if (!guard.doMove(m)) return false;
+
+  const auto enemy = pos.getState().sideToMove;
+  auto& board = pos.getBoard();
+  const auto occ = board.getAllPieces();
+
+  if (!model::attackedBy(board, m.to(), enemy, occ)) {
+    guard.rollback();
+    return false;
+  }
+
+  const int moverVal = base_value[(int)moverPt];
+
+  model::Move capBuf[engine::MAX_MOVES];
+  const int capCount = gen_caps(mg, pos, capBuf, engine::MAX_MOVES);
+
+  bool sacrificial = false;
+  for (int i = 0; i < capCount; ++i) {
+    const auto& cap = capBuf[i];
+    if (cap.to() != m.to()) continue;
+
+    auto attacker = board.getPiece(cap.from());
+    if (!attacker) continue;
+
+    const int attackerVal = base_value[(int)attacker->type];
+    if (attackerVal > moverVal + 100) continue;
+
+    if (!pos.see(cap)) continue;
+
+    sacrificial = true;
+    break;
+  }
+
+  guard.rollback();
+  return sacrificial;
+}
 
 // ---------- Search ----------
 
@@ -1247,6 +1292,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     const bool isQuiet = !m.isCapture() && (m.promotion() == core::PieceType::None);
     const auto us = pos.getState().sideToMove;
 
+    auto moverOpt = board.getPiece(m.from());
+    const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
+
     bool doThreatSignals = cfg.useThreatSignals && depth <= cfg.threatSignalsDepthMax &&
                            moveCount < cfg.threatSignalsQuietCap;
 
@@ -1286,11 +1334,23 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (passed_push) pawn_sig = std::max(pawn_sig, 1);
     const int qp_sig = pawn_sig;
     const int qpc_sig = piece_sig;
-    const bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0);
+
+    bool sacrificialQuiet = false;
+    bool sacrificialChecked = false;
+    auto ensureSacQuiet = [&]() -> bool {
+      if (!sacrificialChecked) {
+        sacrificialChecked = true;
+        sacrificialQuiet = quiet_sacrifice_candidate(pos, m, moverPt);
+      }
+      return sacrificialQuiet;
+    };
+
+    bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0);
+    if (isQuiet && !tacticalQuiet) {
+      if (ensureSacQuiet()) tacticalQuiet = true;
+    }
 
     // pre info
-    auto moverOpt = board.getPiece(m.from());
-    const core::PieceType moverPt = moverOpt ? moverOpt->type : core::PieceType::Pawn;
     core::PieceType capPt = core::PieceType::Pawn;
 
     const bool isQuietHeavy =
