@@ -66,6 +66,8 @@ static constexpr int RFP_MARGIN_BASE = 190;    // vorher 180
 // LMP-Limits pro Tiefe (nur Quiet-Züge)
 static constexpr int LMP_LIMIT[4] = {0, 5, 9, 14};  // D=1..3
 static constexpr int LOW_MVV_MARGIN = 360;
+static constexpr int NEG_SEE_SAC_MARGIN = 180;       // keep speculative sacs near the window
+static constexpr int NEG_SEE_EARLY_MOVES = 4;        // always explore a few candidates
 
 namespace {
 
@@ -1393,9 +1395,16 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
               //  - recapture (critical)
               //  - on center file (often clearance/line-openers)
               //  - likely clearance for an advanced passer
-              if (!isRecap && !onCenterFile && !advanced_pawn_adjacent_to(board, us2, m.to())) {
-                ++moveCount;
-                continue;  // prune it
+              const bool nearWindow = (staticEval + capValPre + NEG_SEE_SAC_MARGIN) > alpha;
+              const bool earlyTry = moveCount < NEG_SEE_EARLY_MOVES;
+              const bool depthSafety = depth >= 3;
+
+              if (!isRecap && !onCenterFile &&
+                  !advanced_pawn_adjacent_to(board, us2, m.to())) {
+                if (!nearWindow && !earlyTry && !depthSafety) {
+                  ++moveCount;
+                  continue;  // prune it
+                }
               }
             }
           }
