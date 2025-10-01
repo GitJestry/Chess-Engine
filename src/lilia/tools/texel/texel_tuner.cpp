@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -11,6 +12,10 @@
 #include <string_view>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include "lilia/constants.hpp"
 #include "lilia/engine/eval.hpp"
 #include "lilia/engine/eval_shared.hpp"
@@ -22,6 +27,12 @@ using namespace std::string_literals;
 
 namespace lilia::tools::texel {
 
+struct DefaultPaths {
+  fs::path dataFile;
+  fs::path weightsFile;
+  std::optional<fs::path> stockfish;
+};
+
 struct Options {
   bool generateData = false;
   bool tune = false;
@@ -31,7 +42,7 @@ struct Options {
   int maxPlies = 160;
   int sampleSkip = 6;
   int sampleStride = 4;
-  std::string dataFile = "texel_dataset.txt";
+  std::string dataFile;
   int iterations = 200;
   double learningRate = 0.0005;
   double logisticScale = 256.0;
@@ -54,34 +65,111 @@ struct PreparedSample {
   std::vector<double> gradients;  // dEval/dw_j at defaults
 };
 
-[[noreturn]] void usage_and_exit() {
+fs::path locate_project_root(fs::path start) {
+  std::error_code ec;
+  if (!start.is_absolute()) {
+    start = fs::absolute(start, ec);
+    if (ec) {
+      start = fs::current_path();
+    }
+  }
+  while (true) {
+    if (fs::exists(start / "CMakeLists.txt")) {
+      return start;
+    }
+    const auto parent = start.parent_path();
+    if (parent.empty() || parent == start) {
+      return fs::current_path();
+    }
+    start = parent;
+  }
+}
+
+DefaultPaths compute_default_paths(const char* argv0) {
+  fs::path exePath;
+#ifdef _WIN32
+  wchar_t buffer[MAX_PATH];
+  DWORD len = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+  if (len > 0) {
+    exePath.assign(buffer, buffer + len);
+  }
+  if (exePath.empty() && argv0 && *argv0) {
+    exePath = fs::path(argv0);
+  }
+#else
+  std::error_code ec;
+  exePath = fs::read_symlink("/proc/self/exe", ec);
+  if (ec && argv0 && *argv0) {
+    exePath = fs::absolute(fs::path(argv0), ec);
+  }
+  if (ec) {
+    exePath.clear();
+  }
+#endif
+  if (exePath.empty()) {
+    exePath = fs::current_path();
+  }
+  fs::path exeDir = exePath;
+  if (exeDir.has_filename()) {
+    exeDir = exeDir.parent_path();
+  }
+  if (exeDir.empty()) {
+    exeDir = fs::current_path();
+  }
+
+  const fs::path projectRoot = locate_project_root(exeDir);
+  DefaultPaths defaults;
+  defaults.dataFile = projectRoot / "texel_data" / "texel_dataset.txt";
+  defaults.weightsFile = projectRoot / "texel_data" / "texel_weights.txt";
+
+  const std::array<const char*, 2> candidates = {"stockfish", "stockfish.exe"};
+  for (const auto* name : candidates) {
+    const fs::path candidate = exeDir / name;
+    if (fs::exists(candidate)) {
+      defaults.stockfish = candidate;
+      break;
+    }
+  }
+  return defaults;
+}
+
+[[noreturn]] void usage_and_exit(const DefaultPaths& defaults) {
   std::cerr
       << "Usage: texel_tuner [--generate-data] [--tune] [options]\n"
          "Options:\n"
-         "  --stockfish <path>        Path to Stockfish binary (required for generation)\n"
+         "  --stockfish <path>        Path to Stockfish binary (default autodetect)\n"
          "  --games <N>               Number of self-play games for data generation (default 8)\n"
          "  --depth <D>               Search depth for Stockfish (default 12)\n"
          "  --max-plies <N>           Maximum plies per game (default 160)\n"
          "  --sample-skip <N>         Skip first N plies before sampling (default 6)\n"
          "  --sample-stride <N>       Sample every N plies thereafter (default 4)\n"
-         "  --data <file>             Dataset path (default texel_dataset.txt)\n"
+      << "  --data <file>             Dataset path (default " << defaults.dataFile.string()
+      << ")\n"
          "  --iterations <N>          Training iterations (default 200)\n"
          "  --learning-rate <value>   Gradient descent learning rate (default 5e-4)\n"
          "  --scale <value>           Logistic scale in centipawns (default 256)\n"
-         "  --weights-output <file>   Write tuned weights to file\n"
+      << "  --weights-output <file>   Write tuned weights to file (default "
+      << defaults.weightsFile.string() << ")\n"
          "  --sample-limit <N>        Limit number of samples used for tuning\n"
          "  --help                    Show this message\n";
   std::exit(1);
 }
 
-Options parse_args(int argc, char** argv) {
+Options parse_args(int argc, char** argv, const DefaultPaths& defaults) {
   Options opts;
+  opts.dataFile = defaults.dataFile.string();
+  if (defaults.stockfish) {
+    opts.stockfishPath = defaults.stockfish->string();
+  }
+  if (!defaults.weightsFile.empty()) {
+    opts.weightsOutput = defaults.weightsFile.string();
+  }
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
     auto require_value = [&](const char* name) -> std::string {
       if (i + 1 >= argc) {
         std::cerr << "Missing value for " << name << "\n";
-        usage_and_exit();
+        usage_and_exit(defaults);
       }
       return argv[++i];
     };
@@ -114,15 +202,15 @@ Options parse_args(int argc, char** argv) {
     } else if (arg == "--sample-limit") {
       opts.sampleLimit = std::stoi(require_value("--sample-limit"));
     } else if (arg == "--help" || arg == "-h") {
-      usage_and_exit();
+      usage_and_exit(defaults);
     } else {
       std::cerr << "Unknown option: " << arg << "\n";
-      usage_and_exit();
+      usage_and_exit(defaults);
     }
   }
   if (!opts.generateData && !opts.tune) {
     std::cerr << "Nothing to do: specify --generate-data and/or --tune.\n";
-    usage_and_exit();
+    usage_and_exit(defaults);
   }
   return opts;
 }
@@ -404,7 +492,12 @@ void emit_weights(const TrainingResult& result, const std::vector<int>& defaults
   std::ostream* out = &std::cout;
   std::ofstream file;
   if (opts.weightsOutput) {
-    file.open(*opts.weightsOutput, std::ios::trunc);
+    fs::path p{*opts.weightsOutput};
+    if (p.has_parent_path()) {
+      std::error_code ec;
+      fs::create_directories(p.parent_path(), ec);
+    }
+    file.open(p, std::ios::trunc);
     if (!file) throw std::runtime_error("Unable to open weights output file");
     out = &file;
   }
@@ -424,7 +517,23 @@ void emit_weights(const TrainingResult& result, const std::vector<int>& defaults
 int main(int argc, char** argv) {
   using namespace lilia::tools::texel;
   try {
-    Options opts = parse_args(argc, argv);
+    const DefaultPaths defaults = compute_default_paths(argc > 0 ? argv[0] : nullptr);
+    Options opts = parse_args(argc, argv, defaults);
+
+    if (opts.generateData && opts.stockfishPath.empty()) {
+      std::ostringstream err;
+      err << "Stockfish executable not found. Place it next to texel_tuner or provide --stockfish.";
+      throw std::runtime_error(err.str());
+    }
+
+    if (opts.generateData) {
+      std::cout << "Using Stockfish at " << opts.stockfishPath << "\n";
+    }
+
+    std::cout << "Dataset path: " << opts.dataFile << "\n";
+    if (opts.weightsOutput) {
+      std::cout << "Weights output path: " << *opts.weightsOutput << "\n";
+    }
 
     if (opts.generateData) {
       auto samples = generate_samples(opts);
