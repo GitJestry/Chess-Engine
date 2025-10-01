@@ -69,6 +69,36 @@ target_include_directories(texel_tuner PRIVATE
   ${PROJECT_SOURCE_DIR}/include/lilia
 )
 
+set(LILIA_TEXEL_STOCKFISH "")
+set(LILIA_TEXEL_STOCKFISH_DIR "${PROJECT_SOURCE_DIR}/tools/texel")
+if(EXISTS "${LILIA_TEXEL_STOCKFISH_DIR}")
+  set(_lilia_stockfish_candidates)
+  if(DEFINED CMAKE_EXECUTABLE_SUFFIX)
+    list(APPEND _lilia_stockfish_candidates
+      "${LILIA_TEXEL_STOCKFISH_DIR}/stockfish${CMAKE_EXECUTABLE_SUFFIX}")
+  endif()
+  list(APPEND _lilia_stockfish_candidates
+    "${LILIA_TEXEL_STOCKFISH_DIR}/stockfish"
+    "${LILIA_TEXEL_STOCKFISH_DIR}/stockfish.exe")
+  foreach(candidate IN LISTS _lilia_stockfish_candidates)
+    if(NOT LILIA_TEXEL_STOCKFISH AND EXISTS "${candidate}")
+      set(LILIA_TEXEL_STOCKFISH "${candidate}")
+      break()
+    endif()
+  endforeach()
+  unset(_lilia_stockfish_candidates)
+endif()
+
+if(LILIA_TEXEL_STOCKFISH)
+  get_filename_component(LILIA_TEXEL_STOCKFISH_NAME "${LILIA_TEXEL_STOCKFISH}" NAME)
+  add_custom_command(TARGET texel_tuner POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${LILIA_TEXEL_STOCKFISH}"
+            "$<TARGET_FILE_DIR:texel_tuner>/${LILIA_TEXEL_STOCKFISH_NAME}"
+    COMMENT "Copying bundled Stockfish to texel_tuner output directory"
+    VERBATIM)
+endif()
+
 if(LILIA_BUILD_UI)
   add_executable(lilia_app
     examples/main.cpp

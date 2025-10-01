@@ -65,6 +65,42 @@ struct PreparedSample {
   std::vector<double> gradients;  // dEval/dw_j at defaults
 };
 
+std::optional<fs::path> find_stockfish_in_dir(const fs::path& dir) {
+  if (dir.empty()) return std::nullopt;
+  std::error_code ec;
+  if (!fs::exists(dir, ec)) return std::nullopt;
+  ec.clear();
+
+  const std::array<const char*, 2> names = {"stockfish", "stockfish.exe"};
+  for (const auto* name : names) {
+    const fs::path candidate = dir / name;
+    std::error_code candidateEc;
+    if (fs::exists(candidate, candidateEc) && fs::is_regular_file(candidate, candidateEc)) {
+      return candidate;
+    }
+  }
+
+  for (fs::directory_iterator it{dir, ec}; !ec && it != fs::directory_iterator{}; ++it) {
+    const auto& entry = *it;
+    bool isFile = false;
+    std::error_code regularEc;
+    if (entry.is_regular_file(regularEc)) {
+      isFile = true;
+    } else {
+      std::error_code symlinkEc;
+      if (entry.is_symlink(symlinkEc)) {
+        isFile = true;
+      }
+    }
+    if (!isFile) continue;
+    const auto stem = entry.path().stem().string();
+    if (stem.rfind("stockfish", 0) == 0) {
+      return entry.path();
+    }
+  }
+  return std::nullopt;
+}
+
 fs::path locate_project_root(fs::path start) {
   std::error_code ec;
   if (!start.is_absolute()) {
@@ -122,13 +158,9 @@ DefaultPaths compute_default_paths(const char* argv0) {
   defaults.dataFile = projectRoot / "texel_data" / "texel_dataset.txt";
   defaults.weightsFile = projectRoot / "texel_data" / "texel_weights.txt";
 
-  const std::array<const char*, 2> candidates = {"stockfish", "stockfish.exe"};
-  for (const auto* name : candidates) {
-    const fs::path candidate = exeDir / name;
-    if (fs::exists(candidate)) {
-      defaults.stockfish = candidate;
-      break;
-    }
+  defaults.stockfish = find_stockfish_in_dir(exeDir);
+  if (!defaults.stockfish) {
+    defaults.stockfish = find_stockfish_in_dir(projectRoot / "tools" / "texel");
   }
   return defaults;
 }
@@ -522,7 +554,8 @@ int main(int argc, char** argv) {
 
     if (opts.generateData && opts.stockfishPath.empty()) {
       std::ostringstream err;
-      err << "Stockfish executable not found. Place it next to texel_tuner or provide --stockfish.";
+      err << "Stockfish executable not found. Place it in tools/texel, next to texel_tuner, or"
+          << " provide --stockfish.";
       throw std::runtime_error(err.str());
     }
 
