@@ -491,6 +491,7 @@ std::vector<RawSample> generate_samples(const Options& opts) {
   // Deduplicate sampled FENs across all games
   std::unordered_set<std::string> seen;
 
+  const int stride = std::max(1, opts.sampleStride);
   ProgressMeter gamePM("Generating self-play games", static_cast<std::size_t>(opts.games),
                        opts.progressIntervalMs);
   for (int gameIdx = 0; gameIdx < opts.games; ++gameIdx) {
@@ -499,15 +500,22 @@ std::vector<RawSample> generate_samples(const Options& opts) {
     game.setPosition(core::START_FEN);
     moveHistory.clear();
     std::vector<std::pair<std::string, core::Color>> gamePositions;
+    // Maintain individual cadence counters per side so that both colours are sampled even
+    // when the stride or skip values would otherwise only hit a single ply parity.
+    std::array<int, 2> sideSampleCounters{0, 0};
 
     for (int ply = 0; ply < opts.maxPlies; ++ply) {
       // Sample current position (FEN + POV) periodically
-      if (ply >= opts.sampleSkip &&
-          ((ply - opts.sampleSkip) % std::max(1, opts.sampleStride) == 0)) {
-        const auto fen = game.getFen();
-        if (seen.insert(fen).second) {  // only record new FENs
-          gamePositions.emplace_back(fen, game.getGameState().sideToMove);
+      if (ply >= opts.sampleSkip) {
+        const auto sideToMove = game.getGameState().sideToMove;
+        auto& counter = sideSampleCounters[static_cast<std::size_t>(sideToMove)];
+        if (counter % stride == 0) {
+          const auto fen = game.getFen();
+          if (seen.insert(fen).second) {  // only record new FENs
+            gamePositions.emplace_back(fen, sideToMove);
+          }
         }
+        ++counter;
       }
 
       StockfishResult res = run_stockfish(opts, moveHistory);
