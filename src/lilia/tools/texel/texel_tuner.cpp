@@ -7,15 +7,21 @@
 #include <iostream>
 #include <limits>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
 #include <windows.h>
 #endif
+
+#include <chrono>
+#include <iomanip>
 
 #include "lilia/constants.hpp"
 #include "lilia/engine/engine.hpp"
@@ -29,6 +35,69 @@ using namespace std::string_literals;
 
 namespace lilia::tools::texel {
 
+struct ProgressMeter {
+  std::string label;
+  std::size_t total = 0;
+  std::size_t current = 0;
+  int intervalMs = 750;
+
+  std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+  std::chrono::steady_clock::time_point last = start;
+  bool finished = false;
+
+  ProgressMeter(std::string label_, std::size_t total_, int intervalMs_ = 750)
+      : label(std::move(label_)), total(total_), intervalMs(intervalMs_) {}
+
+  static std::string fmt_hms(std::chrono::seconds s) {
+    long t = s.count();
+    int h = static_cast<int>(t / 3600);
+    int m = static_cast<int>((t % 3600) / 60);
+    int sec = static_cast<int>(t % 60);
+    std::ostringstream os;
+    if (h > 0) {
+      os << h << ":" << std::setw(2) << std::setfill('0') << m << ":" << std::setw(2) << sec;
+    } else {
+      os << m << ":" << std::setw(2) << std::setfill('0') << sec;
+    }
+    return os.str();
+  }
+
+  void update(std::size_t newCurrent) {
+    if (finished) return;
+    current = std::min(newCurrent, total);
+    auto now = std::chrono::steady_clock::now();
+    auto since = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();
+    bool timeToPrint = since >= intervalMs || current == total;
+
+    if (!timeToPrint) return;
+    last = now;
+
+    double pct = total ? (100.0 * static_cast<double>(current) / static_cast<double>(total)) : 0.0;
+
+    // ETA
+    double elapsedSec = std::chrono::duration<double>(now - start).count();
+    double rate = elapsedSec > 0.0 ? current / elapsedSec : 0.0;
+    double remainSec = (rate > 0.0 && total >= current) ? (total - current) / rate : 0.0;
+
+    auto eta = std::chrono::seconds(static_cast<long long>(remainSec + 0.5));
+    auto elapsed = std::chrono::seconds(static_cast<long long>(elapsedSec + 0.5));
+
+    std::ostringstream line;
+    line << "\r" << label << " " << std::fixed << std::setprecision(1) << pct << "% "
+         << "(" << current << "/" << total << ")  "
+         << "elapsed " << fmt_hms(elapsed) << "  ETA ~" << fmt_hms(eta);
+
+    std::cout << line.str() << std::flush;
+  }
+
+  void finish() {
+    if (finished) return;
+    update(total);
+    std::cout << "\n";
+    finished = true;
+  }
+};
+
 struct DefaultPaths {
   fs::path dataFile;
   fs::path weightsFile;
@@ -38,22 +107,28 @@ struct DefaultPaths {
 struct Options {
   bool generateData = false;
   bool tune = false;
+
   std::string stockfishPath;
   int games = 8;
   int depth = 12;
   int maxPlies = 160;
   int sampleSkip = 6;
   int sampleStride = 4;
+
   std::string dataFile;
   int iterations = 200;
   double learningRate = 0.0005;
   double logisticScale = 256.0;
+  double l2 = 0.0;  // L2 regularization strength (0 = off)
+
   std::optional<std::string> weightsOutput;
   std::optional<int> sampleLimit;
+  bool shuffleBeforeTraining = true;
+  int progressIntervalMs = 750;  // throttle console progress updates
 };
 
 struct StockfishResult {
-  std::string bestmove;
+  std::string bestmove;  // single UCI move token, e.g. "e2e4"
 };
 
 struct RawSample {
@@ -182,10 +257,13 @@ DefaultPaths compute_default_paths(const char* argv0) {
          "  --iterations <N>          Training iterations (default 200)\n"
          "  --learning-rate <value>   Gradient descent learning rate (default 5e-4)\n"
          "  --scale <value>           Logistic scale in centipawns (default 256)\n"
+      << "  --l2 <value>              L2 regularization strength (default 0.0 = off)\n"
+         "  --no-shuffle              Do not shuffle dataset before training\n"
       << "  --weights-output <file>   Write tuned weights to file (default "
       << defaults.weightsFile.string()
       << ")\n"
          "  --sample-limit <N>        Limit number of samples used for tuning\n"
+         "  --progress-interval <ms>  Min milliseconds between progress updates (default 750)\n"
          "  --help                    Show this message\n";
   std::exit(1);
 }
@@ -232,10 +310,16 @@ Options parse_args(int argc, char** argv, const DefaultPaths& defaults) {
       opts.learningRate = std::stod(require_value("--learning-rate"));
     } else if (arg == "--scale") {
       opts.logisticScale = std::stod(require_value("--scale"));
+    } else if (arg == "--l2") {
+      opts.l2 = std::stod(require_value("--l2"));
+    } else if (arg == "--no-shuffle") {
+      opts.shuffleBeforeTraining = false;
     } else if (arg == "--weights-output") {
       opts.weightsOutput = require_value("--weights-output");
     } else if (arg == "--sample-limit") {
       opts.sampleLimit = std::stoi(require_value("--sample-limit"));
+    } else if (arg == "--progress-interval") {
+      opts.progressIntervalMs = std::stoi(require_value("--progress-interval"));
     } else if (arg == "--help" || arg == "-h") {
       usage_and_exit(defaults);
     } else {
@@ -259,6 +343,7 @@ StockfishResult run_stockfish(const Options& opts, const std::vector<std::string
   std::ostringstream cmdStream;
   cmdStream << "uci\n";
   cmdStream << "isready\n";
+  cmdStream << "ucinewgame\n";
   cmdStream << "position startpos";
   if (!moves.empty()) {
     cmdStream << " moves";
@@ -362,7 +447,9 @@ StockfishResult run_stockfish(const Options& opts, const std::vector<std::string
     std::string line;
     while (std::getline(in, line)) {
       if (line.rfind("bestmove ", 0) == 0) {
-        result.bestmove = line.substr(9);
+        // Extract only the first token after "bestmove "
+        std::istringstream ls(line.substr(9));
+        ls >> result.bestmove;
         break;
       }
     }
@@ -401,6 +488,11 @@ std::vector<RawSample> generate_samples(const Options& opts) {
                                              : std::numeric_limits<size_t>::max();
   samples.reserve(std::min(static_cast<size_t>(opts.games) * 32u, maxSamples));
 
+  // Deduplicate sampled FENs across all games
+  std::unordered_set<std::string> seen;
+
+  ProgressMeter gamePM("Generating self-play games", static_cast<std::size_t>(opts.games),
+                       opts.progressIntervalMs);
   for (int gameIdx = 0; gameIdx < opts.games; ++gameIdx) {
     if (samples.size() >= maxSamples) break;
     model::ChessGame game;
@@ -409,17 +501,25 @@ std::vector<RawSample> generate_samples(const Options& opts) {
     std::vector<std::pair<std::string, core::Color>> gamePositions;
 
     for (int ply = 0; ply < opts.maxPlies; ++ply) {
+      // Sample current position (FEN + POV) periodically
       if (ply >= opts.sampleSkip &&
           ((ply - opts.sampleSkip) % std::max(1, opts.sampleStride) == 0)) {
-        gamePositions.emplace_back(game.getFen(), game.getGameState().sideToMove);
+        const auto fen = game.getFen();
+        if (seen.insert(fen).second) {  // only record new FENs
+          gamePositions.emplace_back(fen, game.getGameState().sideToMove);
+        }
       }
 
       StockfishResult res = run_stockfish(opts, moveHistory);
       if (res.bestmove.empty() || res.bestmove == "(none)") {
         break;
       }
+      if (!game.doMoveUCI(res.bestmove)) {
+        // Defensive: if the move fails to parse/play, stop this game.
+        break;
+      }
       moveHistory.push_back(res.bestmove);
-      game.doMoveUCI(res.bestmove);
+
       game.checkGameResult();
       if (game.getResult() != core::GameResult::ONGOING) {
         break;
@@ -427,10 +527,10 @@ std::vector<RawSample> generate_samples(const Options& opts) {
     }
 
     const core::GameResult finalRes = game.getResult();
+
+    // If the game ended by checkmate, winner is opposite of side to move.
+    // For draws/non-checkmates, targets are 0.5 regardless of 'winner'.
     core::Color winner = flip_color(game.getGameState().sideToMove);
-    if (finalRes != core::GameResult::CHECKMATE) {
-      winner = core::Color::White;  // dummy for draws
-    }
 
     for (const auto& [fen, pov] : gamePositions) {
       RawSample sample;
@@ -440,7 +540,9 @@ std::vector<RawSample> generate_samples(const Options& opts) {
       if (samples.size() >= maxSamples) break;
     }
     if (samples.size() >= maxSamples) break;
+    gamePM.update(static_cast<std::size_t>(gameIdx + 1));
   }
+  gamePM.finish();
   return samples;
 }
 
@@ -456,7 +558,7 @@ void write_dataset(const std::vector<RawSample>& samples, const std::string& pat
   for (const auto& s : samples) {
     out << s.fen << '|' << s.result << '\n';
   }
-  std::cout << "Wrote " << samples.size() << " samples to " << path << "\n";
+  std::cout << "Wrote " << samples.size() << " unique samples to " << path << "\n";
 }
 
 std::vector<RawSample> read_dataset(const std::string& path) {
@@ -511,24 +613,33 @@ PreparedSample prepare_sample(const RawSample& sample, engine::Evaluator& evalua
   return prepared;
 }
 
-std::vector<PreparedSample> prepare_samples(const std::vector<RawSample>& rawSamples,
+std::vector<PreparedSample> prepare_samples(std::vector<RawSample> rawSamples,
                                             engine::Evaluator& evaluator,
                                             const std::vector<int>& defaults,
                                             const std::span<const engine::EvalParamEntry>& entries,
                                             const Options& opts) {
+  if (opts.sampleLimit && rawSamples.size() > static_cast<size_t>(*opts.sampleLimit)) {
+    rawSamples.resize(static_cast<size_t>(*opts.sampleLimit));
+  }
+
+  // (Optional) Shuffle to better mix classes and avoid ordering artifacts
+  if (opts.shuffleBeforeTraining) {
+    std::mt19937_64 rng{std::random_device{}()};
+    std::shuffle(rawSamples.begin(), rawSamples.end(), rng);
+  }
+
   std::vector<PreparedSample> prepared;
   prepared.reserve(rawSamples.size());
 
-  int processed = 0;
+  ProgressMeter prepPM("Preparing samples", rawSamples.size(), opts.progressIntervalMs);
+  std::size_t processed = 0;
   for (const auto& sample : rawSamples) {
-    if (opts.sampleLimit && processed >= *opts.sampleLimit) break;
     auto ps = prepare_sample(sample, evaluator, defaults, entries);
     prepared.push_back(std::move(ps));
     ++processed;
-    if (processed % 10 == 0) {
-      std::cout << "Prepared " << processed << " samples...\n";
-    }
+    prepPM.update(processed);
   }
+  prepPM.finish();
   return prepared;
 }
 
@@ -545,42 +656,73 @@ TrainingResult train(const std::vector<PreparedSample>& samples, const std::vect
   std::vector<double> defaultsD(defaults.begin(), defaults.end());
   std::vector<double> gradient(paramCount, 0.0);
 
+  const double invN = 1.0 / static_cast<double>(samples.size());
+  ProgressMeter trainPM("Training (Texel)", static_cast<std::size_t>(opts.iterations),
+                        opts.progressIntervalMs);
+
   for (int iter = 0; iter < opts.iterations; ++iter) {
     std::fill(gradient.begin(), gradient.end(), 0.0);
     double loss = 0.0;
+
     for (const auto& sample : samples) {
+      // Linearized eval around defaults
       double eval = sample.baseEval;
       for (size_t j = 0; j < paramCount; ++j) {
         eval += (weights[j] - defaultsD[j]) * sample.gradients[j];
       }
+
+      // Logistic probability (clamped for numerical safety)
       const double scaled = std::clamp(eval / opts.logisticScale, -500.0, 500.0);
       const double prob = 1.0 / (1.0 + std::exp(-scaled));
       const double target = sample.result;
+
+      // Cross entropy
       const double eps = 1e-12;
       loss += -(target * std::log(std::max(prob, eps)) +
                 (1.0 - target) * std::log(std::max(1.0 - prob, eps)));
+
+      // dL/deval = (prob - target) / scale
       const double diff = (prob - target) / opts.logisticScale;
       for (size_t j = 0; j < paramCount; ++j) {
         gradient[j] += diff * sample.gradients[j];
       }
     }
-    const double invN = 1.0 / static_cast<double>(samples.size());
+
+    // Average gradients
     for (size_t j = 0; j < paramCount; ++j) {
-      weights[j] -= opts.learningRate * gradient[j] * invN;
+      gradient[j] *= invN;
     }
-    if ((iter + 1) % std::max(1, opts.iterations / 10) == 0 || iter == opts.iterations - 1) {
-      std::cout << "Iter " << (iter + 1) << "/" << opts.iterations << ": loss=" << (loss * invN)
+
+    // L2 regularization around defaults: add lambda * (w - w0) to gradient, and lambda *
+    // ||w-w0||^2/2 to loss
+    if (opts.l2 > 0.0) {
+      for (size_t j = 0; j < paramCount; ++j) {
+        const double diff = (weights[j] - defaultsD[j]);
+        gradient[j] += opts.l2 * diff;
+        loss += 0.5 * opts.l2 * diff * diff;
+      }
+    }
+
+    // Gradient descent step
+    for (size_t j = 0; j < paramCount; ++j) {
+      weights[j] -= opts.learningRate * gradient[j];
+    }
+
+    // keep output sparse; meter handles the heartbeat, print a few checkpoints
+    if ((iter + 1) % std::max(1, opts.iterations / 5) == 0 || iter == opts.iterations - 1) {
+      std::cout << "\nIter " << (iter + 1) << "/" << opts.iterations << ": loss=" << (loss * invN)
                 << "\n";
     }
+    trainPM.update(static_cast<std::size_t>(iter + 1));
   }
-  TrainingResult tr;
-  tr.weights = std::move(weights);
-  // recompute loss for reporting
+  trainPM.finish();
+
+  // Final loss recompute for reporting
   double loss = 0.0;
   for (const auto& sample : samples) {
     double eval = sample.baseEval;
     for (size_t j = 0; j < paramCount; ++j) {
-      eval += (tr.weights[j] - defaultsD[j]) * sample.gradients[j];
+      eval += (weights[j] - defaults[j]) * sample.gradients[j];
     }
     const double scaled = std::clamp(eval / opts.logisticScale, -500.0, 500.0);
     const double prob = 1.0 / (1.0 + std::exp(-scaled));
@@ -589,12 +731,26 @@ TrainingResult train(const std::vector<PreparedSample>& samples, const std::vect
     loss += -(target * std::log(std::max(prob, eps)) +
               (1.0 - target) * std::log(std::max(1.0 - prob, eps)));
   }
-  tr.finalLoss = loss / static_cast<double>(samples.size());
+  loss /= static_cast<double>(samples.size());
+
+  if (opts.l2 > 0.0) {
+    double reg = 0.0;
+    for (size_t j = 0; j < paramCount; ++j) {
+      const double diff = (weights[j] - defaults[j]);
+      reg += 0.5 * opts.l2 * diff * diff;
+    }
+    loss += reg;
+  }
+
+  TrainingResult tr;
+  tr.weights = std::move(weights);
+  tr.finalLoss = loss;
   return tr;
 }
 
 void emit_weights(const TrainingResult& result, const std::vector<int>& defaults,
-                  const std::span<const engine::EvalParamEntry>& entries, const Options& opts) {
+                  const std::span<const engine::EvalParamEntry>& entries, const Options& opts,
+                  const Options& originalOptsForHeader = Options{}) {
   std::vector<int> tuned;
   tuned.reserve(result.weights.size());
   for (double w : result.weights) tuned.push_back(static_cast<int>(std::llround(w)));
@@ -614,7 +770,16 @@ void emit_weights(const TrainingResult& result, const std::vector<int>& defaults
     out = &file;
   }
 
-  *out << "# Tuned evaluation parameters (Texel training loss: " << result.finalLoss << ")\n";
+  *out << "# Tuned evaluation parameters\n";
+  *out << "# Texel training loss: " << result.finalLoss << "\n";
+  *out << "# scale=" << originalOptsForHeader.logisticScale
+       << " lr=" << originalOptsForHeader.learningRate
+       << " iters=" << originalOptsForHeader.iterations << " l2=" << originalOptsForHeader.l2
+       << " sample_limit="
+       << (originalOptsForHeader.sampleLimit ? std::to_string(*originalOptsForHeader.sampleLimit)
+                                             : "none")
+       << " shuffled=" << (originalOptsForHeader.shuffleBeforeTraining ? "yes" : "no") << "\n";
+
   for (size_t i = 0; i < entries.size(); ++i) {
     *out << entries[i].name << "=" << tuned[i] << "  # default=" << defaults[i]
          << " tuned=" << result.weights[i] << "\n";
@@ -665,12 +830,13 @@ int main(int argc, char** argv) {
       }
       lilia::engine::Evaluator evaluator;
       lilia::engine::reset_eval_params();
-      auto defaults = lilia::engine::get_eval_param_values();
+      auto defaultsVals = lilia::engine::get_eval_param_values();
       auto entriesSpan = lilia::engine::eval_param_entries();
-      auto prepared = prepare_samples(rawSamples, evaluator, defaults, entriesSpan, opts);
+      auto prepared =
+          prepare_samples(std::move(rawSamples), evaluator, defaultsVals, entriesSpan, opts);
       std::cout << "Prepared " << prepared.size() << " samples for tuning\n";
-      auto result = train(prepared, defaults, entriesSpan, opts);
-      emit_weights(result, defaults, entriesSpan, opts);
+      auto result = train(prepared, defaultsVals, entriesSpan, opts);
+      emit_weights(result, defaultsVals, entriesSpan, opts, opts);
     }
   } catch (const std::exception& ex) {
     std::cerr << "Error: " << ex.what() << "\n";

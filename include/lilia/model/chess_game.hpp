@@ -19,7 +19,7 @@ class ChessGame {
   void buildHash();
   void doMove(core::Square from, core::Square to,
               core::PieceType promotion = core::PieceType::None);
-  void doMoveUCI(const std::string& uciMove);
+  bool doMoveUCI(const std::string& uciMove);
 
   bb::Piece getPiece(core::Square sq);
   const GameState& getGameState();

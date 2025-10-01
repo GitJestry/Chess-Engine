@@ -52,14 +52,14 @@ ChessGame::ChessGame() {
   m_legal_moves.reserve(256);
 }
 
-void ChessGame::doMoveUCI(const std::string& uciMove) {
+bool ChessGame::doMoveUCI(const std::string& uciMove) {
   const size_t len = uciMove.size();
-  if (len < 4) return;
+  if (len < 4) return false;
 
   const char* ptr = uciMove.c_str();
   const int from = squareFromUCI(ptr + 0);
   const int to = squareFromUCI(ptr + 2);
-  if (from < 0 || to < 0) return;
+  if (from < 0 || to < 0) return false;
 
   core::PieceType promo = core::PieceType::None;
   if (len >= 5) {
@@ -82,6 +82,7 @@ void ChessGame::doMoveUCI(const std::string& uciMove) {
     }
   }
   doMove(static_cast<core::Square>(from), static_cast<core::Square>(to), promo);
+  return true;
 }
 
 std::optional<Move> ChessGame::getMove(core::Square from, core::Square to) {
