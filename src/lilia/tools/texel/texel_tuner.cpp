@@ -18,9 +18,9 @@
 #endif
 
 #include "lilia/constants.hpp"
+#include "lilia/engine/engine.hpp"
 #include "lilia/engine/eval.hpp"
 #include "lilia/engine/eval_shared.hpp"
-#include "lilia/engine/engine.hpp"
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/core/model_types.hpp"
 
@@ -183,7 +183,8 @@ DefaultPaths compute_default_paths(const char* argv0) {
          "  --learning-rate <value>   Gradient descent learning rate (default 5e-4)\n"
          "  --scale <value>           Logistic scale in centipawns (default 256)\n"
       << "  --weights-output <file>   Write tuned weights to file (default "
-      << defaults.weightsFile.string() << ")\n"
+      << defaults.weightsFile.string()
+      << ")\n"
          "  --sample-limit <N>        Limit number of samples used for tuning\n"
          "  --help                    Show this message\n";
   std::exit(1);
@@ -253,6 +254,8 @@ StockfishResult run_stockfish(const Options& opts, const std::vector<std::string
   if (opts.stockfishPath.empty()) {
     throw std::runtime_error("Stockfish path required for data generation");
   }
+
+  // Build the command script for Stockfish
   std::ostringstream cmdStream;
   cmdStream << "uci\n";
   cmdStream << "isready\n";
@@ -265,18 +268,84 @@ StockfishResult run_stockfish(const Options& opts, const std::vector<std::string
   if (opts.depth > 0) {
     cmdStream << "go depth " << opts.depth << "\n";
   } else {
-    cmdStream << "go movetime 1000\n";  // fallback 1s
+    cmdStream << "go movetime 1000\n";
   }
   cmdStream << "quit\n";
 
   const auto tmpDir = fs::temp_directory_path();
   const auto cmdFile = tmpDir / fs::path("texel_sf_cmd.txt");
   const auto outFile = tmpDir / fs::path("texel_sf_out.txt");
+
   {
-    std::ofstream out(cmdFile, std::ios::trunc);
+    std::ofstream out(cmdFile, std::ios::trunc | std::ios::binary);
     out << cmdStream.str();
   }
 
+#ifdef _WIN32
+  // ---- Windows: spawn without a shell, redirecting stdio to our files ----
+  SECURITY_ATTRIBUTES sa{};
+  sa.nLength = sizeof(sa);
+  sa.bInheritHandle = TRUE;  // allow child to inherit handles
+
+  HANDLE hIn = CreateFileW(cmdFile.wstring().c_str(), GENERIC_READ, FILE_SHARE_READ, &sa,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (hIn == INVALID_HANDLE_VALUE) {
+    throw std::runtime_error("Failed to open temp stdin file for Stockfish");
+  }
+
+  HANDLE hOut = CreateFileW(outFile.wstring().c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa,
+                            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (hOut == INVALID_HANDLE_VALUE) {
+    CloseHandle(hIn);
+    throw std::runtime_error("Failed to open temp stdout file for Stockfish");
+  }
+
+  STARTUPINFOW si{};
+  si.cb = sizeof(si);
+  si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+  si.wShowWindow = SW_HIDE;
+  si.hStdInput = hIn;
+  si.hStdOutput = hOut;
+  si.hStdError = hOut;
+
+  PROCESS_INFORMATION pi{};
+  std::wstring app = fs::path(opts.stockfishPath).wstring();
+
+  BOOL ok = CreateProcessW(
+      /*lpApplicationName=*/app.c_str(),
+      /*lpCommandLine=*/nullptr,  // no args
+      /*lpProcessAttributes=*/nullptr,
+      /*lpThreadAttributes=*/nullptr,
+      /*bInheritHandles=*/TRUE,  // inherit our std handles
+      /*dwCreationFlags=*/CREATE_NO_WINDOW,
+      /*lpEnvironment=*/nullptr,
+      /*lpCurrentDirectory=*/nullptr,
+      /*lpStartupInfo=*/&si,
+      /*lpProcessInformation=*/&pi);
+
+  // We can close our side of the handles now; child has inherited them.
+  CloseHandle(hIn);
+  CloseHandle(hOut);
+
+  if (!ok) {
+    DWORD err = GetLastError();
+    throw std::runtime_error("CreateProcessW failed for Stockfish (Win32 error " +
+                             std::to_string(err) + ")");
+  }
+
+  WaitForSingleObject(pi.hProcess, INFINITE);
+
+  DWORD exitCode = 0;
+  GetExitCodeProcess(pi.hProcess, &exitCode);
+  CloseHandle(pi.hThread);
+  CloseHandle(pi.hProcess);
+
+  if (exitCode != 0) {
+    throw std::runtime_error("Stockfish exited with code " +
+                             std::to_string(static_cast<int>(exitCode)));
+  }
+#else
+  // ---- POSIX: keep simple shell redirection ----
   std::ostringstream execCmd;
   execCmd << '"' << opts.stockfishPath << '"' << " < \"" << cmdFile.string() << "\" > \""
           << outFile.string() << "\"";
@@ -284,10 +353,12 @@ StockfishResult run_stockfish(const Options& opts, const std::vector<std::string
   if (rc != 0) {
     throw std::runtime_error("Failed to run Stockfish command");
   }
+#endif
 
+  // Parse bestmove from the captured output
   StockfishResult result;
   {
-    std::ifstream in(outFile);
+    std::ifstream in(outFile, std::ios::binary);
     std::string line;
     while (std::getline(in, line)) {
       if (line.rfind("bestmove ", 0) == 0) {
@@ -296,9 +367,11 @@ StockfishResult run_stockfish(const Options& opts, const std::vector<std::string
       }
     }
   }
+
   std::error_code ec;
   fs::remove(cmdFile, ec);
   fs::remove(outFile, ec);
+
   return result;
 }
 

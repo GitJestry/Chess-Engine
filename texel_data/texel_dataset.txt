@@ -1,0 +1,19 @@
+# FEN|result
+rnbqkbnr/1ppppppp/8/p7/8/PP6/2PPPPPP/RNBQKBNR w KQkq - 0 3|0.5
+rnbqkbnr/2pppppp/1p6/8/p7/PPPP4/4PPPP/RNBQKBNR w KQkq - 0 5|0.5
+rnbqkbnr/2pppppp/8/8/pp6/PPPPPP2/6PP/RNBQKBNR w KQkq - 0 7|0.5
+rnbqkbnr/3ppppp/8/2p5/pp6/PPPPPPPP/8/RNBQKBNR w KQkq - 0 9|0.5
+rnbqkbnr/4pppp/8/2pp4/ppPP4/PP2PPPP/8/RNBQKBNR w KQkq - 0 11|0.5
+rnbqkbnr/5ppp/8/2ppp3/ppPPPP2/PP4PP/8/RNBQKBNR w KQkq - 0 13|0.5
+rnbqkbnr/6pp/8/2pppp2/ppPPPPPP/PP6/8/RNBQKBNR w KQkq - 0 15|0.5
+rnbqkbnr/8/6pp/2ppppPP/ppPPPP2/PP6/8/RNBQKBNR w KQkq - 0 17|0.5
+rnbqkbnr/8/6pp/1PppppPP/2PPPP2/1P6/p7/RNBQKBNR w KQkq - 0 19|0.5
+rnbqkbnr/1ppppppp/8/p7/8/PP6/2PPPPPP/RNBQKBNR w KQkq - 0 3|0.5
+rnbqkbnr/2pppppp/1p6/8/p7/PPPP4/4PPPP/RNBQKBNR w KQkq - 0 5|0.5
+rnbqkbnr/2pppppp/8/8/pp6/PPPPPP2/6PP/RNBQKBNR w KQkq - 0 7|0.5
+rnbqkbnr/3ppppp/8/2p5/pp6/PPPPPPPP/8/RNBQKBNR w KQkq - 0 9|0.5
+rnbqkbnr/4pppp/8/2pp4/ppPP4/PP2PPPP/8/RNBQKBNR w KQkq - 0 11|0.5
+rnbqkbnr/5ppp/8/2ppp3/ppPPPP2/PP4PP/8/RNBQKBNR w KQkq - 0 13|0.5
+rnbqkbnr/6pp/8/2pppp2/ppPPPPPP/PP6/8/RNBQKBNR w KQkq - 0 15|0.5
+rnbqkbnr/8/6pp/2ppppPP/ppPPPP2/PP6/8/RNBQKBNR w KQkq - 0 17|0.5
+rnbqkbnr/8/6pp/1PppppPP/2PPPP2/1P6/p7/RNBQKBNR w KQkq - 0 19|0.5
