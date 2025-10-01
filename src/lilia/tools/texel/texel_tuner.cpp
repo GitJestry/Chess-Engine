@@ -55,21 +55,22 @@ struct PreparedSample {
 };
 
 [[noreturn]] void usage_and_exit() {
-  std::cerr << "Usage: texel_tuner [--generate-data] [--tune] [options]\n"
-               "Options:\n"
-               "  --stockfish <path>        Path to Stockfish binary (required for generation)\n"
-               "  --games <N>               Number of self-play games for data generation (default 8)\n"
-               "  --depth <D>               Search depth for Stockfish (default 12)\n"
-               "  --max-plies <N>           Maximum plies per game (default 160)\n"
-               "  --sample-skip <N>         Skip first N plies before sampling (default 6)\n"
-               "  --sample-stride <N>       Sample every N plies thereafter (default 4)\n"
-               "  --data <file>             Dataset path (default texel_dataset.txt)\n"
-               "  --iterations <N>          Training iterations (default 200)\n"
-               "  --learning-rate <value>   Gradient descent learning rate (default 5e-4)\n"
-               "  --scale <value>           Logistic scale in centipawns (default 256)\n"
-               "  --weights-output <file>   Write tuned weights to file\n"
-               "  --sample-limit <N>        Limit number of samples used for tuning\n"
-               "  --help                    Show this message\n";
+  std::cerr
+      << "Usage: texel_tuner [--generate-data] [--tune] [options]\n"
+         "Options:\n"
+         "  --stockfish <path>        Path to Stockfish binary (required for generation)\n"
+         "  --games <N>               Number of self-play games for data generation (default 8)\n"
+         "  --depth <D>               Search depth for Stockfish (default 12)\n"
+         "  --max-plies <N>           Maximum plies per game (default 160)\n"
+         "  --sample-skip <N>         Skip first N plies before sampling (default 6)\n"
+         "  --sample-stride <N>       Sample every N plies thereafter (default 4)\n"
+         "  --data <file>             Dataset path (default texel_dataset.txt)\n"
+         "  --iterations <N>          Training iterations (default 200)\n"
+         "  --learning-rate <value>   Gradient descent learning rate (default 5e-4)\n"
+         "  --scale <value>           Logistic scale in centipawns (default 256)\n"
+         "  --weights-output <file>   Write tuned weights to file\n"
+         "  --sample-limit <N>        Limit number of samples used for tuning\n"
+         "  --help                    Show this message\n";
   std::exit(1);
 }
 
@@ -155,8 +156,8 @@ StockfishResult run_stockfish(const Options& opts, const std::vector<std::string
   }
 
   std::ostringstream execCmd;
-  execCmd << '"' << opts.stockfishPath << '"'
-          << " < \"" << cmdFile.string() << "\" > \"" << outFile.string() << "\"";
+  execCmd << '"' << opts.stockfishPath << '"' << " < \"" << cmdFile.string() << "\" > \""
+          << outFile.string() << "\"";
   const int rc = std::system(execCmd.str().c_str());
   if (rc != 0) {
     throw std::runtime_error("Failed to run Stockfish command");
@@ -210,7 +211,8 @@ std::vector<RawSample> generate_samples(const Options& opts) {
     std::vector<std::pair<std::string, core::Color>> gamePositions;
 
     for (int ply = 0; ply < opts.maxPlies; ++ply) {
-      if (ply >= opts.sampleSkip && ((ply - opts.sampleSkip) % std::max(1, opts.sampleStride) == 0)) {
+      if (ply >= opts.sampleSkip &&
+          ((ply - opts.sampleSkip) % std::max(1, opts.sampleStride) == 0)) {
         gamePositions.emplace_back(game.getFen(), game.getGameState().sideToMove);
       }
 
@@ -367,8 +369,8 @@ TrainingResult train(const std::vector<PreparedSample>& samples, const std::vect
       weights[j] -= opts.learningRate * gradient[j] * invN;
     }
     if ((iter + 1) % std::max(1, opts.iterations / 10) == 0 || iter == opts.iterations - 1) {
-      std::cout << "Iter " << (iter + 1) << "/" << opts.iterations << ": loss="
-                << (loss * invN) << "\n";
+      std::cout << "Iter " << (iter + 1) << "/" << opts.iterations << ": loss=" << (loss * invN)
+                << "\n";
     }
   }
   TrainingResult tr;
