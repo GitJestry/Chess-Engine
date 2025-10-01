@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -19,6 +20,7 @@
 #include "lilia/constants.hpp"
 #include "lilia/engine/eval.hpp"
 #include "lilia/engine/eval_shared.hpp"
+#include "lilia/engine/engine.hpp"
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/core/model_types.hpp"
 
@@ -322,9 +324,12 @@ std::vector<RawSample> generate_samples(const Options& opts) {
   if (!opts.generateData) return {};
   std::vector<RawSample> samples;
   std::vector<std::string> moveHistory;
-  samples.reserve(static_cast<size_t>(opts.games) * 32u);
+  const size_t maxSamples = opts.sampleLimit ? static_cast<size_t>(*opts.sampleLimit)
+                                             : std::numeric_limits<size_t>::max();
+  samples.reserve(std::min(static_cast<size_t>(opts.games) * 32u, maxSamples));
 
   for (int gameIdx = 0; gameIdx < opts.games; ++gameIdx) {
+    if (samples.size() >= maxSamples) break;
     model::ChessGame game;
     game.setPosition(core::START_FEN);
     moveHistory.clear();
@@ -359,7 +364,9 @@ std::vector<RawSample> generate_samples(const Options& opts) {
       sample.fen = fen;
       sample.result = result_from_pov(finalRes, winner, pov);
       samples.push_back(std::move(sample));
+      if (samples.size() >= maxSamples) break;
     }
+    if (samples.size() >= maxSamples) break;
   }
   return samples;
 }
@@ -549,6 +556,7 @@ void emit_weights(const TrainingResult& result, const std::vector<int>& defaults
 int main(int argc, char** argv) {
   using namespace lilia::tools::texel;
   try {
+    lilia::engine::Engine::init();
     const DefaultPaths defaults = compute_default_paths(argc > 0 ? argv[0] : nullptr);
     Options opts = parse_args(argc, argv, defaults);
 
