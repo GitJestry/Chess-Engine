@@ -110,7 +110,9 @@ void GameManager::completePendingPromotion(core::PieceType promotion) {
 
 void GameManager::applyMoveAndNotify(const model::Move &mv, bool onClick) {
   const core::Color mover = m_game.getGameState().sideToMove;
-  m_game.doMove(mv.from(), mv.to(), mv.promotion());
+  if (!m_game.doMove(mv.from(), mv.to(), mv.promotion())) {
+    return;
+  }
 
   bool wasPlayerMove = isHuman(mover);
 

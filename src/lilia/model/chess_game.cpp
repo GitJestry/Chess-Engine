@@ -81,8 +81,7 @@ bool ChessGame::doMoveUCI(const std::string& uciMove) {
         break;
     }
   }
-  doMove(static_cast<core::Square>(from), static_cast<core::Square>(to), promo);
-  return true;
+  return doMove(static_cast<core::Square>(from), static_cast<core::Square>(to), promo);
 }
 
 std::optional<Move> ChessGame::getMove(core::Square from, core::Square to) {
@@ -288,14 +287,17 @@ bb::Piece ChessGame::getPiece(core::Square sq) {
   return opt.value_or(bb::Piece{core::PieceType::None, core::Color::White});
 }
 
-void ChessGame::doMove(core::Square from, core::Square to, core::PieceType promotion) {
+bool ChessGame::doMove(core::Square from, core::Square to, core::PieceType promotion) {
   const auto& moves = generateLegalMoves();
   for (const auto& m : moves) {
     if (m.from() == from && m.to() == to && m.promotion() == promotion) {
-      m_position.doMove(m);
+      if (m_position.doMove(m)) {
+        return true;
+      }
       break;  // execute once
     }
   }
+  return false;
 }
 
 bool ChessGame::isKingInCheck(core::Color from) const {
