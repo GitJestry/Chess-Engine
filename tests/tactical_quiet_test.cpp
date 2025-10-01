@@ -37,6 +37,24 @@ int main() {
     assert(*res.bestMove == expected);
   }
 
+  // UCI move parsing should stay compatible with Stockfish output
+  {
+    model::ChessGame game;
+    game.setPosition(core::START_FEN);
+    assert(game.doMoveUCI("e2e4"));
+    assert(game.doMoveUCI("e7e5"));
+    assert(game.doMoveUCI("g1f3"));
+    assert(game.doMoveUCI("b8c6"));
+
+    const std::string fen = game.getFen();
+    const auto boardEnd = fen.find(' ');
+    const std::string board = fen.substr(0, boardEnd);
+    assert(board == "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R");
+
+    // Trying to play the same pawn move again must fail.
+    assert(!game.doMoveUCI("e2e4"));
+  }
+
   // Quiet piece move threatening a rook
   {
     model::ChessGame game;
