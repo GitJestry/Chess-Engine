@@ -1,6 +1,7 @@
 #include "lilia/controller/game_manager.hpp"
 
 #include <chrono>
+#include <iostream>
 
 #include "lilia/controller/bot_player.hpp"
 #include "lilia/controller/player.hpp"
@@ -110,7 +111,10 @@ void GameManager::completePendingPromotion(core::PieceType promotion) {
 
 void GameManager::applyMoveAndNotify(const model::Move &mv, bool onClick) {
   const core::Color mover = m_game.getGameState().sideToMove;
-  m_game.doMove(mv.from(), mv.to(), mv.promotion());
+  if (!m_game.doMove(mv.from(), mv.to(), mv.promotion())) {
+    std::cerr << "[GameManager] Failed to apply move.\n";
+    return;
+  }
 
   bool wasPlayerMove = isHuman(mover);
 

@@ -252,9 +252,7 @@ int UCI::run() {
         std::istringstream iss(movesStr);
         std::string moveUci;
         while (iss >> moveUci) {
-          try {
-            m_game.doMoveUCI(moveUci);
-          } catch (...) {
+          if (!m_game.doMoveUCI(moveUci)) {
             std::cerr << "[UCI] warning: applyMoveUCI failed for " << moveUci << "\n";
           }
         }
