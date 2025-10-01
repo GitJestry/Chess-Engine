@@ -178,6 +178,27 @@ std::optional<fs::path> find_stockfish_in_dir(const fs::path& dir) {
   return std::nullopt;
 }
 
+// Keep only the first 4 FEN fields (piece placement, active color, castling, en passant)
+// so positions that differ only by clocks don't sneak in as "unique".
+std::string fen_key(std::string_view fen) {
+  std::array<std::string, 6> tok{};
+  size_t i = 0, start = 0;
+  for (; i < 6; ++i) {
+    auto sp = fen.find(' ', start);
+    if (sp == std::string_view::npos) {
+      tok[i] = std::string(fen.substr(start));
+      ++i;
+      break;
+    }
+    tok[i] = std::string(fen.substr(start, sp - start));
+    start = sp + 1;
+  }
+  // join first four
+  std::ostringstream os;
+  os << tok[0] << ' ' << tok[1] << ' ' << tok[2] << ' ' << tok[3];
+  return os.str();
+}
+
 fs::path locate_project_root(fs::path start) {
   std::error_code ec;
   if (!start.is_absolute()) {
@@ -505,13 +526,19 @@ std::vector<RawSample> generate_samples(const Options& opts) {
     std::array<int, 2> sideSampleCounters{0, 0};
 
     for (int ply = 0; ply < opts.maxPlies; ++ply) {
+      // If the current position is already terminal, stop the game before sampling.
+      game.checkGameResult();
+      if (game.getResult() != core::GameResult::ONGOING) {
+        break;
+      }
       // Sample current position (FEN + POV) periodically
       if (ply >= opts.sampleSkip) {
         const auto sideToMove = game.getGameState().sideToMove;
         auto& counter = sideSampleCounters[static_cast<std::size_t>(sideToMove)];
         if (counter % stride == 0) {
           const auto fen = game.getFen();
-          if (seen.insert(fen).second) {  // only record new FENs
+          const auto key = fen_key(fen);
+          if (seen.insert(key).second) {  // only record new positions
             gamePositions.emplace_back(fen, sideToMove);
           }
         }
@@ -520,6 +547,9 @@ std::vector<RawSample> generate_samples(const Options& opts) {
 
       StockfishResult res = run_stockfish(opts, moveHistory);
       if (res.bestmove.empty() || res.bestmove == "(none)") {
+        // Update result for the *current* position (mate/stalemate) before bailing.
+        game.checkGameResult();
+        // Side to move here has no legal moves -> terminal.
         break;
       }
       if (!game.doMoveUCI(res.bestmove)) {
@@ -599,7 +629,9 @@ PreparedSample prepare_sample(const RawSample& sample, engine::Evaluator& evalua
   prepared.gradients.resize(entries.size());
 
   evaluator.clearCaches();
-  prepared.baseEval = static_cast<double>(evaluator.evaluate(pos));
+  const auto pov = game.getGameState().sideToMove;
+  const double sgn = (pov == core::Color::White) ? 1.0 : -1.0;
+  prepared.baseEval = sgn * static_cast<double>(evaluator.evaluate(pos));
 
   constexpr int delta = 1;
   for (size_t i = 0; i < entries.size(); ++i) {
@@ -608,11 +640,11 @@ PreparedSample prepare_sample(const RawSample& sample, engine::Evaluator& evalua
 
     *ptr = orig + delta;
     evaluator.clearCaches();
-    const double plus = evaluator.evaluate(pos);
+    const double plus = sgn * evaluator.evaluate(pos);
 
     *ptr = orig - delta;
     evaluator.clearCaches();
-    const double minus = evaluator.evaluate(pos);
+    const double minus = sgn * evaluator.evaluate(pos);
 
     *ptr = orig;
     prepared.gradients[i] = (plus - minus) / (2.0 * delta);
