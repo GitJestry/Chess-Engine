@@ -1,6 +1,9 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <span>
+#include <string>
+#include <vector>
 
 #include "lilia/model/core/bitboard.hpp"
 
@@ -14,6 +17,33 @@ inline constexpr int mirror_sq_black(int sq) noexcept {
 }
 
 // =============================================================================
+// Eval parameter registry
+// =============================================================================
+
+struct EvalParams {
+#define EVAL_PARAM_SCALAR(name, default_value) int name = default_value;
+#define EVAL_PARAM_ARRAY(name, size, ...) std::array<int, size> name = __VA_ARGS__;
+#include "lilia/engine/eval_params.inc"
+#undef EVAL_PARAM_SCALAR
+#undef EVAL_PARAM_ARRAY
+};
+
+EvalParams& eval_params();
+const EvalParams& default_eval_params();
+void reset_eval_params();
+
+struct EvalParamEntry {
+  std::string name;
+  int* value = nullptr;
+  int default_value = 0;
+};
+
+std::span<const EvalParamEntry> eval_param_entries();
+std::vector<int> get_eval_param_values();
+std::vector<int> get_default_eval_param_values();
+void set_eval_param_values(std::span<const int> values);
+
+// =============================================================================
 // Globale Skalen & Mischer
 // =============================================================================
 constexpr int MAX_PHASE = 16;
@@ -22,255 +52,25 @@ inline int taper(int mg, int eg, int phase) {
   return ((mg * phase) + (eg * (MAX_PHASE - phase))) / MAX_PHASE;
 }
 
-// Tempo (etwas moderater im EG)
-constexpr int TEMPO_MG = 12;
-constexpr int TEMPO_EG = 6;
-
-// Space-Term im EG abgeschwächt
-constexpr int SPACE_EG_DEN = 3;
-
-// --- Pins
-inline constexpr int PIN_MINOR = 14;
-inline constexpr int PIN_ROOK = 10;
-inline constexpr int PIN_QUEEN = 6;
-
-// --- Safe checks (MG-heavy)
-inline constexpr int KS_SAFE_CHECK_N = 12;
-inline constexpr int KS_SAFE_CHECK_B = 10;
-inline constexpr int KS_SAFE_CHECK_R = 14;
-inline constexpr int KS_SAFE_CHECK_QB = 8;   // queen on bishop line
-inline constexpr int KS_SAFE_CHECK_QR = 10;  // queen on rook line
-
-// --- Holes
-inline constexpr int HOLE_OCC_KN = 8;  // knight sitting on enemy-half hole
-inline constexpr int HOLE_ATT_BI = 3;  // bishop attacks hole in king ring (per square)
-
-// --- Pawn levers
-inline constexpr int PAWN_LEVER_CENTER = 6;
-inline constexpr int PAWN_LEVER_WING = 3;
-
-// --- X-ray king-file pressure
-inline constexpr int XRAY_KFILE = 4;
-
-// --- Q+B battery toward king
-inline constexpr int QB_BATTERY = 6;
-
-// --- Central blockers (opening-weighted)
-inline constexpr int CENTER_BLOCK_PEN = 6;
 // after: tie them to MAX_PHASE so “opening” really means early-phase
 constexpr int CENTER_BLOCK_PHASE_MAX = MAX_PHASE;
 constexpr int CENTER_BLOCK_PHASE_DEN = MAX_PHASE;
 
-// --- Weakly-defended (soft pressure)
-inline constexpr int WEAK_MINOR = 6;
-inline constexpr int WEAK_ROOK = 8;
-inline constexpr int WEAK_QUEEN = 12;
-
-// --- Fianchetto structure near king (MG)
-inline constexpr int FIANCHETTO_OK = 6;
-inline constexpr int FIANCHETTO_HOLE = 8;
-
-// =============================================================================
-// Pawns
-// =============================================================================
-constexpr int ISO_P = 12;
-constexpr int DOUBLED_P = 16;
-constexpr int BACKWARD_P = 8;
-constexpr int PHALANX = 8;
-constexpr int CANDIDATE_P = 10;
-constexpr int CONNECTED_PASSERS = 20;
-
-constexpr int PASSED_MG[8] = {0, 4, 8, 16, 36, 78, 150, 0};
-constexpr int PASSED_EG[8] = {0, 8, 14, 28, 64, 132, 230, 0};
-
-// Zusatzbedingungen
-constexpr int PASS_BLOCK = 12;      // Blockade vor dem Passer
-constexpr int PASS_FREE = 16;       // freie Vorzugsbahn
-constexpr int PASS_KBOOST = 16;     // eigener König nahe
-constexpr int PASS_KBLOCK = 20;     // gegnerischer König blockt
-constexpr int PASS_PIECE_SUPP = 8;  // gedeckt durch Figur
-constexpr int PASS_KPROX = 4;       // gegnerischer König in Nähe (Abzug)
-constexpr int PASS_NEAR_PROMO_STEP3_MG = 20;
-constexpr int PASS_NEAR_PROMO_STEP3_EG = 40;
-constexpr int PASS_NEAR_PROMO_STEP2_MG = 64;
-constexpr int PASS_NEAR_PROMO_STEP2_EG = 128;
-
-// =============================================================================
-// King safety (Druckgewichtung & Clamp)
-// =============================================================================
-constexpr int KS_W_N = 16, KS_W_B = 18, KS_W_R = 12, KS_W_Q = 24;
-constexpr int KS_RING_BONUS = 1;
-constexpr int KS_MISS_SHIELD = 8;
-constexpr int KS_OPEN_FILE = 10;
-constexpr int KS_CLAMP = 224;
-constexpr int KS_MG_CLAMP = 400;
-constexpr int KS_EG_CLAMP = 200;
-constexpr int KS_TACTICAL_MG_CLAMP = 300;
-
 // Geometrie / Power-Counting
 constexpr int KING_RING_RADIUS = 2;
 constexpr int KING_SHIELD_DEPTH = 2;
-constexpr int KS_POWER_COUNT_CLAMP = 12;
 
-// Mischung MG/EG (mit/ohne Damen; HeavyPieces = R+Q beider Seiten)
-constexpr int KS_MIX_MG_Q_ON = 100;
-constexpr int KS_MIX_MG_Q_OFF = 55;
-constexpr int KS_MIX_EG_HEAVY_THRESHOLD = 2;
-constexpr int KS_MIX_EG_IF_HEAVY = 40;
-constexpr int KS_MIX_EG_IF_LIGHT = 18;
-
-// =============================================================================
-// King pawn shelter / storm
-// =============================================================================
-static constexpr int SHELTER[8] = {0, 0, 2, 6, 12, 20, 28, 34};
-static constexpr int STORM[8] = {0, 6, 9, 12, 16, 20, 24, 28};
-constexpr int SHELTER_EG_DEN = 4;
-
-// =============================================================================
-// Pieces/style
-// =============================================================================
-constexpr int BISHOP_PAIR = 32;
-
-constexpr int BAD_BISHOP_PER_PAWN = 2;
-constexpr int BAD_BISHOP_SAME_COLOR_THRESHOLD = 4;
-constexpr int BAD_BISHOP_OPEN_NUM = 1;
-constexpr int BAD_BISHOP_OPEN_DEN = 2;
-
-constexpr int OUTPOST_KN = 24;
-constexpr int OUTPOST_DEEP_RANK_WHITE = 4;  // r >= 4
-constexpr int OUTPOST_DEEP_RANK_BLACK = 3;  // r <= 3
-constexpr int OUTPOST_DEEP_EXTRA = 6;
-constexpr int CENTER_CTRL = 6;
-constexpr int OUTPOST_CENTER_SQ_BONUS = 6;
-
-constexpr int KNIGHT_RIM = 10;
-
-constexpr int ROOK_OPEN = 18;
-constexpr int ROOK_SEMI = 10;
-constexpr int ROOK_ON_7TH = 20;
-constexpr int CONNECTED_ROOKS = 14;
-
-constexpr int ROOK_CENTRAL_FILE = 6;  // rooks on or controlling c–f files
-
-constexpr int ROOK_BEHIND_PASSER = 24;
-constexpr int ROOK_BEHIND_PASSER_HALF = ROOK_BEHIND_PASSER / 2;
-constexpr int ROOK_BEHIND_PASSER_THIRD = ROOK_BEHIND_PASSER / 3;
-
-// Rook vs Königsdatei (MG-Effekt)
-constexpr int ROOK_SEMI_ON_KING_FILE = 6;
-constexpr int ROOK_OPEN_ON_KING_FILE = 10;
-
-// EG-only Rook-Extras
-constexpr int ROOK_PASSER_PROGRESS_START_RANK = 3;
-constexpr int ROOK_PASSER_PROGRESS_MULT = ROOK_BEHIND_PASSER_THIRD;
-constexpr int ROOK_CUT_MIN_SEPARATION = 2;
-constexpr int ROOK_CUT_BONUS = 12;
-
-// Stopper-Qualität (wer blockiert das Stoppfeld?)
-constexpr int BLOCK_PASSER_STOP_KNIGHT = 10;  // gut
-constexpr int BLOCK_PASSER_STOP_BISHOP = 6;   // schlecht (als Malus ggü. gut)
-
-// =============================================================================
-// Threats & Hänger
-// =============================================================================
-constexpr int THR_PAWN_MINOR = 8;
-constexpr int THR_PAWN_ROOK = 16;
-constexpr int THR_PAWN_QUEEN = 20;
-
-constexpr int QUEEN_PAWN_CHASE_IMMEDIATE = 90;
-constexpr int QUEEN_PAWN_CHASE_SINGLE = 60;
-constexpr int QUEEN_PAWN_CHASE_DOUBLE = 45;
-
-constexpr int HANG_MINOR = 10;
-constexpr int HANG_ROOK = 14;
-constexpr int HANG_QUEEN = 22;
-
-constexpr int MINOR_ON_QUEEN = 6;
-
-// Mischung: Threats stark im MG, deutlich geringer im EG
-constexpr int THREATS_MG_NUM = 3, THREATS_MG_DEN = 2;  // *1.5
-constexpr int THREATS_EG_DEN = 4;
-
-// =============================================================================
-// Space
-// =============================================================================
-constexpr int SPACE_BASE = 4;
-constexpr int SPACE_SCALE_BASE = 2;  // 2 + min(#Minors, Sättigung)
-constexpr int SPACE_MINOR_SATURATION = 4;
-constexpr int SPACE_CLAMP = 200;
-
-// =============================================================================
-// Entwicklung & Blockaden
-// =============================================================================
-constexpr int DEVELOPMENT_PIECE_ON_HOME_PENALTY = 12;
-constexpr int DEVELOPMENT_ROOK_ON_HOME_PENALTY = 8;
-constexpr int DEVELOPMENT_QUEEN_ON_HOME_PENALTY = 10;
-constexpr int DEV_MG_PHASE_CUTOFF = 12;
-constexpr int DEV_MG_PHASE_DEN = 12;
-constexpr int DEV_EG_DEN = 8;
-
-constexpr int PIECE_BLOCKING_PENALTY = 8;
-
-// =============================================================================
-// King-Tropism
-// =============================================================================
-constexpr int TROPISM_BASE_KN = 12;
-constexpr int TROPISM_BASE_BI = 10;
-constexpr int TROPISM_BASE_RO = 8;
-constexpr int TROPISM_BASE_QU = 6;
-constexpr int TROPISM_DIST_FACTOR = 2;  // base - 2*Dist
-constexpr int TROPISM_EG_DEN = 2;
-
-// King Aktivität EG
-constexpr int KING_ACTIVITY_EG_MULT = 2;
-
-// =============================================================================
-// Passed-pawn-race (EG, figurenarm)
-// =============================================================================
-constexpr int PASS_RACE_MAX_MINORMAJOR = 2;      // max. N/B/R total (ohne Damen)
+// Passed pawn race flags (non-tunable)
 constexpr bool PASS_RACE_NEED_QUEENLESS = true;  // nur ohne Damen
-constexpr int PASS_RACE_STM_ADJ = 1;             // side-to-move Vorteil
-constexpr int PASS_RACE_MULT = 4;
 
-// =============================================================================
-// Endgame scaling
-// =============================================================================
-constexpr int FULL_SCALE = 256;
-constexpr int SCALE_DRAW = 0;
-constexpr int SCALE_VERY_DRAWISH = 96;  // ~0.375
-constexpr int SCALE_REDUCED = 144;      // ~0.56
-constexpr int SCALE_MEDIUM = 160;       // ~0.625
-constexpr int KN_CORNER_PAWN_SCALE = 32;
-constexpr int OPP_BISHOPS_SCALE = 190;  // /256
-
-// =============================================================================
-// Castles & Center
-// =============================================================================
+// Utility wrappers for derived constants
 inline bool rook_on_start_square(bb::Bitboard rooks, bool white) {
   return white ? (rooks & (bb::sq_bb(Square(0)) | bb::sq_bb(Square(7))))     // a1,h1
                : (rooks & (bb::sq_bb(Square(56)) | bb::sq_bb(Square(63))));  // a8,h8
 }
 
-constexpr int CASTLE_BONUS = 24;
-
-constexpr int CENTER_BACK_PENALTY_Q_ON = 32;   // König im Zentrum (e/d) mit Damen
-constexpr int CENTER_BACK_PENALTY_Q_OFF = 12;  // ohne Damen schwächer
-constexpr int CENTER_BACK_OPEN_FILE_OPEN = 2;  // offene/halb-offene d/e-Dateien verstärken
-constexpr int CENTER_BACK_OPEN_FILE_SEMI = 1;
-constexpr int CENTER_BACK_OPEN_FILE_WEIGHT = 4;
-
-constexpr int ROOK_KFILE_PRESS_FREE = 2;     // pro freiem Feld in der Linie zum K
-constexpr int ROOK_KFILE_PRESS_PAWNATT = 3;  // Abzug wenn Feld von Bauern gedeckt
-constexpr int ROOK_LIFT_SAFE = 6;
-
-constexpr int KS_ESCAPE_EMPTY = 6;  // Basis für Fluchtfelder
-constexpr int KS_ESCAPE_FACTOR = 2;
-
-constexpr int EARLY_QUEEN_MALUS = 8;  // Frühe Dame bei Minors auf Grundreihe
-constexpr int UNCASTLED_PENALTY_Q_ON = 10;
-
 // =============================================================================
-// Mobility Profile & Clamp
+// Mobility Profile & Clamp (remain constexpr tables)
 // =============================================================================
 static constexpr int KN_MOB_MG[9] = {-14, -8, -4, 0, 4, 8, 12, 16, 18};
 static constexpr int KN_MOB_EG[9] = {-10, -6, -2, 2, 6, 10, 12, 14, 16};
@@ -285,16 +85,6 @@ static constexpr int QU_MOB_MG[28] = {-8, -6, -4, -2, 0,  2,  4,  6,  8,  10, 12
                                       20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46};
 static constexpr int QU_MOB_EG[28] = {-6, -4, -2, 0,  2,  4,  6,  8,  10, 12, 14, 16, 18, 20,
                                       22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48};
-
-// Mobility-Output clamped (etwas enger als zuvor)
-constexpr int MOBILITY_CLAMP = 512;
-
-// =============================================================================
-// Werte & Phase (white POV) — leicht SF-angelehnt
-// =============================================================================
-inline constexpr std::array<int, 6> VAL_MG = {82, 337, 365, 477, 1025, 0};
-inline constexpr std::array<int, 6> VAL_EG = {94, 300, 320, 500, 940, 0};
-inline constexpr std::array<int, 6> PHASE_W = {0, 1, 1, 2, 4, 0};
 
 // =============================================================================
 // PSTs (mg/eg) — belassen (engine-spezifisch)
