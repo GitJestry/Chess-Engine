@@ -59,6 +59,16 @@ target_include_directories(lilia_engine PRIVATE
   ${PROJECT_SOURCE_DIR}/include/lilia
 )
 
+add_executable(texel_tuner
+  src/lilia/tools/texel/texel_tuner.cpp
+  ${CORE_FILES}
+)
+target_compile_definitions(texel_tuner PRIVATE LILIA_ENGINE NOMINMAX)
+target_include_directories(texel_tuner PRIVATE
+  ${PROJECT_SOURCE_DIR}/include
+  ${PROJECT_SOURCE_DIR}/include/lilia
+)
+
 if(LILIA_BUILD_UI)
   add_executable(lilia_app
     examples/main.cpp
@@ -104,6 +114,7 @@ endif()
 # -------------------------------------------------
 find_package(Threads REQUIRED)
 target_link_libraries(lilia_engine PRIVATE Threads::Threads)
+target_link_libraries(texel_tuner PRIVATE Threads::Threads)
 if(LILIA_BUILD_UI)
   target_link_libraries(lilia_app PRIVATE Threads::Threads)
 endif()
@@ -184,6 +195,7 @@ endfunction()
 
 # Apply flags
 lilia_set_perf_flags(lilia_engine)
+lilia_set_perf_flags(texel_tuner)
 if(LILIA_BUILD_UI)
   lilia_set_perf_flags(lilia_app)
 endif()

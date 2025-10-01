@@ -11,6 +11,7 @@
 #include "lilia/engine/config.hpp"
 #include "lilia/engine/eval_acc.hpp"
 #include "lilia/engine/eval_shared.hpp"
+#include "lilia/engine/eval_alias.hpp"
 #include "lilia/model/core/bitboard.hpp"
 #include "lilia/model/core/magic.hpp"
 #include "lilia/model/position.hpp"

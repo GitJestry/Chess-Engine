@@ -1,6 +1,7 @@
 #pragma once
 
 #include "lilia/engine/eval_shared.hpp"
+#include "lilia/engine/eval_alias.hpp"
 #include "lilia/model/board.hpp"
 #include "lilia/model/core/bitboard.hpp"
 #include "lilia/model/move.hpp"
