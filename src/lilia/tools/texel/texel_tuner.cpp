@@ -1,13 +1,17 @@
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <optional>
 #include <random>
+#include <span>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -17,11 +21,14 @@
 #include <vector>
 
 #ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
 #include <windows.h>
+#else
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #endif
-
-#include <chrono>
-#include <iomanip>
 
 #include "lilia/constants.hpp"
 #include "lilia/engine/engine.hpp"
@@ -35,6 +42,7 @@ using namespace std::string_literals;
 
 namespace lilia::tools::texel {
 
+// ------------------------ Progress meter ------------------------
 struct ProgressMeter {
   std::string label;
   std::size_t total = 0;
@@ -98,6 +106,7 @@ struct ProgressMeter {
   }
 };
 
+// ------------------------ Defaults & CLI ------------------------
 struct DefaultPaths {
   fs::path dataFile;
   fs::path weightsFile;
@@ -110,7 +119,7 @@ struct Options {
 
   std::string stockfishPath;
   int games = 8;
-  int depth = 12;
+  int depth = 12;  // used when movetimeMs == 0
   int maxPlies = 160;
   int sampleSkip = 6;
   int sampleStride = 4;
@@ -119,16 +128,26 @@ struct Options {
   int iterations = 200;
   double learningRate = 0.0005;
   double logisticScale = 256.0;
-  double l2 = 0.0;  // L2 regularization strength (0 = off)
+  double l2 = 0.0;
 
   std::optional<std::string> weightsOutput;
   std::optional<int> sampleLimit;
   bool shuffleBeforeTraining = true;
-  int progressIntervalMs = 750;  // throttle console progress updates
+  int progressIntervalMs = 750;
+
+  // ---- Engine randomness / options ----
+  int threads = 10;
+  int multipv = 4;                // >= 1
+  double tempCp = 80.0;           // softmax temperature in centipawns
+  int movetimeMs = 0;             // if >0 use movetime instead of depth
+  int movetimeJitterMs = 0;       // +/- jitter added to movetime
+  std::optional<int> skillLevel;  // 0..20
+  std::optional<int> elo;         // activates UCI_LimitStrength
+  std::optional<int> contempt;    // e.g. 20
 };
 
 struct StockfishResult {
-  std::string bestmove;  // single UCI move token, e.g. "e2e4"
+  std::string bestmove;
 };
 
 struct RawSample {
@@ -142,6 +161,7 @@ struct PreparedSample {
   std::vector<double> gradients;  // dEval/dw_j at defaults
 };
 
+// --- Utility to find Stockfish near exe / project ---
 std::optional<fs::path> find_stockfish_in_dir(const fs::path& dir) {
   if (dir.empty()) return std::nullopt;
   std::error_code ec;
@@ -179,7 +199,6 @@ std::optional<fs::path> find_stockfish_in_dir(const fs::path& dir) {
 }
 
 // Keep only the first 4 FEN fields (piece placement, active color, castling, en passant)
-// so positions that differ only by clocks don't sneak in as "unique".
 std::string fen_key(std::string_view fen) {
   std::array<std::string, 6> tok{};
   size_t i = 0, start = 0;
@@ -193,7 +212,6 @@ std::string fen_key(std::string_view fen) {
     tok[i] = std::string(fen.substr(start, sp - start));
     start = sp + 1;
   }
-  // join first four
   std::ostringstream os;
   os << tok[0] << ' ' << tok[1] << ' ' << tok[2] << ' ' << tok[3];
   return os.str();
@@ -270,6 +288,14 @@ DefaultPaths compute_default_paths(const char* argv0) {
          "  --stockfish <path>        Path to Stockfish binary (default autodetect)\n"
          "  --games <N>               Number of self-play games for data generation (default 8)\n"
          "  --depth <D>               Search depth for Stockfish (default 12)\n"
+         "  --movetime <ms>           Use movetime in ms instead of depth (default off)\n"
+         "  --jitter <ms>             +/- movetime jitter in ms (default 0)\n"
+         "  --threads <N>             Engine Threads (default 1)\n"
+         "  --multipv <N>             MultiPV count for sampling (default 4)\n"
+         "  --temp <cp>               Softmax temperature in centipawns (default 80)\n"
+         "  --skill <0..20>           Stockfish Skill Level (optional)\n"
+         "  --elo <E>                 Enable UCI_LimitStrength with UCI_Elo=E (optional)\n"
+         "  --contempt <C>            Engine Contempt (e.g. 20) to reduce drawish lines\n"
          "  --max-plies <N>           Maximum plies per game (default 160)\n"
          "  --sample-skip <N>         Skip first N plies before sampling (default 6)\n"
          "  --sample-stride <N>       Sample every N plies thereafter (default 4)\n"
@@ -317,6 +343,22 @@ Options parse_args(int argc, char** argv, const DefaultPaths& defaults) {
       opts.games = std::stoi(require_value("--games"));
     } else if (arg == "--depth") {
       opts.depth = std::stoi(require_value("--depth"));
+    } else if (arg == "--movetime") {
+      opts.movetimeMs = std::stoi(require_value("--movetime"));
+    } else if (arg == "--jitter") {
+      opts.movetimeJitterMs = std::stoi(require_value("--jitter"));
+    } else if (arg == "--threads") {
+      opts.threads = std::max(1, std::stoi(require_value("--threads")));
+    } else if (arg == "--multipv") {
+      opts.multipv = std::max(1, std::stoi(require_value("--multipv")));
+    } else if (arg == "--temp") {
+      opts.tempCp = std::stod(require_value("--temp"));
+    } else if (arg == "--skill") {
+      opts.skillLevel = std::stoi(require_value("--skill"));
+    } else if (arg == "--elo") {
+      opts.elo = std::stoi(require_value("--elo"));
+    } else if (arg == "--contempt") {
+      opts.contempt = std::stoi(require_value("--contempt"));
     } else if (arg == "--max-plies") {
       opts.maxPlies = std::stoi(require_value("--max-plies"));
     } else if (arg == "--sample-skip") {
@@ -355,134 +397,7 @@ Options parse_args(int argc, char** argv, const DefaultPaths& defaults) {
   return opts;
 }
 
-StockfishResult run_stockfish(const Options& opts, const std::vector<std::string>& moves) {
-  if (opts.stockfishPath.empty()) {
-    throw std::runtime_error("Stockfish path required for data generation");
-  }
-
-  // Build the command script for Stockfish
-  std::ostringstream cmdStream;
-  cmdStream << "uci\n";
-  cmdStream << "isready\n";
-  cmdStream << "ucinewgame\n";
-  cmdStream << "position startpos";
-  if (!moves.empty()) {
-    cmdStream << " moves";
-    for (const auto& m : moves) cmdStream << ' ' << m;
-  }
-  cmdStream << "\n";
-  if (opts.depth > 0) {
-    cmdStream << "go depth " << opts.depth << "\n";
-  } else {
-    cmdStream << "go movetime 1000\n";
-  }
-  cmdStream << "quit\n";
-
-  const auto tmpDir = fs::temp_directory_path();
-  const auto cmdFile = tmpDir / fs::path("texel_sf_cmd.txt");
-  const auto outFile = tmpDir / fs::path("texel_sf_out.txt");
-
-  {
-    std::ofstream out(cmdFile, std::ios::trunc | std::ios::binary);
-    out << cmdStream.str();
-  }
-
-#ifdef _WIN32
-  // ---- Windows: spawn without a shell, redirecting stdio to our files ----
-  SECURITY_ATTRIBUTES sa{};
-  sa.nLength = sizeof(sa);
-  sa.bInheritHandle = TRUE;  // allow child to inherit handles
-
-  HANDLE hIn = CreateFileW(cmdFile.wstring().c_str(), GENERIC_READ, FILE_SHARE_READ, &sa,
-                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-  if (hIn == INVALID_HANDLE_VALUE) {
-    throw std::runtime_error("Failed to open temp stdin file for Stockfish");
-  }
-
-  HANDLE hOut = CreateFileW(outFile.wstring().c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa,
-                            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-  if (hOut == INVALID_HANDLE_VALUE) {
-    CloseHandle(hIn);
-    throw std::runtime_error("Failed to open temp stdout file for Stockfish");
-  }
-
-  STARTUPINFOW si{};
-  si.cb = sizeof(si);
-  si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-  si.wShowWindow = SW_HIDE;
-  si.hStdInput = hIn;
-  si.hStdOutput = hOut;
-  si.hStdError = hOut;
-
-  PROCESS_INFORMATION pi{};
-  std::wstring app = fs::path(opts.stockfishPath).wstring();
-
-  BOOL ok = CreateProcessW(
-      /*lpApplicationName=*/app.c_str(),
-      /*lpCommandLine=*/nullptr,  // no args
-      /*lpProcessAttributes=*/nullptr,
-      /*lpThreadAttributes=*/nullptr,
-      /*bInheritHandles=*/TRUE,  // inherit our std handles
-      /*dwCreationFlags=*/CREATE_NO_WINDOW,
-      /*lpEnvironment=*/nullptr,
-      /*lpCurrentDirectory=*/nullptr,
-      /*lpStartupInfo=*/&si,
-      /*lpProcessInformation=*/&pi);
-
-  // We can close our side of the handles now; child has inherited them.
-  CloseHandle(hIn);
-  CloseHandle(hOut);
-
-  if (!ok) {
-    DWORD err = GetLastError();
-    throw std::runtime_error("CreateProcessW failed for Stockfish (Win32 error " +
-                             std::to_string(err) + ")");
-  }
-
-  WaitForSingleObject(pi.hProcess, INFINITE);
-
-  DWORD exitCode = 0;
-  GetExitCodeProcess(pi.hProcess, &exitCode);
-  CloseHandle(pi.hThread);
-  CloseHandle(pi.hProcess);
-
-  if (exitCode != 0) {
-    throw std::runtime_error("Stockfish exited with code " +
-                             std::to_string(static_cast<int>(exitCode)));
-  }
-#else
-  // ---- POSIX: keep simple shell redirection ----
-  std::ostringstream execCmd;
-  execCmd << '"' << opts.stockfishPath << '"' << " < \"" << cmdFile.string() << "\" > \""
-          << outFile.string() << "\"";
-  const int rc = std::system(execCmd.str().c_str());
-  if (rc != 0) {
-    throw std::runtime_error("Failed to run Stockfish command");
-  }
-#endif
-
-  // Parse bestmove from the captured output
-  StockfishResult result;
-  {
-    std::ifstream in(outFile, std::ios::binary);
-    std::string line;
-    while (std::getline(in, line)) {
-      if (line.rfind("bestmove ", 0) == 0) {
-        // Extract only the first token after "bestmove "
-        std::istringstream ls(line.substr(9));
-        ls >> result.bestmove;
-        break;
-      }
-    }
-  }
-
-  std::error_code ec;
-  fs::remove(cmdFile, ec);
-  fs::remove(outFile, ec);
-
-  return result;
-}
-
+// ------------------------ Helpers ------------------------
 core::Color flip_color(core::Color c) {
   return c == core::Color::White ? core::Color::Black : core::Color::White;
 }
@@ -497,12 +412,380 @@ double result_from_pov(core::GameResult res, core::Color winner, core::Color pov
     case core::GameResult::INSUFFICIENT:
       return 0.5;
     default:
-      return 0.5;  // treat unknown/ongoing as draw
+      return 0.5;
   }
 }
 
+// ------------------------ Persistent UCI Engine ------------------------
+class UciEngine {
+ public:
+  explicit UciEngine(const std::string& exe, const Options& opts)
+      : exePath_(exe), opts_(opts), rng_(std::random_device{}()) {
+    if (exePath_.empty()) throw std::runtime_error("UCI engine path is empty");
+    spawn();
+    uci_handshake();
+    apply_options();
+  }
+
+  ~UciEngine() { terminate(); }
+
+  void ucinewgame() {
+    sendln("ucinewgame");
+    isready();
+  }
+
+  // Choose move for "position startpos [moves ...]" using MultiPV sampling
+  std::string pick_move_from_startpos(const std::vector<std::string>& moves) {
+    {
+      std::ostringstream os;
+      os << "position startpos";
+      if (!moves.empty()) {
+        os << " moves";
+        for (const auto& m : moves) os << ' ' << m;
+      }
+      sendln(os.str());
+    }
+
+    // Ensure MultiPV is set (>=1)
+    {
+      std::ostringstream os;
+      os << "setoption name MultiPV value " << std::max(1, opts_.multipv);
+      sendln(os.str());
+      isready();  // make sure option is applied
+    }
+
+    // Build go command
+    std::string goCmd;
+    if (opts_.movetimeMs > 0) {
+      int mt = opts_.movetimeMs;
+      if (opts_.movetimeJitterMs > 0) {
+        std::uniform_int_distribution<int> dist(-opts_.movetimeJitterMs, opts_.movetimeJitterMs);
+        mt = std::max(5, mt + dist(rng_));
+      }
+      goCmd = "go movetime " + std::to_string(mt);
+    } else if (opts_.depth > 0) {
+      goCmd = "go depth " + std::to_string(opts_.depth);
+    } else {
+      goCmd = "go movetime 1000";
+    }
+    sendln(goCmd);
+
+    struct Cand {
+      std::string move;
+      double scoreCp = 0.0;
+      int multipv = 1;
+    };
+    std::vector<Cand> cands;
+    int bestDepth = -1;
+
+    for (;;) {
+      std::string line = readline_blocking();
+      if (line.empty()) continue;
+
+      if (starts_with(line, "info ")) {
+        // coarse parse of tokens
+        auto tok = tokenize(line);
+        int depth = -1, mpv = 1;
+        bool haveScore = false, isMate = false;
+        int scoreCp = 0, matePly = 0;
+        std::string firstMove;
+
+        for (size_t i = 0; i + 1 < tok.size(); ++i) {
+          if (tok[i] == "depth") {
+            depth = to_int(tok[i + 1]);
+          } else if (tok[i] == "multipv") {
+            mpv = std::max(1, to_int(tok[i + 1]));
+          } else if (tok[i] == "score" && i + 2 < tok.size()) {
+            if (tok[i + 1] == "cp") {
+              haveScore = true;
+              scoreCp = to_int(tok[i + 2]);
+            } else if (tok[i + 1] == "mate") {
+              haveScore = true;
+              isMate = true;
+              matePly = to_int(tok[i + 2]);
+            }
+          } else if (tok[i] == "pv" && i + 1 < tok.size()) {
+            firstMove = tok[i + 1];
+            break;
+          }
+        }
+
+        if (depth >= 0 && haveScore && !firstMove.empty()) {
+          if (depth > bestDepth) {
+            bestDepth = depth;
+            cands.clear();
+          }
+          if (depth == bestDepth) {
+            double cp = isMate ? (matePly >= 0 ? 30000.0 : -30000.0) : static_cast<double>(scoreCp);
+            cands.push_back(Cand{firstMove, cp, mpv});
+          }
+        }
+        continue;
+      }
+
+      if (starts_with(line, "bestmove ")) {
+        std::string best = word_after(line, "bestmove");
+        if (cands.empty() || opts_.multipv <= 1) {
+          return best.empty() ? "(none)" : best;
+        }
+
+        // Sort by MultiPV (1..N), break ties by scoreCp desc
+        std::sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) {
+          if (a.multipv != b.multipv) return a.multipv < b.multipv;
+          if (a.scoreCp != b.scoreCp) return a.scoreCp > b.scoreCp;
+          return a.move < b.move;
+        });
+        // Unique by move
+        cands.erase(std::unique(cands.begin(), cands.end(),
+                                [](const Cand& a, const Cand& b) { return a.move == b.move; }),
+                    cands.end());
+
+        // Stable softmax over CP with temperature in centipawns
+        const double T = std::max(1e-3, opts_.tempCp);
+        double maxCp = -1e300;
+        for (const auto& c : cands) maxCp = std::max(maxCp, c.scoreCp);
+        std::vector<double> w;
+        w.reserve(cands.size());
+        double sum = 0.0;
+        for (const auto& c : cands) {
+          // exp((cp - max)/T) for numerical stability
+          double wi = std::exp((c.scoreCp - maxCp) / T);
+          w.push_back(wi);
+          sum += wi;
+        }
+        if (sum <= 0.0) return best.empty() ? "(none)" : best;
+
+        std::uniform_real_distribution<double> U(0.0, sum);
+        double r = U(rng_), acc = 0.0;
+        for (size_t i = 0; i < cands.size(); ++i) {
+          acc += w[i];
+          if (r <= acc) return cands[i].move;
+        }
+        return cands.back().move;
+      }
+    }
+  }
+
+ private:
+#ifdef _WIN32
+  PROCESS_INFORMATION pi_{};                // child
+  HANDLE hInWrite_{NULL}, hOutRead_{NULL};  // our handles
+#else
+  pid_t pid_ = -1;
+  int in_w_ = -1, out_r_ = -1;
+#endif
+  FILE* fin_ = nullptr;   // read from engine stdout
+  FILE* fout_ = nullptr;  // write to engine stdin
+  std::string exePath_;
+  Options opts_;
+  std::mt19937_64 rng_;
+
+  // ---- helpers ----
+  static bool starts_with(const std::string& s, const char* pfx) { return s.rfind(pfx, 0) == 0; }
+  static int to_int(const std::string& s) {
+    try {
+      return std::stoi(s);
+    } catch (...) {
+      return 0;
+    }
+  }
+  static std::vector<std::string> tokenize(const std::string& s) {
+    std::vector<std::string> v;
+    std::istringstream is(s);
+    std::string t;
+    while (is >> t) v.push_back(std::move(t));
+    return v;
+  }
+  static std::string word_after(const std::string& s, const char* key) {
+    std::istringstream is(s);
+    std::string w;
+    is >> w;  // key
+    if (w != key) return {};
+    if (is >> w) return w;
+    return {};
+  }
+
+  void sendln(const std::string& s) {
+    if (!fout_) throw std::runtime_error("UCI engine stdin closed");
+    std::fputs(s.c_str(), fout_);
+    std::fputc('\n', fout_);
+    std::fflush(fout_);
+  }
+
+  std::string readline_blocking() {
+    if (!fin_) throw std::runtime_error("UCI engine stdout closed");
+    std::string line;
+    int ch;
+    while ((ch = std::fgetc(fin_)) != EOF) {
+      if (ch == '\r') continue;
+      if (ch == '\n') break;
+      line.push_back(static_cast<char>(ch));
+    }
+    return line;
+  }
+
+  void isready() {
+    sendln("isready");
+    for (;;) {
+      std::string l = readline_blocking();
+      if (l == "readyok") break;
+    }
+  }
+
+  void uci_handshake() {
+    sendln("uci");
+    for (;;) {
+      std::string l = readline_blocking();
+      if (l == "uciok") break;
+    }
+    isready();
+  }
+
+  void apply_options() {
+    {
+      std::ostringstream os;
+      os << "setoption name Threads value " << std::max(1, opts_.threads);
+      sendln(os.str());
+    }
+    if (opts_.skillLevel) {
+      std::ostringstream os;
+      os << "setoption name Skill Level value " << *opts_.skillLevel;
+      sendln(os.str());
+    }
+    if (opts_.elo) {
+      sendln("setoption name UCI_LimitStrength value true");
+      std::ostringstream os;
+      os << "setoption name UCI_Elo value " << *opts_.elo;
+      sendln(os.str());
+    }
+    if (opts_.contempt) {
+      std::ostringstream os;
+      os << "setoption name Contempt value " << *opts_.contempt;
+      sendln(os.str());
+    }
+    // Ensure engine is settled
+    isready();
+  }
+
+  void spawn() {
+#ifdef _WIN32
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+
+    HANDLE hOutWrite = NULL, hInReadLocal = NULL;
+    // Child stdout/stderr -> our read end
+    if (!CreatePipe(&hOutRead_, &hOutWrite, &sa, 0))
+      throw std::runtime_error("CreatePipe stdout failed");
+    if (!SetHandleInformation(hOutRead_, HANDLE_FLAG_INHERIT, 0))
+      throw std::runtime_error("stdout SetHandleInformation failed");
+
+    // Our write end -> child stdin
+    HANDLE hInRead = NULL;
+    if (!CreatePipe(&hInRead, &hInWrite_, &sa, 0))
+      throw std::runtime_error("CreatePipe stdin failed");
+    if (!SetHandleInformation(hInWrite_, HANDLE_FLAG_INHERIT, 0))
+      throw std::runtime_error("stdin SetHandleInformation failed");
+    hInReadLocal = hInRead;
+
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    si.hStdInput = hInReadLocal;
+    si.hStdOutput = hOutWrite;
+    si.hStdError = hOutWrite;
+
+    std::wstring app = fs::path(exePath_).wstring();
+    if (!CreateProcessW(app.c_str(), nullptr, nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr,
+                        nullptr, &si, &pi_)) {
+      throw std::runtime_error("CreateProcessW failed for Stockfish");
+    }
+    // Parent: close the child-side handles we don't need
+    CloseHandle(hOutWrite);
+    CloseHandle(hInReadLocal);
+
+    // Wrap to FILE*
+    int fdIn = _open_osfhandle(reinterpret_cast<intptr_t>(hInWrite_), _O_WRONLY | _O_BINARY);
+    int fdOut = _open_osfhandle(reinterpret_cast<intptr_t>(hOutRead_), _O_RDONLY | _O_BINARY);
+    if (fdIn == -1 || fdOut == -1) throw std::runtime_error("_open_osfhandle failed");
+    fout_ = _fdopen(fdIn, "wb");
+    fin_ = _fdopen(fdOut, "rb");
+    if (!fin_ || !fout_) throw std::runtime_error("_fdopen failed");
+    setvbuf(fout_, nullptr, _IONBF, 0);
+#else
+    int inpipe[2]{}, outpipe[2]{};
+    if (pipe(inpipe) != 0 || pipe(outpipe) != 0) throw std::runtime_error("pipe() failed");
+
+    pid_ = fork();
+    if (pid_ == -1) throw std::runtime_error("fork() failed");
+    if (pid_ == 0) {
+      // child
+      dup2(inpipe[0], STDIN_FILENO);
+      dup2(outpipe[1], STDOUT_FILENO);
+      dup2(outpipe[1], STDERR_FILENO);
+      close(inpipe[0]);
+      close(inpipe[1]);
+      close(outpipe[0]);
+      close(outpipe[1]);
+      execl(exePath_.c_str(), exePath_.c_str(), (char*)nullptr);
+      _exit(127);
+    }
+    // parent
+    close(inpipe[0]);   // parent doesn't read stdin
+    close(outpipe[1]);  // parent doesn't write stdout
+    in_w_ = inpipe[1];
+    out_r_ = outpipe[0];
+    fout_ = fdopen(in_w_, "w");
+    fin_ = fdopen(out_r_, "r");
+    if (!fin_ || !fout_) throw std::runtime_error("fdopen failed");
+    setvbuf(fout_, nullptr, _IONBF, 0);
+#endif
+  }
+
+  void terminate() {
+#ifdef _WIN32
+    if (fout_) {
+      std::fputs("quit\n", fout_);
+      std::fflush(fout_);
+    }
+    if (pi_.hProcess) {
+      WaitForSingleObject(pi_.hProcess, 500);
+      CloseHandle(pi_.hThread);
+      CloseHandle(pi_.hProcess);
+      pi_.hThread = pi_.hProcess = NULL;
+    }
+#else
+    if (fout_) {
+      std::fputs("quit\n", fout_);
+      std::fflush(fout_);
+    }
+    if (pid_ > 0) {
+      int status = 0;
+      waitpid(pid_, &status, 0);
+      pid_ = -1;
+    }
+#endif
+    if (fin_) {
+      std::fclose(fin_);
+      fin_ = nullptr;
+    }
+    if (fout_) {
+      std::fclose(fout_);
+      fout_ = nullptr;
+    }
+  }
+};
+
+// ------------------------ Data generation (self-play) ------------------------
 std::vector<RawSample> generate_samples(const Options& opts) {
   if (!opts.generateData) return {};
+  if (opts.stockfishPath.empty()) {
+    throw std::runtime_error("Stockfish path required for data generation");
+  }
+
+  UciEngine engine(opts.stockfishPath, opts);  // persistent engine
+
   std::vector<RawSample> samples;
   std::vector<std::string> moveHistory;
   const size_t maxSamples = opts.sampleLimit ? static_cast<size_t>(*opts.sampleLimit)
@@ -515,69 +798,66 @@ std::vector<RawSample> generate_samples(const Options& opts) {
   const int stride = std::max(1, opts.sampleStride);
   ProgressMeter gamePM("Generating self-play games", static_cast<std::size_t>(opts.games),
                        opts.progressIntervalMs);
+
   for (int gameIdx = 0; gameIdx < opts.games; ++gameIdx) {
     if (samples.size() >= maxSamples) break;
+
+    engine.ucinewgame();
     model::ChessGame game;
     game.setPosition(core::START_FEN);
     moveHistory.clear();
+
     std::vector<std::pair<std::string, core::Color>> gamePositions;
-    // Maintain individual cadence counters per side so that both colours are sampled even
-    // when the stride or skip values would otherwise only hit a single ply parity.
     std::array<int, 2> sideSampleCounters{0, 0};
 
     for (int ply = 0; ply < opts.maxPlies; ++ply) {
-      // If the current position is already terminal, stop the game before sampling.
       game.checkGameResult();
-      if (game.getResult() != core::GameResult::ONGOING) {
-        break;
-      }
-      // Sample current position (FEN + POV) periodically
+      if (game.getResult() != core::GameResult::ONGOING) break;
+
+      // Sample current position periodically
       if (ply >= opts.sampleSkip) {
         const auto sideToMove = game.getGameState().sideToMove;
         auto& counter = sideSampleCounters[static_cast<std::size_t>(sideToMove)];
         if (counter % stride == 0) {
           const auto fen = game.getFen();
           const auto key = fen_key(fen);
-          if (seen.insert(key).second) {  // only record new positions
+          if (seen.insert(key).second) {  // only record new positions globally
             gamePositions.emplace_back(fen, sideToMove);
           }
         }
         ++counter;
       }
 
-      StockfishResult res = run_stockfish(opts, moveHistory);
-      if (res.bestmove.empty() || res.bestmove == "(none)") {
-        // Update result for the *current* position (mate/stalemate) before bailing.
+      // Engine move (with MultiPV sampling & randomness)
+      std::string mv = engine.pick_move_from_startpos(moveHistory);
+      if (mv.empty() || mv == "(none)") {
+        // no legal moves from engine pov -> terminal
         game.checkGameResult();
-        // Side to move here has no legal moves -> terminal.
         break;
       }
-      if (!game.doMoveUCI(res.bestmove)) {
-        // Defensive: if the move fails to parse/play, stop this game.
+      if (!game.doMoveUCI(mv)) {
+        // Defensive: if move can't be played in our model, stop this game
         break;
       }
-      moveHistory.push_back(res.bestmove);
+      moveHistory.push_back(mv);
 
       game.checkGameResult();
-      if (game.getResult() != core::GameResult::ONGOING) {
-        break;
-      }
+      if (game.getResult() != core::GameResult::ONGOING) break;
     }
 
+    // Assign results to the positions from this game
     const core::GameResult finalRes = game.getResult();
-
-    // If the game ended by checkmate, winner is opposite of side to move.
-    // For draws/non-checkmates, targets are 0.5 regardless of 'winner'.
     core::Color winner = flip_color(game.getGameState().sideToMove);
 
     for (const auto& [fen, pov] : gamePositions) {
-      RawSample sample;
-      sample.fen = fen;
-      sample.result = result_from_pov(finalRes, winner, pov);
-      samples.push_back(std::move(sample));
+      RawSample s;
+      s.fen = fen;
+      s.result = result_from_pov(finalRes, winner, pov);
+      samples.push_back(std::move(s));
       if (samples.size() >= maxSamples) break;
     }
     if (samples.size() >= maxSamples) break;
+
     gamePM.update(static_cast<std::size_t>(gameIdx + 1));
   }
   gamePM.finish();
@@ -616,6 +896,7 @@ std::vector<RawSample> read_dataset(const std::string& path) {
   return samples;
 }
 
+// ------------------------ Texel preparation & training ------------------------
 PreparedSample prepare_sample(const RawSample& sample, engine::Evaluator& evaluator,
                               const std::vector<int>& defaults,
                               const std::span<const engine::EvalParamEntry>& entries) {
@@ -662,7 +943,6 @@ std::vector<PreparedSample> prepare_samples(std::vector<RawSample> rawSamples,
     rawSamples.resize(static_cast<size_t>(*opts.sampleLimit));
   }
 
-  // (Optional) Shuffle to better mix classes and avoid ordering artifacts
   if (opts.shuffleBeforeTraining) {
     std::mt19937_64 rng{std::random_device{}()};
     std::shuffle(rawSamples.begin(), rawSamples.end(), rng);
@@ -705,50 +985,41 @@ TrainingResult train(const std::vector<PreparedSample>& samples, const std::vect
     double loss = 0.0;
 
     for (const auto& sample : samples) {
-      // Linearized eval around defaults
       double eval = sample.baseEval;
       for (size_t j = 0; j < paramCount; ++j) {
         eval += (weights[j] - defaultsD[j]) * sample.gradients[j];
       }
 
-      // Logistic probability (clamped for numerical safety)
       const double scaled = std::clamp(eval / opts.logisticScale, -500.0, 500.0);
       const double prob = 1.0 / (1.0 + std::exp(-scaled));
       const double target = sample.result;
 
-      // Cross entropy
       const double eps = 1e-12;
       loss += -(target * std::log(std::max(prob, eps)) +
                 (1.0 - target) * std::log(std::max(1.0 - prob, eps)));
 
-      // dL/deval = (prob - target) / scale
       const double diff = (prob - target) / opts.logisticScale;
       for (size_t j = 0; j < paramCount; ++j) {
         gradient[j] += diff * sample.gradients[j];
       }
     }
 
-    // Average gradients
     for (size_t j = 0; j < paramCount; ++j) {
       gradient[j] *= invN;
     }
 
-    // L2 regularization around defaults: add lambda * (w - w0) to gradient, and lambda *
-    // ||w-w0||^2/2 to loss
     if (opts.l2 > 0.0) {
       for (size_t j = 0; j < paramCount; ++j) {
-        const double diff = (weights[j] - defaultsD[j]);
-        gradient[j] += opts.l2 * diff;
-        loss += 0.5 * opts.l2 * diff * diff;
+        const double d = (weights[j] - defaultsD[j]);
+        gradient[j] += opts.l2 * d;
+        loss += 0.5 * opts.l2 * d * d;
       }
     }
 
-    // Gradient descent step
     for (size_t j = 0; j < paramCount; ++j) {
       weights[j] -= opts.learningRate * gradient[j];
     }
 
-    // keep output sparse; meter handles the heartbeat, print a few checkpoints
     if ((iter + 1) % std::max(1, opts.iterations / 5) == 0 || iter == opts.iterations - 1) {
       std::cout << "\nIter " << (iter + 1) << "/" << opts.iterations << ": loss=" << (loss * invN)
                 << "\n";
@@ -757,7 +1028,6 @@ TrainingResult train(const std::vector<PreparedSample>& samples, const std::vect
   }
   trainPM.finish();
 
-  // Final loss recompute for reporting
   double loss = 0.0;
   for (const auto& sample : samples) {
     double eval = sample.baseEval;
@@ -776,8 +1046,8 @@ TrainingResult train(const std::vector<PreparedSample>& samples, const std::vect
   if (opts.l2 > 0.0) {
     double reg = 0.0;
     for (size_t j = 0; j < paramCount; ++j) {
-      const double diff = (weights[j] - defaults[j]);
-      reg += 0.5 * opts.l2 * diff * diff;
+      const double d = (weights[j] - defaults[j]);
+      reg += 0.5 * opts.l2 * d * d;
     }
     loss += reg;
   }
@@ -831,6 +1101,7 @@ void emit_weights(const TrainingResult& result, const std::vector<int>& defaults
 
 }  // namespace lilia::tools::texel
 
+// ------------------------ main ------------------------
 int main(int argc, char** argv) {
   using namespace lilia::tools::texel;
   try {
@@ -847,6 +1118,15 @@ int main(int argc, char** argv) {
 
     if (opts.generateData) {
       std::cout << "Using Stockfish at " << opts.stockfishPath << "\n";
+      std::cout << "Threads=" << opts.threads << " MultiPV=" << opts.multipv
+                << " temp(cp)=" << opts.tempCp
+                << (opts.movetimeMs > 0
+                        ? (" movetime=" + std::to_string(opts.movetimeMs) +
+                           "ms jitter=" + std::to_string(opts.movetimeJitterMs) + "ms")
+                        : (" depth=" + std::to_string(opts.depth)))
+                << (opts.skillLevel ? (" skill=" + std::to_string(*opts.skillLevel)) : "")
+                << (opts.elo ? (" elo=" + std::to_string(*opts.elo)) : "")
+                << (opts.contempt ? (" contempt=" + std::to_string(*opts.contempt)) : "") << "\n";
     }
 
     std::cout << "Dataset path: " << opts.dataFile << "\n";
