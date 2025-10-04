@@ -1751,8 +1751,11 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
       std::vector<model::Move> legalRoot;
       legalRoot.reserve(rootMoves.size());
       for (const auto& m : rootMoves) {
-        model::Position tmp = pos;
-        if (tmp.doMove(m)) legalRoot.push_back(m);
+        MoveUndoGuard guard(pos);
+        if (guard.doMove(m)) {
+          legalRoot.push_back(m);
+          guard.rollback();
+        }
       }
       rootMoves.swap(legalRoot);
     }
