@@ -376,6 +376,7 @@ struct QuietSignals {
   int pawnSignal = 0;
   int pieceSignal = 0;
   bool givesCheck = false;
+  bool isSacrifice = false;
 };
 
 static inline QuietSignals compute_quiet_signals(const model::Position& pos, const model::Move& m) {
@@ -445,8 +446,10 @@ static inline QuietSignals compute_quiet_signals(const model::Position& pos, con
     }
   }
 
+  const bool quietNonPromo = !m.isCapture() && m.promotion() == PT::None;
+
   // Quiet threat signals (only for non-capturing, non-promoting moves)
-  if (!m.isCapture() && m.promotion() == PT::None) {
+  if (quietNonPromo) {
     if (moverBefore == PT::Pawn) {
       const auto to = lilia::model::bb::sq_bb(m.to());
       const auto pawnAtk = (us == core::Color::White)
@@ -497,6 +500,65 @@ static inline QuietSignals compute_quiet_signals(const model::Position& pos, con
                              board.getPieces(~us, PT::Bishop) | board.getPieces(~us, PT::Knight);
         if (attacks & targets) info.pieceSignal = 1;
       }
+    }
+  }
+
+  // Flag potential quiet sacrifices: the moved piece intentionally walks into
+  // a lower-value enemy attacker without adequate support. This mirrors the
+  // dangerous-quiet handling in Stockfish so that exchange sacs like Bf8c5
+  // aren't pruned away before search.
+  if (quietNonPromo && moverBefore != PT::None) {
+    const auto them = core::Color(~us);
+    const auto toSq = m.to();
+    const auto toMask = lilia::model::bb::sq_bb(toSq);
+    const auto occNoTarget = occ & ~toMask;
+    const auto diagAtt =
+        lilia::model::magic::sliding_attacks(lilia::model::magic::Slider::Bishop, toSq, occNoTarget);
+    const auto orthoAtt =
+        lilia::model::magic::sliding_attacks(lilia::model::magic::Slider::Rook, toSq, occNoTarget);
+    const auto knightAtt = lilia::model::bb::knight_attacks_from(toSq);
+    const auto kingAtt = lilia::model::bb::king_attacks_from(toSq);
+
+    const auto min_attacker_value = [&](core::Color side) {
+      int best = std::numeric_limits<int>::max();
+
+      const auto pawns = board.getPieces(side, PT::Pawn);
+      if (pawns) {
+        const auto pawnSrc =
+            (side == core::Color::White)
+                ? (lilia::model::bb::sw(toMask) | lilia::model::bb::se(toMask))
+                : (lilia::model::bb::nw(toMask) | lilia::model::bb::ne(toMask));
+        if (pawnSrc & pawns) best = std::min(best, base_value[(int)PT::Pawn]);
+      }
+
+      const auto knights = board.getPieces(side, PT::Knight);
+      if (knights && (knightAtt & knights)) best = std::min(best, base_value[(int)PT::Knight]);
+
+      const auto bishops = board.getPieces(side, PT::Bishop);
+      if (bishops && (diagAtt & bishops)) best = std::min(best, base_value[(int)PT::Bishop]);
+
+      const auto rooks = board.getPieces(side, PT::Rook);
+      if (rooks && (orthoAtt & rooks)) best = std::min(best, base_value[(int)PT::Rook]);
+
+      const auto queens = board.getPieces(side, PT::Queen);
+      if (queens && ((diagAtt | orthoAtt) & queens))
+        best = std::min(best, base_value[(int)PT::Queen]);
+
+      const auto kings = board.getPieces(side, PT::King);
+      if (kings && (kingAtt & kings)) best = std::min(best, base_value[(int)PT::King]);
+
+      return best;
+    };
+
+    const int enemyMin = min_attacker_value(them);
+    if (enemyMin < std::numeric_limits<int>::max()) {
+      const int friendMin = min_attacker_value(us);
+      const int moverVal = base_value[(int)moverBefore];
+      constexpr int SAC_MARGIN = 120;  // must lose at least a pawn and a bit
+
+      const int minorCap = base_value[(int)PT::Knight];
+      if (enemyMin <= minorCap && moverVal - enemyMin >= SAC_MARGIN && friendMin > enemyMin + 32)
+        info.isSacrifice = true;
     }
   }
 
@@ -1295,10 +1357,12 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
 
     // --- Always detect true checks for quiet moves (even if threat signals are gated) ---
     int pawn_sig = 0, piece_sig = 0;
+    bool quietSacrificeSignal = false;
     bool wouldCheck = false;
     if (isQuiet) {
       const auto signals = compute_quiet_signals(pos, m);
       piece_sig = signals.pieceSignal;  // detects direct checks (==2)
+      quietSacrificeSignal = signals.isSacrifice;
 
       const bool allowPawnThreats = doThreatSignals && piece_sig < 2;
 
@@ -1318,7 +1382,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     if (passed_push) pawn_sig = std::max(pawn_sig, 1);
     const int qp_sig = pawn_sig;
     const int qpc_sig = piece_sig;
-    const bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0);
+    const bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0) || quietSacrificeSignal;
 
     // pre info
     auto moverOpt = board.getPiece(m.from());
