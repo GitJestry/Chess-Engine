@@ -43,3 +43,6 @@ CMakeFiles/
 
 # Ignore VS Code settings directory
 .vscode/
+
+# ignore generated texel data
+/texel_data/
