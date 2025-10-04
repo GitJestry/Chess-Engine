@@ -35,7 +35,7 @@ struct EngineConfig {
   int lmrBase = 1;            // Grundreduktion
   int lmrMax = 3;             // Deckel
   bool lmrUseHistory = true;  // gute History => weniger Reduktion
-  int fullRescoreTopK = 1;    // 0 = none, 1 = only winner (recommended), N>1 = also N-1 others
+  int fullRescoreTopK = 4;    // 0 = none, 1 = only winner, N>1 = also N-1 others
 };
 static const int base_value[6] = {100, 320, 330, 500, 950, 20000};
 constexpr int INF = 32000;

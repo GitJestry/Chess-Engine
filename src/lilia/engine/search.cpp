@@ -2019,12 +2019,32 @@ int Search::search_root_single(model::Position& pos, int maxDepth,
           }
 
           // pick final best (exact first, then score, then ordIdx)
-          std::stable_sort(lines.begin(), lines.end(), [](const RootLine& a, const RootLine& b) {
-            const bool ax = a.bound == model::Bound::Exact, bx = b.bound == model::Bound::Exact;
-            if (ax != bx) return ax;
+          auto rank_bound = [](model::Bound b) {
+            switch (b) {
+              case model::Bound::Exact:
+              case model::Bound::Lower:
+                return 2;
+              case model::Bound::Upper:
+              default:
+                return 1;
+            }
+          };
+          std::stable_sort(lines.begin(), lines.end(), [&](const RootLine& a, const RootLine& b) {
+            const int ra = rank_bound(a.bound), rb = rank_bound(b.bound);
+            if (ra != rb) return ra > rb;
             if (a.score != b.score) return a.score > b.score;
             return a.ordIdx < b.ordIdx;
           });
+
+          if (!lines.empty() && lines.front().bound != model::Bound::Exact) {
+            full_rescore(lines.front());
+            std::stable_sort(lines.begin(), lines.end(), [&](const RootLine& a, const RootLine& b) {
+              const int ra = rank_bound(a.bound), rb = rank_bound(b.bound);
+              if (ra != rb) return ra > rb;
+              if (a.score != b.score) return a.score > b.score;
+              return a.ordIdx < b.ordIdx;
+            });
+          }
 
           const model::Move finalBest = lines.front().m;
           const int finalScore = lines.front().score;
