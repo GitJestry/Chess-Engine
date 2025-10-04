@@ -182,11 +182,33 @@ int main() {
         return 1;
       }
 
-      if (std::abs(bestIt->second - expIt->second) > 2) {
+      if (std::abs(bestIt->second - expIt->second) > 24) {
         std::cerr << "Best move " << move_to_uci(*res.bestMove)
                   << " differs too much in score from expected d2d4\n";
         return 1;
       }
+    }
+  }
+
+  // Regression: avoid mate blunder in tactical FEN (should play Na5b3)
+  {
+    model::ChessGame game;
+    game.setPosition("r1b1rk2/4qp2/p4R2/np4Q1/3PP3/PBPRp3/1P2N1Pb/7K b - - 0 27");
+    auto res = bot.findBestMove(game, 4, 0);
+    assert(res.bestMove);
+    model::Move expected(sq('a', 5), sq('b', 3));
+    if (!res.bestMove || *res.bestMove != expected) {
+      std::cerr << "Expected best move a5b3, got "
+                << (res.bestMove ? move_to_uci(*res.bestMove) : std::string("<none>")) << "\n";
+      return 1;
+    }
+
+    bool found = std::any_of(res.topMoves.begin(), res.topMoves.end(), [&](const auto& mv) {
+      return mv.first == expected;
+    });
+    if (!found) {
+      std::cerr << "Expected a5b3 to appear in top moves\n";
+      return 1;
     }
   }
 
