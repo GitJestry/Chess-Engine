@@ -428,7 +428,8 @@ static inline QuietSignals compute_quiet_signals(const model::Position& pos, con
     auto blockers = occ & ray;
     if (blockers) {
       int firstSq;
-      if (dir == 0 || dir == 1 || dir == 2 || dir == 3)
+      // Use CTZ when indices grow along the ray: N(0), NE(1), E(2), NW(7)
+      if (dir == 0 || dir == 1 || dir == 2 || dir == 7)
         firstSq = lilia::model::bb::ctz64(blockers);
       else
         firstSq = 63 - lilia::model::bb::clz64(blockers);
