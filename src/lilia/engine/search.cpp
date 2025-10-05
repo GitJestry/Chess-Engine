@@ -378,6 +378,48 @@ struct QuietSignals {
   bool givesCheck = false;
 };
 
+// Does moving to m.to() create an x-ray on the enemy king such that
+// removing exactly one blocker (which we already attack) would deliver check?
+static inline bool xray_check_after_one_capture(const model::Position& pos, const model::Move& m,
+                                                lilia::model::bb::Bitboard occ, int kingSq,
+                                                core::Color us, core::PieceType moverAfter) {
+  using namespace lilia::model;
+  using PT = core::PieceType;
+
+  if (!(moverAfter == PT::Bishop || moverAfter == PT::Rook || moverAfter == PT::Queen))
+    return false;
+
+  if (!CT.LINE[kingSq][m.to()]) return false;
+
+  const auto between = CT.BETWEEN[kingSq][m.to()];
+  auto blockers = occ & between;
+  if (!blockers) return false;
+
+  // Require exactly one blocker on the ray
+  if (blockers & (blockers - 1)) return false;
+  const int blSq = bb::ctz64(blockers);
+
+  const auto& B = pos.getBoard();
+
+  // Compute if we (us) already attack that blocking square from the current position.
+  lilia::model::bb::Bitboard atk = 0;
+
+  // Pawns that could capture the blocker
+  atk |= (CT.PAWN_CHK[(int)us][blSq] & B.getPieces(us, PT::Pawn));
+
+  // Knights / King
+  atk |= (bb::knight_attacks_from((core::Square)blSq) & B.getPieces(us, PT::Knight));
+  atk |= (bb::king_attacks_from((core::Square)blSq) & B.getPieces(us, PT::King));
+
+  // Sliders
+  atk |= (magic::sliding_attacks(magic::Slider::Bishop, (core::Square)blSq, occ) &
+          (B.getPieces(us, PT::Bishop) | B.getPieces(us, PT::Queen)));
+  atk |= (magic::sliding_attacks(magic::Slider::Rook, (core::Square)blSq, occ) &
+          (B.getPieces(us, PT::Rook) | B.getPieces(us, PT::Queen)));
+
+  return atk != 0;
+}
+
 static inline QuietSignals compute_quiet_signals(const model::Position& pos, const model::Move& m) {
   QuietSignals info{};
   using PT = core::PieceType;
@@ -497,6 +539,17 @@ static inline QuietSignals compute_quiet_signals(const model::Position& pos, con
                              board.getPieces(~us, PT::Bishop) | board.getPieces(~us, PT::Knight);
         if (attacks & targets) info.pieceSignal = 1;
       }
+    }
+  }
+
+  // X-ray discovered-check threat: after removing one blocker we already attack,
+  // the move would *unveil* a check next ply (e.g. ...Bc5!! threatening ...Qxd4+).
+  if (!info.givesCheck &&
+      (moverAfter == PT::Bishop || moverAfter == PT::Rook || moverAfter == PT::Queen)) {
+    if (xray_check_after_one_capture(pos, m, occ, kingSq, us, moverAfter)) {
+      // Not a check yet, but a forcing tactical quiet. Use pieceSignal=1 to
+      // gate LMP/futility/LMR and to boost ordering.
+      info.pieceSignal = std::max(info.pieceSignal, 1);
     }
   }
 
@@ -1257,6 +1310,17 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
       }
     }
 
+    {
+      const auto sig = compute_quiet_signals(pos, m);
+      if (sig.givesCheck) {
+        if (stage < ST_KILLER_CM_QP) stage = ST_KILLER_CM_QP;
+        base += 90'000;
+      } else if (sig.pawnSignal > 0 || sig.pieceSignal > 0) {
+        if (stage < ST_KILLER_CM_QP) stage = ST_KILLER_CM_QP;
+        base += 40'000;
+      }
+    }
+
     scores[i] = stage * BUCKET + base;
     ordered[i] = m;
   }
@@ -1553,7 +1617,9 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         if (ply <= 2) r -= 1;
         if (beta - alpha <= 8) r -= 1;
         if (!improving) r += 1;
-        if (history[m.from()][m.to()] < 2000 && qpc_sig == 2 /*it's a quiet check*/) r += 1;
+        if (qpc_sig == 2 /* quiet check */) r = std::max(0, r - 1);
+        // Optional: also be kinder to tactical quiets (x-ray threat)
+        if (qpc_sig == 1 /* tactical quiet via signals */) r = std::max(0, r - 1);
 
         // extra safety: avoid reducing the first 3 quiets at shallow depth
         if (newDepth <= 2 && moveCount < 3) r = 0;
