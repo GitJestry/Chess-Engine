@@ -58,8 +58,9 @@ struct ProgressMeter {
 
   std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
   std::chrono::steady_clock::time_point last = start;
-  bool finished = false;
+  std::atomic<bool> finished{false};
   bool threadSafe = false;
+  mutable std::mutex mutex_;
 
   ProgressMeter(std::string label_, std::size_t total_, int intervalMs_ = 750,
                 bool threadSafe_ = false)
@@ -79,25 +80,36 @@ struct ProgressMeter {
   }
 
   void add(std::size_t delta = 1) {
-    if (finished) return;
-    if (threadSafe)
+    if (finished.load(std::memory_order_acquire)) return;
+    if (threadSafe) {
       current.fetch_add(delta, std::memory_order_relaxed);
-    else
-      current = std::min(current + delta, total);
+    } else {
+      auto cur = current.load(std::memory_order_relaxed);
+      cur = std::min(cur + delta, total);
+      current.store(cur, std::memory_order_relaxed);
+    }
     tick();
   }
 
   void update(std::size_t newCurrent) {
-    if (finished) return;
-    current = std::min(newCurrent, total);
+    if (finished.load(std::memory_order_acquire)) return;
+    auto clamped = std::min(newCurrent, total);
+    current.store(clamped, std::memory_order_relaxed);
     tick();
   }
 
-  void tick() {
+  void tick(bool force = false) {
+    if (!force && finished.load(std::memory_order_acquire)) return;
+
     auto now = std::chrono::steady_clock::now();
-    auto since = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();
     std::size_t cur = current.load(std::memory_order_relaxed);
-    bool timeToPrint = since >= intervalMs || cur == total;
+    if (cur > total) cur = total;
+
+    std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
+    if (threadSafe) lock.lock();
+
+    auto since = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();
+    bool timeToPrint = force || since >= intervalMs || cur == total;
     if (!timeToPrint) return;
     last = now;
 
@@ -117,11 +129,15 @@ struct ProgressMeter {
   }
 
   void finish() {
-    if (finished) return;
-    current = total;
-    tick();
-    std::cout << "\n";
-    finished = true;
+    if (finished.exchange(true, std::memory_order_acq_rel)) return;
+    current.store(total, std::memory_order_relaxed);
+    tick(true);
+    if (threadSafe) {
+      std::lock_guard<std::mutex> lk(mutex_);
+      std::cout << "\n";
+    } else {
+      std::cout << "\n";
+    }
   }
 };
 
