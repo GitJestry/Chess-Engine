@@ -1,19 +1,20 @@
-// texel_tuner.cpp — fast parallel self-play, Adam optimizer, cached prepared samples
-// Drop-in replacement for your previous file. Compatible CLI + extra flags documented below.
-
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <mutex>
+#include <numeric>
 #include <optional>
 #include <random>
 #include <span>
@@ -46,6 +47,8 @@
 
 namespace fs = std::filesystem;
 using namespace std::string_literals;
+
+#define M_PI 3.14159265358979323846
 
 namespace lilia::tools::texel {
 
@@ -93,20 +96,19 @@ struct ProgressMeter {
 
   void update(std::size_t newCurrent) {
     if (finished.load(std::memory_order_acquire)) return;
-    auto clamped = std::min(newCurrent, total);
-    current.store(clamped, std::memory_order_relaxed);
+    current.store(std::min(newCurrent, total), std::memory_order_relaxed);
     tick();
   }
 
   void tick(bool force = false) {
     if (!force && finished.load(std::memory_order_acquire)) return;
 
+    std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
+    if (threadSafe) lock.lock();
+
     auto now = std::chrono::steady_clock::now();
     std::size_t cur = current.load(std::memory_order_relaxed);
     if (cur > total) cur = total;
-
-    std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
-    if (threadSafe) lock.lock();
 
     auto since = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();
     bool timeToPrint = force || since >= intervalMs || cur == total;
@@ -141,6 +143,77 @@ struct ProgressMeter {
   }
 };
 
+// ------------------------ Worker pool (fixed threads) ------------------------
+class WorkerPool {
+ public:
+  explicit WorkerPool(int n) : n_(std::max(1, n)) {
+    for (int i = 0; i < n_; ++i) threads_.emplace_back([this, i] { worker_loop(i); });
+  }
+  ~WorkerPool() {
+    {
+      std::lock_guard<std::mutex> lk(m_);
+      stop_ = true;
+      ++ticket_;
+    }
+    cv_.notify_all();
+    for (auto& t : threads_) t.join();
+  }
+
+  void run(const std::function<void(int)>& f) {
+    std::unique_lock<std::mutex> lk(m_);
+    task_ = f;
+    done_ = 0;
+    ++ticket_;
+    auto my_ticket = ticket_;
+    lk.unlock();
+    cv_.notify_all();
+
+    std::unique_lock<std::mutex> lk2(m_);
+    done_cv_.wait(lk2, [&] { return done_ticket_ == my_ticket && done_ == n_; });
+  }
+
+  int size() const { return n_; }
+
+ private:
+  int n_;
+  std::vector<std::thread> threads_;
+  std::mutex m_;
+  std::condition_variable cv_, done_cv_;
+  std::function<void(int)> task_;
+  uint64_t ticket_ = 0;
+  uint64_t done_ticket_ = 0;
+  int done_ = 0;
+  bool stop_ = false;
+
+  void worker_loop(int id) {
+    uint64_t seen_ticket = 0;
+    for (;;) {
+      std::function<void(int)> local_task;
+      uint64_t my_ticket = 0;
+
+      {
+        std::unique_lock<std::mutex> lk(m_);
+        cv_.wait(lk, [&] { return stop_ || ticket_ != seen_ticket; });
+        if (stop_) return;
+        seen_ticket = ticket_;
+        local_task = task_;
+        my_ticket = ticket_;
+      }
+
+      local_task(id);
+
+      {
+        std::lock_guard<std::mutex> lk(m_);
+        if (done_ticket_ != my_ticket) {
+          done_ticket_ = my_ticket;
+          done_ = 0;
+        }
+        if (++done_ == n_) done_cv_.notify_one();
+      }
+    }
+  }
+};
+
 // ------------------------ Defaults & CLI ------------------------
 struct DefaultPaths {
   fs::path dataFile;
@@ -154,7 +227,7 @@ struct Options {
 
   std::string stockfishPath;
   int games = 8;
-  int depth = 12;  // used when movetimeMs == 0
+  int depth = 12;
   int maxPlies = 160;
   int sampleSkip = 6;
   int sampleStride = 4;
@@ -162,42 +235,70 @@ struct Options {
   std::string dataFile;
   int iterations = 200;
   double learningRate = 0.0005;
-  double logisticScale = 256.0;
-  double l2 = 0.0;
+  double logisticScale = 256.0;  // init scale (may be learned)
+  double l2 = 0.0;               // legacy L2 (adds to grad)
 
   std::optional<std::string> weightsOutput;
   std::optional<int> sampleLimit;
   bool shuffleBeforeTraining = true;
   int progressIntervalMs = 750;
 
-  // ---- Engine / self-play options ----
-  int threads = 10;               // Stockfish Threads
-  int multipv = 4;                // >= 1
-  double tempCp = 80.0;           // softmax temperature in centipawns
-  int movetimeMs = 0;             // if >0 use movetime instead of depth
-  int movetimeJitterMs = 0;       // +/- jitter added to movetime
-  std::optional<int> skillLevel;  // 0..20
-  std::optional<int> elo;         // activates UCI_LimitStrength
-  std::optional<int> contempt;    // e.g. 20
+  // Engine / self-play
+  int threads = std::max(1, int(std::thread::hardware_concurrency()));
+  int multipv = 4;
+  double tempCp = 80.0;
+  int movetimeMs = 0;
+  int movetimeJitterMs = 0;
+  std::optional<int> skillLevel;
+  std::optional<int> elo;
+  std::optional<int> contempt;
 
-  // ---- New fast-path options ----
-  int genWorkers =
-      std::max(1, int(std::thread::hardware_concurrency()));  // parallel self-play workers
-  int trainWorkers =
-      std::max(1, int(std::thread::hardware_concurrency()));  // parallel training workers
-  bool useAdam = true;
+  // Performance / training
+  int genWorkers = std::max(1, int(std::thread::hardware_concurrency()));
+  int trainWorkers = std::max(1, int(std::thread::hardware_concurrency()));
+  bool useAdam = true;  // Adam or SGD
+  // Adam params
   double adamBeta1 = 0.9;
   double adamBeta2 = 0.999;
   double adamEps = 1e-8;
-  int logEvery = 0;  // 0 => auto
-  // optional cache of prepared samples
-  std::optional<std::string> preparedCache;  // path to .bin (read or write)
+  // AdamW (decoupled weight decay)
+  double weightDecay = 0.0;  // 0 disables
+
+  int logEvery = 0;   // 0 => auto
+  uint64_t seed = 0;  // 0 => nondeterministic
+  int batchSize = 0;  // 0 => full-batch
+  double valSplit = 0.0;
+  int evalEvery = 0;
+  int earlyStopPatience = 0;
+  double earlyStopDelta = 0.0;
+  double gradClip = 0.0;
+
+  // LR schedule
+  int lrWarmup = 0;  // steps of linear warmup
+  int lrCosine = 0;  // if >0, cosine decay over this many steps
+
+  // Prepared cache
+  std::optional<std::string> preparedCache;
   bool loadPreparedIfExists = true;
   bool savePrepared = true;
-};
 
-struct StockfishResult {
-  std::string bestmove;
+  // Warm start
+  std::optional<std::string> initWeightsPath;
+
+  // Relinearization
+  int relinEvery = 0;      // iterations; 0=off
+  double relinFrac = 0.0;  // 0..1 (1.0 = full)
+  int relinDelta = 1;      // finite-diff step
+
+  // Auto-scale
+  bool autoScale = false;
+
+  // New: learnable extras
+  bool learnBias = true;    // add bias parameter b
+  bool learnScale = false;  // optimize scale via log-param
+
+  // Logging
+  std::optional<std::string> logCsv;
 };
 
 struct RawSample {
@@ -206,9 +307,11 @@ struct RawSample {
 };
 
 struct PreparedSample {
+  std::string fen;  // needed for relinearization
   float result = 0.5f;
   float baseEval = 0.0f;
-  std::vector<float> gradients;  // dEval/dw_j at defaults (float to reduce bandwidth)
+  float weight = 1.0f;           // per-sample weight
+  std::vector<float> gradients;  // dEval/dw_j at linearization point
 };
 
 // --- Utility to find Stockfish near exe / project ---
@@ -296,7 +399,7 @@ DefaultPaths compute_default_paths(const char* argv0) {
                "  --depth <D>               Stockfish depth (default 12)\n"
                "  --movetime <ms>           Use movetime instead of depth (default off)\n"
                "  --jitter <ms>             +/- movetime jitter (default 0)\n"
-               "  --threads <N>             Stockfish Threads (default 10)\n"
+               "  --threads <N>             Stockfish Threads (default hw threads)\n"
                "  --multipv <N>             MultiPV for sampling (default 4)\n"
                "  --temp <cp>               Softmax temperature in centipawns (default 80)\n"
                "  --skill <0..20>           Stockfish Skill Level (optional)\n"
@@ -311,25 +414,44 @@ DefaultPaths compute_default_paths(const char* argv0) {
                "  --iterations <N>          Training iterations (default 200)\n"
                "  --learning-rate <v>       Learning rate (default 5e-4)\n"
                "  --scale <v>               Logistic scale in centipawns (default 256)\n"
-               "  --l2 <v>                  L2 regularization (default 0)\n"
+               "  --l2 <v>                  L2 regularization (legacy, default 0)\n"
                "  --no-shuffle              Do not shuffle dataset before training\n"
                "  --weights-output <file>   Write tuned weights (default "
             << d.weightsFile.string()
             << ")\n"
                "  --sample-limit <N>        Limit training samples\n"
                "  --progress-interval <ms>  Progress update interval (default 750)\n"
-               "  --help                    Show this message\n"
-               "\nFast-mode additions:\n"
+               "\nPerformance & training:\n"
                "  --gen-workers <N>         Parallel self-play workers (default = hw threads)\n"
-               "  --train-workers <N>       Parallel training workers (default = hw threads)\n"
+               "  --train-workers <N>       Training workers (default = hw threads)\n"
                "  --adam 0|1                Use Adam optimizer (default 1)\n"
                "  --adam-b1 <v>             Adam beta1 (default 0.9)\n"
                "  --adam-b2 <v>             Adam beta2 (default 0.999)\n"
                "  --adam-eps <v>            Adam epsilon (default 1e-8)\n"
+               "  --weight-decay <v>        AdamW decoupled weight decay (default 0)\n"
                "  --log-every <N>           Log every N iterations (auto if 0)\n"
-               "  --prepared-cache <file>   Binary cache for prepared samples (.bin)\n"
-               "  --no-load-prepared        Do not load cache even if exists\n"
-               "  --no-save-prepared        Do not write cache\n";
+               "  --seed <u64>              RNG seed (0 => nondeterministic)\n"
+               "  --batch-size <N>          Minibatch size (0 => full-batch)\n"
+               "  --val-split <r>           Validation split ratio, 0..0.5 (default 0)\n"
+               "  --eval-every <N>          Validate every N steps (default logEvery)\n"
+               "  --early-stop <N>          Early-stop patience (0 => off)\n"
+               "  --early-delta <v>         Min val-loss improvement to reset patience\n"
+               "  --grad-clip <v>           L2 gradient clipping (0 => off)\n"
+               "  --lr-warmup <N>           Linear warmup steps (default 0)\n"
+               "  --lr-cosine <N>           Cosine decay horizon in steps (default 0)\n"
+               "  --log-csv <file>          Write training log CSV to file\n"
+               "\nInit & linearization:\n"
+               "  --init-weights <file>     Warm-start from weights file\n"
+               "  --relin-every <N>         Relinearize every N iters (0 => off)\n"
+               "  --relin-frac <r>          Fraction 0..1 of samples to relinearize\n"
+               "  --relin-delta <D>         Finite-diff step for (re)linearization (default 1)\n"
+               "  --prepared-cache <file>   Path to prepared cache (v1/v2/v3)\n"
+               "  --no-load-prepared        Do not attempt to load prepared cache\n"
+               "  --no-save-prepared        Do not save prepared cache\n"
+               "\nExtras:\n"
+               "  --auto-scale              One-shot auto-tune of logistic scale on startup\n"
+               "  --learn-scale             Learn logistic scale jointly (log-param)\n"
+               "  --no-bias                 Disable bias parameter (default on)\n";
   std::exit(1);
 }
 
@@ -411,14 +533,50 @@ Options parse_args(int argc, char** argv, const DefaultPaths& defaults) {
       o.adamBeta2 = std::stod(require_value(i, "--adam-b2", argc, argv));
     else if (arg == "--adam-eps")
       o.adamEps = std::stod(require_value(i, "--adam-eps", argc, argv));
+    else if (arg == "--weight-decay")
+      o.weightDecay = std::stod(require_value(i, "--weight-decay", argc, argv));
     else if (arg == "--log-every")
       o.logEvery = std::stoi(require_value(i, "--log-every", argc, argv));
+    else if (arg == "--seed")
+      o.seed = static_cast<uint64_t>(std::stoull(require_value(i, "--seed", argc, argv)));
+    else if (arg == "--batch-size")
+      o.batchSize = std::stoi(require_value(i, "--batch-size", argc, argv));
+    else if (arg == "--val-split")
+      o.valSplit = std::stod(require_value(i, "--val-split", argc, argv));
+    else if (arg == "--eval-every")
+      o.evalEvery = std::stoi(require_value(i, "--eval-every", argc, argv));
+    else if (arg == "--early-stop")
+      o.earlyStopPatience = std::stoi(require_value(i, "--early-stop", argc, argv));
+    else if (arg == "--early-delta")
+      o.earlyStopDelta = std::stod(require_value(i, "--early-delta", argc, argv));
+    else if (arg == "--grad-clip")
+      o.gradClip = std::stod(require_value(i, "--grad-clip", argc, argv));
     else if (arg == "--prepared-cache")
       o.preparedCache = require_value(i, "--prepared-cache", argc, argv);
     else if (arg == "--no-load-prepared")
       o.loadPreparedIfExists = false;
     else if (arg == "--no-save-prepared")
       o.savePrepared = false;
+    else if (arg == "--init-weights")
+      o.initWeightsPath = require_value(i, "--init-weights", argc, argv);
+    else if (arg == "--relin-every")
+      o.relinEvery = std::stoi(require_value(i, "--relin-every", argc, argv));
+    else if (arg == "--relin-frac")
+      o.relinFrac = std::stod(require_value(i, "--relin-frac", argc, argv));
+    else if (arg == "--relin-delta")
+      o.relinDelta = std::stoi(require_value(i, "--relin-delta", argc, argv));
+    else if (arg == "--auto-scale")
+      o.autoScale = true;
+    else if (arg == "--learn-scale")
+      o.learnScale = true;
+    else if (arg == "--no-bias")
+      o.learnBias = false;
+    else if (arg == "--lr-warmup")
+      o.lrWarmup = std::stoi(require_value(i, "--lr-warmup", argc, argv));
+    else if (arg == "--lr-cosine")
+      o.lrCosine = std::stoi(require_value(i, "--lr-cosine", argc, argv));
+    else if (arg == "--log-csv")
+      o.logCsv = require_value(i, "--log-csv", argc, argv);
     else if (arg == "--help" || arg == "-h")
       usage_and_exit(defaults);
     else {
@@ -426,10 +584,24 @@ Options parse_args(int argc, char** argv, const DefaultPaths& defaults) {
       usage_and_exit(defaults);
     }
   }
+
   if (!o.generateData && !o.tune) {
     std::cerr << "Nothing to do: specify --generate-data and/or --tune.\n";
     usage_and_exit(defaults);
   }
+  if (o.valSplit < 0.0) o.valSplit = 0.0;
+  if (o.valSplit > 0.5) o.valSplit = 0.5;
+  if (o.batchSize < 0) o.batchSize = 0;
+  if (o.evalEvery < 0) o.evalEvery = 0;
+  if (o.earlyStopPatience < 0) o.earlyStopPatience = 0;
+  if (o.gradClip < 0.0) o.gradClip = 0.0;
+  if (o.relinEvery < 0) o.relinEvery = 0;
+  if (o.relinFrac < 0.0) o.relinFrac = 0.0;
+  if (o.relinFrac > 1.0) o.relinFrac = 1.0;
+  if (o.relinDelta <= 0) o.relinDelta = 1;
+  if (o.lrWarmup < 0) o.lrWarmup = 0;
+  if (o.lrCosine < 0) o.lrCosine = 0;
+  if (o.weightDecay < 0.0) o.weightDecay = 0.0;
   return o;
 }
 
@@ -452,11 +624,49 @@ double result_from_pov(core::GameResult res, core::Color winner, core::Color pov
   }
 }
 
+// ------------------------ Read weights (warm start) ------------------------
+std::optional<std::vector<int>> read_weights_file(
+    const std::string& path, const std::span<const engine::EvalParamEntry>& entries) {
+  std::ifstream in(path);
+  if (!in) return std::nullopt;
+  std::unordered_map<std::string, int> kv;
+  std::string line;
+  while (std::getline(in, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    auto hash = line.find('#');
+    if (hash != std::string::npos) line = line.substr(0, hash);
+    auto eq = line.find('=');
+    if (eq == std::string::npos) continue;
+    std::string k = line.substr(0, eq), v = line.substr(eq + 1);
+    auto trim = [](std::string& s) {
+      size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
+      if (a == std::string::npos)
+        s.clear();
+      else
+        s = s.substr(a, b - a + 1);
+    };
+    trim(k);
+    trim(v);
+    try {
+      kv[k] = std::stoi(v);
+    } catch (...) {
+    }
+  }
+  if (kv.empty()) return std::nullopt;
+  std::vector<int> w(entries.size(), 0);
+  for (size_t i = 0; i < entries.size(); ++i) {
+    auto it = kv.find(entries[i].name);
+    if (it == kv.end()) return std::nullopt;
+    w[i] = it->second;
+  }
+  return w;
+}
+
 // ------------------------ Persistent UCI Engine ------------------------
 class UciEngine {
  public:
-  explicit UciEngine(const std::string& exe, const Options& opts)
-      : exePath_(exe), opts_(opts), rng_(std::random_device{}()) {
+  explicit UciEngine(const std::string& exe, const Options& opts, uint64_t seed = 0)
+      : exePath_(exe), opts_(opts), rng_(seed ? seed : std::random_device{}()) {
     if (exePath_.empty()) throw std::runtime_error("UCI engine path is empty");
     spawn();
     uci_handshake();
@@ -481,7 +691,6 @@ class UciEngine {
       sendln(os.str());
     }
 
-    // Build go command
     std::string goCmd;
     if (opts_.movetimeMs > 0) {
       int mt = opts_.movetimeMs;
@@ -490,11 +699,10 @@ class UciEngine {
         mt = std::max(5, mt + dist(rng_));
       }
       goCmd = "go movetime " + std::to_string(mt);
-    } else if (opts_.depth > 0) {
+    } else if (opts_.depth > 0)
       goCmd = "go depth " + std::to_string(opts_.depth);
-    } else {
+    else
       goCmd = "go movetime 1000";
-    }
     sendln(goCmd);
 
     struct Cand {
@@ -506,7 +714,9 @@ class UciEngine {
     int bestDepth = -1;
 
     for (;;) {
-      std::string line = readline_blocking();
+      auto opt = readline_blocking();
+      if (!opt) throw std::runtime_error("UCI engine closed");
+      const std::string& line = *opt;
       if (line.empty()) continue;
 
       if (starts_with(line, "info ")) {
@@ -628,35 +838,37 @@ class UciEngine {
     std::fflush(fout_);
   }
 
-  std::string readline_blocking() {
-    if (!fin_) throw std::runtime_error("UCI engine stdout closed");
+  std::optional<std::string> readline_blocking() {
     std::string line;
     int ch;
+    bool any = false;
     while ((ch = std::fgetc(fin_)) != EOF) {
+      any = true;
       if (ch == '\r') continue;
       if (ch == '\n') break;
       line.push_back((char)ch);
     }
+    if (!any && std::feof(fin_)) return std::nullopt;
     return line;
   }
 
   void isready() {
     sendln("isready");
     for (;;) {
-      std::string l = readline_blocking();
-      if (l == "readyok") break;
+      auto l = readline_blocking();
+      if (!l) throw std::runtime_error("UCI engine closed");
+      if (*l == "readyok") break;
     }
   }
-
   void uci_handshake() {
     sendln("uci");
     for (;;) {
-      std::string l = readline_blocking();
-      if (l == "uciok") break;
+      auto l = readline_blocking();
+      if (!l) throw std::runtime_error("UCI engine closed");
+      if (*l == "uciok") break;
     }
     isready();
   }
-
   void apply_options() {
     sendln("setoption name Threads value " + std::to_string(std::max(1, opts_.threads)));
     if (opts_.skillLevel)
@@ -666,9 +878,7 @@ class UciEngine {
       sendln("setoption name UCI_Elo value " + std::to_string(*opts_.elo));
     }
     if (opts_.contempt) sendln("setoption name Contempt value " + std::to_string(*opts_.contempt));
-    // Set MultiPV ONCE (avoid per-move chatter)
     sendln("setoption name MultiPV value " + std::to_string(std::max(1, opts_.multipv)));
-    // Ensure engine is settled
     isready();
   }
 
@@ -688,7 +898,6 @@ class UciEngine {
     if (!SetHandleInformation(hInWrite_, HANDLE_FLAG_INHERIT, 0))
       throw std::runtime_error("stdin SetHandleInformation failed");
     hInReadLocal = hInRead;
-
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
@@ -696,14 +905,12 @@ class UciEngine {
     si.hStdInput = hInReadLocal;
     si.hStdOutput = hOutWrite;
     si.hStdError = hOutWrite;
-
     std::wstring app = fs::path(exePath_).wstring();
     if (!CreateProcessW(app.c_str(), nullptr, nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr,
                         nullptr, &si, &pi_))
       throw std::runtime_error("CreateProcessW failed for Stockfish");
     CloseHandle(hOutWrite);
     CloseHandle(hInReadLocal);
-
     int fdIn = _open_osfhandle(reinterpret_cast<intptr_t>(hInWrite_), _O_WRONLY | _O_BINARY);
     int fdOut = _open_osfhandle(reinterpret_cast<intptr_t>(hOutRead_), _O_RDONLY | _O_BINARY);
     if (fdIn == -1 || fdOut == -1) throw std::runtime_error("_open_osfhandle failed");
@@ -773,20 +980,12 @@ class UciEngine {
 };
 
 // ------------------------ Data generation (parallel self-play) ------------------------
-struct GameBatchCfg {
-  int games = 0;
-  int maxPlies = 160;
-  int sampleSkip = 6;
-  int sampleStride = 4;
-  int movetimeMs = 0;
-  int movetimeJitterMs = 0;
-};
-
 static void run_games_worker(int workerId, const Options& opts, std::atomic<int>& nextGame,
                              int totalGames, std::vector<RawSample>& outSamples,
                              std::mutex& outMutex, ProgressMeter& pm) {
-  // Each worker its own engine and RNG
-  UciEngine engine(opts.stockfishPath, opts);
+  uint64_t engineSeed = opts.seed ? (opts.seed ^ (0x9E3779B97F4A7C15ull + workerId)) : 0ull;
+  UciEngine engine(opts.stockfishPath, opts, engineSeed);
+
   std::vector<RawSample> local;
   local.reserve(8192);
   std::vector<std::string> moveHistory;
@@ -817,14 +1016,13 @@ static void run_games_worker(int workerId, const Options& opts, std::atomic<int>
         ++counter;
       }
 
+      // Pick and play move
       std::string mv = engine.pick_move_from_startpos(moveHistory);
       if (mv.empty() || mv == "(none)") {
         game.checkGameResult();
         break;
       }
-      if (!game.doMoveUCI(mv)) {
-        break;
-      }
+      if (!game.doMoveUCI(mv)) break;
       moveHistory.push_back(mv);
 
       game.checkGameResult();
@@ -844,7 +1042,6 @@ static void run_games_worker(int workerId, const Options& opts, std::atomic<int>
     pm.add(1);
   }
 
-  // Merge local samples (we dedup after merge to reduce contention)
   {
     std::lock_guard<std::mutex> lk(outMutex);
     outSamples.insert(outSamples.end(), std::make_move_iterator(local.begin()),
@@ -854,9 +1051,8 @@ static void run_games_worker(int workerId, const Options& opts, std::atomic<int>
 
 std::vector<RawSample> generate_samples_parallel(const Options& opts) {
   if (!opts.generateData) return {};
-  if (opts.stockfishPath.empty()) {
+  if (opts.stockfishPath.empty())
     throw std::runtime_error("Stockfish path required for data generation");
-  }
 
   const int W = std::max(1, opts.genWorkers);
   std::vector<std::thread> threads;
@@ -886,10 +1082,8 @@ std::vector<RawSample> generate_samples_parallel(const Options& opts) {
     if (seen.insert(key).second) unique.push_back(std::move(s));
   }
 
-  // Enforce sampleLimit if set
-  if (opts.sampleLimit && unique.size() > (size_t)*opts.sampleLimit) {
+  if (opts.sampleLimit && unique.size() > (size_t)*opts.sampleLimit)
     unique.resize((size_t)*opts.sampleLimit);
-  }
   return unique;
 }
 
@@ -923,8 +1117,8 @@ std::vector<RawSample> read_dataset(const std::string& path) {
   return samples;
 }
 
-// ------------------------ Prepared cache I/O (binary, fast) ------------------------
-struct PreparedCacheHeader {
+// ------------------------ Prepared cache I/O ------------------------
+struct PreparedCacheHeaderV1 {
   uint32_t magic = 0x54455845u;  // 'TEXE'
   uint32_t version = 1;
   uint32_t paramCount = 0;
@@ -932,35 +1126,181 @@ struct PreparedCacheHeader {
   double logisticScale = 256.0;
 };
 
+struct PreparedCacheHeaderV2 {
+  uint32_t magic = 0x54455845u;  // 'TEXE'
+  uint32_t version = 2;
+  uint32_t paramCount = 0;
+  uint64_t sampleCount = 0;
+  double logisticScale = 256.0;
+  uint64_t defaultsHash = 0;
+  uint32_t deltaStep = 1;
+  uint32_t engineId = 0;  // reserved
+};
+
+struct PreparedCacheHeaderV3 {
+  uint32_t magic = 0x54455845u;  // 'TEXE'
+  uint32_t version = 3;
+  uint32_t paramCount = 0;
+  uint64_t sampleCount = 0;
+  double logisticScale = 256.0;
+  uint64_t defaultsHash = 0;
+  uint32_t deltaStep = 1;
+  uint32_t engineId = 0;  // reserved
+  uint64_t checksum = 0;  // FNV-1a of content
+};
+
+static uint64_t fnv1a64_update(uint64_t h, uint64_t x) {
+  h ^= x;
+  h *= 1099511628211ull;
+  return h;
+}
+static uint64_t hash_defaults(const std::span<const engine::EvalParamEntry>& entries,
+                              const std::vector<int>& defaults, int deltaStep, uint32_t engineId) {
+  uint64_t h = 1469598103934665603ull;  // FNV-1a
+  auto mix = [&](uint64_t x) { h = fnv1a64_update(h, x); };
+  mix((uint64_t)entries.size());
+  for (size_t i = 0; i < entries.size(); ++i) {
+    for (unsigned char c : entries[i].name) mix(c);
+    mix((uint64_t)(int64_t)defaults[i]);
+  }
+  mix((uint64_t)deltaStep);
+  mix((uint64_t)engineId);
+  return h;
+}
+
+static uint64_t checksum_samples(const std::vector<PreparedSample>& v) {
+  uint64_t h = 1469598103934665603ull;
+  for (const auto& s : v) {
+    for (unsigned char c : s.fen) h = fnv1a64_update(h, c);
+    h = fnv1a64_update(h, (uint64_t)std::llround(s.result * 1e6));
+    h = fnv1a64_update(h, (uint64_t)std::llround(s.baseEval * 1e2));
+    h = fnv1a64_update(h, (uint64_t)std::llround(s.weight * 1e6));
+    for (float g : s.gradients) {
+      h = fnv1a64_update(h, (uint64_t)std::llround((double)g * 1e3));
+    }
+  }
+  return h;
+}
+
 bool load_prepared_cache(const std::string& path, std::vector<PreparedSample>& out,
-                         uint32_t expectedParams, double expectedScale) {
+                         uint32_t expectedParams, double expectedScale,
+                         uint64_t expectedDefaultsHash, int expectedDelta, bool& hasFenOut) {
   std::ifstream f(path, std::ios::binary);
   if (!f) return false;
-  PreparedCacheHeader h{};
-  f.read(reinterpret_cast<char*>(&h), sizeof(h));
-  if (!f || h.magic != 0x54455845u || h.version != 1) return false;
-  if (h.paramCount != expectedParams) return false;
-  if (std::abs(h.logisticScale - expectedScale) > 1e-9) return false;
+  uint32_t magic = 0, version = 0;
+  f.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+  f.read(reinterpret_cast<char*>(&version), sizeof(version));
+  if (!f || magic != 0x54455845u) return false;
 
-  out.clear();
-  out.resize(h.sampleCount);
-  for (uint64_t i = 0; i < h.sampleCount; ++i) {
-    float res, base;
-    f.read(reinterpret_cast<char*>(&res), sizeof(float));
-    f.read(reinterpret_cast<char*>(&base), sizeof(float));
-    out[i].result = res;
-    out[i].baseEval = base;
+  if (version == 1) {
+    PreparedCacheHeaderV1 h{};
+    h.magic = magic;
+    h.version = version;
+    f.read(reinterpret_cast<char*>(&h.paramCount), sizeof(h.paramCount));
+    f.read(reinterpret_cast<char*>(&h.sampleCount), sizeof(h.sampleCount));
+    f.read(reinterpret_cast<char*>(&h.logisticScale), sizeof(h.logisticScale));
+    if (!f || h.paramCount != expectedParams) return false;
+    if (std::abs(h.logisticScale - expectedScale) > 1e-9) return false;
+
+    out.clear();
+    out.resize(h.sampleCount);
+    for (uint64_t i = 0; i < h.sampleCount; ++i) {
+      float res, base;
+      f.read(reinterpret_cast<char*>(&res), sizeof(float));
+      f.read(reinterpret_cast<char*>(&base), sizeof(float));
+      out[i].result = res;
+      out[i].baseEval = base;
+      out[i].weight = 1.0f;  // v1: no weight
+    }
+    for (uint64_t i = 0; i < h.sampleCount; ++i) {
+      out[i].gradients.resize(h.paramCount);
+      f.read(reinterpret_cast<char*>(out[i].gradients.data()), sizeof(float) * h.paramCount);
+    }
+    hasFenOut = false;  // v1 has no FEN
+    return (bool)f;
+  } else if (version == 2) {
+    PreparedCacheHeaderV2 h{};
+    h.magic = magic;
+    h.version = version;
+    f.read(reinterpret_cast<char*>(&h.paramCount), sizeof(h.paramCount));
+    f.read(reinterpret_cast<char*>(&h.sampleCount), sizeof(h.sampleCount));
+    f.read(reinterpret_cast<char*>(&h.logisticScale), sizeof(h.logisticScale));
+    f.read(reinterpret_cast<char*>(&h.defaultsHash), sizeof(h.defaultsHash));
+    f.read(reinterpret_cast<char*>(&h.deltaStep), sizeof(h.deltaStep));
+    f.read(reinterpret_cast<char*>(&h.engineId), sizeof(h.engineId));
+    if (!f || h.paramCount != expectedParams) return false;
+    if (std::abs(h.logisticScale - expectedScale) > 1e-9) return false;
+    if (h.defaultsHash != expectedDefaultsHash) return false;
+    if ((int)h.deltaStep != expectedDelta) return false;
+
+    out.clear();
+    out.resize(h.sampleCount);
+    for (uint64_t i = 0; i < h.sampleCount; ++i) {
+      uint32_t flen = 0;
+      f.read(reinterpret_cast<char*>(&flen), sizeof(flen));
+      std::string fen(flen, '\0');
+      if (flen) f.read(&fen[0], flen);
+      float res = 0, base = 0;
+      f.read(reinterpret_cast<char*>(&res), sizeof(float));
+      f.read(reinterpret_cast<char*>(&base), sizeof(float));
+      out[i].fen = std::move(fen);
+      out[i].result = res;
+      out[i].baseEval = base;
+      out[i].weight = 1.0f;
+    }
+    for (uint64_t i = 0; i < h.sampleCount; ++i) {
+      out[i].gradients.resize(h.paramCount);
+      f.read(reinterpret_cast<char*>(out[i].gradients.data()), sizeof(float) * h.paramCount);
+    }
+    hasFenOut = true;
+    return (bool)f;
+  } else if (version == 3) {
+    PreparedCacheHeaderV3 h{};
+    h.magic = magic;
+    h.version = version;
+    f.read(reinterpret_cast<char*>(&h.paramCount), sizeof(h.paramCount));
+    f.read(reinterpret_cast<char*>(&h.sampleCount), sizeof(h.sampleCount));
+    f.read(reinterpret_cast<char*>(&h.logisticScale), sizeof(h.logisticScale));
+    f.read(reinterpret_cast<char*>(&h.defaultsHash), sizeof(h.defaultsHash));
+    f.read(reinterpret_cast<char*>(&h.deltaStep), sizeof(h.deltaStep));
+    f.read(reinterpret_cast<char*>(&h.engineId), sizeof(h.engineId));
+    f.read(reinterpret_cast<char*>(&h.checksum), sizeof(h.checksum));
+    if (!f || h.paramCount != expectedParams) return false;
+    if (std::abs(h.logisticScale - expectedScale) > 1e-9) return false;
+    if (h.defaultsHash != expectedDefaultsHash) return false;
+    if ((int)h.deltaStep != expectedDelta) return false;
+
+    out.clear();
+    out.resize(h.sampleCount);
+    for (uint64_t i = 0; i < h.sampleCount; ++i) {
+      uint32_t flen = 0;
+      f.read(reinterpret_cast<char*>(&flen), sizeof(flen));
+      std::string fen(flen, '\0');
+      if (flen) f.read(&fen[0], flen);
+      float res = 0, base = 0, w = 1.0f;
+      f.read(reinterpret_cast<char*>(&res), sizeof(float));
+      f.read(reinterpret_cast<char*>(&base), sizeof(float));
+      f.read(reinterpret_cast<char*>(&w), sizeof(float));
+      out[i].fen = std::move(fen);
+      out[i].result = res;
+      out[i].baseEval = base;
+      out[i].weight = w;
+    }
+    for (uint64_t i = 0; i < h.sampleCount; ++i) {
+      out[i].gradients.resize(h.paramCount);
+      f.read(reinterpret_cast<char*>(out[i].gradients.data()), sizeof(float) * h.paramCount);
+    }
+    hasFenOut = true;
+    // verify checksum
+    if (checksum_samples(out) != h.checksum) return false;
+    return (bool)f;
   }
-  // gradients blob
-  for (uint64_t i = 0; i < h.sampleCount; ++i) {
-    out[i].gradients.resize(h.paramCount);
-    f.read(reinterpret_cast<char*>(out[i].gradients.data()), sizeof(float) * h.paramCount);
-  }
-  return (bool)f;
+  return false;
 }
 
 bool save_prepared_cache(const std::string& path, const std::vector<PreparedSample>& samples,
-                         uint32_t paramCount, double logisticScale) {
+                         uint32_t paramCount, double logisticScale, uint64_t defaultsHash,
+                         int deltaStep, uint32_t engineId = 0) {
   fs::path p{path};
   if (p.has_parent_path()) {
     std::error_code ec;
@@ -968,14 +1308,22 @@ bool save_prepared_cache(const std::string& path, const std::vector<PreparedSamp
   }
   std::ofstream f(path, std::ios::binary | std::ios::trunc);
   if (!f) return false;
-  PreparedCacheHeader h{};
+  PreparedCacheHeaderV3 h{};
   h.paramCount = paramCount;
   h.sampleCount = samples.size();
   h.logisticScale = logisticScale;
+  h.defaultsHash = defaultsHash;
+  h.deltaStep = (uint32_t)deltaStep;
+  h.engineId = engineId;
+  h.checksum = checksum_samples(samples);
   f.write(reinterpret_cast<const char*>(&h), sizeof(h));
   for (const auto& s : samples) {
+    uint32_t flen = (uint32_t)s.fen.size();
+    f.write(reinterpret_cast<const char*>(&flen), sizeof(flen));
+    if (flen) f.write(s.fen.data(), flen);
     f.write(reinterpret_cast<const char*>(&s.result), sizeof(float));
     f.write(reinterpret_cast<const char*>(&s.baseEval), sizeof(float));
+    f.write(reinterpret_cast<const char*>(&s.weight), sizeof(float));
   }
   for (const auto& s : samples) {
     f.write(reinterpret_cast<const char*>(s.gradients.data()), sizeof(float) * s.gradients.size());
@@ -984,27 +1332,39 @@ bool save_prepared_cache(const std::string& path, const std::vector<PreparedSamp
 }
 
 // ------------------------ Texel preparation & training ------------------------
-PreparedSample prepare_sample(const RawSample& sample, engine::Evaluator& evaluator,
-                              const std::vector<int>& defaults,
-                              const std::span<const engine::EvalParamEntry>& entries) {
+PreparedSample prepare_sample_with_delta(const std::string& fen, double result,
+                                         engine::Evaluator& evaluator,
+                                         const std::vector<int>& linpoint,
+                                         const std::span<const engine::EvalParamEntry>& entries,
+                                         int deltaStep, double scaleForWeight) {
   model::ChessGame game;
-  game.setPosition(sample.fen);
+  game.setPosition(fen);
   auto& pos = game.getPositionRefForBot();
   pos.rebuildEvalAcc();
 
   PreparedSample prepared;
-  prepared.result = (float)sample.result;
+  prepared.fen = fen;
+  prepared.result = (float)result;
   prepared.gradients.resize(entries.size());
 
   evaluator.clearCaches();
   const auto pov = game.getGameState().sideToMove;
   const double sgn = (pov == core::Color::White) ? 1.0 : -1.0;
+
+  // set linearization point into engine
+  engine::set_eval_param_values(linpoint);
   prepared.baseEval = (float)(sgn * (double)evaluator.evaluate(pos));
 
-  constexpr int delta = 1;
+  // simple, robust sample weighting: focus on balanced positions
+  double w =
+      1.0 /
+      (1.0 + std::pow(std::abs((double)prepared.baseEval) / std::max(1.0, scaleForWeight), 2.0));
+  prepared.weight = (float)w;
+
+  const int delta = std::max(1, deltaStep);
   for (size_t i = 0; i < entries.size(); ++i) {
     int* ptr = entries[i].value;
-    const int orig = defaults[i];
+    const int orig = linpoint[i];
 
     *ptr = orig + delta;
     evaluator.clearCaches();
@@ -1020,186 +1380,451 @@ PreparedSample prepare_sample(const RawSample& sample, engine::Evaluator& evalua
   return prepared;
 }
 
-std::vector<PreparedSample> prepare_samples(std::vector<RawSample> rawSamples,
+std::vector<PreparedSample> prepare_samples(const std::vector<RawSample>& rawSamples,
                                             engine::Evaluator& evaluator,
-                                            const std::vector<int>& defaults,
+                                            const std::vector<int>& linpoint,
                                             const std::span<const engine::EvalParamEntry>& entries,
                                             const Options& opts) {
-  if (opts.sampleLimit && rawSamples.size() > (size_t)*opts.sampleLimit)
-    rawSamples.resize((size_t)*opts.sampleLimit);
+  std::vector<RawSample> work = rawSamples;
+  if (opts.sampleLimit && work.size() > (size_t)*opts.sampleLimit)
+    work.resize((size_t)*opts.sampleLimit);
 
   if (opts.shuffleBeforeTraining) {
-    std::mt19937_64 rng{std::random_device{}()};
-    std::shuffle(rawSamples.begin(), rawSamples.end(), rng);
+    std::mt19937_64 rng{opts.seed ? opts.seed ^ 0xD1B54A32D192ED03ull : std::random_device{}()};
+    std::shuffle(work.begin(), work.end(), rng);
   }
 
   std::vector<PreparedSample> prepared;
-  prepared.resize(rawSamples.size());
+  prepared.resize(work.size());
 
-  ProgressMeter prepPM("Preparing samples (finite-diff)", rawSamples.size(),
-                       opts.progressIntervalMs);
-  for (size_t i = 0; i < rawSamples.size(); ++i) {
-    prepared[i] = prepare_sample(rawSamples[i], evaluator, defaults, entries);
+  ProgressMeter prepPM("Preparing samples (finite-diff)", work.size(), opts.progressIntervalMs);
+  // NOTE: serial on purpose — finite-diff toggles global eval params
+  for (size_t i = 0; i < work.size(); ++i) {
+    prepared[i] = prepare_sample_with_delta(work[i].fen, work[i].result, evaluator, linpoint,
+                                            entries, opts.relinDelta, opts.logisticScale);
     prepPM.add(1);
   }
   prepPM.finish();
   return prepared;
 }
 
-// ------------------------ Parallel training (Adam or SGD) ------------------------
 struct TrainingResult {
-  std::vector<double> weights;
+  std::vector<double> weights;  // engine parameters only
   double finalLoss = 0.0;
+  double learnedBias = 0.0;
+  double learnedScale = 0.0;  // final scale actually used during training
 };
 
-TrainingResult train_parallel(const std::vector<PreparedSample>& samples,
+struct TrainExtrasIdx {
+  int biasIdx = -1;   // index in extended parameter vector
+  int scaleIdx = -1;  // we store log-scale parameter at this index
+};
+
+static double sigmoid(double x) {
+  if (x > 500.0) return 1.0;
+  if (x < -500.0) return 0.0;
+  return 1.0 / (1.0 + std::exp(-x));
+}
+
+static double lr_schedule(const Options& o, int step, int totalSteps) {
+  double lr = o.learningRate;
+  if (o.lrWarmup > 0 && step < o.lrWarmup) {
+    lr *= (double)(step + 1) / (double)std::max(1, o.lrWarmup);
+  }
+  if (o.lrCosine > 0) {
+    int t = std::min(step, o.lrCosine);
+
+    double cosdec = 0.5 * (1.0 + std::cos(M_PI * (double)t / (double)o.lrCosine));
+    lr *= cosdec;
+  }
+  return std::max(lr, 1e-12);
+}
+
+static double compute_avg_loss_pool(WorkerPool& pool, const std::vector<PreparedSample>& samples,
+                                    const std::vector<double>& wEngine,
+                                    const std::vector<double>& w0, double bias, double logScale) {
+  const size_t P = wEngine.size(), N = samples.size();
+  if (N == 0) return 0.0;
+
+  const int TW = pool.size();
+  std::vector<double> tLossSum(TW, 0.0);
+  std::vector<double> tSumW(TW, 0.0);
+  std::vector<size_t> cuts(TW + 1, 0);
+  for (int t = 0; t < TW; ++t) cuts[t] = (N * t) / TW;
+  cuts[TW] = N;
+
+  pool.run([&](int t) {
+    size_t start = cuts[t], end = cuts[t + 1];
+    double lossSum = 0.0;
+    double sumW = 0.0;
+    for (size_t i = start; i < end; ++i) {
+      const auto& s = samples[i];
+      const float* gptr = s.gradients.data();
+      double eval = s.baseEval;
+      for (size_t j = 0; j < P; ++j) eval += (wEngine[j] - w0[j]) * (double)gptr[j];
+      eval += bias;
+      double scale = std::exp(logScale);
+      double scaled = std::clamp(eval / scale, -500.0, 500.0);
+      double prob = sigmoid(scaled);
+      double target = s.result;
+      double w = std::max(0.0f, s.weight);
+      const double epsStab = 1e-12;
+      lossSum += w * (-(target * std::log(std::max(prob, epsStab)) +
+                        (1.0 - target) * std::log(std::max(1.0 - prob, epsStab))));
+      sumW += w;
+    }
+    tLossSum[t] = lossSum;
+    tSumW[t] = sumW;
+  });
+
+  // weighted average across threads
+  double totalLossSum = 0.0, totalW = 0.0;
+  for (int t = 0; t < TW; ++t) {
+    totalLossSum += tLossSum[t];
+    totalW += tSumW[t];
+  }
+  return (totalW > 0.0) ? (totalLossSum / totalW) : 0.0;
+}
+
+static double autotune_scale(WorkerPool& pool, const std::vector<PreparedSample>& setForScale,
+                             const std::vector<double>& w, const std::vector<double>& w0,
+                             double bias, double initScale) {
+  if (setForScale.empty()) return initScale;
+  std::array<double, 7> factors{0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0};
+  double best = initScale;
+  double bestL = compute_avg_loss_pool(pool, setForScale, w, w0, bias, std::log(initScale));
+  for (double f : factors) {
+    double s = std::max(1.0, initScale * f);
+    double L = compute_avg_loss_pool(pool, setForScale, w, w0, bias, std::log(s));
+    if (L < bestL) {
+      bestL = L;
+      best = s;
+    }
+  }
+  std::cout << "Auto-scale: " << initScale << " -> " << best << " (loss " << bestL << ")\n";
+  return best;
+}
+
+TrainingResult train_parallel(std::vector<PreparedSample>& samples,
+                              std::vector<PreparedSample>& valSamples,
                               const std::vector<int>& defaults,
                               const std::span<const engine::EvalParamEntry>& entries,
                               const Options& opts) {
   if (samples.empty()) throw std::runtime_error("No samples to train on");
-  const size_t P = entries.size();
-  const size_t N = samples.size();
+  const size_t Pengine = entries.size();
+  WorkerPool pool(std::max(1, opts.trainWorkers));
 
-  std::vector<double> w(defaults.begin(), defaults.end());
-  std::vector<double> w0(defaults.begin(), defaults.end());
-  std::vector<double> g(P, 0.0);
+  std::vector<double> wEngine(defaults.begin(), defaults.end());  // current engine weights
+  std::vector<double> w0(defaults.begin(), defaults.end());       // linearization point
+  double bias = 0.0;
+  double logScale = std::log(std::max(1.0, opts.logisticScale));
 
-  // Adam state
-  std::vector<double> m(P, 0.0), v(P, 0.0);
+  if (opts.initWeightsPath) {
+    if (auto wInit = read_weights_file(*opts.initWeightsPath, entries)) {
+      for (size_t j = 0; j < Pengine; ++j) wEngine[j] = (double)(*wInit)[j];
+      std::cout << "Initialized weights from " << *opts.initWeightsPath << "\n";
+    } else {
+      std::cout << "Warning: could not parse init weights; using defaults.\n";
+    }
+  }
+
+  // Auto-scale on startup (use val if available else train)
+  if (opts.autoScale && !opts.learnScale) {
+    auto& setForScale = !valSamples.empty() ? valSamples : samples;
+    double best = autotune_scale(pool, setForScale, wEngine, w0, bias, opts.logisticScale);
+    const_cast<double&>(opts.logisticScale) = best;  // safe (local copy)
+    logScale = std::log(best);
+  }
+
+  const int logEvery = (opts.logEvery > 0) ? opts.logEvery : std::max(1, opts.iterations / 5);
+  const int evalEvery = (opts.evalEvery > 0) ? opts.evalEvery : logEvery;
+
+  // Adam/AdamW state
+  std::vector<double> m(Pengine + (opts.learnBias ? 1 : 0) + (opts.learnScale ? 1 : 0), 0.0),
+      v(Pengine + (opts.learnBias ? 1 : 0) + (opts.learnScale ? 1 : 0), 0.0);
+  auto M = [&](size_t idx) -> double& { return m[idx]; };
+  auto V = [&](size_t idx) -> double& { return v[idx]; };
   double b1 = opts.adamBeta1, b2 = opts.adamBeta2, eps = opts.adamEps;
   double b1t = 1.0, b2t = 1.0;
 
-  const double invN = 1.0 / (double)N;
-  const int logEvery = (opts.logEvery > 0) ? opts.logEvery : std::max(1, opts.iterations / 5);
-  ProgressMeter trainPM("Training (Texel, parallel)", (std::size_t)opts.iterations,
-                        opts.progressIntervalMs);
+  // Parameter indexing helpers
+  TrainExtrasIdx idxs{};
+  size_t Ptot = Pengine;
+  if (opts.learnBias) {
+    idxs.biasIdx = (int)Ptot;
+    ++Ptot;
+  }
+  if (opts.learnScale) {
+    idxs.scaleIdx = (int)Ptot;
+    ++Ptot;
+  }
+
+  // Minibatch scheduler (deterministic if seed != 0)
+  std::mt19937_64 rng(opts.seed ? (opts.seed ^ 0xA0761D6478BD642Full) : std::random_device{}());
+  const size_t Ntrain = samples.size();
+  const size_t B =
+      (opts.batchSize > 0 && opts.batchSize < (int)Ntrain) ? (size_t)opts.batchSize : Ntrain;
+
+  std::vector<size_t> perm(Ntrain);
+  std::iota(perm.begin(), perm.end(), 0);
+  if (B < Ntrain) std::shuffle(perm.begin(), perm.end(), rng);
+  size_t cursor = 0;
+
+  ProgressMeter trainPM("Training (Texel)", (std::size_t)opts.iterations, opts.progressIntervalMs);
+
+  double bestVal = std::numeric_limits<double>::infinity();
+  int patienceLeft = opts.earlyStopPatience;
+  std::vector<double> bestEngine = wEngine;
+  double bestBias = bias;
+  double bestLogScale = logScale;
 
   // Thread-local accumulators
-  const int TW = std::max(1, opts.trainWorkers);
-  std::vector<std::vector<double>> tg(TW, std::vector<double>(P, 0.0));
-  std::vector<double> threadLoss(TW, 0.0);
+  const int TW = pool.size();
+  std::vector<std::vector<double>> tg(TW, std::vector<double>(Ptot, 0.0));
+  std::vector<double> threadLossSum(TW, 0.0), threadSumW(TW, 0.0);
+  std::vector<size_t> cuts(TW + 1, 0);
 
-  std::vector<size_t> rangesB(TW + 1, 0);
-  for (int t = 0; t < TW; ++t) {
-    rangesB[t] = (N * t) / TW;
+  auto build_batch = [&](std::vector<size_t>& batch) {
+    batch.clear();
+    batch.resize(B);
+    if (B == Ntrain) {
+      batch = perm;
+    } else {
+      for (size_t i = 0; i < B; ++i) {
+        if (cursor >= Ntrain) {
+          std::shuffle(perm.begin(), perm.end(), rng);
+          cursor = 0;
+        }
+        batch[i] = perm[cursor++];
+      }
+    }
+  };
+  auto partition_batch = [&](size_t L) {
+    for (int t = 0; t < TW; ++t) cuts[t] = (L * t) / TW;
+    cuts[TW] = L;
+  };
+
+  std::vector<size_t> batchIdx;
+  batchIdx.reserve(B);
+
+  // CSV log
+  std::ofstream csv;
+  if (opts.logCsv) {
+    fs::path p{*opts.logCsv};
+    if (p.has_parent_path()) {
+      std::error_code ec;
+      fs::create_directories(p.parent_path(), ec);
+    }
+    csv.open(*opts.logCsv, std::ios::trunc);
+    if (csv) csv << "iter,train_loss,val_loss,scale,bias,lr\n";
   }
-  rangesB[TW] = N;
+
+  lilia::engine::Evaluator evaluator;  // used for relinearization when needed
 
   for (int iter = 0; iter < opts.iterations; ++iter) {
-    // zero grads
-    for (int t = 0; t < TW; ++t) std::fill(tg[t].begin(), tg[t].end(), 0.0);
-    std::fill(threadLoss.begin(), threadLoss.end(), 0.0);
+    build_batch(batchIdx);
+    partition_batch(batchIdx.size());
 
-    // parallel over samples (read-only sample data, write to thread-local grads)
-    std::vector<std::thread> threads;
-    threads.reserve(TW);
     for (int t = 0; t < TW; ++t) {
-      threads.emplace_back([&, t]() {
-        size_t start = rangesB[t], end = rangesB[t + 1];
-        auto& G = tg[t];
-        double lossLocal = 0.0;
-
-        for (size_t i = start; i < end; ++i) {
-          const auto& s = samples[i];
-          double eval = s.baseEval;
-          // (w - w0) dot grad
-          for (size_t j = 0; j < P; ++j) eval += (w[j] - w0[j]) * (double)s.gradients[j];
-          double scaled = std::clamp(eval / opts.logisticScale, -500.0, 500.0);
-          double prob = 1.0 / (1.0 + std::exp(-scaled));
-          double target = s.result;
-
-          const double epsStab = 1e-12;
-          lossLocal += -(target * std::log(std::max(prob, epsStab)) +
-                         (1.0 - target) * std::log(std::max(1.0 - prob, epsStab)));
-
-          double diff = (prob - target) / opts.logisticScale;
-          // accumulate gradient: G += diff * grad_i
-          for (size_t j = 0; j < P; ++j) G[j] += diff * (double)s.gradients[j];
-        }
-        threadLoss[t] = lossLocal;
-      });
+      std::fill(tg[t].begin(), tg[t].end(), 0.0);
+      threadLossSum[t] = 0.0;
+      threadSumW[t] = 0.0;
     }
-    for (auto& th : threads) th.join();
 
-    // reduce
-    std::fill(g.begin(), g.end(), 0.0);
-    double loss = 0.0;
+    double lrNow = lr_schedule(opts, iter, opts.iterations);
+
+    pool.run([&](int t) {
+      size_t s0 = cuts[t], s1 = cuts[t + 1];
+      auto& G = tg[t];
+      double lossSum = 0.0, sumW = 0.0;
+      for (size_t k = s0; k < s1; ++k) {
+        const auto& s = samples[batchIdx[k]];
+        const float* gptr = s.gradients.data();
+        double eval = s.baseEval;
+        for (size_t j = 0; j < Pengine; ++j) eval += (wEngine[j] - w0[j]) * (double)gptr[j];
+        if (opts.learnBias) eval += bias;
+        const double scale = std::exp(logScale);
+        const double scaled = std::clamp(eval / scale, -500.0, 500.0);
+        const double prob = sigmoid(scaled);
+        const double target = s.result;
+        const double w = std::max(0.0f, s.weight);
+
+        const double epsStab = 1e-12;
+        lossSum += w * (-(target * std::log(std::max(prob, epsStab)) +
+                          (1.0 - target) * std::log(std::max(1.0 - prob, epsStab))));
+        sumW += w;
+
+        const double diff = w * (prob - target);
+        // engine param grads
+        for (size_t j = 0; j < Pengine; ++j) G[j] += (diff / scale) * (double)gptr[j];
+        // bias grad
+        if (opts.learnBias) G[(size_t)idxs.biasIdx] += (diff / scale) * 1.0;
+        // log-scale grad (see derivation in analysis): -(w)*(prob-target)*(eval/scale)
+        if (opts.learnScale) G[(size_t)idxs.scaleIdx] += -(diff) * (eval / scale);
+      }
+      // No per-thread normalization; reduce with total weight later
+      threadLossSum[t] = lossSum;
+      threadSumW[t] = sumW;
+    });
+
+    // reduce (weighted by total sample weight)
+    std::vector<double> g(Ptot, 0.0);
+    double totalLossSum = 0.0, totalW = 0.0;
     for (int t = 0; t < TW; ++t) {
-      for (size_t j = 0; j < P; ++j) g[j] += tg[t][j];
-      loss += threadLoss[t];
+      for (size_t j = 0; j < Ptot; ++j) g[j] += tg[t][j];
+      totalLossSum += threadLossSum[t];
+      totalW += threadSumW[t];
     }
-    for (size_t j = 0; j < P; ++j) g[j] *= invN;
-    loss *= invN;
+    double loss = (totalW > 0.0) ? (totalLossSum / totalW) : 0.0;
+    if (totalW > 0.0) {
+      const double invW = 1.0 / totalW;
+      for (double& x : g) x *= invW;
+    }
 
+    // Legacy L2 (on engine deltas relative to linpoint)
     if (opts.l2 > 0.0) {
-      for (size_t j = 0; j < P; ++j) {
-        const double d = (w[j] - w0[j]);
+      for (size_t j = 0; j < Pengine; ++j) {
+        const double d = (wEngine[j] - w0[j]);
         g[j] += opts.l2 * d;
         loss += 0.5 * opts.l2 * d * d;
       }
     }
 
-    // update
+    // Grad clipping (on full vector)
+    if (opts.gradClip > 0.0) {
+      double n2 = 0.0;
+      for (double x : g) n2 += x * x;
+      double nrm = std::sqrt(n2);
+      if (nrm > opts.gradClip && nrm > 0.0) {
+        double sc = opts.gradClip / nrm;
+        for (double& x : g) x *= sc;
+      }
+    }
+
+    // Adam/SGD update with optional AdamW weight decay (decoupled)
     if (opts.useAdam) {
       b1t *= b1;
       b2t *= b2;
-      for (size_t j = 0; j < P; ++j) {
-        m[j] = b1 * m[j] + (1.0 - b1) * g[j];
-        v[j] = b2 * v[j] + (1.0 - b2) * (g[j] * g[j]);
-        double mhat = m[j] / (1.0 - b1t);
-        double vhat = v[j] / (1.0 - b2t);
-        w[j] -= opts.learningRate * mhat / (std::sqrt(vhat) + eps);
+      for (size_t j = 0; j < Ptot; ++j) {
+        M(j) = b1 * M(j) + (1.0 - b1) * g[j];
+        V(j) = b2 * V(j) + (1.0 - b2) * (g[j] * g[j]);
+        double mhat = M(j) / (1.0 - b1t);
+        double vhat = V(j) / (1.0 - b2t);
+        double step = lrNow * mhat / (std::sqrt(vhat) + eps);
+        if (j < Pengine)
+          wEngine[j] -= step;
+        else if ((int)j == idxs.biasIdx)
+          bias -= step;
+        else if ((int)j == idxs.scaleIdx)
+          logScale -= step;
+      }
+      // AdamW decay on engine+bias (not on logScale)
+      if (opts.weightDecay > 0.0) {
+        const double wd = opts.weightDecay * lrNow;  // decoupled
+        for (size_t j = 0; j < Pengine; ++j) wEngine[j] *= (1.0 - wd);
+        if (opts.learnBias) bias *= (1.0 - wd);
       }
     } else {
-      for (size_t j = 0; j < P; ++j) w[j] -= opts.learningRate * g[j];
+      for (size_t j = 0; j < Pengine; ++j) wEngine[j] -= lrNow * g[j];
+      if (opts.learnBias) bias -= lrNow * g[(size_t)idxs.biasIdx];
+      if (opts.learnScale) logScale -= lrNow * g[(size_t)idxs.scaleIdx];
+      if (opts.weightDecay > 0.0) {
+        const double wd = opts.weightDecay * lrNow;
+        for (size_t j = 0; j < Pengine; ++j) wEngine[j] *= (1.0 - wd);
+        if (opts.learnBias) bias *= (1.0 - wd);
+      }
     }
 
-    if ((iter + 1) % logEvery == 0 || iter == opts.iterations - 1) {
-      std::cout << "\nIter " << (iter + 1) << "/" << opts.iterations << ": loss=" << loss << "\n";
+    // logging & validation
+    bool doLog = ((iter + 1) % logEvery == 0 || iter == opts.iterations - 1);
+    bool doEval =
+        (opts.valSplit > 0.0) && ((iter + 1) % evalEvery == 0 || iter == opts.iterations - 1);
+    if (doLog)
+      std::cout << "\nIter " << (iter + 1) << "/" << opts.iterations << ": loss=" << loss
+                << " scale=" << std::exp(logScale)
+                << (opts.learnBias ? (" bias=" + std::to_string(bias)) : "") << "\n";
+
+    double vloss = std::numeric_limits<double>::quiet_NaN();
+    if (doEval && !valSamples.empty()) {
+      vloss = compute_avg_loss_pool(pool, valSamples, wEngine, w0, bias, logScale);
+      if (doLog) std::cout << "val=" << vloss << "\n";
+      if (vloss + opts.earlyStopDelta < bestVal) {
+        bestVal = vloss;
+        bestEngine = wEngine;
+        bestBias = bias;
+        bestLogScale = logScale;
+        patienceLeft = opts.earlyStopPatience;
+      } else if (opts.earlyStopPatience > 0) {
+        if (--patienceLeft <= 0) {
+          std::cout << "  [early stop]\n";
+          wEngine = bestEngine;
+          bias = bestBias;
+          logScale = bestLogScale;
+          trainPM.add(1);
+          break;
+        }
+      }
     }
+
+    if (csv) {
+      csv << (iter + 1) << "," << loss << "," << (std::isnan(vloss) ? 0.0 : vloss) << ","
+          << std::exp(logScale) << "," << bias << "," << lrNow << "\n";
+    }
+
+    // optional relinearization (serial, safe)
+    if (opts.relinEvery > 0 && (iter + 1) % opts.relinEvery == 0) {
+      std::vector<int> w_int(Pengine);
+      for (size_t j = 0; j < Pengine; ++j) w_int[j] = (int)std::llround(wEngine[j]);
+      engine::set_eval_param_values(w_int);
+      w0 = wEngine;
+
+      size_t M = samples.size();
+      if (opts.relinFrac > 0.0 && opts.relinFrac < 1.0)
+        M = (size_t)std::max<size_t>(1, std::llround(opts.relinFrac * (double)samples.size()));
+
+      std::vector<size_t> idx(samples.size());
+      std::iota(idx.begin(), idx.end(), 0);
+      if (M < idx.size()) {
+        std::mt19937_64 rr(opts.seed ? (opts.seed ^ 0xC2B2AE3D27D4EB4Full)
+                                     : std::random_device{}());
+        std::shuffle(idx.begin(), idx.end(), rr);
+      }
+
+      ProgressMeter relPM("Relinearizing samples", M, opts.progressIntervalMs);
+      for (size_t k = 0; k < M; ++k) {
+        auto i = idx[k];
+        if (samples[i].fen.empty()) {  // from cache v1 -> can't relinearize this sample
+          continue;
+        }
+        PreparedSample ps =
+            prepare_sample_with_delta(samples[i].fen, samples[i].result, evaluator, w_int, entries,
+                                      opts.relinDelta, std::exp(logScale));
+        samples[i] = std::move(ps);
+        relPM.add(1);
+      }
+      relPM.finish();
+    }
+
     trainPM.add(1);
   }
   trainPM.finish();
+  if (csv) csv.close();
 
-  // final exact loss report (same reduction)
-  double finalLoss = 0.0;
-  {
-    std::vector<std::thread> threads2;
-    std::vector<double> tLoss(TW, 0.0);
-    for (int t = 0; t < TW; ++t) {
-      threads2.emplace_back([&, t]() {
-        size_t start = rangesB[t], end = rangesB[t + 1];
-        double lossLocal = 0.0;
-        for (size_t i = start; i < end; ++i) {
-          const auto& s = samples[i];
-          double eval = s.baseEval;
-          for (size_t j = 0; j < P; ++j) eval += (w[j] - w0[j]) * (double)s.gradients[j];
-          double scaled = std::clamp(eval / opts.logisticScale, -500.0, 500.0);
-          double prob = 1.0 / (1.0 + std::exp(-scaled));
-          double target = s.result;
-          const double epsStab = 1e-12;
-          lossLocal += -(target * std::log(std::max(prob, epsStab)) +
-                         (1.0 - target) * std::log(std::max(1.0 - prob, epsStab)));
-        }
-        tLoss[t] = lossLocal;
-      });
+  double finalLoss = compute_avg_loss_pool(pool, samples, wEngine, w0, bias, logScale);
+  if (opts.l2 > 0.0) {
+    double reg = 0.0;
+    for (size_t j = 0; j < Pengine; ++j) {
+      double d = (wEngine[j] - w0[j]);
+      reg += 0.5 * opts.l2 * d * d;
     }
-    for (auto& th : threads2) th.join();
-    for (int t = 0; t < TW; ++t) finalLoss += tLoss[t];
-    finalLoss /= (double)N;
-    if (opts.l2 > 0.0) {
-      double reg = 0.0;
-      for (size_t j = 0; j < P; ++j) {
-        double d = (w[j] - w0[j]);
-        reg += 0.5 * opts.l2 * d * d;
-      }
-      finalLoss += reg;
-    }
+    finalLoss += reg;
   }
 
   TrainingResult tr;
-  tr.weights = std::move(w);
+  tr.weights = std::move(wEngine);
   tr.finalLoss = finalLoss;
+  tr.learnedBias = bias;
+  tr.learnedScale = std::exp(logScale);
   return tr;
 }
 
@@ -1227,21 +1852,36 @@ void emit_weights(const TrainingResult& result, const std::vector<int>& defaults
 
   *out << "# Tuned evaluation parameters\n";
   *out << "# Texel training loss: " << result.finalLoss << "\n";
-  *out << "# scale=" << originalOptsForHeader.logisticScale
+  *out << "# scale_final=" << result.learnedScale << " bias_final=" << result.learnedBias << "\n";
+  *out << "# scale_init=" << originalOptsForHeader.logisticScale
        << " lr=" << originalOptsForHeader.learningRate
        << " iters=" << originalOptsForHeader.iterations << " l2=" << originalOptsForHeader.l2
+       << " weight_decay=" << originalOptsForHeader.weightDecay
+       << " batch_size=" << originalOptsForHeader.batchSize
+       << " val_split=" << originalOptsForHeader.valSplit
+       << " grad_clip=" << originalOptsForHeader.gradClip << " seed=" << originalOptsForHeader.seed
+       << " relin_every=" << originalOptsForHeader.relinEvery
+       << " relin_frac=" << originalOptsForHeader.relinFrac
+       << " relin_delta=" << originalOptsForHeader.relinDelta
+       << " autoscale=" << (originalOptsForHeader.autoScale ? "yes" : "no")
+       << " learn_scale=" << (originalOptsForHeader.learnScale ? "yes" : "no")
+       << " learn_bias=" << (originalOptsForHeader.learnBias ? "yes" : "no")
+       << " lr_warmup=" << originalOptsForHeader.lrWarmup
+       << " lr_cosine=" << originalOptsForHeader.lrCosine
+       << " adam=" << (originalOptsForHeader.useAdam ? "yes" : "no")
+       << " train_workers=" << originalOptsForHeader.trainWorkers
+       << " gen_workers=" << originalOptsForHeader.genWorkers
+       << " shuffled=" << (originalOptsForHeader.shuffleBeforeTraining ? "yes" : "no")
        << " sample_limit="
        << (originalOptsForHeader.sampleLimit ? std::to_string(*originalOptsForHeader.sampleLimit)
                                              : "none")
-       << " shuffled=" << (originalOptsForHeader.shuffleBeforeTraining ? "yes" : "no")
-       << " adam=" << (originalOptsForHeader.useAdam ? "yes" : "no")
-       << " train_workers=" << originalOptsForHeader.trainWorkers
-       << " gen_workers=" << originalOptsForHeader.genWorkers << "\n";
+       << "\n";
 
   for (size_t i = 0; i < entries.size(); ++i) {
     *out << entries[i].name << "=" << tuned[i] << "  # default=" << defaults[i]
          << " tuned=" << result.weights[i] << "\n";
   }
+  *out << "# NOTE: bias and scale are not engine parameters; recorded above for calibration.\n";
   if (file) std::cout << "Wrote tuned weights to " << *opts.weightsOutput << "\n";
 }
 
@@ -1281,11 +1921,10 @@ int main(int argc, char** argv) {
 
     if (opts.generateData) {
       auto samples = generate_samples_parallel(opts);
-      if (samples.empty()) {
+      if (samples.empty())
         std::cerr << "No samples generated.\n";
-      } else {
+      else
         write_dataset(samples, opts.dataFile);
-      }
     }
 
     if (opts.tune) {
@@ -1298,32 +1937,49 @@ int main(int argc, char** argv) {
       auto entriesSpan = lilia::engine::eval_param_entries();
 
       std::vector<PreparedSample> prepared;
+      std::vector<PreparedSample> valPrepared;
 
       // Optional: load cached prepared samples if compatible
-      bool loadedFromCache = false;
+      bool loadedFromCache = false, cacheHasFen = false;
+      uint64_t defHash = hash_defaults(entriesSpan, defaultsVals, opts.relinDelta, 0);
       if (opts.preparedCache && opts.loadPreparedIfExists) {
-        loadedFromCache = load_prepared_cache(*opts.preparedCache, prepared,
-                                              (uint32_t)entriesSpan.size(), opts.logisticScale);
-        if (loadedFromCache)
-          std::cout << "Loaded prepared samples from cache: " << *opts.preparedCache << "\n";
+        loadedFromCache =
+            load_prepared_cache(*opts.preparedCache, prepared, (uint32_t)entriesSpan.size(),
+                                opts.logisticScale, defHash, opts.relinDelta, cacheHasFen);
+        if (loadedFromCache) {
+          std::cout << "Loaded prepared samples from cache: " << *opts.preparedCache
+                    << "  (fen=" << (cacheHasFen ? "yes" : "no") << ")\n";
+        }
       }
       if (!loadedFromCache) {
-        prepared =
-            prepare_samples(std::move(rawSamples), evaluator, defaultsVals, entriesSpan, opts);
+        prepared = prepare_samples(rawSamples, evaluator, defaultsVals, entriesSpan, opts);
         std::cout << "Prepared " << prepared.size() << " samples for tuning\n";
         if (opts.preparedCache && opts.savePrepared) {
           if (save_prepared_cache(*opts.preparedCache, prepared, (uint32_t)entriesSpan.size(),
-                                  opts.logisticScale))
+                                  opts.logisticScale, defHash, opts.relinDelta))
             std::cout << "Saved prepared cache to " << *opts.preparedCache << "\n";
           else
             std::cout << "Warning: failed to save prepared cache to " << *opts.preparedCache
                       << "\n";
         }
-      } else {
-        std::cout << "Prepared " << prepared.size() << " samples (from cache)\n";
+      } else if (opts.relinEvery > 0 && !cacheHasFen) {
+        std::cout << "Note: cache has no FEN (v1). Relinearization disabled.\n";
       }
 
-      auto result = train_parallel(prepared, defaultsVals, entriesSpan, opts);
+      // split train/val (deterministic with seed)
+      if (opts.valSplit > 0.0 && prepared.size() > 10) {
+        std::mt19937_64 rng(opts.seed ? (opts.seed ^ 0x41C64E6DA3BC0074ull)
+                                      : std::random_device{}());
+        std::shuffle(prepared.begin(), prepared.end(), rng);
+        size_t nval = (size_t)std::round(opts.valSplit * prepared.size());
+        nval = std::min(nval, prepared.size() / 2);
+        valPrepared.insert(valPrepared.end(), prepared.begin(), prepared.begin() + nval);
+        prepared.erase(prepared.begin(), prepared.begin() + nval);
+        std::cout << "Train samples: " << prepared.size() << ", Val samples: " << valPrepared.size()
+                  << "\n";
+      }
+
+      auto result = train_parallel(prepared, valPrepared, defaultsVals, entriesSpan, opts);
       emit_weights(result, defaultsVals, entriesSpan, opts, opts);
     }
   } catch (const std::exception& ex) {
