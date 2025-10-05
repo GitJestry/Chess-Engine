@@ -364,6 +364,21 @@ fs::path locate_project_root(fs::path start) {
   }
 }
 
+fs::path default_user_texel_dir() {
+#ifdef _WIN32
+  if (const char* appData = std::getenv("APPDATA"); appData && *appData)
+    return fs::path(appData) / "Lilia" / "texel";
+  if (const char* userProfile = std::getenv("USERPROFILE"); userProfile && *userProfile)
+    return fs::path(userProfile) / "AppData" / "Roaming" / "Lilia" / "texel";
+#else
+  if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg)
+    return fs::path(xdg) / "lilia" / "texel";
+  if (const char* home = std::getenv("HOME"); home && *home)
+    return fs::path(home) / ".local" / "share" / "lilia" / "texel";
+#endif
+  return fs::current_path() / "texel_data";
+}
+
 DefaultPaths compute_default_paths(const char* argv0) {
   fs::path exePath;
 #ifdef _WIN32
@@ -382,9 +397,13 @@ DefaultPaths compute_default_paths(const char* argv0) {
   if (exeDir.empty()) exeDir = fs::current_path();
 
   const fs::path projectRoot = locate_project_root(exeDir);
+  const bool hasProjectRoot = fs::exists(projectRoot / "CMakeLists.txt");
+
+  const fs::path texelDir = hasProjectRoot ? projectRoot / "texel_data"
+                                           : default_user_texel_dir();
   DefaultPaths defaults;
-  defaults.dataFile = projectRoot / "texel_data" / "texel_dataset.txt";
-  defaults.weightsFile = projectRoot / "texel_data" / "texel_weights.txt";
+  defaults.dataFile = texelDir / "texel_dataset.txt";
+  defaults.weightsFile = texelDir / "texel_weights.txt";
   defaults.stockfish = find_stockfish_in_dir(exeDir);
   if (!defaults.stockfish)
     defaults.stockfish = find_stockfish_in_dir(projectRoot / "tools" / "texel");
