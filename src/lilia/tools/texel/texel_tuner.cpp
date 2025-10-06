@@ -64,6 +64,7 @@ struct ProgressMeter {
   std::atomic<bool> finished{false};
   bool threadSafe = false;
   mutable std::mutex mutex_;
+  std::string status;
 
   ProgressMeter(std::string label_, std::size_t total_, int intervalMs_ = 750,
                 bool threadSafe_ = false)
@@ -127,6 +128,12 @@ struct ProgressMeter {
     line << "\r" << label << " " << std::fixed << std::setprecision(1) << pct << "% "
          << "(" << cur << "/" << total << ")  "
          << "elapsed " << fmt_hms(elapsed) << "  ETA ~" << fmt_hms(eta);
+    if (rate > 0.0) {
+      line << "  rate " << std::setprecision(1) << rate << "/s";
+    }
+    if (!status.empty()) {
+      line << "  " << status;
+    }
     std::cout << line.str() << std::flush;
   }
 
@@ -140,6 +147,16 @@ struct ProgressMeter {
     } else {
       std::cout << "\n";
     }
+  }
+
+  void set_status(std::string newStatus, bool flush = false) {
+    if (finished.load(std::memory_order_acquire)) return;
+    {
+      std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
+      if (threadSafe) lock.lock();
+      status = std::move(newStatus);
+    }
+    if (flush) tick(true);
   }
 };
 
@@ -1790,8 +1807,16 @@ TrainingResult train_parallel(std::vector<PreparedSample>& samples,
           << std::exp(logScale) << "," << bias << "," << lrNow << "\n";
     }
 
+    std::ostringstream statusStream;
+    statusStream << std::fixed << std::setprecision(4) << "loss=" << loss;
+    if (!std::isnan(vloss)) statusStream << " val=" << vloss;
+    statusStream << std::defaultfloat << std::setprecision(3) << " lr=" << lrNow;
+    std::string statusText = statusStream.str();
+    trainPM.set_status(statusText);
+
     // optional relinearization (serial, safe)
     if (opts.relinEvery > 0 && (iter + 1) % opts.relinEvery == 0) {
+      trainPM.set_status(statusText + "  [relinearizing]", true);
       std::vector<int> w_int(Pengine);
       for (size_t j = 0; j < Pengine; ++j) w_int[j] = (int)std::llround(wEngine[j]);
       engine::set_eval_param_values(w_int);
@@ -1822,6 +1847,7 @@ TrainingResult train_parallel(std::vector<PreparedSample>& samples,
         relPM.add(1);
       }
       relPM.finish();
+      trainPM.set_status(statusText);
     }
 
     trainPM.add(1);
